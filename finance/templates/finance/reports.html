@@ -1,0 +1,121 @@
+{% extends "finance/base.html" %}
+{% block title %}Reports · Stashy{% endblock %}
+{% block content %}
+<h3 class="mb-3">Reports</h3>
+
+<form method="get" class="card p-3 mb-4">
+    <div class="row g-2 align-items-end">
+        <div class="col-md-2">
+            <label class="form-label small mb-1">Date range</label>
+            {{ form.range }}
+        </div>
+        <div class="col-md-2">
+            <label class="form-label small mb-1">Start</label>
+            {{ form.start }}
+        </div>
+        <div class="col-md-2">
+            <label class="form-label small mb-1">End</label>
+            {{ form.end }}
+        </div>
+        <div class="col-md-2">
+            <label class="form-label small mb-1">Interval</label>
+            {{ form.interval }}
+        </div>
+        <div class="col-md-2">
+            <label class="form-label small mb-1">Account</label>
+            {{ form.account }}
+        </div>
+        <div class="col-md-2">
+            <button class="btn btn-sm btn-outline-secondary w-100">Apply</button>
+        </div>
+    </div>
+    <div class="text-muted small mt-2">Showing {{ start }} to {{ end }}, bucketed {{ interval }}.</div>
+</form>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-6">
+        <div class="card p-3 h-100">
+            <div class="text-muted small mb-2">Spending by category</div>
+            <canvas id="spendingByCategoryChart" height="220"></canvas>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card p-3 h-100">
+            <div class="text-muted small mb-2">Current {{ interval }} spending vs. 12-{{ interval }} average</div>
+            <canvas id="currentVsAverageChart" height="220"></canvas>
+            <div class="row text-center mt-3">
+                <div class="col-6">
+                    <div class="text-muted small">Current</div>
+                    <div class="stat-value amount-negative">${{ current_spending|floatformat:2 }}</div>
+                </div>
+                <div class="col-6">
+                    <div class="text-muted small">Average</div>
+                    <div class="stat-value">${{ average_spending|floatformat:2 }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-6">
+        <div class="card p-3 h-100">
+            <div class="text-muted small mb-2">Income vs. expense over time</div>
+            <canvas id="incomeExpenseChart" height="220"></canvas>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card p-3 h-100">
+            <div class="text-muted small mb-2">Net worth over time</div>
+            <canvas id="netWorthChart" height="220"></canvas>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const spendingByCategory = {{ spending_by_category|safe|default:"[]" }};
+const timeseries = {{ timeseries|safe|default:"[]" }};
+const netWorthSeries = {{ net_worth_series|safe|default:"[]" }};
+
+new Chart(document.getElementById('spendingByCategoryChart'), {
+    type: 'bar',
+    data: {
+        labels: spendingByCategory.map(r => r.category__name),
+        datasets: [{ label: 'Spending', data: spendingByCategory.map(r => r.total), backgroundColor: '#c0392b' }]
+    },
+    options: { indexAxis: 'y', plugins: { legend: { display: false } } }
+});
+
+new Chart(document.getElementById('incomeExpenseChart'), {
+    type: 'bar',
+    data: {
+        labels: timeseries.map(r => r.period),
+        datasets: [
+            { label: 'Income', data: timeseries.map(r => r.income), backgroundColor: '#2f9e6a' },
+            { label: 'Expense', data: timeseries.map(r => r.expense), backgroundColor: '#c0392b' },
+        ]
+    },
+    options: { plugins: { legend: { position: 'bottom' } } }
+});
+
+new Chart(document.getElementById('currentVsAverageChart'), {
+    type: 'bar',
+    data: {
+        labels: ['Current', 'Average'],
+        datasets: [{ data: [{{ current_spending|default:0 }}, {{ average_spending|default:0 }}], backgroundColor: ['#c0392b', '#6c757d'] }]
+    },
+    options: { plugins: { legend: { display: false } } }
+});
+
+new Chart(document.getElementById('netWorthChart'), {
+    type: 'line',
+    data: {
+        labels: netWorthSeries.map(r => r.period),
+        datasets: [{ label: 'Net worth', data: netWorthSeries.map(r => r.net_worth), borderColor: '#2f9e6a', fill: true, backgroundColor: 'rgba(47,158,106,.12)', tension: .25 }]
+    },
+    options: { plugins: { legend: { display: false } } }
+});
+</script>
+{% endblock %}

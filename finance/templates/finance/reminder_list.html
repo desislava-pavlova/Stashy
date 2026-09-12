@@ -1,0 +1,35 @@
+{% extends "finance/base.html" %}
+{% block title %}Reminders · Stashy{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h3 class="mb-0">Bill &amp; income reminders</h3>
+    <a href="{% url 'finance:reminder_add' %}" class="btn btn-success"><i class="bi bi-plus-lg me-1"></i>Add reminder</a>
+</div>
+<div class="card">
+    <table class="table mb-0 align-middle">
+        <thead><tr><th>Name</th><th>Account</th><th>Frequency</th><th>Next due</th><th class="text-end">Amount</th><th></th></tr></thead>
+        <tbody>
+        {% for r in reminders %}
+            <tr class="{% if not r.is_active %}text-muted{% endif %}">
+                <td>{{ r.name }}{% if not r.is_active %} <span class="badge text-bg-secondary">paused</span>{% endif %}</td>
+                <td class="text-muted small">{{ r.account.name }}</td>
+                <td class="text-muted small">{{ r.get_frequency_display }}</td>
+                <td>{{ r.next_due_date }}</td>
+                <td class="text-end {% if r.reminder_type == 'income' %}amount-positive{% else %}amount-negative{% endif %}">${{ r.amount|floatformat:2 }}</td>
+                <td class="text-end">
+                    {% if r.is_active %}
+                    <form method="post" action="{% url 'finance:reminder_enter' r.pk %}" class="d-inline">{% csrf_token %}
+                        <button class="btn btn-sm btn-success" title="Enter this transaction now"><i class="bi bi-check-lg"></i> Enter</button>
+                    </form>
+                    {% endif %}
+                    <a href="{% url 'finance:reminder_edit' r.pk %}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-pencil"></i></a>
+                    <a href="{% url 'finance:reminder_delete' r.pk %}" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></a>
+                </td>
+            </tr>
+        {% empty %}
+            <tr><td colspan="6" class="text-muted text-center py-4">No reminders yet.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

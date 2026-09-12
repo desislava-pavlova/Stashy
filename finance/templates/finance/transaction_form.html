@@ -1,0 +1,116 @@
+{% extends "finance/base.html" %}
+{% block title %}{% if instance %}Edit{% else %}New{% endif %} transaction · Stashy{% endblock %}
+{% block content %}
+<h3 class="mb-3">{% if instance %}Edit transaction{% else %}New transaction{% endif %}</h3>
+<div class="card p-4" style="max-width: 640px;">
+    <form method="post">
+        {% csrf_token %}
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label">Account</label>
+                {{ form.account }}
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Date</label>
+                {{ form.date }}
+            </div>
+            <div class="col-12">
+                <label class="form-label">{{ form.payee_name.label }}</label>
+                {{ form.payee_name }}
+                <datalist id="payee-list"></datalist>
+                <div class="form-text">{{ form.payee_name.help_text }}</div>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Category</label>
+                {{ form.category }}
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Amount</label>
+                {{ form.amount }}
+                <div class="form-text">Positive = income/deposit, negative = expense.</div>
+            </div>
+            <div class="col-12">
+                <label class="form-label">Memo</label>
+                {{ form.memo }}
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Transfer to account (optional)</label>
+                {{ form.transfer_account }}
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Tags</label>
+                {{ form.tags }}
+            </div>
+            <div class="col-md-6 form-check ms-2">
+                {{ form.cleared }}
+                <label class="form-check-label" for="{{ form.cleared.id_for_label }}">Cleared</label>
+            </div>
+            <div class="col-md-6 form-check ms-2">
+                {{ form.reconciled }}
+                <label class="form-check-label" for="{{ form.reconciled.id_for_label }}">Reconciled</label>
+            </div>
+        </div>
+
+        {% for error in form.non_field_errors %}<div class="text-danger small mt-2">{{ error }}</div>{% endfor %}
+
+        <div class="mt-4">
+            <button type="submit" class="btn btn-success">Save</button>
+            <a href="javascript:history.back()" class="btn btn-outline-secondary">Cancel</a>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    const payeeInput = document.getElementById('{{ form.payee_name.id_for_label }}');
+    const datalist = document.getElementById('payee-list');
+    const categorySelect = document.getElementById('{{ form.category.id_for_label }}');
+    const memoInput = document.getElementById('{{ form.memo.id_for_label }}');
+    const amountInput = document.getElementById('{{ form.amount.id_for_label }}');
+
+    // Populate the datalist of known payees once.
+    fetch("{% url 'finance:api_payee_list' %}")
+        .then(r => r.json())
+        .then(data => {
+            (data.payees || []).forEach(name => {
+                const opt = document.createElement('option');
+                opt.value = name;
+                datalist.appendChild(opt);
+            });
+        });
+
+    let debounceTimer;
+    let userTouchedCategory = false;
+    let userTouchedMemo = false;
+    let userTouchedAmount = false;
+
+    categorySelect.addEventListener('change', () => userTouchedCategory = true);
+    memoInput.addEventListener('input', () => userTouchedMemo = true);
+    amountInput.addEventListener('input', () => userTouchedAmount = true);
+
+    payeeInput.addEventListener('input', function () {
+        clearTimeout(debounceTimer);
+        const name = payeeInput.value.trim();
+        if (!name) return;
+        debounceTimer = setTimeout(() => {
+            fetch(`{% url 'finance:api_payee_autofill' %}?name=${encodeURIComponent(name)}`)
+                .then(r => r.json())
+                .then(data => {
+                    if (!data || Object.keys(data).length === 0) return;
+                    if (data.category_id && !userTouchedCategory) {
+                        categorySelect.value = data.category_id;
+                    }
+                    if (data.memo && !userTouchedMemo && !memoInput.value) {
+                        memoInput.value = data.memo;
+                    }
+                    if (data.amount && !userTouchedAmount && !amountInput.value) {
+                        amountInput.value = data.amount;
+                    }
+                });
+        }, 250);
+    });
+})();
+</script>
+{% endblock %}

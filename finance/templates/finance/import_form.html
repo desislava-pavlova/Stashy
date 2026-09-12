@@ -1,0 +1,40 @@
+{% extends "finance/base.html" %}
+{% block title %}Import · Stashy{% endblock %}
+{% block content %}
+<h3 class="mb-3">Import transactions</h3>
+<div class="card p-4 mb-4" style="max-width: 640px;">
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        <div class="mb-3">
+            <label class="form-label">Account</label>
+            {{ form.account }}
+        </div>
+        <div class="mb-3">
+            <label class="form-label">File</label>
+            {{ form.file }}
+            <div class="form-text">{{ form.file.help_text }}. CSV columns recognized: Date, Payee/Description, Memo, Amount.</div>
+        </div>
+        <button type="submit" class="btn btn-success">Import</button>
+    </form>
+</div>
+
+<h5 class="mb-2">Recent imports</h5>
+<div class="card">
+    <table class="table mb-0">
+        <thead><tr><th>File</th><th>Account</th><th>When</th><th class="text-end">Imported</th><th class="text-end">Duplicates skipped</th></tr></thead>
+        <tbody>
+        {% for b in recent_batches %}
+            <tr>
+                <td>{{ b.source_filename }}</td>
+                <td class="text-muted small">{{ b.account.name }}</td>
+                <td class="text-muted small">{{ b.imported_at }}</td>
+                <td class="text-end">{{ b.row_count }}</td>
+                <td class="text-end text-muted">{{ b.duplicate_count }}</td>
+            </tr>
+        {% empty %}
+            <tr><td colspan="5" class="text-muted text-center py-4">No imports yet.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

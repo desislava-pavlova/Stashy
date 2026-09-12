@@ -1,0 +1,114 @@
+{% extends "finance/base.html" %}
+{% block title %}Dashboard · Stashy{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="mb-0">Dashboard</h3>
+    <a href="{% url 'finance:transaction_add' %}" class="btn btn-success"><i class="bi bi-plus-lg me-1"></i>New transaction</a>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card p-3">
+            <div class="text-muted small">Net worth</div>
+            <div class="stat-value">${{ net_worth|floatformat:2 }}</div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card p-3">
+            <div class="text-muted small">This month's spending</div>
+            <div class="stat-value amount-negative">${{ month_spending|floatformat:2 }}</div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card p-3">
+            <div class="text-muted small">This month's income</div>
+            <div class="stat-value amount-positive">${{ month_income|floatformat:2 }}</div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-5">
+        <div class="card p-3 h-100">
+            <div class="text-muted small mb-2">Accounts</div>
+            {% for account in accounts %}
+            <div class="d-flex justify-content-between border-bottom py-2">
+                <a href="{% url 'finance:account_detail' account.pk %}" class="text-decoration-none text-body">{{ account.name }}</a>
+                <span class="{% if account.balance < 0 %}amount-negative{% else %}amount-positive{% endif %}">${{ account.balance|floatformat:2 }}</span>
+            </div>
+            {% empty %}
+            <p class="text-muted">No accounts yet. <a href="{% url 'finance:account_add' %}">Add your first account</a>.</p>
+            {% endfor %}
+        </div>
+    </div>
+    <div class="col-md-7">
+        <div class="card p-3 h-100">
+            <div class="text-muted small mb-2">Spending by category (this month)</div>
+            <canvas id="categoryChart" height="180"></canvas>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-md-7">
+        <div class="card p-3">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <div class="text-muted small">Recent transactions</div>
+                <a href="{% url 'finance:transaction_list' %}" class="small">View all</a>
+            </div>
+            <table class="table table-sm">
+                <tbody>
+                {% for t in recent_transactions %}
+                    <tr>
+                        <td class="text-muted small">{{ t.date }}</td>
+                        <td>{{ t.display_payee }}</td>
+                        <td class="text-muted small">{{ t.category|default:"—" }}</td>
+                        <td class="text-end {% if t.amount < 0 %}amount-negative{% else %}amount-positive{% endif %}">${{ t.amount|floatformat:2 }}</td>
+                    </tr>
+                {% empty %}
+                    <tr><td class="text-muted">No transactions yet.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="col-md-5">
+        <div class="card p-3">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <div class="text-muted small">Upcoming reminders</div>
+                <a href="{% url 'finance:reminder_list' %}" class="small">View all</a>
+            </div>
+            {% for r in upcoming_reminders %}
+            <div class="d-flex justify-content-between border-bottom py-2">
+                <div>
+                    <div>{{ r.name }}</div>
+                    <div class="text-muted small">{{ r.next_due_date }}</div>
+                </div>
+                <span class="{% if r.reminder_type == 'income' %}amount-positive{% else %}amount-negative{% endif %}">${{ r.amount|floatformat:2 }}</span>
+            </div>
+            {% empty %}
+            <p class="text-muted">No reminders set up.</p>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const categoryLabels = [{% for row in category_totals %}"{{ row.category__name }}",{% endfor %}];
+const categoryValues = [{% for row in category_totals %}{{ row.total|floatformat:2|default:0 }},{% endfor %}].map(Math.abs);
+
+new Chart(document.getElementById('categoryChart'), {
+    type: 'doughnut',
+    data: {
+        labels: categoryLabels.length ? categoryLabels : ['No spending yet'],
+        datasets: [{
+            data: categoryValues.length ? categoryValues : [1],
+            backgroundColor: ['#2f9e6a','#3b82c4','#e0a12a','#c0392b','#8e6bbf','#4bb3a1','#d4708a','#6c757d'],
+        }]
+    },
+    options: { plugins: { legend: { position: 'right', labels: { boxWidth: 12 } } } }
+});
+</script>
+{% endblock %}

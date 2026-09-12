@@ -1,0 +1,47 @@
+{% extends "finance/base.html" %}
+{% block title %}{{ account.name }} · Stashy{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h3 class="mb-0">{{ account.name }}</h3>
+        <div class="text-muted small">{{ account.get_account_type_display }}{% if account.institution %} · {{ account.institution }}{% endif %}</div>
+    </div>
+    <div class="text-end">
+        <div class="text-muted small">Balance</div>
+        <div class="stat-value {% if account.balance < 0 %}amount-negative{% else %}amount-positive{% endif %}">${{ account.balance|floatformat:2 }}</div>
+    </div>
+</div>
+
+<div class="mb-3">
+    <a href="{% url 'finance:transaction_add' %}?account={{ account.pk }}" class="btn btn-success btn-sm"><i class="bi bi-plus-lg me-1"></i>New transaction</a>
+    <a href="{% url 'finance:account_edit' account.pk %}" class="btn btn-outline-secondary btn-sm">Edit account</a>
+    <a href="{% url 'finance:import_transactions' %}" class="btn btn-outline-secondary btn-sm">Import file</a>
+</div>
+
+<div class="card">
+    <table class="table mb-0 align-middle">
+        <thead><tr><th>Date</th><th>Payee</th><th>Category</th><th>Memo</th><th class="text-end">Amount</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+        {% for t in transactions %}
+            <tr>
+                <td class="text-muted small">{{ t.date }}</td>
+                <td>{{ t.display_payee }}</td>
+                <td class="text-muted small">{{ t.category|default:"—" }}</td>
+                <td class="text-muted small">{{ t.memo }}</td>
+                <td class="text-end {% if t.amount < 0 %}amount-negative{% else %}amount-positive{% endif %}">${{ t.amount|floatformat:2 }}</td>
+                <td>
+                    {% if t.reconciled %}<span class="badge text-bg-success">R</span>
+                    {% elif t.cleared %}<span class="badge text-bg-secondary">C</span>
+                    {% else %}<span class="badge text-bg-light text-muted border">—</span>{% endif %}
+                </td>
+                <td class="text-end">
+                    <a href="{% url 'finance:transaction_edit' t.pk %}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-pencil"></i></a>
+                </td>
+            </tr>
+        {% empty %}
+            <tr><td colspan="7" class="text-muted text-center py-4">No transactions yet.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

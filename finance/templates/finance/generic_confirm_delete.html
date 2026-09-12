@@ -1,0 +1,13 @@
+{% extends "finance/base.html" %}
+{% block title %}Delete · Stashy{% endblock %}
+{% block content %}
+<h3 class="mb-3">Delete {{ object }}?</h3>
+<div class="card p-4" style="max-width: 560px;">
+    <p class="text-muted">This can't be undone.</p>
+    <form method="post">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-danger">Delete</button>
+        <a href="javascript:history.back()" class="btn btn-outline-secondary">Cancel</a>
+    </form>
+</div>
+{% endblock %}
