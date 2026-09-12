@@ -6,3 +6,6 @@ venv/
 .venv/
 staticfiles/
 *.egg-info/
+/images/
+DEVLOG.md
+UPGRADE_PLAN.md
