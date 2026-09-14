@@ -1,0 +1,68 @@
+{% extends "finance/base.html" %}
+{% load stashy_format %}
+{% block title %}{{ category.full_name }} · Stashy{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h3 class="mb-0">{{ category.full_name }}</h3>
+        <div class="text-muted small">{{ transactions|length }} transaction{{ transactions|length|pluralize }}</div>
+    </div>
+    <a href="{% url 'finance:category_list' %}" class="btn btn-outline-secondary btn-sm">Back to categories</a>
+</div>
+
+{% if category.is_system_managed %}
+<div class="alert alert-secondary">This is {{ category.account.name }}'s own transfer category — it's system-managed, so it can't be edited, deleted, or used as a move-to target here.</div>
+{% endif %}
+
+<form method="post">
+    {% csrf_token %}
+    <div class="card">
+        <table class="table table-hover mb-0 align-middle register">
+            <thead>
+                <tr>
+                    <th><input type="checkbox" class="form-check-input" data-select-all aria-label="Select all"></th>
+                    <th>Date</th><th>Account</th><th>Payee</th><th>Memo</th><th class="text-end">Amount</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for t in transactions %}
+                <tr>
+                    <td><input type="checkbox" class="form-check-input" name="transaction_id" value="{{ t.pk }}" aria-label="Select transaction"></td>
+                    <td class="text-muted text-nowrap">{{ t.date|sdate }}</td>
+                    <td class="text-muted">{{ t.account.name }}</td>
+                    <td>{{ t.display_payee }}</td>
+                    <td class="text-muted">{{ t.memo }}</td>
+                    <td class="text-end text-nowrap {% if t.amount < 0 %}amount-negative{% else %}amount-positive{% endif %}">{{ t.amount|moneyc:t.account.currency }}</td>
+                </tr>
+            {% empty %}
+                <tr><td colspan="6">{% include "finance/includes/empty_state.html" with title="No transactions here yet" text="Transactions in this category will show up here." %}</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if transactions and other_categories %}
+    <div class="card p-3 mt-3 d-flex flex-row flex-wrap align-items-center gap-2">
+        <label class="form-label mb-0" for="move-to">Move selected to</label>
+        <select name="move_to" id="move-to" class="form-select form-select-sm w-auto">
+            {% for c in other_categories %}<option value="{{ c.pk }}">{{ c.full_name }}</option>{% endfor %}
+        </select>
+        <button type="submit" class="btn btn-sm btn-primary">Move selected transactions</button>
+    </div>
+    {% endif %}
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    var selectAll = document.querySelector('[data-select-all]');
+    if (!selectAll) return;
+    selectAll.addEventListener('change', function () {
+        document.querySelectorAll('input[name="transaction_id"]').forEach(function (box) {
+            box.checked = selectAll.checked;
+        });
+    });
+})();
+</script>
+{% endblock %}

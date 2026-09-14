@@ -1,0 +1,32 @@
+{% load static %}
+{% with current=request.resolver_match.url_name|default:"" %}
+<a href="{% url 'finance:dashboard' %}" class="stashy-brand">
+    <img src="{% static 'finance/img/mascot-face-96.png' %}" alt="" width="42" height="42">
+    <span>Stashy</span>
+</a>
+<nav class="stashy-nav">
+    <a href="{% url 'finance:dashboard' %}" class="{% if current == 'dashboard' %}active{% endif %}"><i class="bi bi-house-heart"></i>Dashboard</a>
+    <a href="{% url 'finance:account_list' %}" class="{% if 'account' in current %}active{% endif %}"><i class="bi bi-wallet2"></i>Accounts</a>
+    <a href="{% url 'finance:transaction_list' %}" class="{% if 'transaction' in current and current != 'import_transactions' %}active{% endif %}"><i class="bi bi-arrow-left-right"></i>Transactions</a>
+    <a href="{% url 'finance:category_list' %}" class="{% if 'category' in current %}active{% endif %}"><i class="bi bi-tags"></i>Categories</a>
+    <a href="{% url 'finance:payee_list' %}" class="{% if 'payee' in current %}active{% endif %}"><i class="bi bi-shop"></i>Payees</a>
+    <a href="{% url 'finance:reminder_list' %}" class="{% if 'reminder' in current %}active{% endif %}"><i class="bi bi-bell"></i>Reminders</a>
+    <a href="{% url 'finance:reports' %}" class="{% if current == 'reports' %}active{% endif %}"><i class="bi bi-bar-chart-line"></i>Reports</a>
+    <a href="{% url 'finance:import_transactions' %}" class="{% if current == 'import_transactions' %}active{% endif %}"><i class="bi bi-cloud-arrow-up"></i>Import</a>
+</nav>
+<div class="stashy-sidebar-footer">
+    <button type="button" class="sidebar-action" data-theme-toggle aria-label="Switch to dark mode">
+        <i class="bi bi-moon-stars"></i><span data-theme-label>Dark mode</span>
+    </button>
+    <a href="{% url 'finance:settings' %}" class="sidebar-action {% if current == 'settings' %}active{% endif %}"><i class="bi bi-gear"></i><span>Settings</span></a>
+    <a href="{% url 'admin:index' %}" target="_blank" rel="noopener" class="sidebar-action"><i class="bi bi-shield-lock"></i><span>Admin &amp; Audit Log</span></a>
+    {% if user.is_authenticated %}
+    <form method="post" action="{% url 'logout' %}">
+        {% csrf_token %}
+        <button type="submit" class="sidebar-action">
+            <i class="bi bi-box-arrow-right"></i><span>Log out <span class="opacity-75">({{ user.username }})</span></span>
+        </button>
+    </form>
+    {% endif %}
+</div>
+{% endwith %}

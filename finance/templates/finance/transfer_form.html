@@ -1,0 +1,44 @@
+{% extends "finance/base.html" %}
+{% block title %}Transfer · Stashy{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1 class="h3 mb-0">Transfer from {{ account.name }}</h1>
+</div>
+<div class="row g-4 align-items-start">
+    <div class="col-lg-7 col-xxl-6">
+        <div class="card p-4">
+            <form method="post">
+                {% csrf_token %}
+                {% for error in form.non_field_errors %}<div class="alert alert-danger py-2">{{ error }}</div>{% endfor %}
+                <div class="mb-3">
+                    <label class="form-label" for="{{ form.to_account.id_for_label }}">Transfer to</label>
+                    {{ form.to_account }}
+                    {% for error in form.to_account.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="{{ form.amount.id_for_label }}">Amount</label>
+                    {{ form.amount }}
+                    {% for error in form.amount.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="{{ form.date.id_for_label }}">Date</label>
+                    {{ form.date }}
+                    {% for error in form.date.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="d-flex gap-2 mt-4">
+                    <button type="submit" class="btn btn-primary px-4">Transfer</button>
+                    <a href="{% url 'finance:account_detail' account.pk %}" class="btn btn-outline-secondary">Cancel</a>
+                </div>
+            </form>
+        </div>
+    </div>
+    <div class="col-lg-5 col-xxl-4">
+        <aside class="card help-card p-4">
+            <div class="card-title-sm">How this works</div>
+            <p class="mb-0">Stashy creates two ordinary transactions: money out of {{ account.name }}, and the same
+                amount into the account you pick. Both use each account's own transfer category, so they show up
+                normally but never count as income or spending in your reports.</p>
+        </aside>
+    </div>
+</div>
+{% endblock %}

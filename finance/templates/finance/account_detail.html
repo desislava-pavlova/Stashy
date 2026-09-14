@@ -1,45 +1,65 @@
 {% extends "finance/base.html" %}
+{% load stashy_format %}
 {% block title %}{{ account.name }} · Stashy{% endblock %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
     <div>
         <h3 class="mb-0">{{ account.name }}</h3>
-        <div class="text-muted small">{{ account.get_account_type_display }}{% if account.institution %} · {{ account.institution }}{% endif %}</div>
+        <div class="text-muted small">{{ account.get_account_type_display }}{% if account.institution %} · {{ account.institution }}{% endif %} · {{ account.currency }}</div>
     </div>
     <div class="text-end">
         <div class="text-muted small">Balance</div>
-        <div class="stat-value {% if account.balance < 0 %}amount-negative{% else %}amount-positive{% endif %}">${{ account.balance|floatformat:2 }}</div>
+        {% with balance=account.balance %}
+        <div class="stat-value {% if balance < 0 %}amount-negative{% else %}amount-positive{% endif %}">{{ balance|moneyc:account.currency }}</div>
+        {% endwith %}
     </div>
 </div>
 
-<div class="mb-3">
-    <a href="{% url 'finance:transaction_add' %}?account={{ account.pk }}" class="btn btn-success btn-sm"><i class="bi bi-plus-lg me-1"></i>New transaction</a>
+<div class="d-flex align-items-center gap-2 mb-3">
+    <a href="{% url 'finance:transaction_add' %}?account={{ account.pk }}" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>New transaction</a>
+    <a href="{% url 'finance:account_transfer' account.pk %}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left-right me-1"></i>Transfer</a>
+    <a href="{% url 'finance:account_reconcile' account.pk %}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-check2-square me-1"></i>Reconcile</a>
     <a href="{% url 'finance:account_edit' account.pk %}" class="btn btn-outline-secondary btn-sm">Edit account</a>
     <a href="{% url 'finance:import_transactions' %}" class="btn btn-outline-secondary btn-sm">Import file</a>
+    <span class="text-muted small ms-auto">{{ transactions|length }} transaction{{ transactions|length|pluralize }}</span>
 </div>
 
 <div class="card">
-    <table class="table mb-0 align-middle">
-        <thead><tr><th>Date</th><th>Payee</th><th>Category</th><th>Memo</th><th class="text-end">Amount</th><th>Status</th><th></th></tr></thead>
+    <table class="table table-hover mb-0 align-middle register">
+        <thead>
+            <tr>
+                <th><a href="{% querystring sort=sort_next.date %}" class="sort-link">Date{% include "finance/includes/sort_arrow.html" with column="date" %}</a></th>
+                <th><a href="{% querystring sort=sort_next.num %}" class="sort-link">Num{% include "finance/includes/sort_arrow.html" with column="num" %}</a></th>
+                <th><a href="{% querystring sort=sort_next.payee %}" class="sort-link">Payee{% include "finance/includes/sort_arrow.html" with column="payee" %}</a></th>
+                <th><a href="{% querystring sort=sort_next.category %}" class="sort-link">Category{% include "finance/includes/sort_arrow.html" with column="category" %}</a></th>
+                <th><a href="{% querystring sort=sort_next.memo %}" class="sort-link">Memo{% include "finance/includes/sort_arrow.html" with column="memo" %}</a></th>
+                <th class="text-end"><a href="{% querystring sort=sort_next.amount %}" class="sort-link">Payment{% include "finance/includes/sort_arrow.html" with column="amount" %}</a></th>
+                <th class="text-end"><a href="{% querystring sort=sort_next.amount %}" class="sort-link">Deposit{% include "finance/includes/sort_arrow.html" with column="amount" %}</a></th>
+                <th>Status</th>
+                <th></th>
+            </tr>
+        </thead>
         <tbody>
         {% for t in transactions %}
             <tr>
-                <td class="text-muted small">{{ t.date }}</td>
+                <td class="text-muted text-nowrap">{{ t.date|sdate }}</td>
+                <td class="text-muted">{{ t.transaction_number|default:"—" }}</td>
                 <td>{{ t.display_payee }}</td>
-                <td class="text-muted small">{{ t.category|default:"—" }}</td>
-                <td class="text-muted small">{{ t.memo }}</td>
-                <td class="text-end {% if t.amount < 0 %}amount-negative{% else %}amount-positive{% endif %}">${{ t.amount|floatformat:2 }}</td>
+                <td class="text-muted">{{ t.category|default:"—" }}</td>
+                <td class="text-muted">{{ t.memo }}</td>
+                <td class="text-end text-nowrap amount-negative">{% if t.amount < 0 %}{{ t.amount|abs_value|moneyc:account.currency }}{% endif %}</td>
+                <td class="text-end text-nowrap amount-positive">{% if t.amount > 0 %}{{ t.amount|moneyc:account.currency }}{% endif %}</td>
                 <td>
                     {% if t.reconciled %}<span class="badge text-bg-success">R</span>
                     {% elif t.cleared %}<span class="badge text-bg-secondary">C</span>
                     {% else %}<span class="badge text-bg-light text-muted border">—</span>{% endif %}
                 </td>
                 <td class="text-end">
-                    <a href="{% url 'finance:transaction_edit' t.pk %}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-pencil"></i></a>
+                    <a href="{% url 'finance:transaction_edit' t.pk %}?next={{ request.get_full_path|urlencode }}" class="btn btn-sm btn-outline-secondary btn-icon"><i class="bi bi-pencil"></i></a>
                 </td>
             </tr>
         {% empty %}
-            <tr><td colspan="7" class="text-muted text-center py-4">No transactions yet.</td></tr>
+            <tr><td colspan="9">{% include "finance/includes/empty_state.html" with title="This account is empty" text="Add a transaction by hand, or import a file from your bank." %}</td></tr>
         {% endfor %}
         </tbody>
     </table>

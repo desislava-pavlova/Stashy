@@ -1,0 +1,792 @@
+Register Report - Current Year
+
+1.1.2026 through 31.12.2026 (in Euro)
+
+	Date	Account	Num	Description	Memo	Category	Tag	Clr	Amount	
+										
+	4.1.2026	Debit Card	10005	OMV	Filling the tank	Auto:Fuel		R	-26.84	
+	5.1.2026	Debit Card	10010	Transfer Money	Transfer money	[Revolut]		R	-150.00	
+	14.1.2026	Debit Card	10058	UniCredit Bulbank	ATM fee for withdrawing money	Bank Fees:ATM Fees		R	-0.48	
+	14.1.2026	Debit Card	10056	Transfer Money	Withdrawing money	[Cash]		R	-300.01	
+	19.1.2026	Debit Card	10068	Transfer Money	Transfer money	[Revolut]		R	-100.00	
+	26.1.2026	Debit Card	10098	Transfer Money	Transfer money	[Revolut]		R	-200.00	
+	29.1.2026	Debit Card	10104	Dynamo Software	Income from salary	Work Income:Salary		R	1,626.68	
+	29.1.2026	Debit Card	10107	Transfer Money	Transfer money	[Revolut]		R	-200.00	
+	29.1.2026	Debit Card	10109	ViK Pernik	Paying water bills	Bills & Utilities:Water		R	-20.75	
+	30.1.2026	Debit Card	10113	UniCredit Bulbank	Bank fee for managing account	Bank Fees:Monthly Fees		R	-1.53	
+	31.1.2026	Debit Card	10116	Transfer Money	Withdrawing money	[Cash]		R	-200.00	
+	31.1.2026	Debit Card	10118	UniCredit Bulbank	ATM fee for withdrawing money	Bank Fees:ATM Fees		R	-0.32	
+	7.2.2026	Debit Card	10138	d-r Georgi Dyulgerov	Extracting a tooth	Health:Dental Health		R	-200.00	
+	7.2.2026	Debit Card	10139	UniCredit Bulbank	Bank fee for transfering money	Bank Fees:Other Bank Fees		R	-0.61	
+	9.2.2026	Debit Card	10145	Transfer Money	Transfer money	[Revolut]		R	-200.00	
+	14.2.2026	Debit Card	10179	Transfer Money	Transfer money	[Revolut]		R	-200.00	
+	16.2.2026	Debit Card	10183	Dynamo Software	Annual bonus	Work Income:Bonuses		R	1,714.96	
+	16.2.2026	Debit Card	10185	Transfer Money	Withdrawing money	[Cash]		R	-200.00	
+	16.2.2026	Debit Card	10187	UniCredit Bulbank	ATM fee for withdrawing money	Bank Fees:ATM Fees		R	-0.32	
+	25.2.2026	Debit Card	10211	UniCredit Bulbank	Bank fee for managing account	Bank Fees:Monthly Fees		R	-1.53	
+	27.2.2026	Debit Card	10216	Dynamo Software	Spot bonus	Work Income:Bonuses		R	419.86	
+	28.2.2026	Debit Card	10215	Dynamo Software	Income from salary	Work Income:Salary		R	1,462.02	
+	28.2.2026	Debit Card	10217	Transfer Money	Transfer money	[Revolut]		R	-200.00	
+	3.3.2026	Debit Card	10227	Transfer Money	Transfer money	[Revolut]		R	-200.00	
+	7.3.2026	Debit Card	10241	Transfer Money	Transfer money	[Revolut]		R	-200.00	
+	10.3.2026	Debit Card	10248	NOI	Compensation for sick days	Work Income:Salary		R	217.95	
+	14.3.2026	Debit Card	10260	Transfer Money	Transfer money	[Revolut]		R	-200.00	
+	18.3.2026	Debit Card	10276	d-r Georgi Dyulgerov	Extracting a tooth	Health:Dental Health		R	-150.00	
+	18.3.2026	Debit Card	10277	UniCredit Bulbank	Bank fee for transfering money	Bank Fees:Other Bank Fees		R	-0.61	
+	20.3.2026	Debit Card	10280	Transfer Money	Withdrawing money	[Cash]		R	-200.00	
+	20.3.2026	Debit Card	10282	UniCredit Bulbank	ATM fee for withdrawing money	Bank Fees:ATM Fees		R	-0.32	
+	24.3.2026	Debit Card	10291	Transfer Money	Transfer money	[Revolut]		R	-300.00	
+	25.3.2026	Debit Card	10297	UniCredit Bulbank	Bank fee for managing account	Bank Fees:Monthly Fees		R	-1.53	
+	31.3.2026	Debit Card	10311	Dynamo Software	Income from salary	Work Income:Salary		R	1,560.67	
+	9.4.2026	Debit Card	10326	NOI	Compensation for sick days	Work Income:Salary		R	74.28	
+	18.4.2026	Debit Card	10338	Transfer Money	Transfer money	[Revolut]		R	-200.00	
+	18.4.2026	Debit Card	10350	Transfer Money	Withdrawing money	[Cash]		R	-300.00	
+	18.4.2026	Debit Card	10352	UniCredit Bulbank	ATM fee for withdrawing money	Bank Fees:ATM Fees		R	-0.48	
+	25.4.2026	Debit Card	10362	UniCredit Bulbank	Bank fee for managing account	Bank Fees:Monthly Fees		R	-1.53	
+	26.4.2026	Debit Card	10363	Transfer Money	Transfer money	[Revolut]		R	-200.00	
+	28.4.2026	Debit Card	10381	Transfer Money	Withdrawing money	[Cash]		R	-2,000.00	
+	28.4.2026	Debit Card	10383	UniCredit Bulbank	ATM fee for withdrawing money	Bank Fees:ATM Fees		R	-3.20	
+	30.4.2026	Debit Card	10389	Transfer Money	Transfer money	[Revolut]		R	-200.00	
+	30.4.2026	Debit Card	10393	Dynamo Software	Income from salary	Work Income:Salary		R	1,690.80	
+	6.5.2026	Debit Card	10424	Transfer Money	Transfer money	[Revolut]		R	-200.00	
+	8.5.2026	Debit Card	10429	Transfer Money	Withdrawing money	[Cash]		R	-1,000.00	
+	8.5.2026	Debit Card	10431	UniCredit Bulbank	ATM fee for withdrawing money	Bank Fees:ATM Fees		R	-1.60	
+	9.5.2026	Debit Card	10433	Transfer Money	Transfer money	[Revolut]		R	-200.00	
+	21.5.2026	Debit Card	10457	Transfer Money	Withdrawing money	[Cash]		R	-1,000.00	
+	21.5.2026	Debit Card	10459	UniCredit Bulbank	ATM fee for withdrawing money	Bank Fees:ATM Fees		R	-1.60	
+	25.5.2026	Debit Card	10463	UniCredit Bulbank	Bank fee for managing account	Bank Fees:Monthly Fees		R	-1.53	
+	27.5.2026	Debit Card	10470	Transfer Money	Transfer money	[Revolut]		R	-250.00	
+	29.5.2026	Debit Card	10477	Dynamo Software	Income from salary	Work Income:Salary		R	1,690.25	
+	14.6.2026	Debit Card	10509	Transfer Money	Transfer money	[Revolut]		R	-200.00	
+	19.6.2026	Debit Card	10519	Dynamo Software	Returned money for parking	Other Income:Refunds		R	14.00	
+	22.6.2026	Debit Card	10529	Transfer Money	Transfer money	[Revolut]		R	-200.00	
+	25.6.2026	Debit Card	10538	UniCredit Bulbank	Bank fee for managing account	Bank Fees:Monthly Fees		R	-1.53	
+	29.6.2026	Debit Card	10547	Dynamo Software	Income from salary	Work Income:Salary		R	1,688.30	
+	3.7.2026	Debit Card	10561	Transfer Money	Transfer money	[Revolut]		R	-200.00	
+	16.7.2026	Debit Card	10594	Transfer Money	Transfer money	[Revolut]		R	-200.00	
+	24.7.2026	Debit Card	10615	Transfer Money	Transfer money	[Revolut]		R	-200.00	
+	25.7.2026	Debit Card	10618	UniCredit Bulbank	Bank fee for managing account	Bank Fees:Monthly Fees		R	-1.53	
+	30.7.2026	Debit Card	10627	Dynamo Software	Income from salary	Work Income:Salary		R	1,690.80	
+	30.7.2026	Debit Card	10628	Dynamo Software	Spot bonus	Work Income:Bonuses		R	496.07	
+	2.8.2026	Debit Card	10644	Transfer Money	Transfer money	[Revolut]		R	-200.00	
+	15.8.2026	Debit Card	10674	Transfer Money	Transfer money	[Revolut]		R	-200.00	
+	20.8.2026	Debit Card	10695	Transfer Money	Withdrawing money	[Cash]		R	-500.00	
+	20.8.2026	Debit Card	10697	UniCredit Bulbank	ATM fee for withdrawing money	Bank Fees:ATM Fees		R	-0.80	
+	23.8.2026	Debit Card	10708	Transfer Money	Transfer money	[Revolut]		R	-200.00	
+	25.8.2026	Debit Card	10711	UniCredit Bulbank	Bank fee for managing account	Bank Fees:Monthly Fees		R	-1.53	
+	28.8.2026	Debit Card	10715	Dynamo Software	Income from salary	Work Income:Salary		R	1,683.62	
+	29.8.2026	Debit Card	10716	ViK Pernik	Paying water bills	Bills & Utilities:Water		R	-16.76	
+	29.8.2026	Debit Card	10717	UniCredit Bulbank	Bank fee for transfering money	Bank Fees:Other Bank Fees		R	-0.13	
+	3.9.2026	Debit Card	10737	Imperial Resort	Paying for a hotel	Travel:Accommodation			-583.50	
+	5.9.2026	Debit Card	10748	Transfer Money	Transfer money	[Revolut]			-200.00	
+	2.2.2026	Gift Cards	10119	ReBenefit	Income from extra benefits from work	Work Income:Other Work Income		R	80.00	
+	9.2.2026	Gift Cards	10147	Silenti	Buying silver rings	Clothing & Accessories:Jewelry		R	-80.00	
+	16.2.2026	Ozone Wallet	10192	Ozone	Buying medicine	Health:Pharmacy		R	-33.91	
+	30.3.2026	Ozone Wallet	10310	Ozone	Buying medicine	Health:Pharmacy		R	-33.94	
+	1.5.2026	Ozone Wallet	10394	ReBenefit	Income from extra work benefits for Ozone	Work Income:Other Work Income		R	40.00	
+	17.5.2026	Ozone Wallet	10447	Ozone	Buying medicine	Health:Pharmacy		R	-33.94	
+	17.5.2026	Ozone Wallet	10448	Ozone	Buying cosmetics	Personal Care:Cosmetic Products		R	-10.36	
+	3.6.2026	Ozone Wallet	10490	Rebenefit	Income from extra work benefits for Ozone	Work Income:Other Work Income		R	50.00	
+	5.7.2026	Ozone Wallet	10577	Ozone	Buying a board game	Entertainment:Video & Board Games		R	-27.99	
+	5.7.2026	Ozone Wallet	10578	Ozone	Buying medicine	Health:Pharmacy		R	-22.01	
+	2.8.2026	Ozone Wallet	10646	ReBenefit	Income from extra work benefits for Ozone	Work Income:Other Work Income		R	85.00	
+	18.8.2026	Ozone Wallet	10692	Ozone	Buying a book	Entertainment:Books		R	-11.39	
+	18.8.2026	Ozone Wallet	10693	Ozone	Buying medicine	Health:Pharmacy		R	-35.84	
+	18.8.2026	Ozone Wallet	10694	Ozone	Buying cosmetics	Personal Care:Cosmetic Products		R	-29.05	
+	5.9.2026	Ozone Wallet	10762	ReBenefit	Income from extra work benefits for Ozone	Work Income:Other Work Income			110.00	
+	4.1.2026	Revolut	10004	Subra	Buying cosmetics	Personal Care:Cosmetic Products		R	-14.36	
+	5.1.2026	Revolut	10011	Transfer Money	Transfer money	[Debit Card]		R	150.00	
+	7.1.2026	Revolut	10024	SoPharmacy	Buying cosmetics	Personal Care:Cosmetic Products		R	-20.19	
+	10.1.2026	Revolut	10035	LC Waikiki	Buying a hat	Clothing & Accessories:Accessories		R	-3.06	
+	10.1.2026	Revolut	10034	LC Waikiki	Buying socks	Clothing & Accessories:Underwear		R	-4.60	
+	10.1.2026	Revolut	10036	Mr. Bricolage	Buying cables	Home & Tech:Renovations		R	-4.59	
+	10.1.2026	Revolut	10037	Mr. Bricolage	Buying flowers and soil	Home & Tech:Lawn & Garden		R	-8.16	
+	10.1.2026	Revolut	10038	Jysk	Buying sheets	Home & Tech:Linens & Textile		R	-19.79	
+	10.1.2026	Revolut	10039	Jysk	Buying decorative pillow	Home & Tech:Home Decor		R	-2.55	
+	10.1.2026	Revolut	10040	Jysk	Buying kitchen items	Home & Tech:Kitchenware		R	-3.83	
+	11.1.2026	Revolut	10050	Lidl	Buying groceries	Food & Dining:Groceries		R	-16.19	
+	11.1.2026	Revolut	10047	DM	Buying cosmetics	Personal Care:Cosmetic Products		R	-13.00	
+	14.1.2026	Revolut	10055	Spotify	Paying a subscription	Bills & Utilities:Subscriptions		R	-5.62	
+	15.1.2026	Revolut	10063	Crunchyroll	Paying a subscription	Bills & Utilities:Subscriptions		R	-4.60	
+	18.1.2026	Revolut	10067	CBA	Buying groceries	Food & Dining:Groceries		R	-11.80	
+	19.1.2026	Revolut	10074	Lidl	Buying groceries	Food & Dining:Groceries		R	-29.59	
+	19.1.2026	Revolut	10069	Transfer Money	Transfer money	[Debit Card]		R	100.00	
+	19.1.2026	Revolut	10072	Lidl	Buying tea box	Home & Tech:Home Decor		R	-4.09	
+	19.1.2026	Revolut	10073	Lidl	Buying repair tools	Home & Tech:Renovations		R	-9.71	
+	20.1.2026	Revolut	10076	Shell	Filling the tank	Auto:Fuel		R	-18.11	
+	24.1.2026	Revolut	10095	DigiToll	Buying a vignette	Auto:Registration & Taxes		R	-49.60	
+	26.1.2026	Revolut	10099	Transfer Money	Transfer money	[Debit Card]		R	200.00	
+	26.1.2026	Revolut	10100	Jysk	Buying folding mattress	Home & Tech:Furniture		R	-27.50	
+	26.1.2026	Revolut	10101	Jysk	Buying a pillow	Home & Tech:Linens & Textile		R	-18.50	
+	27.1.2026	Revolut	10102	Lidl	Buying a sheet	Home & Tech:Linens & Textile		R	-8.69	
+	27.1.2026	Revolut	10103	Lidl	Buying groceries	Food & Dining:Groceries		R	-27.14	
+	29.1.2026	Revolut	10110	Electrohold Prodazhbi	Paying electricity bills	Bills & Utilities:Electricity		R	-19.75	
+	29.1.2026	Revolut	10112	Toplofikatzia Pernik	Paying hot water and heating bills	Bills & Utilities:Heating & Hot Water		R	-119.25	
+	29.1.2026	Revolut	10111	Yettel	Paying mobile phone bills	Bills & Utilities:Mobile Phone		R	-18.62	
+	29.1.2026	Revolut	10108	Transfer Money	Transfer money	[Debit Card]		R	200.00	
+	2.2.2026	Revolut	10125	CBA	Buying groceries	Food & Dining:Groceries		R	-8.07	
+	2.2.2026	Revolut	10127	SoPharmacy	Buying medicine	Health:Pharmacy		R	-19.01	
+	2.2.2026	Revolut	10128	SoPharmacy	Buying cosmetics	Personal Care:Cosmetic Products		R	-23.37	
+	2.2.2026	Revolut	10129	-	Buying something for someone	Donations & Tips:Donations		R	-0.51	
+	2.2.2026	Revolut	10130	Lidl	Buying repair tools	Home & Tech:Renovations		R	-3.06	
+	2.2.2026	Revolut	10131	Lidl	Buying groceries	Food & Dining:Groceries		R	-18.08	
+	4.2.2026	Revolut	10133	eMag	Buying hair clippers	Clothing & Accessories:Accessories		R	-7.26	
+	6.2.2026	Revolut	10134	Lilly Drogerie	Buying cosmetics	Personal Care:Cosmetic Products		R	-22.02	
+	6.2.2026	Revolut	10135	Lilly Drogerie	Buying nail tools	Personal Care:Cosmetic Tools		R	-6.84	
+	8.2.2026	Revolut	10140	Temu	Buying desk organizer	Home & Tech:Home Decor		R	-12.00	
+	9.2.2026	Revolut	10146	Transfer Money	Transfer money	[Debit Card]		R	200.00	
+	9.2.2026	Revolut	10148	Silenti	Buying silver rings	Clothing & Accessories:Jewelry		R	-22.92	
+	9.2.2026	Revolut	10149	Rakla.bg	Buying new sheets	Home & Tech:Linens & Textile		R	-39.47	
+	10.2.2026	Revolut	10155	CBA	Buying toothpaste	Household Goods:Expendable Goods		R	-2.24	
+	10.2.2026	Revolut	10156	CBA	Buying groceries	Food & Dining:Groceries		R	-12.57	
+	10.2.2026	Revolut	10157	Shell	Filling the tank	Auto:Fuel		R	-45.61	
+	13.2.2026	Revolut	10165	Numero Uno	Buying clothes	Clothing & Accessories:Clothes		R	-19.93	
+	13.2.2026	Revolut	10166	LC Waikiki	Buying socks	Clothing & Accessories:Underwear		R	-8.69	
+	13.2.2026	Revolut	10171	TEDi	Buying organizers	Home & Tech:Home Decor		R	-10.10	
+	13.2.2026	Revolut	10172	Lidl	Buying repair tools	Home & Tech:Renovations		R	-3.06	
+	13.2.2026	Revolut	10173	Lidl	Buying groceries	Food & Dining:Groceries		R	-7.41	
+	14.2.2026	Revolut	10175	Parents	Buying vignette for the peugeut	Misc.:Relatives		R	-49.60	
+	14.2.2026	Revolut	10176	CBA	Buying groceries	Food & Dining:Groceries		R	-13.03	
+	14.2.2026	Revolut	10177	Festiko	Buying kitchen items	Home & Tech:Kitchenware		R	-15.80	
+	14.2.2026	Revolut	10180	Transfer Money	Transfer money	[Debit Card]		R	200.00	
+	14.2.2026	Revolut	10178	Spotify	Paying a subscription	Bills & Utilities:Subscriptions		R	-5.62	
+	15.2.2026	Revolut	10182	Crunchyroll	Paying a subscription	Bills & Utilities:Subscriptions		R	-4.60	
+	16.2.2026	Revolut	10188	EPAYGO	Buying tickets for comedy show	Social Life:Events		R	-17.14	
+	16.2.2026	Revolut	10189	Friends	Buying an event ticket for a friend	Financial:Money Lends		R	-35.00	
+	16.2.2026	Revolut	10190	Friends	Returned money for ticket	Other Income:Lends Return		R	35.00	
+	16.2.2026	Revolut	10191	Entase	Buying tickets for theater	Social Life:Events		R	-24.00	
+	17.2.2026	Revolut	10195	Juliana	Buying groceries	Food & Dining:Groceries		R	-23.69	
+	19.2.2026	Revolut	10198	eMag	Refund for undelivered order	Other Income:Refunds		R	7.26	
+	21.2.2026	Revolut	10202	SoPharmacy	Buying cosmetics	Personal Care:Cosmetic Products		R	-21.55	
+	22.2.2026	Revolut	10208	Mr. Bricolage	Buying heater	Home & Tech:Home Appliances		R	-7.99	
+	23.2.2026	Revolut	10210	CBA	Buying groceries	Food & Dining:Groceries		R	-10.79	
+	28.2.2026	Revolut	10218	Transfer Money	Transfer money	[Debit Card]		R	200.00	
+	28.2.2026	Revolut	10221	Toplofikatzia Pernik	Paying hot water and heating bills	Bills & Utilities:Heating & Hot Water		R	-126.44	
+	28.2.2026	Revolut	10219	Electrohold Prodazhbi	Paying electricity bills	Bills & Utilities:Electricity		R	-26.20	
+	28.2.2026	Revolut	10220	ViK Pernik	Paying water bills	Bills & Utilities:Water		R	-23.51	
+	28.2.2026	Revolut	10222	Yettel	Paying mobile phone bills	Bills & Utilities:Mobile Phone		R	-18.48	
+	28.2.2026	Revolut	10223	Lukoil	Filling the tank	Auto:Fuel		R	-32.88	
+	28.2.2026	Revolut	10224	Lukoil	Buying sweets	Food & Dining:Treats		R	-1.68	
+	28.2.2026	Revolut	10225	DesiAn	Buying groceries	Food & Dining:Groceries		R	-28.25	
+	3.3.2026	Revolut	10228	Transfer Money	Transfer money	[Debit Card]		R	200.00	
+	3.3.2026	Revolut	10229	SoPharmacy	Buying cosmetics	Personal Care:Cosmetic Products		R	-22.55	
+	3.3.2026	Revolut	10230	SoPharmacy	Buying medicine	Health:Pharmacy		R	-18.96	
+	3.3.2026	Revolut	10232	DM	Buying cleaning products	Household Goods:Expendable Goods		R	-3.75	
+	3.3.2026	Revolut	10233	DM	Buying cosmetics	Personal Care:Cosmetic Products		R	-40.91	
+	3.3.2026	Revolut	10234	Lidl	Buying slippers	Clothing & Accessories:Shoes & Bags		R	-4.59	
+	3.3.2026	Revolut	10235	Lidl	Buying toilet paper	Household Goods:Expendable Goods		R	-11.78	
+	3.3.2026	Revolut	10236	Lidl	Buying groceries	Food & Dining:Groceries		R	-18.83	
+	7.3.2026	Revolut	10242	Transfer Money	Transfer money	[Debit Card]		R	200.00	
+	7.3.2026	Revolut	10238	CBA	Buying groceries	Food & Dining:Groceries		R	-17.48	
+	7.3.2026	Revolut	10239	Salon Care	Buying hair clippers	Clothing & Accessories:Accessories		R	-9.79	
+	7.3.2026	Revolut	10240	Videnov	Buying furniture	Home & Tech:Furniture		R	-71.00	
+	7.3.2026	Revolut	10243	S&D Commercial	Buying coffee syrup	Food & Dining:Groceries		R	-12.82	
+	8.3.2026	Revolut	10246	Lidl	Buying things for parents	Misc.:Relatives		R	-10.21	
+	8.3.2026	Revolut	10247	Lidl	Buying groceries	Food & Dining:Groceries		R	-22.37	
+	13.3.2026	Revolut	10252	Eventim	Buying concert tickets	Social Life:Concerts		R	-45.00	
+	13.3.2026	Revolut	10253	Relatives	Buying concert ticket for my brother	Misc.:Relatives		R	-45.00	
+	14.3.2026	Revolut	10257	Spotify	Paying a subscription	Bills & Utilities:Subscriptions		R	-5.62	
+	14.3.2026	Revolut	10255	Happiness Store	Buying cleaning products and laundry products	Household Goods:Expendable Goods		R	-19.00	
+	14.3.2026	Revolut	10256	Happiness Store	Buying a hair brusher	Personal Care:Cosmetic Tools		R	-3.63	
+	14.3.2026	Revolut	10258	CBA	Buying kitchen goods	Household Goods:Expendable Goods		R	-3.95	
+	14.3.2026	Revolut	10259	CBA	Buying groceries	Food & Dining:Groceries		R	-16.68	
+	14.3.2026	Revolut	10261	Transfer Money	Transfer money	[Debit Card]		R	200.00	
+	15.3.2026	Revolut	10268	Crunchyroll	Paying a subscription	Bills & Utilities:Subscriptions		R	-4.99	
+	15.3.2026	Revolut	10262	SoPharmacy	Buying cosmetics	Personal Care:Cosmetic Products		R	-11.73	
+	15.3.2026	Revolut	10263	SoPharmacy	Buying medicine	Health:Pharmacy		R	-5.82	
+	15.3.2026	Revolut	10266	DM	Buying cosmetics	Personal Care:Cosmetic Products		R	-19.15	
+	15.3.2026	Revolut	10267	Terranova	Buying pajamas	Clothing & Accessories:Underwear		R	-12.98	
+	15.3.2026	Revolut	10269	Lilly Drogerie	Buying cosmetics	Personal Care:Cosmetic Products		R	-8.15	
+	15.3.2026	Revolut	10270	Lidl	Buying groceries	Food & Dining:Groceries		R	-31.51	
+	16.3.2026	Revolut	10271	Comsed	Buying Hot Wheels cars	Entertainment:Hobbies		R	-7.00	
+	17.3.2026	Revolut	10272	Ciela	Buying a book	Entertainment:Books		R	-14.01	
+	17.3.2026	Revolut	10273	Ciela	Buying CD albums	Entertainment:Music		R	-18.99	
+	18.3.2026	Revolut	10274	SoPharmacy	Buying medicine	Health:Pharmacy		R	-14.44	
+	24.3.2026	Revolut	10288	SDI	Paying civil insurance	Auto:Mandatory Annuals		R	-41.06	
+	24.3.2026	Revolut	10294	Toplofikatzia Pernik	Paying hot water and heating bills	Bills & Utilities:Heating & Hot Water		R	-103.95	
+	24.3.2026	Revolut	10293	Electrohold Prodazhbi	Paying electricity bills	Bills & Utilities:Electricity		R	-24.86	
+	24.3.2026	Revolut	10295	ViK Pernik	Paying water bills	Bills & Utilities:Water		R	-23.51	
+	24.3.2026	Revolut	10296	Yettel	Paying mobile phone bills	Bills & Utilities:Mobile Phone		R	-16.86	
+	24.3.2026	Revolut	10292	Transfer Money	Transfer money	[Debit Card]		R	300.00	
+	25.3.2026	Revolut	10299	Juliana	Buying groceries	Food & Dining:Groceries		R	-7.84	
+	26.3.2026	Revolut	10300	Colleagues	Money for gifts for colleagues	Gifts:Financial Gifts		R	-6.00	
+	30.3.2026	Revolut	10306	SoPharmacy	Buying cosmetics	Personal Care:Cosmetic Products		R	-11.73	
+	30.3.2026	Revolut	10307	Lidl	Buying kitchen items	Home & Tech:Kitchenware		R	-3.56	
+	30.3.2026	Revolut	10308	Lidl	Buying groceries	Food & Dining:Groceries		R	-26.40	
+	30.3.2026	Revolut	10309	CBA	Buying groceries	Food & Dining:Groceries		R	-13.36	
+	5.4.2026	Revolut	10324	Grizli	Buying groceries	Food & Dining:Groceries		R	-21.50	
+	13.4.2026	Revolut	10330	Grizli	Buying groceries	Food & Dining:Groceries		R	-20.65	
+	14.4.2026	Revolut	10331	CarVertical	Checking a car for buying	Auto:Other Auto		R	-26.51	
+	14.4.2026	Revolut	10332	Spotify	Paying a subscription	Bills & Utilities:Subscriptions		R	-5.62	
+	15.4.2026	Revolut	10333	Crunchyroll	Paying a subscription	Bills & Utilities:Subscriptions		R	-4.99	
+	18.4.2026	Revolut	10339	Transfer Money	Transfer money	[Debit Card]		R	200.00	
+	18.4.2026	Revolut	10347	DM	Buying expendable goods	Household Goods:Expendable Goods		R	-4.43	
+	18.4.2026	Revolut	10348	DM	Buying cosmetics	Personal Care:Cosmetic Products		R	-11.03	
+	18.4.2026	Revolut	10349	CBA	Buying groceries	Food & Dining:Groceries		R	-19.62	
+	20.4.2026	Revolut	10355	CBA	Buying groceries	Food & Dining:Groceries		R	-2.40	
+	21.4.2026	Revolut	10358	Shell	Filling the tank	Auto:Fuel		R	-30.98	
+	22.4.2026	Revolut	10360	Grizli	Buying groceries	Food & Dining:Groceries		R	-22.27	
+	24.4.2026	Revolut	10361	Juliana	Buying groceries	Food & Dining:Groceries		R	-12.54	
+	26.4.2026	Revolut	10364	Transfer Money	Transfer money	[Debit Card]		R	200.00	
+	26.4.2026	Revolut	10365	Electrohold Prodazhbi	Paying electricity bills	Bills & Utilities:Electricity		R	-26.51	
+	26.4.2026	Revolut	10366	ViK Pernik	Paying water bills	Bills & Utilities:Water		R	-23.53	
+	26.4.2026	Revolut	10367	Toplofikatzia Pernik	Paying hot water and heating bills	Bills & Utilities:Heating & Hot Water		R	-142.89	
+	26.4.2026	Revolut	10368	Yettel	Paying mobile phone bills	Bills & Utilities:Mobile Phone		R	-17.89	
+	26.4.2026	Revolut	10369	HBO Max	Paying a subscription	Bills & Utilities:Subscriptions		R	-5.62	
+	26.4.2026	Revolut	10372	Sinsay	Buying stationary items	Household Goods:Stationery		R	-3.99	
+	26.4.2026	Revolut	10373	Sinsay	Buying home decor	Home & Tech:Home Decor		R	-7.47	
+	26.4.2026	Revolut	10374	Lidl	Buying windshield cleaner	Auto:Car Maintenance & Repairs		R	-1.39	
+	26.4.2026	Revolut	10375	Lidl	Buying phone string	Clothing & Accessories:Other Clothing & Accessories		R	-2.45	
+	26.4.2026	Revolut	10376	Lidl	Buying a sheet	Home & Tech:Linens & Textile		R	-9.20	
+	26.4.2026	Revolut	10377	Lidl	Buying groceries	Food & Dining:Groceries		R	-31.82	
+	28.4.2026	Revolut	10380	Colleagues	Money for gifts for colleagues	Gifts:Financial Gifts		R	-5.00	
+	30.4.2026	Revolut	10390	Transfer Money	Transfer money	[Debit Card]		R	200.00	
+	30.4.2026	Revolut	10392	SDI	Paying Civil Insurance	Auto:Mandatory Annuals		R	-34.47	
+	3.5.2026	Revolut	10406	Technopolis	Buying stuff for the car	Auto:Upgrades		R	-17.90	
+	3.5.2026	Revolut	10407	Technopolis	Buying type-c cable	Home & Tech:Tech Devices & Electronics		R	-3.55	
+	3.5.2026	Revolut	10408	Technopolis	Buying batteries	Household Goods:Expendable Goods		R	-5.10	
+	4.5.2026	Revolut	10410	Grizli	Buying groceries	Food & Dining:Groceries		R	-22.01	
+	6.5.2026	Revolut	10414	OMV	Filling the tank	Auto:Fuel		R	-49.98	
+	6.5.2026	Revolut	10415	SoPharmacy	Buying medicine	Health:Pharmacy		R	-22.67	
+	6.5.2026	Revolut	10416	SoPharmacy	Buying cosmetics	Personal Care:Cosmetic Products		R	-50.66	
+	6.5.2026	Revolut	10417	DM	Buying expendable goods and cleaning items	Household Goods:Expendable Goods		R	-3.34	
+	6.5.2026	Revolut	10418	DM	Buying cosmetics	Personal Care:Cosmetic Products		R	-12.25	
+	6.5.2026	Revolut	10422	Lidl	Buying a fabric shaver	Home & Tech:Home Appliances		R	-10.22	
+	6.5.2026	Revolut	10423	LIdl	Buying groceries	Food & Dining:Groceries		R	-24.19	
+	6.5.2026	Revolut	10425	Transfer Money	Transfer money	[Debit Card]		R	200.00	
+	7.5.2026	Revolut	10426	Technopolis	Buying empty CD discs	Home & Tech:Tech Devices & Electronics		R	-9.90	
+	7.5.2026	Revolut	10427	Technopolis	Buying batteries	Household Goods:Expendable Goods		R	-1.70	
+	7.5.2026	Revolut	10428	DigiToll	Buying a vignette	Auto:Registration & Taxes		R	-49.60	
+	9.5.2026	Revolut	10434	Transfer Money	Transfer money	[Debit Card]		R	200.00	
+	14.5.2026	Revolut	10439	Spotify	Paying a subscription	Bills & Utilities:Subscriptions		R	-5.62	
+	14.5.2026	Revolut	10438	Grizli	Buying groceries	Food & Dining:Groceries		R	-22.25	
+	15.5.2026	Revolut	10440	Crunchyroll	Paying a subscription	Bills & Utilities:Subscriptions		R	-4.99	
+	16.5.2026	Revolut	10441	New Yorker	Buying clothes	Clothing & Accessories:Clothes		R	-13.98	
+	17.5.2026	Revolut	10449	Ozone	Buying cosmetics	Personal Care:Cosmetic Products		R	-21.48	
+	17.5.2026	Revolut	10450	Ozone	Buying books	Entertainment:Books		R	-24.14	
+	17.5.2026	Revolut	10451	CBA	Buying groceries	Food & Dining:Groceries		R	-18.73	
+	21.5.2026	Revolut	10460	Grizli	Buying groceries	Food & Dining:Groceries		R	-16.68	
+	24.5.2026	Revolut	10462	Grizli	Buying groceries	Food & Dining:Groceries		R	-17.24	
+	25.5.2026	Revolut	10464	Interspeed	Filling up the tank	Auto:Fuel		R	-57.66	
+	25.5.2026	Revolut	10465	Lidl	Buying groceries	Food & Dining:Groceries		R	-27.54	
+	27.5.2026	Revolut	10469	SoPharmacy	Buying cosmetics	Personal Care:Cosmetic Products		R	-40.51	
+	27.5.2026	Revolut	10471	Transfer Money	Transfer money	[Debit Card]		R	250.00	
+	27.5.2026	Revolut	10472	Electrohold Prodazhbi	Paying electricity bills	Bills & Utilities:Electricity		R	-26.51	
+	27.5.2026	Revolut	10473	Toplofikatzia Pernik	Paying hot water and heating bills	Bills & Utilities:Heating & Hot Water		R	-91.54	
+	27.5.2026	Revolut	10474	ViK Pernik	Paying water bills	Bills & Utilities:Water		R	-15.47	
+	27.5.2026	Revolut	10475	Yettel	Paying mobile phone bills	Bills & Utilities:Mobile Phone		R	-17.89	
+	27.5.2026	Revolut	10476	HBO Max	Paying a subscription	Bills & Utilities:Subscriptions		R	-5.62	
+	31.5.2026	Revolut	10481	Juliana	Buying groceries	Food & Dining:Groceries		R	-15.30	
+	1.6.2026	Revolut	10482	DM	Buying cosmetics	Personal Care:Cosmetic Products		R	-38.50	
+	2.6.2026	Revolut	10487	Friends	Returned money for buyings from a friend	Other Income:Lends Return		R	35.68	
+	2.6.2026	Revolut	10488	CBA	Buying groceries	Food & Dining:Groceries		R	-14.85	
+	6.6.2026	Revolut	10492	LC Waikiki	Buying clothes	Clothing & Accessories:Clothes		R	-7.99	
+	6.6.2026	Revolut	10493	SoPharmacy	Buying cosmetics	Personal Care:Cosmetic Products		R	-15.25	
+	8.6.2026	Revolut	10502	Colleagues	Money for gifts for colleagues	Gifts:Financial Gifts		R	-10.00	
+	9.6.2026	Revolut	10504	Sidera Consult	Paying for parking	Auto:Parking		R	-14.00	
+	13.6.2026	Revolut	10507	Glovo	Buying dinner	Food & Dining:Take-Outs		R	-27.28	
+	14.6.2026	Revolut	10508	Spotify	Paying a subscription	Bills & Utilities:Subscriptions		R	-5.62	
+	14.6.2026	Revolut	10510	Transfer Money	Transfer money	[Debit Card]		R	200.00	
+	14.6.2026	Revolut	10511	Grizli	Buying groceries	Food & Dining:Groceries		R	-19.56	
+	15.6.2026	Revolut	10513	Beryozka	Seeing a friend	Social Life:Going Out		R	-2.50	
+	15.6.2026	Revolut	10514	Crunchyroll	Paying a subscription	Bills & Utilities:Subscriptions		R	-4.99	
+	19.6.2026	Revolut	10520	Metropolitan	Travel by metro	Travel:Public Transport		R	-1.60	
+	19.6.2026	Revolut	10521	Fest Catering	Visiting a comedy show	Social Life:Concerts		R	-9.00	
+	20.6.2026	Revolut	10523	Grizli	Buying groceries	Food & Dining:Groceries		R	-19.32	
+	22.6.2026	Revolut	10526	Interspeed	Filling up the tank	Auto:Fuel		R	-59.99	
+	22.6.2026	Revolut	10527	Interspeed	Buying treats	Food & Dining:Treats		R	-2.80	
+	22.6.2026	Revolut	10530	Transfer Money	Trasnfer money	[Debit Card]		R	200.00	
+	22.6.2026	Revolut	10531	Electrohold Prodazhbi	Paying electricity bills	Bills & Utilities:Electricity		R	-21.71	
+	22.6.2026	Revolut	10532	ViK Pernik	Paying water bills	Bills & Utilities:Water		R	-20.57	
+	22.6.2026	Revolut	10535	HBO Max	Paying a subscription	Bills & Utilities:Subscriptions		R	-5.62	
+	22.6.2026	Revolut	10533	Toplofikatzia Pernik	Paying hot water and heating bills	Bills & Utilities:Heating & Hot Water		R	-24.93	
+	22.6.2026	Revolut	10534	Yettel	Paying mobile phone bills	Bills & Utilities:Mobile Phone		R	-17.89	
+	23.6.2026	Revolut	10536	CBA	Buying groceries	Food & Dining:Groceries		R	-6.58	
+	27.6.2026	Revolut	10542	Metropolitan	Travel by metro	Travel:Public Transport		R	-1.60	
+	29.6.2026	Revolut	10544	Benu	Buying cosmetics	Personal Care:Cosmetic Products		R	-27.88	
+	29.6.2026	Revolut	10546	CBA	Buying groceries	Food & Dining:Groceries		R	-14.09	
+	30.6.2026	Revolut	10549	CBA	Buying groceries	Food & Dining:Groceries		R	-21.70	
+	1.7.2026	Revolut	10550	Sopharmacy	Buying medicine	Health:Pharmacy		R	-14.87	
+	1.7.2026	Revolut	10551	LC Waikiki	Buying clothes	Clothing & Accessories:Clothes		R	-5.99	
+	1.7.2026	Revolut	10552	DM	Buying cosmetics	Personal Care:Cosmetic Products		R	-22.48	
+	1.7.2026	Revolut	10553	New Yorker	Buying sexy bras	Clothing & Accessories:Underwear		R	-7.99	
+	1.7.2026	Revolut	10554	Lidl	Buying groceries	Food & Dining:Groceries		R	-17.82	
+	2.7.2026	Revolut	10555	Friends	Returned money for buying water	Other Income:Lends Return		R	0.51	
+	2.7.2026	Revolut	10556	Beryozka	Seeing a friend	Social Life:Going Out		R	-1.02	
+	2.7.2026	Revolut	10557	Ciela	Buying a book	Entertainment:Books		R	-11.40	
+	2.7.2026	Revolut	10558	Ciela	Buying a board game	Entertainment:Video & Board Games		R	-21.58	
+	3.7.2026	Revolut	10562	Transfer Money	Transfer money	[Debit Card]		R	200.00	
+	3.7.2026	Revolut	10563	CBA	Buying groceries	Food & Dining:Groceries		R	-20.41	
+	4.7.2026	Revolut	10566	M Pulse	Buying second hand clothes	Clothing & Accessories:Clothes		R	-24.39	
+	4.7.2026	Revolut	10568	Hippoland	Buying a Hot Wheels car	Entertainment:Hobbies		R	-4.08	
+	4.7.2026	Revolut	10569	Hippoland	Buying board games	Entertainment:Video & Board Games		R	-27.08	
+	4.7.2026	Revolut	10576	Grizli	Buying groceries	Food & Dining:Groceries		R	-17.23	
+	5.7.2026	Revolut	10579	Ozone	Buying medicine	Health:Pharmacy		R	-11.93	
+	6.7.2026	Revolut	10581	Grizli	Buying groceries	Food & Dining:Groceries		R	-12.33	
+	8.7.2026	Revolut	10583	CBA	Buying groceries	Food & Dining:Groceries		R	-14.47	
+	12.7.2026	Revolut	10586	CBA	Buying groceries	Food & Dining:Groceries		R	-9.95	
+	14.7.2026	Revolut	10589	Colleagues	Money for gifts for colleagues	Gifts:Financial Gifts		R	-5.00	
+	14.7.2026	Revolut	10590	Spotify	Paying a subscription	Bills & Utilities:Subscriptions		R	-5.62	
+	15.7.2026	Revolut	10593	Crunchyroll	Paying a subscription	Bills & Utilities:Subscriptions		R	-4.99	
+	15.7.2026	Revolut	10592	Interspeed	Filling up the tank	Auto:Fuel		R	-61.70	
+	16.7.2026	Revolut	10595	Transfer Money	Transfer money	[Debit Card]		R	200.00	
+	16.7.2026	Revolut	10596	Grizli	Buying groceries	Food & Dining:Groceries		R	-17.90	
+	19.7.2026	Revolut	10597	CBA	Buying groceries	Food & Dining:Groceries		R	-21.62	
+	20.7.2026	Revolut	10598	SoPharmacy	Buying medicine cosmetics	Personal Care:Cosmetic Products		R	-12.20	
+	20.7.2026	Revolut	10599	SoPharmacy	Buying medicine	Health:Pharmacy		R	-13.24	
+	20.7.2026	Revolut	10600	TEDi	Buying laundry goods	Household Goods:Long Lasting Goods		R	-4.00	
+	20.7.2026	Revolut	10601	TEDi	Buying Hot Wheels car	Entertainment:Hobbies		R	-1.50	
+	20.7.2026	Revolut	10602	Terranova	Buying clothes	Clothing & Accessories:Clothes		R	-5.99	
+	20.7.2026	Revolut	10603	Deichmann	Buying shoes	Clothing & Accessories:Shoes & Bags		R	-34.99	
+	20.7.2026	Revolut	10604	DM	Buying cosmetics	Personal Care:Cosmetic Products		R	-29.92	
+	20.7.2026	Revolut	10605	Sinsay	Buying underwear	Clothing & Accessories:Underwear		R	-4.49	
+	20.7.2026	Revolut	10606	Sinsay	Buying home decor	Home & Tech:Home Decor		R	-1.49	
+	20.7.2026	Revolut	10607	Sinsay	Buying clothes	Clothing & Accessories:Clothes		R	-12.99	
+	20.7.2026	Revolut	10608	New Yorker	Buying sexy underwear	Clothing & Accessories:Underwear		R	-2.99	
+	22.7.2026	Revolut	10611	Yettel	Paying mobile phone bills	Bills & Utilities:Mobile Phone		R	-17.89	
+	22.7.2026	Revolut	10612	HBO Max	Paying a subscription	Bills & Utilities:Subscriptions		R	-5.62	
+	22.7.2026	Revolut	10610	VIPNET	Administrative tax for paying by card	Bank Fees:Other Bank Fees		R	-0.51	
+	22.7.2026	Revolut	10609	VIPNET	Paying Internet & TV bills	Bills & Utilities:Internet & Television		R	-18.40	
+	23.7.2026	Revolut	10614	CBA	Buying groceries	Food & Dining:Groceries		R	-4.44	
+	24.7.2026	Revolut	10616	Transfer Money	Transfer money	[Debit Card]		R	200.00	
+	24.7.2026	Revolut	10617	Apteka 36.6	Buying knee joint support	Health:Health Goods		R	-7.90	
+	28.7.2026	Revolut	10620	Colleagues	Money for gifts for colleagues	Gifts:Financial Gifts		R	-1.80	
+	28.7.2026	Revolut	10622	CBA	Buying groceries	Food & Dining:Groceries		R	-22.99	
+	29.7.2026	Revolut	10623	SDI	Paying Civil Insurance	Auto:Mandatory Annuals		R	-34.47	
+	29.7.2026	Revolut	10624	SoPharmacy	Buying medicine cosmetics	Personal Care:Cosmetic Products		R	-12.20	
+	29.7.2026	Revolut	10625	Lidl	Buying kitchen goods	Household Goods:Expendable Goods		R	-6.12	
+	29.7.2026	Revolut	10626	Lidl	Buying groceries	Food & Dining:Groceries		R	-28.57	
+	31.7.2026	Revolut	10631	Electrohold Prodazhbi	Paying electricity bills	Bills & Utilities:Electricity		R	-21.71	
+	31.7.2026	Revolut	10633	Toplofikatzia Pernik	Paying hot water and heating bills	Bills & Utilities:Heating & Hot Water		R	-24.76	
+	31.7.2026	Revolut	10632	ViK Pernik	Paying water bills	Bills & Utilities:Water		R	-16.76	
+	31.7.2026	Revolut	10630	Happiness Store	Buying laundry and cleaning products	Household Goods:Expendable Goods		R	-16.16	
+	31.7.2026	Revolut	10634	Toplofikatzia Pernik	Returned money after reconcilation	Other Income:Reconcilations		R	24.76	
+	1.8.2026	Revolut	10640	CBA	Buying a Ho t Wheels car	Entertainment:Hobbies		R	-2.55	
+	1.8.2026	Revolut	10641	CBA	Buying kitchen goods	Household Goods:Expendable Goods		R	-3.30	
+	1.8.2026	Revolut	10642	CBA	Buying groceries	Food & Dining:Groceries		R	-22.41	
+	2.8.2026	Revolut	10645	Transfer Money	Transfer money	[Debit Card]		R	200.00	
+	3.8.2026	Revolut	10648	CBA	Buying groceries	Food & Dining:Groceries		R	-16.31	
+	7.8.2026	Revolut	10652	Juliana	Buying groceries	Food & Dining:Groceries		R	-10.27	
+	8.8.2026	Revolut	10658	Colleagues	Returned money	Other Income:Lends Return		R	10.00	
+	9.8.2026	Revolut	10660	CBA	Buying groceries	Food & Dining:Groceries		R	-16.36	
+	10.8.2026	Revolut	10662	Sinsay	Buying home decor	Home & Tech:Home Decor		R	-3.48	
+	10.8.2026	Revolut	10663	Sinsay	Buying pajamas	Clothing & Accessories:Underwear		R	-6.99	
+	10.8.2026	Revolut	10664	DM	Buying expendable goods	Household Goods:Expendable Goods		R	-1.53	
+	10.8.2026	Revolut	10665	DM	Buying hair tools	Personal Care:Cosmetic Tools		R	-6.20	
+	10.8.2026	Revolut	10666	DM	Buying cosmetics	Personal Care:Cosmetic Products		R	-26.73	
+	10.8.2026	Revolut	10667	Lidl	Buying car items	Auto:Other Auto		R	-1.27	
+	10.8.2026	Revolut	10668	Lidl	Buying stationery	Household Goods:Stationery		R	-1.99	
+	10.8.2026	Revolut	10670	Lidl	Buying groceries	Food & Dining:Groceries		R	-35.56	
+	14.8.2026	Revolut	10672	Spotify	Paying a subscription	Bills & Utilities:Subscriptions		R	-5.62	
+	15.8.2026	Revolut	10675	Transfer Money	Transfer money	[Debit Card]		R	200.00	
+	15.8.2026	Revolut	10685	Crunchyroll	Paying a subscription	Bills & Utilities:Subscriptions		R	-4.99	
+	15.8.2026	Revolut	10679	SoPharmacy	Buying medicine cosmetics	Personal Care:Cosmetic Products		R	-29.30	
+	15.8.2026	Revolut	10680	SoPharmacy	Buying medicine	Health:Pharmacy		R	-21.34	
+	15.8.2026	Revolut	10681	New Yorker	Buying clothes	Clothing & Accessories:Clothes		R	-9.99	
+	15.8.2026	Revolut	10687	Interspeed	Filling up the tank	Auto:Fuel		R	-59.00	
+	17.8.2026	Revolut	10688	Beryozka	Seeing a friend	Social Life:Going Out		R	-2.31	
+	17.8.2026	Revolut	10689	Sinsay	Buying clothes	Clothing & Accessories:Clothes		R	-25.56	
+	18.8.2026	Revolut	10691	Grizli	Buying groceries	Food & Dining:Groceries		R	-28.27	
+	22.8.2026	Revolut	10705	DM	Buying cosmetics	Personal Care:Cosmetic Products		R	-6.50	
+	22.8.2026	Revolut	10706	Sinsay	Buying home decor	Home & Tech:Home Decor		R	-2.98	
+	22.8.2026	Revolut	10707	Lidl	Buying groceries	Food & Dining:Groceries		R	-17.88	
+	23.8.2026	Revolut	10709	Transfer Money	Transfer money	[Debit Card]		R	200.00	
+	27.8.2026	Revolut	10712	Glovo	Buying dinner	Food & Dining:Take-Outs		R	-8.82	
+	29.8.2026	Revolut	10718	Electrohold Prodazhbi	Paying electricity bills	Bills & Utilities:Electricity		R	-20.96	
+	29.8.2026	Revolut	10719	Yettel	Paying mobile phone bills	Bills & Utilities:Mobile Phone		R	-17.89	
+	29.8.2026	Revolut	10720	HBO Max	Paying a subscription	Bills & Utilities:Subscriptions		R	-5.62	
+	30.8.2026	Revolut	10724	Grizli	Buying groceries	Food & Dining:Groceries		R	-11.58	
+	31.8.2026	Revolut	10725	Grizli	Buying laundry pearls	Household Goods:Expendable Goods		R	-8.18	
+	31.8.2026	Revolut	10726	Grizli	Buying groceries	Food & Dining:Groceries		R	-6.60	
+	2.9.2026	Revolut	10727	Sopharmacy	Buying medicine cosmetics	Personal Care:Cosmetic Products			-15.25	
+	2.9.2026	Revolut	10728	Pepco	Buying home decor	Home & Tech:Home Decor			-4.00	
+	2.9.2026	Revolut	10729	Pepco	Buying a bra	Clothing & Accessories:Underwear			-6.50	
+	2.9.2026	Revolut	10730	Deichmann	Buying shoes	Clothing & Accessories:Shoes & Bags			-34.99	
+	2.9.2026	Revolut	10732	DM	Buying cosmetics	Personal Care:Cosmetic Products			-4.40	
+	2.9.2026	Revolut	10733	New Yorker	Buying clothes	Clothing & Accessories:Clothes			-6.98	
+	2.9.2026	Revolut	10734	Lidl	Buying sporting goods	Fitness & Sports:Sporting Goods			-5.99	
+	2.9.2026	Revolut	10735	Lidl	Buying cosmetic tools	Personal Care:Cosmetic Tools			-1.99	
+	2.9.2026	Revolut	10736	Lidl	Buying groceries	Food & Dining:Groceries			-43.21	
+	5.9.2026	Revolut	10749	Transfer Money	Transfer money	[Debit Card]			200.00	
+	5.9.2026	Revolut	10750	TendenZ	Buying shoes	Clothing & Accessories:Shoes & Bags			-15.59	
+	5.9.2026	Revolut	10751	Pepco	Buying home shoes	Clothing & Accessories:Shoes & Bags			-5.50	
+	5.9.2026	Revolut	10752	Sinsay	Buying underwear	Clothing & Accessories:Underwear			-4.99	
+	5.9.2026	Revolut	10753	Sinsay	Buying cosmetics tools	Personal Care:Cosmetic Tools			-5.50	
+	5.9.2026	Revolut	10754	Technopolis	Buying stuff for the car	Auto:Upgrades			-15.30	
+	5.9.2026	Revolut	10755	Technopolis	Buying batteries	Household Goods:Expendable Goods			-7.10	
+	5.9.2026	Revolut	10756	Interspeed	Filling up the tank	Auto:Fuel			-54.08	
+	6.9.2026	Revolut	10764	Petrol	Buying treats	Food & Dining:Treats			-1.99	
+	3.1.2026	Cash	10001	Fesko	Buying water	Food & Dining:Groceries		R	-0.46	
+	3.1.2026	Cash	10002	Pepco	Buying slippers	Clothing & Accessories:Shoes & Bags		R	-4.60	
+	4.1.2026	Cash	10003	OMV	Buying treats	Food & Dining:Treats		R	-1.28	
+	5.1.2026	Cash	10006	Church "St. Ivan Rilski"	Visiting a church	Religion & Spirituality:Religious Services		R	-3.09	
+	5.1.2026	Cash	10007	Festiko	Buying kitchen items	Home & Tech:Kitchenware		R	-2.05	
+	5.1.2026	Cash	10008	Festiko	Buying basins	Home & Tech:Home Decor		R	-3.94	
+	5.1.2026	Cash	10009	Bookshop Irida	Buying wall calendar	Home & Tech:Home Decor		R	-2.56	
+	6.1.2026	Cash	10012	Church "St. Ivan Rilski"	Visiting a church	Religion & Spirituality:Religious Services		R	-4.19	
+	6.1.2026	Cash	10013	Danieli	Upgrading dell pc	Home & Tech:Tech Devices & Electronics		R	-136.00	
+	6.1.2026	Cash	10014	CBA	Buying groceries	Food & Dining:Groceries		R	-15.12	
+	7.1.2026	Cash	10023	Parents	Covering shoping expenses	Other Income:Parent Help		R	60.58	
+	7.1.2026	Cash	10015	Shop - Tundzha	Buying groceries	Food & Dining:Groceries		R	-3.11	
+	7.1.2026	Cash	10016	Unknown Seller	Buying a book	Entertainment:Books		R	-18.00	
+	7.1.2026	Cash	10017	Speedy	Paying for courier services	Misc.:Courier & Post Services		R	-3.22	
+	7.1.2026	Cash	10018	Konica	Have a photo printed	Home & Tech:Home Decor		R	-1.02	
+	7.1.2026	Cash	10019	Kaufland	Buying cleaning products	Household Goods:Expendable Goods		R	-13.90	
+	7.1.2026	Cash	10021	Kaufland	Buying tights	Clothing & Accessories:Underwear		R	-3.57	
+	7.1.2026	Cash	10020	Kaufland	Buying glasses	Home & Tech:Kitchenware		R	-9.20	
+	7.1.2026	Cash	10022	Kaufland	Buying groceries	Food & Dining:Groceries		R	-33.91	
+	7.1.2026	Cash	10025	CBA	Buying groceries	Food & Dining:Groceries		R	-10.85	
+	8.1.2026	Cash	10026	Praktiker	Buying cables	Home & Tech:Renovations		R	-8.18	
+	8.1.2026	Cash	10027	Bookshop Irida	Buying stationery	Household Goods:Stationery		R	-2.51	
+	8.1.2026	Cash	10028	Festiko	Buying kitchen items	Home & Tech:Kitchenware		R	-1.84	
+	8.1.2026	Cash	10029	Tuk-Fustuk	Buying nuts	Food & Dining:Treats		R	-1.52	
+	8.1.2026	Cash	10030	Watchmaker - Krakra Square	Buying a watch	Clothing & Accessories:Watches		R	-28.12	
+	8.1.2026	Cash	10031	DetMag	Buying kitchen items	Home & Tech:Kitchenware		R	-1.33	
+	10.1.2026	Cash	10032	Ani	Visiting kinesitherapist	Health:Massage & Therapy		R	-15.34	
+	10.1.2026	Cash	10033	Diablo Hot Dog Company	Buying lunch	Food & Dining:Take-Outs		R	-4.29	
+	10.1.2026	Cash	10041	Fun Tun	Buying underwear and tights	Clothing & Accessories:Underwear		R	-12.94	
+	10.1.2026	Cash	10042	Fun Tun	Buying bands	Clothing & Accessories:Accessories		R	-0.51	
+	10.1.2026	Cash	10043	KAM Market	Buying groceries	Food & Dining:Groceries		R	-0.99	
+	11.1.2026	Cash	10044	TEDi	Buying organizers	Home & Tech:Home Decor		R	-2.00	
+	11.1.2026	Cash	10045	TEDi	Buying stationery	Household Goods:Stationery		R	-2.00	
+	11.1.2026	Cash	10046	TEDi	Buying hair accessories	Clothing & Accessories:Accessories		R	-6.00	
+	11.1.2026	Cash	10048	Pepco	Buying bras	Clothing & Accessories:Underwear		R	-5.11	
+	11.1.2026	Cash	10049	Pepco	Buying Christmas decor	Home & Tech:Home Decor		R	-2.00	
+	12.1.2026	Cash	10051	Juliana	Buying groceries	Food & Dining:Groceries		R	-20.32	
+	13.1.2026	Cash	10052	TEDi	Buying hair accessories	Clothing & Accessories:Accessories		R	-1.00	
+	13.1.2026	Cash	10053	TEDi	Buying organizers	Home & Tech:Home Decor		R	-1.00	
+	13.1.2026	Cash	10054	TEDi	Buying gift for colleague	Gifts:Material Gifts		R	-1.50	
+	14.1.2026	Cash	10061	Parents	Covering shoping expenses	Other Income:Parent Help		R	2.86	
+	14.1.2026	Cash	10059	Bulgarian Shoes - Targovska	Buying real leather boots	Clothing & Accessories:Shoes & Bags		R	-115.00	
+	14.1.2026	Cash	10060	Festiko	Buying cups	Home & Tech:Kitchenware		R	-2.86	
+	14.1.2026	Cash	10062	Bags - Nachalna Spirka	Buying a bag	Clothing & Accessories:Shoes & Bags		R	-25.56	
+	14.1.2026	Cash	10057	Transfer Money	Withdrawing money	[Debit Card]		R	300.01	
+	17.1.2026	Cash	10064	Church "St. Ivan Rilski"	Buying religious goods	Religion & Spirituality:Religious Goods		R	-2.30	
+	17.1.2026	Cash	10065	Church "St. Ivan Rilski"	Visiting a church	Religion & Spirituality:Religious Services		R	-3.07	
+	18.1.2026	Cash	10066	Church "St. Ivan Rilski"	Visiting a church	Religion & Spirituality:Religious Services		R	-2.56	
+	19.1.2026	Cash	10070	SoPharmacy	Buying medicine	Health:Pharmacy		R	-5.17	
+	19.1.2026	Cash	10071	SoPharmacy	Buying cosmetics	Personal Care:Cosmetic Products		R	-14.43	
+	21.1.2026	Cash	10077	Ani	Visiting kinesitherapist	Health:Massage & Therapy		R	-15.00	
+	21.1.2026	Cash	10078	Jysk	Buying sheets	Home & Tech:Linens & Textile		R	-5.00	
+	22.1.2026	Cash	10079	Mimka	Going waxing	Personal Care:Waxing		R	-13.00	
+	22.1.2026	Cash	10082	VIPNET	Paying Internet & TV bills	Bills & Utilities:Internet & Television		R	-18.40	
+	22.1.2026	Cash	10080	Nova Zvezda	Buying medicine	Health:Pharmacy		R	-5.85	
+	22.1.2026	Cash	10081	Festiko	Buying kitchen items	Home & Tech:Kitchenware		R	-2.86	
+	22.1.2026	Cash	10083	Pizza Joy	Buying lunch	Food & Dining:Take-Outs		R	-2.66	
+	22.1.2026	Cash	10084	eMag	Buying an electric heat warmer	Home & Tech:Tech Devices & Electronics		R	-22.22	
+	22.1.2026	Cash	10085	Parents	Covering shoping expenses	Other Income:Parent Help		R	22.22	
+	22.1.2026	Cash	10086	Srubsko Selo	Buying dinner	Food & Dining:Take-Outs		R	-6.75	
+	22.1.2026	Cash	10087	Oferta	Buying groceries	Food & Dining:Groceries		R	-0.83	
+	22.1.2026	Cash	10088	CBA	Buying groceries	Food & Dining:Groceries		R	-7.93	
+	23.1.2026	Cash	10089	Terranova	Buying pajamas	Clothing & Accessories:Underwear		R	-7.80	
+	23.1.2026	Cash	10090	DM	Buying cosmetics	Personal Care:Cosmetic Products		R	-5.74	
+	23.1.2026	Cash	10091	Parents	Covering shoping expenses	Other Income:Parent Help		R	13.54	
+	23.1.2026	Cash	10092	Unknown Seller	Buying a book	Entertainment:Books		R	-20.90	
+	24.1.2026	Cash	10093	Kanita	Buying washing pearls and cleaning products	Household Goods:Expendable Goods		R	-8.63	
+	24.1.2026	Cash	10094	Parents	Covering shoping expenses	Other Income:Parent Help		R	8.63	
+	25.1.2026	Cash	10096	-	Buying lunch	Food & Dining:Take-Outs		R	-5.11	
+	25.1.2026	Cash	10097	Non-Stop	Buying treats for nephews	Food & Dining:Groceries		R	-2.11	
+	29.1.2026	Cash	10105	Oferta	Buying groceries	Food & Dining:Groceries		R	-2.11	
+	29.1.2026	Cash	10106	CBA	Buying groceries	Food & Dining:Groceries		R	-7.90	
+	31.1.2026	Cash	10117	Transfer Money	Withdrawing money	[Debit Card]		R	200.00	
+	31.1.2026	Cash	10114	Oferta	Buying groceries	Food & Dining:Groceries		R	-7.70	
+	31.1.2026	Cash	10115	CBA	Buying groceries	Food & Dining:Groceries		R	-12.19	
+	2.2.2026	Cash	10120	Church "St. Ivan Rilski"	Visiting a church	Religion & Spirituality:Religious Services		R	-4.70	
+	2.2.2026	Cash	10121	Festiko	Buying kitchen items	Home & Tech:Kitchenware		R	-6.00	
+	2.2.2026	Cash	10122	EuroMarket	Buying kitchen items	Home & Tech:Kitchenware		R	-6.12	
+	2.2.2026	Cash	10123	Bookshop Irida	Buying stationery items	Household Goods:Stationery		R	-0.73	
+	2.2.2026	Cash	10124	Kanita	Buying washing pearls	Household Goods:Expendable Goods		R	-14.13	
+	2.2.2026	Cash	10126	Ani	Visiting kinesitherapist	Health:Massage & Therapy		R	-15.00	
+	4.2.2026	Cash	10132	-	Donating money	Donations & Tips:Donations		R	-2.00	
+	6.2.2026	Cash	10136	Festiko	Buying one-time cups	Household Goods:Expendable Goods		R	-1.07	
+	6.2.2026	Cash	10137	Festiko	Buying playing cards	Entertainment:Video & Board Games		R	-0.92	
+	9.2.2026	Cash	10142	Magazin 1 Lev	Buying coffee cups	Home & Tech:Kitchenware		R	-2.04	
+	9.2.2026	Cash	10143	Festiko	Buying hair clippers	Clothing & Accessories:Accessories		R	-4.08	
+	9.2.2026	Cash	10144	Festiko	Buying toiletry bags	Household Goods:Long Lasting Goods		R	-2.81	
+	9.2.2026	Cash	10141	Parents	Paying for a massage	Misc.:Relatives		R	-20.00	
+	10.2.2026	Cash	10150	Pepco	Buying a flower pot	Home & Tech:Lawn & Garden		R	-2.81	
+	10.2.2026	Cash	10151	M Pulse	Buying second hand clothes	Clothing & Accessories:Clothes		R	-5.86	
+	10.2.2026	Cash	10152	Buy Max	Buying underwear	Clothing & Accessories:Underwear		R	-5.86	
+	10.2.2026	Cash	10153	Buy Max	Buying boxes for improvement things	Home & Tech:Renovations		R	-3.58	
+	10.2.2026	Cash	10154	Buy Max	Buying long lasting goods	Household Goods:Long Lasting Goods		R	-0.88	
+	11.2.2026	Cash	10158	Technopolis	Buying keyboard and office accessories	Home & Tech:Tech Devices & Electronics		R	-50.40	
+	11.2.2026	Cash	10159	Parents	Covering shoping expenses	Other Income:Parent Help		R	50.40	
+	11.2.2026	Cash	10160	Relax	In and out car wash	Auto:Car Wash		R	-20.00	
+	12.2.2026	Cash	10161	Oferta	Buying groceries	Food & Dining:Groceries		R	-2.62	
+	12.2.2026	Cash	10162	TEDi	Buying stationery items	Household Goods:Stationery		R	-5.00	
+	12.2.2026	Cash	10163	TEDi	Buying hair accessories	Clothing & Accessories:Accessories		R	-1.55	
+	12.2.2026	Cash	10164	TEDi	Buying glasses	Home & Tech:Kitchenware		R	-3.00	
+	13.2.2026	Cash	10167	Praktiker	Buying kitchen items	Home & Tech:Kitchenware		R	-4.60	
+	13.2.2026	Cash	10168	Praktiker	Buying seeds and fertilizer	Home & Tech:Lawn & Garden		R	-2.98	
+	13.2.2026	Cash	10169	Sinsay	Buying belts	Clothing & Accessories:Accessories		R	-4.98	
+	13.2.2026	Cash	10170	DM	Buying cosmetics	Personal Care:Cosmetic Products		R	-6.35	
+	13.2.2026	Cash	10174	Friends	Giving money to a friend for helping with the car	Auto:Car Maintenance & Repairs		R	-20.00	
+	15.2.2026	Cash	10181	Parents	Covering car expenses	Other Income:Parent Help		R	50.00	
+	16.2.2026	Cash	10184	Public Transport - Pernik	Travel by bus	Travel:Public Transport		R	-0.80	
+	16.2.2026	Cash	10186	Transfer Money	Withdrawing money	[Debit Card]		R	200.00	
+	17.2.2026	Cash	10193	Unknown Taxi	Taking a taxi	Travel:Taxi & Private Transport		R	-5.00	
+	17.2.2026	Cash	10194	Asen	Car repairs	Auto:Car Maintenance & Repairs		R	-25.00	
+	17.2.2026	Cash	10196	Oferta	Buying groceries	Food & Dining:Groceries		R	-4.42	
+	19.2.2026	Cash	10197	Mimka	Going waxing	Personal Care:Waxing		R	-13.00	
+	21.2.2026	Cash	10199	Kaufland	Buying riddles book	Entertainment:Hobbies		R	-13.50	
+	21.2.2026	Cash	10200	Kaufland	Buying groceries	Food & Dining:Groceries		R	-50.00	
+	21.2.2026	Cash	10201	Parents	Covering shoping expenses	Other Income:Parent Help		R	63.50	
+	22.2.2026	Cash	10203	Zemenski Monastery	Visiting a monastery	Social Life:Museums & Historical Sites		R	-3.60	
+	22.2.2026	Cash	10204	TEDi	Buying hair accessories	Clothing & Accessories:Accessories		R	-1.00	
+	22.2.2026	Cash	10205	TEDi	Buying glasses	Home & Tech:Kitchenware		R	-2.00	
+	22.2.2026	Cash	10206	TEDi	Buying stationery items	Household Goods:Stationery		R	-1.30	
+	22.2.2026	Cash	10207	TEDi	Buying organizers	Home & Tech:Home Decor		R	-6.55	
+	23.2.2026	Cash	10209	Oferta	Buying groceries	Food & Dining:Groceries		R	-10.50	
+	26.2.2026	Cash	10213	VIPNET	Paying Internet & TV bills	Bills & Utilities:Internet & Television		R	-18.40	
+	26.2.2026	Cash	10212	Unknown Seller	Buying martenitsi	Gifts:Material Gifts		R	-7.50	
+	26.2.2026	Cash	10214	Sladko i Soleno	Buying sweets	Food & Dining:Treats		R	-1.84	
+	3.3.2026	Cash	10226	Church "St. Ivan Rilski"	Visiting a church	Religion & Spirituality:Religious Services		R	-5.50	
+	3.3.2026	Cash	10231	Family	Buying things for my brother	Misc.:Relatives		R	-2.30	
+	4.3.2026	Cash	10237	Pepco	Buying a Hot Wheels car	Entertainment:Hobbies		R	-2.30	
+	8.3.2026	Cash	10244	TEDi	Buying organizers	Home & Tech:Home Decor		R	-4.55	
+	8.3.2026	Cash	10245	TEDi	Buying organizers	Home & Tech:Home Decor		R	-5.55	
+	10.3.2026	Cash	10249	Ksilo.Bg	Buying CD albums	Entertainment:Music		R	-41.66	
+	12.3.2026	Cash	10251	Unknown Seller	Buying a Hot Wheels car	Entertainment:Hobbies		R	-6.25	
+	14.3.2026	Cash	10254	Mimka	Going waxing	Personal Care:Waxing		R	-13.00	
+	15.3.2026	Cash	10264	TEDi	Buying longlasting household goods	Household Goods:Long Lasting Goods		R	-2.00	
+	15.3.2026	Cash	10265	TEDi	Buying stationery items	Household Goods:Stationery		R	-1.00	
+	18.3.2026	Cash	10275	Grillo	Buying lunch	Food & Dining:Take-Outs		R	-4.96	
+	19.3.2026	Cash	10278	D-r Ina Davidkova	Visiting a GP	Health:Doctor Visits		R	-4.00	
+	20.3.2026	Cash	10279	Senso	Seeing a friend	Social Life:Going Out		R	-1.50	
+	20.3.2026	Cash	10281	Transfer Money	Withdrawing money	[Debit Card]		R	200.00	
+	20.3.2026	Cash	10283	CBA	Buying groceries	Food & Dining:Groceries		R	-10.02	
+	24.3.2026	Cash	10284	VIPNET	Paying Internet & TV bills	Bills & Utilities:Internet & Television		R	-18.40	
+	24.3.2026	Cash	10285	Pizza Joy	Buying lunch	Food & Dining:Take-Outs		R	-3.20	
+	24.3.2026	Cash	10286	Unknown Seller	Buying Hot Wheels cars	Entertainment:Hobbies		R	-11.17	
+	24.3.2026	Cash	10287	Paro	Car repairs	Auto:Car Maintenance & Repairs		R	-45.00	
+	24.3.2026	Cash	10289	CBA	Buying groceries	Food & Dining:Groceries		R	-9.40	
+	24.3.2026	Cash	10290	Oferta	Buying groceries	Food & Dining:Groceries		R	-2.60	
+	25.3.2026	Cash	10298	Church "St. Ivan Rilski"	Visiting a church	Religion & Spirituality:Religious Services		R	-7.40	
+	28.3.2026	Cash	10301	Bebcho	Buying a Hot Wheels car	Entertainment:Hobbies		R	-3.06	
+	28.3.2026	Cash	10302	Domashni Potrebi	Buying glasses	Home & Tech:Kitchenware		R	-9.56	
+	30.3.2026	Cash	10303	Pizza Joy	Buying lunch	Food & Dining:Take-Outs		R	-3.30	
+	30.3.2026	Cash	10305	Shell	Filling the tank	Auto:Fuel		R	-7.70	
+	31.3.2026	Cash	10312	Parents	Covering car expenses	Other Income:Parent Help		R	50.00	
+	2.4.2026	Cash	10313	Izraelska Pitka	Buying lunch	Food & Dining:Take-Outs		R	-3.60	
+	4.4.2026	Cash	10314	Domashni Potrebi	Buying an organizer	Home & Tech:Home Decor		R	-4.09	
+	4.4.2026	Cash	10315	Lilly Drogerie	Buying cosmetics	Personal Care:Cosmetic Products		R	-10.00	
+	4.4.2026	Cash	10316	Billa	Buying groceries	Food & Dining:Groceries		R	-24.28	
+	4.4.2026	Cash	10317	Praktiker	Buying plants	Home & Tech:Lawn & Garden		R	-4.09	
+	4.4.2026	Cash	10318	TEDi	Buying expendable goods	Household Goods:Expendable Goods		R	-3.50	
+	4.4.2026	Cash	10319	DM	Buying cosmetics	Personal Care:Cosmetic Products		R	-4.23	
+	4.4.2026	Cash	10320	EuroMarket	Buying flower pots	Home & Tech:Lawn & Garden		R	-1.35	
+	4.4.2026	Cash	10321	EuroMarket	Buying laundry pearls	Household Goods:Expendable Goods		R	-5.06	
+	4.4.2026	Cash	10322	Parents	Covering shoping expenses	Other Income:Parent Help		R	48.28	
+	5.4.2026	Cash	10323	Church "St. Georgi Pobedonosec"	Visiting a church	Religion & Spirituality:Religious Services		R	-11.80	
+	7.4.2026	Cash	10325	CBA	Buying groceries	Food & Dining:Groceries		R	-17.70	
+	10.4.2026	Cash	10327	Church "St. Mina"	Visiting a church	Religion & Spirituality:Religious Services		R	-7.00	
+	11.4.2026	Cash	10328	Sinsay	Buying Hot Wheels cars	Entertainment:Hobbies		R	-5.02	
+	11.4.2026	Cash	10329	Mecho Puh - Petrich	Buying a Hot Wheels car	Entertainment:Hobbies		R	-3.06	
+	15.4.2026	Cash	10334	Restaurant Fenix	Pre-pay for birthday party	Social Life:Restaurant Events		R	-50.00	
+	16.4.2026	Cash	10335	Mimka	Going waxing	Personal Care:Waxing		R	-13.00	
+	16.4.2026	Cash	10336	Izraelska Pitka	Buying lunch	Food & Dining:Take-Outs		R	-3.60	
+	17.4.2026	Cash	10337	Ksilo.Bg	Buying CD albums	Entertainment:Music		R	-42.30	
+	18.4.2026	Cash	10340	LC Waikiki	Buying clothes	Clothing & Accessories:Clothes		R	-22.98	
+	18.4.2026	Cash	10341	SoPharmacy	Buying cosmetics	Personal Care:Cosmetic Products		R	-15.25	
+	18.4.2026	Cash	10342	SoPharmacy	Buying medicine	Health:Pharmacy		R	-14.87	
+	18.4.2026	Cash	10343	Deichmann	Buying shoes	Clothing & Accessories:Shoes & Bags		R	-29.99	
+	18.4.2026	Cash	10344	Grillo	Buying lunch	Food & Dining:Take-Outs		R	-6.00	
+	18.4.2026	Cash	10345	Sinsay	Buying pajamas	Clothing & Accessories:Underwear		R	-6.99	
+	18.4.2026	Cash	10346	Parents	Covering shoping expenses	Other Income:Parent Help		R	96.08	
+	18.4.2026	Cash	10351	Transfer Money	Withdrawing money	[Debit Card]		R	300.00	
+	18.4.2026	Cash	10353	Juliana	Buying groceries	Food & Dining:Groceries		R	-5.91	
+	19.4.2026	Cash	10354	Non-Stop	Going out with a friend	Social Life:Going Out		R	-1.68	
+	21.4.2026	Cash	10356	Ciela	Buying a gift for my brother	Gifts:Material Gifts		R	-18.36	
+	22.4.2026	Cash	10359	Srubsko Selo	Buying dinner	Food & Dining:Take-Outs		R	-6.65	
+	26.4.2026	Cash	10370	VIPNET	Paying Internet & TV bills	Bills & Utilities:Internet & Television		R	-18.40	
+	26.4.2026	Cash	10371	Terranova	Buying pajamas	Clothing & Accessories:Underwear		R	-4.00	
+	26.4.2026	Cash	10378	CBA	Buying groceries	Food & Dining:Groceries		R	-8.05	
+	27.4.2026	Cash	10379	Oferta	Buying groceries	Food & Dining:Groceries		R	-4.50	
+	28.4.2026	Cash	10382	Transfer Money	Withdrawing money	[Debit Card]		R	2,000.00	
+	29.4.2026	Cash	10384	CBA	Buying groceries	Food & Dining:Groceries		R	-8.38	
+	30.4.2026	Cash	10385	Marin	Buying a car	Asset Purchases:Vehicle Purchases		R	-4,000.00	
+	30.4.2026	Cash	10386	Ekoavtoretsiklirane	Paying eco taxes for importing a car	Auto:Registration & Taxes		R	-196.85	
+	30.4.2026	Cash	10387	KAT Pernik	Paying taxes for registering a car	Auto:Registration & Taxes		R	-42.42	
+	30.4.2026	Cash	10388	Parents	Returned money for shopping	Other Income:Other Income		R	2,239.27	
+	30.4.2026	Cash	10391	Unknown Seller	Giving a tip	Donations & Tips:Tips		R	-3.00	
+	1.5.2026	Cash	10395	Daniela	Buying groceries	Food & Dining:Groceries		R	-4.90	
+	1.5.2026	Cash	10396	CBA	Buying groceries	Food & Dining:Groceries		R	-9.72	
+	2.5.2026	Cash	10397	Petrol Dragichevo	Filling the tank	Auto:Fuel		R	-20.00	
+	2.5.2026	Cash	10398	GumiCenter - Expres	Fixing a tire	Auto:Car Maintenance & Repairs		R	-15.40	
+	3.5.2026	Cash	10399	Diablo Hot Dog Company	Buying lunch	Food & Dining:Take-Outs		R	-4.30	
+	3.5.2026	Cash	10400	Bebcho	Buying a Hot Wheels car	Entertainment:Hobbies		R	-3.50	
+	3.5.2026	Cash	10401	Festiko	Buying kitchen items	Home & Tech:Kitchenware		R	-6.49	
+	3.5.2026	Cash	10402	Festiko	Buying stationery items	Household Goods:Stationery		R	-0.50	
+	3.5.2026	Cash	10403	Malchugani	Buying a Hot Wheels car	Entertainment:Hobbies		R	-3.06	
+	3.5.2026	Cash	10404	Art Gallery - Pernik	Visiting an art exhibition	Social Life:Events		R	-8.00	
+	3.5.2026	Cash	10405	M Pulse	Buying second hand clothes	Clothing & Accessories:Clothes		R	-6.42	
+	4.5.2026	Cash	10409	D-r Lozanova	Going to the dentist	Health:Dental Health		R	-30.00	
+	6.5.2026	Cash	10411	Pizza Joy	Buying lunch	Food & Dining:Take-Outs		R	-3.10	
+	6.5.2026	Cash	10412	Church "St. Ivan Rilski"	Visiting a church	Religion & Spirituality:Religious Services		R	-7.00	
+	6.5.2026	Cash	10419	TEDi	Buying expendable goods	Household Goods:Expendable Goods		R	-1.00	
+	6.5.2026	Cash	10420	TEDi	Buying home decor	Home & Tech:Home Decor		R	-2.00	
+	6.5.2026	Cash	10421	TEDi	Buying garden items	Home & Tech:Lawn & Garden		R	-1.00	
+	7.5.2026	Cash	10411	Parents	Giving extra money	Misc.:Relatives		R	-0.40	
+	8.5.2026	Cash	10430	Transfer Money	Withdrawing money	[Debit Card]		R	1,000.00	
+	9.5.2026	Cash	10432	Hrupkava Korichka	Buying breakfast	Food & Dining:Take-Outs		R	-1.45	
+	10.5.2026	Cash	10435	Restaurant Oreha - Shumen	Going to a restaurant for my birthday	Social Life:Restaurant Events		R	-20.00	
+	13.5.2026	Cash	10436	Dido	Paying for car service	Auto:Car Maintenance & Repairs		R	-790.00	
+	14.5.2026	Cash	10437	Unknown Buyer	Selling a book	Other Income:Sells		R	6.93	
+	16.5.2026	Cash	10442	Sinsay	Buying socks	Clothing & Accessories:Underwear		R	-5.98	
+	16.5.2026	Cash	10443	Terranova	Buying a jacket	Clothing & Accessories:Clothes		R	-18.19	
+	16.5.2026	Cash	10444	Terranova	Buying clothes	Clothing & Accessories:Clothes		R	-20.28	
+	16.5.2026	Cash	10445	Deichmann	Buying shoes	Clothing & Accessories:Shoes & Bags		R	-19.99	
+	16.5.2026	Cash	10446	Parents	Returned money for shopping	Other Income:Other Income		R	64.44	
+	18.5.2026	Cash	10452	Hippoland	Buying a Hot Wheels car	Entertainment:Hobbies		R	-3.06	
+	18.5.2026	Cash	10453	Paradise Mall	Going out with a friend	Social Life:Going Out		R	-1.00	
+	20.5.2026	Cash	10454	VIPNET	Paying Internet & TV bills	Bills & Utilities:Internet & Television		R	-18.40	
+	21.5.2026	Cash	10455	Mimka	Going waxing	Personal Care:Waxing		R	-13.00	
+	21.5.2026	Cash	10456	Church "St. Georgi Pobedonosec"	Visiting a church	Religion & Spirituality:Religious Services		R	-3.20	
+	21.5.2026	Cash	10458	Transfer Money	Withdrawing money	[Debit Card]		R	1,000.00	
+	22.5.2026	Cash	10461	Relatives	Gift for birthday	Other Income:Gifts		R	150.00	
+	25.5.2026	Cash	10466	CBA	Buying groceries	Food & Dining:Groceries		R	-0.60	
+	26.5.2026	Cash	10467	Oferta	Buying groceries	Food & Dining:Groceries		R	-2.30	
+	27.5.2026	Cash	10468	-	Some money that I don't know	Other Income:Other Income		R	7.60	
+	31.5.2026	Cash	10478	Non-Stop	Going out with a friend	Social Life:Going Out		R	-2.80	
+	31.5.2026	Cash	10479	Sladko i Soleno	Buying lunch	Food & Dining:Take-Outs		R	-9.45	
+	31.5.2026	Cash	10480	Relatives	Gift for birthday	Other Income:Gifts		R	50.00	
+	1.6.2026	Cash	10483	TEDi	Buying pots	Home & Tech:Lawn & Garden		R	-3.00	
+	1.6.2026	Cash	10484	Sinsay	Buying a belt	Clothing & Accessories:Accessories		R	-4.49	
+	2.6.2026	Cash	10485	Ksilo.Bg	Buying CD albums	Entertainment:Music		R	-46.23	
+	2.6.2026	Cash	10486	Nikolcheto	Buying things for a friend	Financial:Money Lends		R	-35.68	
+	5.6.2026	Cash	10491	CBA	Buying groceries	Food & Dining:Groceries		R	-15.85	
+	6.6.2026	Cash	10494	KiK	Buying bras	Clothing & Accessories:Underwear		R	-9.70	
+	6.6.2026	Cash	10495	Pepco	Buying a funko pop	Entertainment:Hobbies		R	-6.00	
+	6.6.2026	Cash	10496	Grillo	Buying lunch	Food & Dining:Take-Outs		R	-5.06	
+	6.6.2026	Cash	10497	Sinsay	Buying clothes	Clothing & Accessories:Clothes		R	-9.99	
+	6.6.2026	Cash	10498	New Yorker	Buying clothes	Clothing & Accessories:Clothes		R	-16.99	
+	6.6.2026	Cash	10499	Lidl	Buying groceries	Food & Dining:Groceries		R	-10.12	
+	6.6.2026	Cash	10500	Parents	Returned money for shopping	Other Income:Other Income		R	57.86	
+	6.6.2026	Cash	10501	CBA	Buying groceries	Food & Dining:Groceries		R	-5.48	
+	8.6.2026	Cash	10503	Grizli	Buying groceries	Food & Dining:Groceries		R	-5.00	
+	13.6.2026	Cash	10505	Mimka	Going waxing	Personal Care:Waxing		R	-13.00	
+	13.6.2026	Cash	10506	Happiness Store	Buying laundry products	Household Goods:Expendable Goods		R	-7.66	
+	14.6.2026	Cash	10512	CBA	Buying groceries	Food & Dining:Groceries		R	-1.94	
+	16.6.2026	Cash	10515	Shop - Tundzha	Buying groceries	Food & Dining:Groceries		R	-2.17	
+	17.6.2026	Cash	10516	Diner "Sofiisko Shose"	Buying breakfast	Food & Dining:Take-Outs		R	-1.30	
+	18.6.2026	Cash	10517	Shop - Tundzha	Buying groceries	Food & Dining:Groceries		R	-1.70	
+	19.6.2026	Cash	10518	CBA	Buying groceries	Food & Dining:Groceries		R	-7.27	
+	20.6.2026	Cash	10522	Srubsko Selo	Buying dinner	Food & Dining:Take-Outs		R	-10.00	
+	21.6.2026	Cash	10524	Shop - Tundzha	Buying groceries	Food & Dining:Groceries		R	-0.66	
+	21.6.2026	Cash	10525	CBA	Buying groceries	Food & Dining:Groceries		R	-8.65	
+	22.6.2026	Cash	10528	VIPNET	Paying Internet & TV bills	Bills & Utilities:Internet & Television		R	-18.40	
+	24.6.2026	Cash	10537	eMag	Buying audio transmitter	Auto:Upgrades		R	-32.00	
+	26.6.2026	Cash	10539	CBA	Buying groceries	Food & Dining:Groceries		R	-3.15	
+	27.6.2026	Cash	10540	Pizza Joy	Buying lunch	Food & Dining:Take-Outs		R	-3.10	
+	27.6.2026	Cash	10541	Italyanskiya Sladoled	Buying ice cream	Food & Dining:Treats		R	-4.20	
+	29.6.2026	Cash	10543	Church "St. Ivan Rilski"	Visiting a church	Religion & Spirituality:Religious Services		R	-6.50	
+	29.6.2026	Cash	10545	Oferta	Buying groceries	Food & Dining:Groceries		R	-4.80	
+	30.6.2026	Cash	10548	Asen	Buying new tires	Auto:Car Maintenance & Repairs		R	-400.00	
+	3.7.2026	Cash	10559	Mimka	Going waxing	Personal Care:Waxing		R	-13.00	
+	3.7.2026	Cash	10560	Sladko i Soleno	Buying lunch	Food & Dining:Take-Outs		R	-5.40	
+	4.7.2026	Cash	10564	Diablo Hot Dog Company	Buying lunch	Food & Dining:Take-Outs		R	-5.00	
+	4.7.2026	Cash	10565	Festiko	Buying long lasting goods	Household Goods:Long Lasting Goods		R	-2.30	
+	4.7.2026	Cash	10567	Rafffy	Buying ice cream	Food & Dining:Treats		R	-2.30	
+	4.7.2026	Cash	10570	Fun Tun	Buying hair tie	Clothing & Accessories:Accessories		R	-0.77	
+	4.7.2026	Cash	10571	Fun Tun	Buying underwear	Clothing & Accessories:Underwear		R	-5.23	
+	4.7.2026	Cash	10572	Buy Max	Buying playing cards	Entertainment:Video & Board Games		R	-1.00	
+	4.7.2026	Cash	10573	Buy Max	Buying documents' wallet for car documents	Auto:Other Auto		R	-2.05	
+	4.7.2026	Cash	10574	Buy Max	Buying long lasting goods	Household Goods:Long Lasting Goods		R	-2.82	
+	4.7.2026	Cash	10575	Buy Max	Buying underwear	Clothing & Accessories:Underwear		R	-4.83	
+	6.7.2026	Cash	10580	Izraelska Pitka	Buying lunch	Food & Dining:Take-Outs		R	-3.70	
+	8.7.2026	Cash	10582	Diner "Sofiisko Shose"	Buying breakfast	Food & Dining:Take-Outs		R	-1.30	
+	10.7.2026	Cash	10584	Oferta	Buying groceries	Food & Dining:Groceries		R	-3.20	
+	10.7.2026	Cash	10585	CBA	Buying groceries	Food & Dining:Groceries		R	-7.13	
+	13.7.2026	Cash	10587	Nova Zvezda	Buying medicine	Health:Pharmacy		R	-2.60	
+	13.7.2026	Cash	10588	Juliana	Buying groceries	Food & Dining:Groceries		R	-11.43	
+	15.7.2026	Cash	10591	Buy Max	Buying underwear	Clothing & Accessories:Underwear		R	-1.55	
+	22.7.2026	Cash	10613	Rafffy	Buying ice cream	Food & Dining:Treats		R	-3.20	
+	25.7.2026	Cash	10619	Street Coffee Machine	Buying coffee	Food & Dining:Treats		R	-0.60	
+	28.7.2026	Cash	10621	Oferta	Buying groceries	Food & Dining:Groceries		R	-2.15	
+	31.7.2026	Cash	10629	Mimka	Going waxing	Personal Care:Waxing		R	-13.00	
+	1.8.2026	Cash	10635	Nova Zvezda	Buying medicine	Health:Pharmacy		R	-1.22	
+	1.8.2026	Cash	10636	Festiko	Buying home decor	Home & Tech:Home Decor		R	-2.14	
+	1.8.2026	Cash	10637	Festiko	Buying stationery items	Household Goods:Stationery		R	-0.51	
+	1.8.2026	Cash	10638	Festiko	Buying underwear	Clothing & Accessories:Underwear		R	-1.53	
+	1.8.2026	Cash	10639	Oferta	Buying groceries	Food & Dining:Groceries		R	-5.02	
+	1.8.2026	Cash	10643	Srubsko Selo	Buying dinner	Food & Dining:Take-Outs		R	-8.60	
+	3.8.2026	Cash	10647	Oferta	Buying groceries	Food & Dining:Groceries		R	-0.70	
+	6.8.2026	Cash	10649	Church "St. Georgi Pobedonosec"	Visiting a church	Religion & Spirituality:Religious Services		R	-4.00	
+	6.8.2026	Cash	10650	Nature Comfort	Buying cosmetics	Personal Care:Cosmetic Products		R	-6.60	
+	7.8.2026	Cash	10651	Sladko i Soleno	Buying lunch	Food & Dining:Take-Outs		R	-3.15	
+	8.8.2026	Cash	10653	Hrupkava Korichka	Buying breakfast	Food & Dining:Take-Outs		R	-3.35	
+	8.8.2026	Cash	10654	Skarata na Vankata	Buying lunch	Food & Dining:Take-Outs		R	-3.40	
+	8.8.2026	Cash	10655	Unknown Seller	Buying homemade jam	Food & Dining:Treats		R	-9.00	
+	8.8.2026	Cash	10656	Colleagues	Buying things for a colleague	Financial:Money Lends		R	-10.00	
+	8.8.2026	Cash	10657	Skara Trunsko Zhdrelo	Buying food for hiking	Social Life:Going Out		R	-3.30	
+	9.8.2026	Cash	10659	Oferta	Buying groceries	Food & Dining:Groceries		R	-2.93	
+	9.8.2026	Cash	10661	CBA	Buying groceries	Food & Dining:Groceries		R	-1.60	
+	10.8.2026	Cash	10669	Dido	Paying for car service	Auto:Car Maintenance & Repairs		R	-465.00	
+	11.8.2026	Cash	10671	CBA	Buying groceries	Food & Dining:Groceries		R	-9.88	
+	15.8.2026	Cash	10673	Shop - Tundzha	Buying groceries	Food & Dining:Groceries		R	-1.79	
+	15.8.2026	Cash	10676	M Pulse	Buying second hand clothes	Clothing & Accessories:Clothes		R	-2.35	
+	15.8.2026	Cash	10677	Church "St. Ivan Rilski"	Buying religious goods	Religion & Spirituality:Religious Goods		R	-2.00	
+	15.8.2026	Cash	10678	Church "St. Ivan Rilski"	Visiting a church	Religion & Spirituality:Religious Services		R	-10.50	
+	15.8.2026	Cash	10682	Terranova	Buying clothes	Clothing & Accessories:Clothes		R	-7.99	
+	15.8.2026	Cash	10683	TEDi	Buying home decor	Home & Tech:Home Decor		R	-1.55	
+	15.8.2026	Cash	10684	Parents	Returned money for shopping	Other Income:Other Income		R	10.34	
+	15.8.2026	Cash	10686	Nestle Ice Cream	Buying ice cream	Food & Dining:Treats		R	-3.40	
+	18.8.2026	Cash	10690	Mimka	Going waxing	Personal Care:Waxing		R	-13.00	
+	20.8.2026	Cash	10696	Transfer Money	Withdrawing money	[Debit Card]		R	500.00	
+	20.8.2026	Cash	10698	Grizli	Buying groceries	Food & Dining:Groceries		R	-18.66	
+	21.8.2026	Cash	10699	VIPNET	Paying Internet & TV bills	Bills & Utilities:Internet & Television		R	-18.40	
+	21.8.2026	Cash	10700	Lilly Drogerie	Buying cosmetics	Personal Care:Cosmetic Products		R	-13.44	
+	21.8.2026	Cash	10701	GSM Magazin	Changing the battery of my phone	Home & Tech:Item Repairs		R	-70.00	
+	21.8.2026	Cash	10702	Rafffy	Buying ice cream	Food & Dining:Treats		R	-3.00	
+	21.8.2026	Cash	10703	Srubsko Selo	Buying dinner	Food & Dining:Take-Outs		R	-13.90	
+	22.8.2026	Cash	10704	TEDi	Buying home decor	Home & Tech:Home Decor		R	-1.00	
+	24.8.2026	Cash	10710	Oferta	Buying groceries	Food & Dining:Groceries		R	-4.21	
+	28.8.2026	Cash	10713	Oferta	Buying groceries	Food & Dining:Groceries		R	-4.38	
+	28.8.2026	Cash	10714	CBA	Buying groceries	Food & Dining:Groceries		R	-2.97	
+	29.8.2026	Cash	10721	Toplofikatzia Pernik	Paying hot water and heating bills	Bills & Utilities:Heating & Hot Water		R	-26.57	
+	29.8.2026	Cash	10722	Toplofikatzia Pernik	Returned money after reconcilation	Other Income:Reconcilations		R	26.57	
+	30.8.2026	Cash	10723	Non-Stop - VI SU	Seeing a friend	Social Life:Going Out		R	-0.60	
+	2.9.2026	Cash	10731	TEDi	Buying home decor	Home & Tech:Home Decor			-1.55	
+	3.9.2026	Cash	10738	Shop - Tundzha	Buying groceries	Food & Dining:Groceries			-0.60	
+	3.9.2026	Cash	10739	LC Waikiki	Buying clothes	Clothing & Accessories:Clothes			-26.99	
+	3.9.2026	Cash	10740	Terranova	Buying clothes	Clothing & Accessories:Clothes			-15.71	
+	3.9.2026	Cash	10741	Deichmann	Buying a bag	Clothing & Accessories:Shoes & Bags			-39.99	
+	3.9.2026	Cash	10742	DM	Buying cosmetics	Personal Care:Cosmetic Products			-14.15	
+	3.9.2026	Cash	10743	Parents	Returned money for shopping	Other Income:Other Income			96.84	
+	3.9.2026	Cash	10744	CBA	Buying groceries	Food & Dining:Groceries			-7.98	
+	4.9.2026	Cash	10745	Mimka	Going waxing	Personal Care:Waxing			-13.00	
+	4.9.2026	Cash	10746	CBA	Buying cosmetics	Personal Care:Cosmetic Products			-3.59	
+	4.9.2026	Cash	10747	CBA	Buying groceries	Food & Dining:Groceries			-1.15	
+	5.9.2026	Cash	10757	Diablo Hot Dog Company	Buying lunch	Food & Dining:Take-Outs			-5.60	
+	5.9.2026	Cash	10758	Za-Za	Buying a bra	Clothing & Accessories:Underwear			-17.00	
+	5.9.2026	Cash	10759	Buy Max	Buying bras	Clothing & Accessories:Underwear			-23.40	
+	5.9.2026	Cash	10760	Relax	In and out car wash	Auto:Car Wash			-20.00	
+	5.9.2026	Cash	10761	CBA	Buying groceries	Food & Dining:Groceries			-4.82	
+	6.9.2026	Cash	10763	Hrupkava Korichka	Buying breakfast	Food & Dining:Take-Outs			-1.45	
+	6.9.2026	Cash	10765	Sunny Beach Beach	Paying for an umbrella	Misc.:Misc. Services			-5.10	
+	6.9.2026	Cash	10766	-	Buying water	Food & Dining:Groceries			-1.00	
+	7.9.2026	Cash	10766	Sunny Beach Beach	Paying for an umbrella	Misc.:Misc. Services			-5.50	
+	7.9.2026	Cash	10767	Supermarket Karolina - Slanchev Bryag	Buying water	Food & Dining:Groceries			-0.90	
+	7.9.2026	Cash	10768	Mini Train - Nesebar	Taking the mini train	Travel:Public Transport			-4.00	
+	7.9.2026	Cash	10769	Supreme Records Shop	Buyng a CD album	Entertainment:Music			-20.00	
+	7.9.2026	Cash	10770	Mini Train - Nesebar	Taking the mini train	Travel:Public Transport			-4.00	
+	8.9.2026	Cash	10771	Sunny Beach Beach	Paying for an umbrella	Misc.:Misc. Services			-5.00	
+	9.9.2026	Cash	10772	Sunny Beach Beach	Paying for an umbrella	Misc.:Misc. Services			-5.00	
+	9.9.2026	Cash	10773	-	Buying water	Food & Dining:Groceries			-1.00	
+	9.9.2026	Cash	10774	Mini Train - Nesebar	Taking the mini train	Travel:Public Transport			-4.00	
+	9.9.2026	Cash	10775	Old Town Nesebar	Buying gifts from the sea	Gifts:Material Gifts			-12.50	
+	9.9.2026	Cash	10776	-	Buying nuts	Food & Dining:Treats			-1.50	
+	9.9.2026	Cash	10777	Mini Train - Nesebar	Taking the mini train	Travel:Public Transport			-4.00	
+	10.9.2026	Cash	10778	Sunny Beach Beach	Paying for an umbrella	Misc.:Misc. Services			-5.00	
+	20.1.2026	Fuel Coupons	10075	Shell	Filling the tank	Auto:Fuel		R	-10.24	
+	11.3.2026	Fuel Coupons	10250	ReBenefit	Income from extra work benefits	Work Income:Coupons		R	70.00	
+	30.3.2026	Fuel Coupons	10304	Shell	Filling the tank	Auto:Fuel		R	-50.00	
+	21.4.2026	Fuel Coupons	10357	Shell	Filling the tank	Auto:Fuel		R	-20.00	
+	2.6.2026	Fuel Coupons	10489	Rebenefit	Income from extra work benefits	Work Income:Coupons		R	30.00	
+	1.1.2026 - 31.12.2026								4,361.25	
+										
+	TOTAL INFLOWS								30,684.42	
+										
+	TOTAL OUTFLOWS								-26,323.17	
+										
+	NET TOTAL								4,361.25	

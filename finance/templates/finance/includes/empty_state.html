@@ -1,0 +1,7 @@
+{% load static %}
+<div class="empty-state">
+    <img src="{% static 'finance/img/mascot-face-192.png' %}" alt="" width="84" height="84" loading="lazy">
+    <h3>{{ title }}</h3>
+    {% if text %}<p>{{ text }}</p>{% endif %}
+    {% if cta_url %}<a href="{{ cta_url }}" class="btn btn-primary btn-sm mt-2">{{ cta_label }}</a>{% endif %}
+</div>

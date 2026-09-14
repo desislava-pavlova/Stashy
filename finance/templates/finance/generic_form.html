@@ -1,20 +1,143 @@
 {% extends "finance/base.html" %}
 {% block title %}{{ title|default:"Edit" }} · Stashy{% endblock %}
 {% block content %}
-<h3 class="mb-3">{{ title|default:"Edit" }}</h3>
-<div class="card p-4" style="max-width: 640px;">
-    <form method="post">
-        {% csrf_token %}
-        {% for field in form %}
-        <div class="mb-3">
-            <label class="form-label">{{ field.label }}</label>
-            {{ field }}
-            {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
-            {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
-        </div>
-        {% endfor %}
-        <button type="submit" class="btn btn-success">Save</button>
-        <a href="javascript:history.back()" class="btn btn-outline-secondary">Cancel</a>
-    </form>
+<div class="page-header">
+    <h1 class="h3 mb-0">{{ title|default:"Edit" }}</h1>
 </div>
+<div class="row g-4 align-items-start">
+    <div class="col-lg-7 col-xxl-6">
+        <div class="card p-4">
+            <form method="post">
+                {% csrf_token %}
+                {% if scope %}<input type="hidden" name="scope" value="{{ scope }}">{% endif %}
+                {% if scope == "series" %}<div class="alert alert-info py-2">Editing the whole series — this also updates every other upcoming occurrence.</div>{% endif %}
+                {% for error in form.non_field_errors %}<div class="alert alert-danger py-2">{{ error }}</div>{% endfor %}
+                {% for field in form %}
+                {% if field.widget_type == "checkbox" %}
+                <div class="form-check mb-3" id="field-{{ field.name }}">
+                    {{ field }}
+                    <label class="form-check-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                    {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+                    {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                </div>
+                {% else %}
+                <div class="mb-3" id="field-{{ field.name }}">
+                    <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                    {{ field }}
+                    {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+                    {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                </div>
+                {% endif %}
+                {% endfor %}
+                <div class="d-flex gap-2 mt-4">
+                    <button type="submit" class="btn btn-primary px-4">Save</button>
+                    <a href="javascript:history.back()" class="btn btn-outline-secondary">Cancel</a>
+                </div>
+            </form>
+        </div>
+    </div>
+    <div class="col-lg-5 col-xxl-4">
+        {% include "finance/includes/help_card.html" %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{% if category_type_filter %}
+<script>
+(function () {
+    var typeField = document.getElementById('{{ form.category_type.id_for_label }}');
+    var parentField = document.getElementById('{{ form.parent.id_for_label }}');
+    if (!typeField || !parentField) return;
+
+    function applyFilter() {
+        var type = typeField.value;
+        Array.from(parentField.options).forEach(function (option) {
+            var optionType = option.getAttribute('data-category-type');
+            option.hidden = !!optionType && optionType !== type;
+        });
+        var current = parentField.options[parentField.selectedIndex];
+        if (current && current.hidden) parentField.value = '';
+    }
+
+    typeField.addEventListener('change', applyFilter);
+    applyFilter();
+})();
+</script>
+{% endif %}
+{% if reminder_type_filter %}
+<script>
+(function () {
+    var typeField = document.getElementById('{{ form.reminder_type.id_for_label }}');
+    var categoryField = document.getElementById('{{ form.category.id_for_label }}');
+    if (!typeField || !categoryField) return;
+
+    function applyFilter() {
+        var type = typeField.value;
+        Array.from(categoryField.options).forEach(function (option) {
+            var optionType = option.getAttribute('data-category-type');
+            option.hidden = !!optionType && optionType !== type;
+        });
+        var current = categoryField.options[categoryField.selectedIndex];
+        if (current && current.hidden) categoryField.value = '';
+    }
+
+    typeField.addEventListener('change', applyFilter);
+    applyFilter();
+})();
+</script>
+{% endif %}
+{% if form.no_end_date %}
+<script>
+(function () {
+    var noEnd = document.getElementById('{{ form.no_end_date.id_for_label }}');
+    var endDate = document.getElementById('{{ form.end_date.id_for_label }}');
+    if (!noEnd || !endDate) return;
+
+    function apply() { endDate.disabled = noEnd.checked; }
+    noEnd.addEventListener('change', apply);
+    apply();
+})();
+</script>
+{% endif %}
+{% if form.frequency and form.end_date %}
+<script>
+(function () {
+    // A one-time reminder has no period to end, align to the end of, or repeat every N of
+    // (2026-09-14) - hide those fields rather than leave them sitting there with nothing to do.
+    var freqField = document.getElementById('{{ form.frequency.id_for_label }}');
+    var rows = ['end_date', 'no_end_date', 'end_of_period', 'interval'].map(function (name) {
+        return document.getElementById('field-' + name);
+    }).filter(Boolean);
+    if (!freqField || !rows.length) return;
+
+    function apply() {
+        var oneTime = freqField.value === 'one_time';
+        rows.forEach(function (row) { row.hidden = oneTime; });
+    }
+
+    freqField.addEventListener('change', apply);
+    apply();
+})();
+</script>
+{% endif %}
+{% if form.interval %}
+<script>
+(function () {
+    // Shows the picked frequency's unit word next to the "Every" field, e.g. "Every [2]
+    // week(s)" - replaces the old fixed "Every 2 weeks" choice (2026-09-14 follow-up).
+    var freqField = document.getElementById('{{ form.frequency.id_for_label }}');
+    var intervalInput = document.getElementById('{{ form.interval.id_for_label }}');
+    if (!freqField || !intervalInput) return;
+    var unitWords = {{ unit_words_json|default:"{}"|safe }};
+    var unitSpan = document.createElement('span');
+    unitSpan.className = 'ms-2 text-muted';
+    intervalInput.insertAdjacentElement('afterend', unitSpan);
+
+    function apply() { unitSpan.textContent = unitWords[freqField.value] || ''; }
+    freqField.addEventListener('change', apply);
+    apply();
+})();
+</script>
+{% endif %}
 {% endblock %}

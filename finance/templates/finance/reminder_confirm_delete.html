@@ -1,0 +1,13 @@
+{% extends "finance/generic_confirm_delete.html" %}
+{% block delete_title %}Delete {{ object.get_reminder_type_display }} reminder for {{ object.payee.name|default:object.category|default:"this account" }}?{% endblock %}
+{% block delete_warning %}
+{% if occurrence_count %}
+<div class="alert alert-warning">
+    <strong>This will also delete {{ occurrence_count }} upcoming occurrence{{ occurrence_count|pluralize }}</strong>
+    auto-generated from this recurring reminder. Any of them you've already entered or skipped are kept as-is.
+</div>
+{% endif %}
+{% if object.series_id %}
+<p class="mb-2 text-muted">This is one occurrence of a recurring reminder — deleting it won't affect the others.</p>
+{% endif %}
+{% endblock %}

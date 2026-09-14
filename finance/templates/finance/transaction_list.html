@@ -1,50 +1,100 @@
 {% extends "finance/base.html" %}
+{% load stashy_format %}
 {% block title %}Transactions · Stashy{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <h3 class="mb-0">Transactions</h3>
-    <a href="{% url 'finance:transaction_add' %}" class="btn btn-success"><i class="bi bi-plus-lg me-1"></i>New transaction</a>
+<div class="page-header">
+    <h1 class="h3 mb-0">Transactions</h1>
+    <a href="{% url 'finance:transaction_add' %}" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>New transaction</a>
 </div>
 
 <form method="get" class="card p-3 mb-3">
+    {% if with_subcategories %}<input type="hidden" name="with_subcategories" value="1">{% endif %}
+    <div class="row g-2 mb-2">
+        <div class="col-md-3">
+            <select name="range" class="form-select form-select-sm" onchange="this.form.submit()" aria-label="Date range">
+                {% for value, label in range_choices %}<option value="{{ value }}" {% if range == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="col-md-3">
+            <input type="text" name="start" class="form-control form-control-sm" data-datepicker placeholder="Start" value="{{ start|sdate }}" aria-label="Start date">
+        </div>
+        <div class="col-md-3">
+            <input type="text" name="end" class="form-control form-control-sm" data-datepicker placeholder="End" value="{{ end|sdate }}" aria-label="End date">
+        </div>
+        <div class="col-md-3">
+            <select name="status" class="form-select form-select-sm" onchange="this.form.submit()" aria-label="Reconciliation status">
+                <option value="">All Transactions</option>
+                <option value="reconciled" {% if status == "reconciled" %}selected{% endif %}>Reconciled</option>
+                <option value="unreconciled" {% if status == "unreconciled" %}selected{% endif %}>Unreconciled</option>
+            </select>
+        </div>
+    </div>
     <div class="row g-2">
         <div class="col-md-3">
-            <select name="account" class="form-select form-select-sm" onchange="this.form.submit()">
+            <select name="account" class="form-select form-select-sm" onchange="this.form.submit()" aria-label="Account">
                 <option value="">All accounts</option>
                 {% for a in accounts %}<option value="{{ a.pk }}" {% if selected_account == a.pk|stringformat:"s" %}selected{% endif %}>{{ a.name }}</option>{% endfor %}
             </select>
         </div>
         <div class="col-md-3">
-            <select name="category" class="form-select form-select-sm" onchange="this.form.submit()">
+            <select name="category" class="form-select form-select-sm" onchange="this.form.submit()" aria-label="Category">
                 <option value="">All categories</option>
+                <option value="none" {% if selected_category == "none" %}selected{% endif %}>Uncategorized</option>
                 {% for c in categories %}<option value="{{ c.pk }}" {% if selected_category == c.pk|stringformat:"s" %}selected{% endif %}>{{ c.full_name }}</option>{% endfor %}
             </select>
         </div>
         <div class="col-md-4">
-            <input type="text" name="q" class="form-control form-control-sm" placeholder="Search payee or memo" value="{{ search }}">
+            <input type="text" name="q" class="form-control form-control-sm" placeholder="Search payee or memo" value="{{ search }}" aria-label="Search payee or memo">
         </div>
         <div class="col-md-2">
             <button class="btn btn-sm btn-outline-secondary w-100">Filter</button>
         </div>
     </div>
+    {% if with_subcategories and selected_category_obj %}
+    <div class="d-flex flex-wrap align-items-center gap-2 mt-2 small">
+        <span class="filter-chip"><i class="bi bi-diagram-3"></i>{{ selected_category_obj.name }} + subcategories</span>
+        <a href="{% url 'finance:transaction_list' %}">Clear all filters</a>
+    </div>
+    {% endif %}
 </form>
 
+<div class="text-body-secondary small mb-2">
+    {{ transactions|length }} transaction{{ transactions|length|pluralize }}
+    {% if start or end %}· {{ start|sdate|default:"…" }} – {{ end|sdate|default:"…" }}{% endif %}
+</div>
 <div class="card">
-    <table class="table mb-0 align-middle">
-        <thead><tr><th>Date</th><th>Account</th><th>Payee</th><th>Category</th><th>Memo</th><th class="text-end">Amount</th><th></th></tr></thead>
+    <table class="table table-hover mb-0 align-middle register">
+        <thead>
+            <tr>
+                <th><a href="{% querystring sort=sort_next.date %}" class="sort-link">Date{% include "finance/includes/sort_arrow.html" with column="date" %}</a></th>
+                <th><a href="{% querystring sort=sort_next.num %}" class="sort-link">Num{% include "finance/includes/sort_arrow.html" with column="num" %}</a></th>
+                <th><a href="{% querystring sort=sort_next.account %}" class="sort-link">Account{% include "finance/includes/sort_arrow.html" with column="account" %}</a></th>
+                <th><a href="{% querystring sort=sort_next.payee %}" class="sort-link">Payee{% include "finance/includes/sort_arrow.html" with column="payee" %}</a></th>
+                <th><a href="{% querystring sort=sort_next.category %}" class="sort-link">Category{% include "finance/includes/sort_arrow.html" with column="category" %}</a></th>
+                <th><a href="{% querystring sort=sort_next.memo %}" class="sort-link">Memo{% include "finance/includes/sort_arrow.html" with column="memo" %}</a></th>
+                <th class="text-end"><a href="{% querystring sort=sort_next.amount %}" class="sort-link">Payment{% include "finance/includes/sort_arrow.html" with column="amount" %}</a></th>
+                <th class="text-end"><a href="{% querystring sort=sort_next.amount %}" class="sort-link">Deposit{% include "finance/includes/sort_arrow.html" with column="amount" %}</a></th>
+                <th></th>
+            </tr>
+        </thead>
         <tbody>
         {% for t in transactions %}
-            <tr>
-                <td class="text-muted small">{{ t.date }}</td>
-                <td class="text-muted small">{{ t.account.name }}</td>
+            <tr{% if t.reconciled %} class="row-reconciled"{% endif %}>
+                <td class="text-body-secondary text-nowrap">{{ t.date|sdate }}</td>
+                <td class="text-body-secondary">{{ t.transaction_number|default:"—" }}</td>
+                <td class="text-body-secondary">{{ t.account.name }}</td>
                 <td>{{ t.display_payee }}</td>
-                <td class="text-muted small">{{ t.category|default:"—" }}</td>
-                <td class="text-muted small">{{ t.memo }}</td>
-                <td class="text-end {% if t.amount < 0 %}amount-negative{% else %}amount-positive{% endif %}">${{ t.amount|floatformat:2 }}</td>
-                <td class="text-end"><a href="{% url 'finance:transaction_edit' t.pk %}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-pencil"></i></a></td>
+                <td class="text-body-secondary">{{ t.category|default:"—" }}</td>
+                <td class="text-body-secondary">{{ t.memo }}</td>
+                <td class="text-end text-nowrap amount-negative">{% if t.amount < 0 %}{{ t.amount|abs_value|moneyc:t.account.currency }}{% endif %}</td>
+                <td class="text-end text-nowrap amount-positive">{% if t.amount > 0 %}{{ t.amount|moneyc:t.account.currency }}{% endif %}</td>
+                <td class="text-end text-nowrap">
+                    <a href="{% url 'finance:transaction_edit' t.pk %}?next={{ request.get_full_path|urlencode }}" class="btn btn-sm btn-outline-secondary btn-icon" aria-label="Edit"><i class="bi bi-pencil"></i></a>
+                    <a href="{% url 'finance:transaction_delete' t.pk %}?next={{ request.get_full_path|urlencode }}" class="btn btn-sm btn-outline-danger btn-icon" aria-label="Delete"><i class="bi bi-trash"></i></a>
+                </td>
             </tr>
         {% empty %}
-            <tr><td colspan="7" class="text-muted text-center py-4">No transactions found.</td></tr>
+            <tr><td colspan="9">{% include "finance/includes/empty_state.html" with title="Nothing here" text="No transactions match these filters." %}</td></tr>
         {% endfor %}
         </tbody>
     </table>

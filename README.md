@@ -8,7 +8,38 @@ vs. average spending, net worth), all filterable by date range and interval.
 Runs locally, single-user, backed by SQLite — no separate database server to
 install or configure.
 
-## 1. Set up the environment
+## Quick start (Windows)
+
+1. Install Python 3.12 or newer from https://www.python.org/downloads/ —
+   on the installer's first screen, tick **"Add python.exe to PATH"**.
+2. Double-click **`Stashy.bat`**.
+
+The first run sets everything up (private Python environment, components,
+settings file with a random secret key, database) and asks you to pick a
+username and password. After that, double-clicking `Stashy.bat` just starts
+Stashy and opens it in your browser. Keep the black window open while you use
+Stashy; closing it stops Stashy.
+
+Stashy runs on Waitress, a production web server, rather than Django's
+development server - so start it with `Stashy.bat`, not
+`python manage.py runserver`. After updating Stashy's code, close the window
+and start `Stashy.bat` again.
+
+By default Stashy serves on port 8000. If that's already taken by something
+else on your computer (another app, or a `manage.py runserver` you're running
+for development — Django's dev server also defaults to 8000), open `.env` and
+add or change a `PORT=` line (e.g. `PORT=8001`), then run `Stashy.bat` again.
+
+If an update changes the database, `Stashy.bat` backs up `db.sqlite3` into
+`backups/` before applying the change.
+
+Once installed, Stashy needs no internet connection: every style, font, icon
+and script ships inside the app. It follows your Windows light/dark setting,
+and the sidebar toggle switches it (your choice is remembered).
+
+## Manual setup (macOS/Linux, or if you prefer the command line)
+
+### 1. Set up the environment
 
 ```bash
 python3 -m venv venv
@@ -19,14 +50,14 @@ cp .env.example .env
 
 Edit `.env` and set `SECRET_KEY` to any long random string.
 
-## 2. Run migrations and create your login
+### 2. Run migrations and create your login
 
 ```bash
 python manage.py migrate
 python manage.py createsuperuser
 ```
 
-## 3. Run it
+### 3. Run it
 
 ```bash
 python manage.py runserver
@@ -37,9 +68,14 @@ created. There's no public signup — this is meant for one user (you).
 
 ## Using it
 
-- **Accounts** — add your checking/savings/credit card/cash accounts with a
-  starting balance. Each account's balance is computed live from its
-  transactions.
+- **Accounts** — grouped as Physical Liquid, Digital Liquid or Illiquid
+  (inactive accounts always sort last). Add an opening balance + date when
+  creating one; Stashy turns it into a real, editable transaction rather
+  than a hidden number, so every account's balance is a pure sum of its
+  transactions. Each account has its own currency; **Settings** sets your
+  main currency and lets you fetch exchange rates (needs internet) to
+  convert everything for net worth. The **Transfer** button on an account
+  page moves money to another account as a paired transaction.
 - **Categories** — set up income/expense categories; give a category a
   "parent" to make it a subcategory.
 - **Transactions** — add manually, or use **Import** for CSV/OFX/QFX bank
@@ -57,14 +93,24 @@ created. There's no public signup — this is meant for one user (you).
   or category.
 - **Admin** — the full Django admin is available at `/admin/` for bulk edits,
   data cleanup, or anything the UI doesn't cover yet.
+- **Audit log** — every change to your data, including automatic ones (imports,
+  memorized-payee updates, reminder dates moving forward), is recorded with
+  before/after values, the reason, and everything else the same click changed.
+  See it in the admin under *Audit log*, or press **History** on any record in
+  the admin. Changes made by editing `db.sqlite3` directly with another tool
+  can't be seen by the log.
 
 ## CSV import format
 
 Any CSV with columns roughly matching `Date, Payee/Description, Memo, Amount`
 should work — column names are matched case-insensitively and a few common
-bank export variants are recognized. Dates are parsed as `YYYY-MM-DD`,
-`MM/DD/YYYY`, `MM/DD/YY`, or `DD/MM/YYYY`. Duplicate rows (same account, date,
-amount, and payee) are automatically skipped on re-import.
+bank export variants are recognized. Dates are read day-first: `DD/MM/YYYY`,
+`DD.MM.YYYY`, `DD-MM-YYYY`, `DD/MM/YY`, `DD.MM.YY`, or ISO `YYYY-MM-DD`
+(American month-first dates are deliberately not accepted, since `03/04/2026`
+would be ambiguous). Amounts are read exactly (never as floating point) in
+either style — `1 234.56`, `1,234.56`, `1.234,56`, `12,50`, or `(12.00)` for a
+negative. Duplicate rows (same account, date, amount, and payee) are
+automatically skipped on re-import.
 
 OFX/QFX files exported directly from your bank are also supported.
 

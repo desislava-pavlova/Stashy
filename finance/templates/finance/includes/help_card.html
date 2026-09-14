@@ -1,0 +1,15 @@
+{% load static %}
+<aside class="card help-card p-4">
+    <div class="help-head">
+        <img src="{% static 'finance/img/mascot-face-192.png' %}" alt="" width="56" height="56">
+        <div>
+            <div class="card-title-sm">Stashy tips</div>
+            <h2 class="h5 mb-0">Good to know</h2>
+        </div>
+    </div>
+    {% if tips %}
+    <ul>{% for tip in tips %}<li>{{ tip }}</li>{% endfor %}</ul>
+    {% else %}
+    <p class="mb-0">Fill in what you know — you can always come back and change it later.</p>
+    {% endif %}
+</aside>

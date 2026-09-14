@@ -3,25 +3,66 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h3 class="mb-0">Categories</h3>
-    <a href="{% url 'finance:category_add' %}" class="btn btn-success"><i class="bi bi-plus-lg me-1"></i>Add category</a>
+    <a href="{% url 'finance:category_add' %}" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>Add category</a>
 </div>
+<form method="get" class="card p-3 mb-3">
+    <div class="row g-2">
+        <div class="col-md-6">
+            <input type="text" name="q" class="form-control form-control-sm" placeholder="Search by name" value="{{ search }}" aria-label="Search categories">
+        </div>
+        <div class="col-md-2">
+            <button class="btn btn-sm btn-outline-secondary w-100">Search</button>
+        </div>
+    </div>
+    {% if search %}
+    <div class="mt-2 small"><a href="{% url 'finance:category_list' %}">Clear search</a></div>
+    {% endif %}
+</form>
+
+{% for group in groups %}
+<div class="account-group mb-3">
+    <div class="account-group-head">
+        <span class="account-group-name">{{ group.name }}</span>
+        {% if group.key == "transfer" %}<span class="account-group-explainer">System-managed — one per account, created and deleted with it</span>{% endif %}
+    </div>
+    <div class="card">
+        <table class="table mb-0 align-middle">
+            <thead><tr><th>Name</th><th class="text-end">Usage</th><th></th></tr></thead>
+            <tbody>
+            {% for category in group.categories %}
+                <tr>
+                    <td>
+                        {% if category.parent %}
+                        <span class="category-sub"><i class="bi bi-arrow-return-right category-connector"></i>{{ category.full_name }}</span>
+                        {% else %}
+                        <span class="category-main">{{ category.name }}</span>
+                        {% endif %}
+                        {% if category.is_system_managed %}<span class="badge text-bg-secondary ms-1">system</span>{% endif %}
+                    </td>
+                    <td class="text-end">
+                        <a href="{% url 'finance:category_usage' category.pk %}" class="text-decoration-none {% if not category.usage_count %}usage-empty{% endif %}">
+                            {{ category.usage_count }} transaction{{ category.usage_count|pluralize }}
+                        </a>
+                    </td>
+                    <td class="text-end">
+                        {% if not category.is_system_managed %}
+                        <a href="{% url 'finance:category_edit' category.pk %}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-pencil"></i></a>
+                        <a href="{% url 'finance:category_delete' category.pk %}" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></a>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% empty %}
 <div class="card">
-    <table class="table mb-0">
-        <thead><tr><th>Name</th><th>Type</th><th></th></tr></thead>
-        <tbody>
-        {% for category in categories %}
-            <tr>
-                <td>{% if category.parent %}<span class="text-muted">↳ </span>{% endif %}{{ category.name }}</td>
-                <td><span class="badge {% if category.category_type == 'income' %}text-bg-success{% else %}text-bg-secondary{% endif %}">{{ category.get_category_type_display }}</span></td>
-                <td class="text-end">
-                    <a href="{% url 'finance:category_edit' category.pk %}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-pencil"></i></a>
-                    <a href="{% url 'finance:category_delete' category.pk %}" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></a>
-                </td>
-            </tr>
-        {% empty %}
-            <tr><td colspan="3" class="text-muted text-center py-4">No categories yet.</td></tr>
-        {% endfor %}
-        </tbody>
-    </table>
+    {% if search %}
+    <div class="empty-state"><h3>No categories match "{{ search }}"</h3><p><a href="{% url 'finance:category_list' %}">Clear search</a> to see all categories.</p></div>
+    {% else %}
+    {% include "finance/includes/empty_state.html" with title="No categories yet" text="Categories tell Stashy where money comes from and where it goes — like Salary, Groceries or Rent." %}
+    {% endif %}
 </div>
+{% endfor %}
 {% endblock %}

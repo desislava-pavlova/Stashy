@@ -1,12 +1,19 @@
 {% extends "finance/base.html" %}
 {% block title %}Delete · Stashy{% endblock %}
 {% block content %}
-<h3 class="mb-3">Delete {{ object }}?</h3>
-<div class="card p-4" style="max-width: 560px;">
-    <p class="text-muted">This can't be undone.</p>
-    <form method="post">
+<div class="card p-4 mx-auto mt-4" style="max-width: 560px;">
+    <div class="d-flex align-items-start gap-3 mb-3">
+        <div class="stat-icon stat-icon-danger"><i class="bi bi-trash3"></i></div>
+        <div class="min-w-0">
+            <h3 class="mb-1">{% block delete_title %}Delete {{ object }}?{% endblock %}</h3>
+            <p class="mb-0 text-danger"><i class="bi bi-exclamation-triangle me-1"></i>This can't be undone.</p>
+        </div>
+    </div>
+    {% block delete_warning %}{% endblock %}
+    <form method="post" class="d-flex gap-2 mt-3">
         {% csrf_token %}
-        <button type="submit" class="btn btn-danger">Delete</button>
+        {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+        <button type="submit" class="btn btn-danger">Yes, delete it</button>
         <a href="javascript:history.back()" class="btn btn-outline-secondary">Cancel</a>
     </form>
 </div>

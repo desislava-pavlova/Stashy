@@ -1,10 +1,37 @@
-from django import forms
+from datetime import date
 
-from .models import Account, Category, Payee, Reminder, Transaction
+from django import forms
+from django.core.exceptions import ValidationError
+from django.db.models import Q
+
+from audit.context import system_action
+
+from . import regional
+from .models import Account, Category, Payee, Profile, Reminder, Transaction, categories_alphabetical
+
+
+class DateInput(forms.DateInput):
+    """A text input in the active regional date format; base.html's flatpickr matches it."""
+
+    def __init__(self, attrs=None):
+        prefs = regional.current()
+        defaults = {"data-datepicker": "", "placeholder": prefs.date_placeholder, "autocomplete": "off"}
+        super().__init__(attrs={**defaults, **(attrs or {})}, format=prefs.date_pattern)
+
+
+def _use_regional_dates(form):
+    """Point every DateField at the active regional format, for parsing and for its widget."""
+    prefs = regional.current()
+    for field in form.fields.values():
+        if isinstance(field, forms.DateField):
+            field.input_formats = prefs.date_input_formats
+            if isinstance(field.widget, DateInput):
+                field.widget.attrs["placeholder"] = prefs.date_placeholder
+                field.widget.format = prefs.date_pattern
 
 
 class BootstrapFormMixin:
-    """Adds Bootstrap 5 form-control classes to every field automatically."""
+    """Adds Bootstrap 5 form-control classes to every field automatically, and regional date formats."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -16,76 +43,303 @@ class BootstrapFormMixin:
                 widget.attrs.setdefault("class", "form-select")
             else:
                 widget.attrs.setdefault("class", "form-control")
+        _use_regional_dates(self)
 
 
 class AccountForm(BootstrapFormMixin, forms.ModelForm):
     class Meta:
         model = Account
-        fields = ["name", "account_type", "institution", "starting_balance", "is_active", "notes"]
+        fields = ["name", "account_type", "currency", "institution", "is_active", "notes"]
+        # Django's default Textarea is 10 rows - taller than this form needs, and (with the
+        # opening-balance fields on top, for a new account) enough to push Save off-screen.
+        widgets = {"notes": forms.Textarea(attrs={"rows": 2})}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance.pk:
+            # Currency conversion only ever uses the latest known rate, not per-transaction
+            # history, so changing it after transactions exist would misstate every past one.
+            self.fields["currency"].disabled = True
+            self.fields["currency"].help_text = "Set when the account was created — transactions are already in this currency."
+
+
+class AccountCreateForm(AccountForm):
+    """Account creation also asks for an opening balance, which becomes a real transaction (D1)."""
+
+    opening_balance = forms.DecimalField(
+        max_digits=12, decimal_places=2, required=False, initial=0,
+        help_text="What this account held on the day below. Becomes a regular transaction you can edit or delete later.",
+    )
+    opening_balance_date = forms.DateField(required=False, widget=DateInput(), initial=date.today)
+
+    field_order = ["name", "account_type", "currency", "institution", "opening_balance", "opening_balance_date", "is_active", "notes"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["currency"].disabled = False
+        self.fields["currency"].help_text = ""
+        self.fields["currency"].initial = regional.current().main_currency
+
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned.get("opening_balance") and not cleaned.get("opening_balance_date"):
+            raise ValidationError("Give the opening balance a date.")
+        return cleaned
+
+    def save(self, commit=True):
+        account = super().save(commit=commit)
+        amount = self.cleaned_data.get("opening_balance")
+        if commit and amount:
+            with system_action(f"Opening balance transaction created for account '{account.name}'"):
+                Transaction.objects.create(
+                    account=account,
+                    date=self.cleaned_data["opening_balance_date"],
+                    payee=Payee.system(Payee.OPENING_BALANCE),
+                    category=account.ensure_transfer_category(),
+                    memo="Opening Balance",
+                    amount=amount,
+                )
+        return account
+
+
+class TransferForm(forms.Form):
+    """Backs the account page's Transfer button (D7): creates the paired transactions."""
+
+    to_account = forms.ModelChoiceField(queryset=Account.objects.none(), label="Transfer to")
+    amount = forms.DecimalField(max_digits=12, decimal_places=2, min_value=0.01, help_text="Enter a positive amount.")
+    date = forms.DateField(widget=DateInput(), initial=date.today)
+
+    def __init__(self, *args, from_account=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.from_account = from_account
+        # The same amount is used on both legs (no conversion happens here), so the
+        # destination must share this account's currency — otherwise "100" would leave as
+        # 100 EUR and arrive as 100 USD, silently inventing or destroying money.
+        self.fields["to_account"].queryset = Account.objects.filter(
+            is_active=True, currency=from_account.currency
+        ).exclude(pk=from_account.pk)
+        if not self.fields["to_account"].queryset.exists():
+            self.fields["to_account"].help_text = (
+                f"No other active {from_account.currency} account to transfer to yet."
+            )
+        for field in self.fields.values():
+            if not isinstance(field.widget, forms.DateInput):
+                field.widget.attrs.setdefault("class", "form-control")
+            else:
+                field.widget.attrs.setdefault("class", "form-control")
+        self.fields["to_account"].widget.attrs["class"] = "form-select"
+        _use_regional_dates(self)
+
+    def save(self):
+        to_account = self.cleaned_data["to_account"]
+        amount, on = self.cleaned_data["amount"], self.cleaned_data["date"]
+        payee = Payee.system(Payee.TRANSFER_MONEY)
+        with system_action(f"Transfer from '{self.from_account.name}' to '{to_account.name}'"):
+            out = Transaction.objects.create(
+                account=self.from_account, date=on, payee=payee,
+                category=self.from_account.ensure_transfer_category(),
+                memo=f"Transfer to {to_account.name}", amount=-amount,
+            )
+            into = Transaction.objects.create(
+                account=to_account, date=on, payee=payee,
+                category=to_account.ensure_transfer_category(),
+                memo=f"Transfer from {self.from_account.name}", amount=amount,
+            )
+        return out, into
+
+
+class ReconcileStartForm(forms.Form):
+    """Step 1 of the account page's Reconcile button (Phase 8): what your statement says."""
+
+    statement_date = forms.DateField(widget=DateInput(), initial=date.today)
+    statement_balance = forms.DecimalField(
+        max_digits=12, decimal_places=2,
+        help_text="The ending balance shown on your bank or card statement.",
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["statement_balance"].widget.attrs.setdefault("class", "form-control")
+        _use_regional_dates(self)
+
+
+class CategoryParentSelect(forms.Select):
+    """Tags each <option> with its category's own type, so JS can narrow the Parent list to
+    only categories matching whichever type is currently chosen above (Phase 4)."""
+
+    def __init__(self, *args, categories_by_id=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.categories_by_id = categories_by_id or {}
+
+    def create_option(self, name, value, label, selected, index, subindex=None, attrs=None):
+        option = super().create_option(name, value, label, selected, index, subindex=subindex, attrs=attrs)
+        category = self.categories_by_id.get(getattr(value, "value", value))
+        if category:
+            option["attrs"]["data-category-type"] = category.category_type
+        return option
 
 
 class CategoryForm(BootstrapFormMixin, forms.ModelForm):
     class Meta:
         model = Category
-        fields = ["name", "parent", "category_type", "is_active"]
+        fields = ["name", "parent", "category_type"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Transfer is a system-managed type (D7/D4) — never chosen by hand.
+        self.fields["category_type"].choices = [
+            choice for choice in self.fields["category_type"].choices if choice[0] != Category.CategoryType.TRANSFER
+        ]
+        parent_field = self.fields["parent"]
+        # Only a top-level category can be a parent (one level of subcategories, no tree) —
+        # this alone also rules out a category ever being its own ancestor.
+        parents = Category.objects.filter(parent__isnull=True, account__isnull=True)
+        # Build the type-aware widget before assigning the queryset, so the queryset setter's
+        # own "widget.choices = ..." (Django's ModelChoiceField internals) lands on this widget.
+        parent_field.widget = CategoryParentSelect(
+            attrs=parent_field.widget.attrs, categories_by_id={c.pk: c for c in parents}
+        )
+        parent_field.queryset = parents
+
+    def clean_parent(self):
+        parent = self.cleaned_data.get("parent")
+        if not parent:
+            return parent
+        if self.instance.pk == parent.pk:
+            raise ValidationError("A category can't be placed under itself.")
+        if self.instance.pk and self.instance.subcategories.exists():
+            raise ValidationError(
+                "This category already has its own subcategories, so it can't become one itself "
+                "— move or remove them first."
+            )
+        return parent
+
+    def clean(self):
+        cleaned = super().clean()
+        if self.instance.is_system_managed:
+            raise ValidationError("This category belongs to an account and is managed automatically.")
+        return cleaned
 
 
 class PayeeForm(BootstrapFormMixin, forms.ModelForm):
     class Meta:
         model = Payee
-        fields = ["name", "default_category", "default_memo", "default_amount", "is_active"]
+        fields = ["name", "is_active"]
 
 
 class TransactionForm(BootstrapFormMixin, forms.ModelForm):
     payee_name = forms.CharField(
         required=False,
         label="Payee",
-        widget=forms.TextInput(attrs={"list": "payee-list", "autocomplete": "off"}),
+        widget=forms.TextInput(attrs={"autocomplete": "off"}),
         help_text="Start typing — matching memorized payees will autofill category/memo/amount.",
     )
 
     class Meta:
         model = Transaction
         fields = [
-            "account", "date", "payee_name", "category", "memo", "amount",
-            "cleared", "reconciled", "transfer_account", "tags",
+            "account", "date", "transaction_number", "payee_name", "category", "memo", "amount",
+            "cleared", "reconciled", "tags",
         ]
         widgets = {
-            "date": forms.DateInput(attrs={"type": "date"}),
+            "date": DateInput(),
             "tags": forms.SelectMultiple,
         }
+        labels = {"transaction_number": "Number"}
 
-    def clean(self):
-        cleaned = super().clean()
-        name = (cleaned.get("payee_name") or "").strip()
-        if name:
-            payee, _ = Payee.objects.get_or_create(name=name)
-            cleaned["_resolved_payee"] = payee
-        else:
-            cleaned["_resolved_payee"] = None
-        return cleaned
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if "transaction_number" in self.fields:
+            self.fields["transaction_number"].help_text = "Prefilled with the next available number (shared across accounts, starting over each year, D9) — change it, or clear it to have Stashy pick again."
+        # Transfer categories are created automatically by the Transfer button, not picked by hand
+        # here — except editing a transaction that already has one (an opening balance or transfer
+        # leg) must still offer its own category, or saving the form would reject it as invalid.
+        self.fields["category"].queryset = categories_alphabetical(self.fields["category"].queryset.filter(
+            Q(account__isnull=True) | Q(pk=self.instance.category_id)
+        ))
+
+    def clean_payee_name(self):
+        return (self.cleaned_data.get("payee_name") or "").strip()
 
     def save(self, commit=True):
+        # Payees are resolved here, not in clean(), so a form with errors never creates one.
         instance = super().save(commit=False)
-        instance.payee = self.cleaned_data.get("_resolved_payee")
+        instance.payee = self._resolve_payee(self.cleaned_data["payee_name"])
         instance.payee_name = ""  # canonical name now lives on the Payee record
+        if instance.transaction_number is None:
+            # Transaction.save() only auto-assigns on create; clearing the field on an edit
+            # (e.g. after moving a transaction to a different account) should renumber it too.
+            instance.transaction_number = Transaction.next_number(instance.date)
         if commit:
             instance.save()
             self.save_m2m()
         return instance
 
+    @staticmethod
+    def _resolve_payee(name):
+        if not name:
+            return None
+        # Case-insensitive, so "Lidl" and "lidl" resolve to one payee instead of quietly
+        # becoming near-duplicates (a real problem in Quicken exports the user hit before).
+        payee = Payee.objects.filter(name__iexact=name).first()
+        if payee is None:
+            with system_action("Payee created automatically from a new payee name"):
+                payee = Payee.objects.create(name=name)
+        return payee
+
 
 class ReminderForm(BootstrapFormMixin, forms.ModelForm):
+    # Not a model field - a friendlier affordance than "just leave the date blank" for a
+    # reminder with no end date (Phase 7).
+    no_end_date = forms.BooleanField(required=False, label="No end date")
+
     class Meta:
         model = Reminder
         fields = [
-            "name", "reminder_type", "account", "payee", "category", "amount",
-            "frequency", "next_due_date", "end_date", "auto_enter_days_before", "is_active", "notes",
+            "reminder_type", "account", "payee", "category", "amount", "frequency", "interval",
+            "next_due_date", "end_of_period", "end_date", "no_end_date", "notes",
         ]
         widgets = {
-            "next_due_date": forms.DateInput(attrs={"type": "date"}),
-            "end_date": forms.DateInput(attrs={"type": "date"}),
+            "next_due_date": DateInput(),
+            "end_date": DateInput(),
         }
+        labels = {
+            "interval": "Every",
+        }
+        help_texts = {
+            "amount": "Enter as a positive number, or leave blank for a variable-amount bill",
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["amount"].required = False
+        self.fields["interval"].required = False
+        category_field = self.fields["category"]
+        categories = categories_alphabetical(Category.objects.filter(
+            Q(account__isnull=True) | Q(pk=self.instance.category_id)
+        ))
+        # Picking Income/Expense narrows the Category list to that type only (same
+        # type-tagged-option pattern CategoryForm already uses for its own Parent field).
+        category_field.widget = CategoryParentSelect(
+            attrs=category_field.widget.attrs, categories_by_id={c.pk: c for c in categories}
+        )
+        category_field.queryset = categories
+        self.fields["no_end_date"].initial = not self.instance.end_date if self.instance.pk else True
+
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned.get("no_end_date"):
+            cleaned["end_date"] = None
+        if not cleaned.get("interval"):
+            cleaned["interval"] = 1
+        # An auto-generated occurrence (series is set) can't become its own new recurring
+        # series head - it exists to represent one specific future date (2026-09-14 follow-up).
+        if self.instance.series_id and cleaned.get("frequency") != Reminder.Frequency.ONE_TIME:
+            raise ValidationError(
+                "This reminder was auto-generated from a recurring one, so it can't have its "
+                "own frequency - edit the original recurring reminder instead."
+            )
+        return cleaned
 
 
 class ImportUploadForm(forms.Form):
@@ -118,8 +372,8 @@ class DateRangeFilterForm(forms.Form):
     ]
 
     range = forms.ChoiceField(choices=RANGE_CHOICES, required=False, initial="last_12_months")
-    start = forms.DateField(required=False, widget=forms.DateInput(attrs={"type": "date"}))
-    end = forms.DateField(required=False, widget=forms.DateInput(attrs={"type": "date"}))
+    start = forms.DateField(required=False, widget=DateInput())
+    end = forms.DateField(required=False, widget=DateInput())
     interval = forms.ChoiceField(choices=INTERVAL_CHOICES, required=False, initial="month")
     account = forms.ModelChoiceField(queryset=Account.objects.all(), required=False)
     category = forms.ModelChoiceField(queryset=Category.objects.all(), required=False)
@@ -131,3 +385,39 @@ class DateRangeFilterForm(forms.Form):
                 field.widget.attrs["class"] = "form-select form-select-sm"
             else:
                 field.widget.attrs["class"] = "form-control form-control-sm"
+        self.fields["category"].queryset = categories_alphabetical(
+            self.fields["category"].queryset.exclude(account__isnull=False)
+        )
+        _use_regional_dates(self)
+
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned.get("range") == "custom":
+            start, end = cleaned.get("start"), cleaned.get("end")
+            if not (start and end):
+                raise ValidationError("A custom range needs both a start and an end date.")
+            if start > end:
+                raise ValidationError("The start date must be on or before the end date.")
+        return cleaned
+
+
+class ProfileForm(BootstrapFormMixin, forms.ModelForm):
+    """The Settings page: regional preferences + main currency (D2, D10)."""
+
+    class Meta:
+        model = Profile
+        fields = ["main_currency", "time_zone", "date_format", "number_format", "first_day_of_week"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["time_zone"].widget = forms.Select(choices=[(z, z) for z in regional.time_zone_choices()])
+        self.fields["time_zone"].widget.attrs["class"] = "form-select"
+
+
+class CheckRatesForm(forms.Form):
+    """No fields — just the button that triggers a Frankfurter fetch; needs an internet connection."""
+
+
+def convertible_currencies(accounts):
+    """Currencies actually in use, for the settings page's 'known rates' list."""
+    return sorted({account.currency for account in accounts})

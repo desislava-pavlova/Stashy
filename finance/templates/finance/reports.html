@@ -1,4 +1,5 @@
 {% extends "finance/base.html" %}
+{% load stashy_format l10n %}
 {% block title %}Reports · Stashy{% endblock %}
 {% block content %}
 <h3 class="mb-3">Reports</h3>
@@ -29,6 +30,12 @@
             <button class="btn btn-sm btn-outline-secondary w-100">Apply</button>
         </div>
     </div>
+    {% if form.errors %}
+    <div class="alert alert-danger py-2 mt-3 mb-0 small">
+        {% for field, errors in form.errors.items %}{% for error in errors %}{% if field != "__all__" %}{{ field|capfirst }}: {% endif %}{{ error }} {% endfor %}{% endfor %}
+        Your filters weren't applied — showing the default range instead.
+    </div>
+    {% endif %}
     <div class="text-muted small mt-2">Showing {{ start }} to {{ end }}, bucketed {{ interval }}.</div>
 </form>
 
@@ -46,11 +53,11 @@
             <div class="row text-center mt-3">
                 <div class="col-6">
                     <div class="text-muted small">Current</div>
-                    <div class="stat-value amount-negative">${{ current_spending|floatformat:2 }}</div>
+                    <div class="stat-value amount-negative">{{ current_spending|moneyc:main_currency }}</div>
                 </div>
                 <div class="col-6">
                     <div class="text-muted small">Average</div>
-                    <div class="stat-value">${{ average_spending|floatformat:2 }}</div>
+                    <div class="stat-value">{{ average_spending|moneyc:main_currency }}</div>
                 </div>
             </div>
         </div>
@@ -79,43 +86,58 @@ const spendingByCategory = {{ spending_by_category|safe|default:"[]" }};
 const timeseries = {{ timeseries|safe|default:"[]" }};
 const netWorthSeries = {{ net_worth_series|safe|default:"[]" }};
 
-new Chart(document.getElementById('spendingByCategoryChart'), {
+const spendingChart = new Chart(document.getElementById('spendingByCategoryChart'), {
     type: 'bar',
     data: {
         labels: spendingByCategory.map(r => r.category__name),
-        datasets: [{ label: 'Spending', data: spendingByCategory.map(r => r.total), backgroundColor: '#c0392b' }]
+        datasets: [{ label: 'Spending', data: spendingByCategory.map(r => r.total), borderRadius: 6 }]
     },
     options: { indexAxis: 'y', plugins: { legend: { display: false } } }
 });
 
-new Chart(document.getElementById('incomeExpenseChart'), {
+const incomeExpenseChart = new Chart(document.getElementById('incomeExpenseChart'), {
     type: 'bar',
     data: {
-        labels: timeseries.map(r => r.period),
+        labels: timeseries.map(r => stashyDate(r.period)),
         datasets: [
-            { label: 'Income', data: timeseries.map(r => r.income), backgroundColor: '#2f9e6a' },
-            { label: 'Expense', data: timeseries.map(r => r.expense), backgroundColor: '#c0392b' },
+            { label: 'Income', data: timeseries.map(r => r.income), borderRadius: 6 },
+            { label: 'Expense', data: timeseries.map(r => r.expense), borderRadius: 6 },
         ]
     },
     options: { plugins: { legend: { position: 'bottom' } } }
 });
 
-new Chart(document.getElementById('currentVsAverageChart'), {
+const currentVsAverageChart = new Chart(document.getElementById('currentVsAverageChart'), {
     type: 'bar',
     data: {
         labels: ['Current', 'Average'],
-        datasets: [{ data: [{{ current_spending|default:0 }}, {{ average_spending|default:0 }}], backgroundColor: ['#c0392b', '#6c757d'] }]
+        datasets: [{ data: [{{ current_spending|unlocalize }}, {{ average_spending|unlocalize }}], borderRadius: 6 }]
     },
     options: { plugins: { legend: { display: false } } }
 });
 
-new Chart(document.getElementById('netWorthChart'), {
+const netWorthChart = new Chart(document.getElementById('netWorthChart'), {
     type: 'line',
     data: {
-        labels: netWorthSeries.map(r => r.period),
-        datasets: [{ label: 'Net worth', data: netWorthSeries.map(r => r.net_worth), borderColor: '#2f9e6a', fill: true, backgroundColor: 'rgba(47,158,106,.12)', tension: .25 }]
+        labels: netWorthSeries.map(r => stashyDate(r.period)),
+        datasets: [{ label: 'Net worth', data: netWorthSeries.map(r => r.net_worth), fill: true, tension: .25 }]
     },
     options: { plugins: { legend: { display: false } } }
 });
+
+// Chart colors come from the theme's CSS variables, and are re-applied when light/dark mode changes.
+function colorReportCharts() {
+    const positive = stashyCssVar('--stashy-positive');
+    const negative = stashyCssVar('--stashy-negative');
+    spendingChart.data.datasets[0].backgroundColor = negative;
+    incomeExpenseChart.data.datasets[0].backgroundColor = positive;
+    incomeExpenseChart.data.datasets[1].backgroundColor = negative;
+    currentVsAverageChart.data.datasets[0].backgroundColor = [negative, stashyCssVar('--stashy-muted')];
+    netWorthChart.data.datasets[0].borderColor = positive;
+    netWorthChart.data.datasets[0].backgroundColor = positive + '22';
+    [spendingChart, incomeExpenseChart, currentVsAverageChart, netWorthChart].forEach(chart => chart.update());
+}
+colorReportCharts();
+document.addEventListener('stashy:themechange', colorReportCharts);
 </script>
 {% endblock %}

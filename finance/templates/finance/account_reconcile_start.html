@@ -1,0 +1,45 @@
+{% extends "finance/base.html" %}
+{% load stashy_format %}
+{% block title %}Reconcile {{ account.name }} · Stashy{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1 class="h3 mb-0">Reconcile {{ account.name }}</h1>
+</div>
+<div class="row g-4 align-items-start">
+    <div class="col-lg-7 col-xxl-6">
+        <div class="card p-4">
+            <div class="d-flex justify-content-between align-items-center mb-3 pb-3 border-bottom">
+                <span class="text-muted">Opening balance</span>
+                <strong>{{ opening_balance|moneyc:account.currency }}</strong>
+            </div>
+            <form method="post">
+                {% csrf_token %}
+                {% for error in form.non_field_errors %}<div class="alert alert-danger py-2">{{ error }}</div>{% endfor %}
+                <div class="mb-3">
+                    <label class="form-label" for="{{ form.statement_date.id_for_label }}">Statement ending date</label>
+                    {{ form.statement_date }}
+                    {% for error in form.statement_date.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="{{ form.statement_balance.id_for_label }}">Statement ending balance</label>
+                    {{ form.statement_balance }}
+                    <div class="form-text">{{ form.statement_balance.help_text }}</div>
+                    {% for error in form.statement_balance.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="d-flex gap-2 mt-4">
+                    <button type="submit" class="btn btn-primary px-4">Start reconciling</button>
+                    <a href="{% url 'finance:account_detail' account.pk %}" class="btn btn-outline-secondary">Cancel</a>
+                </div>
+            </form>
+        </div>
+    </div>
+    <div class="col-lg-5 col-xxl-4">
+        <aside class="card help-card p-4">
+            <div class="card-title-sm">How this works</div>
+            <p class="mb-0">Opening balance is everything already reconciled so far. On the next screen you'll check
+                off the transactions your statement covers — Stashy keeps a running total as you go, so you know as
+                soon as it matches.</p>
+        </aside>
+    </div>
+</div>
+{% endblock %}

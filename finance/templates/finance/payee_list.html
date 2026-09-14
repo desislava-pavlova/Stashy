@@ -1,27 +1,80 @@
 {% extends "finance/base.html" %}
+{% load stashy_format %}
 {% block title %}Payees · Stashy{% endblock %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h3 class="mb-0">Memorized payees</h3>
-    <a href="{% url 'finance:payee_add' %}" class="btn btn-success"><i class="bi bi-plus-lg me-1"></i>Add payee</a>
+    <a href="{% url 'finance:payee_add' %}" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>Add payee</a>
 </div>
+
+<form method="get" class="card p-3 mb-3">
+    <div class="row g-2">
+        <div class="col-md-4">
+            <input type="text" name="q" class="form-control form-control-sm" placeholder="Search by name" value="{{ search }}" aria-label="Search payees">
+        </div>
+        <div class="col-md-3">
+            <select name="category" class="form-select form-select-sm" onchange="this.form.submit()" aria-label="Used with category">
+                <option value="">Any category</option>
+                <option value="none" {% if selected_category == "none" %}selected{% endif %}>Uncategorized</option>
+                {% for c in categories %}<option value="{{ c.pk }}" {% if selected_category == c.pk|stringformat:"s" %}selected{% endif %}>{{ c.full_name }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="col-md-3">
+            <input type="text" name="memo" class="form-control form-control-sm" placeholder="Filter by memo" value="{{ memo_filter }}" aria-label="Filter by memo">
+        </div>
+        <div class="col-md-2">
+            <button class="btn btn-sm btn-outline-secondary w-100">Filter</button>
+        </div>
+    </div>
+    {% if search or selected_category or memo_filter %}
+    <div class="mt-2 small"><a href="{% url 'finance:payee_list' %}">Clear all filters</a></div>
+    {% endif %}
+</form>
+
 <div class="card">
-    <table class="table mb-0">
-        <thead><tr><th>Payee</th><th>Default category</th><th>Default memo</th><th class="text-end">Default amount</th><th></th></tr></thead>
-        <tbody>
-        {% for payee in payees %}
+    <table class="table mb-0 align-middle">
+        <thead>
             <tr>
-                <td>{{ payee.name }}</td>
-                <td class="text-muted">{{ payee.default_category|default:"—" }}</td>
-                <td class="text-muted">{{ payee.default_memo|default:"—" }}</td>
-                <td class="text-end">{% if payee.default_amount != None %}${{ payee.default_amount|floatformat:2 }}{% else %}—{% endif %}</td>
+                <th><a href="{% querystring sort=sort_next.name %}" class="sort-link">Payee{% include "finance/includes/sort_arrow.html" with column="name" %}</a></th>
+                <th><a href="{% querystring sort=sort_next.category %}" class="sort-link">Categories{% include "finance/includes/sort_arrow.html" with column="category" %}</a></th>
+                <th class="text-end"><a href="{% querystring sort=sort_next.amount %}" class="sort-link">Total amount{% include "finance/includes/sort_arrow.html" with column="amount" %}</a></th>
+                <th class="text-end">Usage</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for row in rows %}
+            <tr>
+                <td>
+                    <a href="{% url 'finance:payee_detail' row.payee.pk %}" class="text-decoration-none">{{ row.payee.name }}</a>
+                    {% if not row.payee.is_active %}<span class="badge text-bg-secondary ms-1">inactive</span>{% endif %}
+                </td>
+                <td class="text-muted">
+                    {% for category in row.categories %}<div>{{ category }}</div>{% empty %}—{% endfor %}
+                </td>
+                <td class="text-end text-nowrap">
+                    {% for currency, total in row.totals %}
+                    <div class="{% if total < 0 %}amount-negative{% else %}amount-positive{% endif %}">{{ total|moneyc:currency }}</div>
+                    {% empty %}—{% endfor %}
+                </td>
                 <td class="text-end">
-                    <a href="{% url 'finance:payee_edit' payee.pk %}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-pencil"></i></a>
-                    <a href="{% url 'finance:payee_delete' payee.pk %}" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></a>
+                    <a href="{% url 'finance:payee_detail' row.payee.pk %}" class="text-decoration-none {% if not row.usage_count %}usage-empty{% endif %}">
+                        {{ row.usage_count }} transaction{{ row.usage_count|pluralize }}
+                    </a>
+                </td>
+                <td class="text-end">
+                    <a href="{% url 'finance:payee_edit' row.payee.pk %}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-pencil"></i></a>
+                    <a href="{% url 'finance:payee_delete' row.payee.pk %}" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></a>
                 </td>
             </tr>
         {% empty %}
-            <tr><td colspan="5" class="text-muted text-center py-4">No memorized payees yet — they're created automatically as you enter transactions.</td></tr>
+            <tr><td colspan="5">
+                {% if search or selected_category or memo_filter %}
+                <div class="empty-state"><h3>No payees match these filters</h3><p><a href="{% url 'finance:payee_list' %}">Clear all filters</a> to see every payee.</p></div>
+                {% else %}
+                {% include "finance/includes/empty_state.html" with title="No payees yet" text="Stashy memorizes shops and people automatically as you enter transactions." %}
+                {% endif %}
+            </td></tr>
         {% endfor %}
         </tbody>
     </table>

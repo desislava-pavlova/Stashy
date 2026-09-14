@@ -1,0 +1,19 @@
+{% extends "finance/generic_confirm_delete.html" %}
+{% block delete_warning %}
+{% if descendants %}
+<div class="alert alert-warning">
+    <strong>This will also delete {{ descendants|length }} subcategor{{ descendants|length|pluralize:"y,ies" }}:</strong>
+    <ul class="my-2">
+        {% for sub in descendants %}<li>{{ sub.full_name }}</li>{% endfor %}
+    </ul>
+    To keep any of them, cancel and edit {{ descendants|length|pluralize:"it,them" }} to move under a different parent first.
+</div>
+{% endif %}
+{% if affected_transaction_count %}
+<p class="mb-2">
+    {{ affected_transaction_count }} transaction{{ affected_transaction_count|pluralize }} in
+    {% if descendants %}these categories{% else %}this category{% endif %}
+    will be kept, but become uncategorized.
+</p>
+{% endif %}
+{% endblock %}

@@ -1,116 +1,105 @@
 {% extends "finance/base.html" %}
+{% load static %}
 {% block title %}{% if instance %}Edit{% else %}New{% endif %} transaction · Stashy{% endblock %}
 {% block content %}
-<h3 class="mb-3">{% if instance %}Edit transaction{% else %}New transaction{% endif %}</h3>
-<div class="card p-4" style="max-width: 640px;">
-    <form method="post">
-        {% csrf_token %}
-        <div class="row g-3">
-            <div class="col-md-6">
-                <label class="form-label">Account</label>
-                {{ form.account }}
-            </div>
-            <div class="col-md-6">
-                <label class="form-label">Date</label>
-                {{ form.date }}
-            </div>
-            <div class="col-12">
-                <label class="form-label">{{ form.payee_name.label }}</label>
-                {{ form.payee_name }}
-                <datalist id="payee-list"></datalist>
-                <div class="form-text">{{ form.payee_name.help_text }}</div>
-            </div>
-            <div class="col-md-6">
-                <label class="form-label">Category</label>
-                {{ form.category }}
-            </div>
-            <div class="col-md-6">
-                <label class="form-label">Amount</label>
-                {{ form.amount }}
-                <div class="form-text">Positive = income/deposit, negative = expense.</div>
-            </div>
-            <div class="col-12">
-                <label class="form-label">Memo</label>
-                {{ form.memo }}
-            </div>
-            <div class="col-md-6">
-                <label class="form-label">Transfer to account (optional)</label>
-                {{ form.transfer_account }}
-            </div>
-            <div class="col-md-6">
-                <label class="form-label">Tags</label>
-                {{ form.tags }}
-            </div>
-            <div class="col-md-6 form-check ms-2">
-                {{ form.cleared }}
-                <label class="form-check-label" for="{{ form.cleared.id_for_label }}">Cleared</label>
-            </div>
-            <div class="col-md-6 form-check ms-2">
-                {{ form.reconciled }}
-                <label class="form-check-label" for="{{ form.reconciled.id_for_label }}">Reconciled</label>
-            </div>
-        </div>
+<div class="page-header">
+    <h1 class="h3 mb-0">{% if reminder %}Enter reminder{% elif instance %}Edit transaction{% else %}New transaction{% endif %}</h1>
+</div>
+{% if reminder %}
+<div class="alert alert-info py-2 mb-3">Entering <strong>{{ reminder }}</strong> — review and adjust before saving; the reminder moves to its next due date once you save.</div>
+{% endif %}
+<div class="row g-4 align-items-start">
+    <div class="col-lg-7 col-xxl-6">
+        <div class="card p-4">
+            <form method="post">
+                {% csrf_token %}
+                {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+                {% if reminder %}<input type="hidden" name="reminder" value="{{ reminder.pk }}">{% endif %}
+                <div class="row g-3">
+                    <div class="col-md-5">
+                        <label class="form-label" for="{{ form.account.id_for_label }}">Account</label>
+                        {{ form.account }}
+                        {% for error in form.account.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label" for="{{ form.date.id_for_label }}">Date</label>
+                        {{ form.date }}
+                        {% for error in form.date.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label" for="{{ form.transaction_number.id_for_label }}">{{ form.transaction_number.label }}</label>
+                        {{ form.transaction_number }}
+                        {% for error in form.transaction_number.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label" for="{{ form.payee_name.id_for_label }}">{{ form.payee_name.label }}</label>
+                        <div class="payee-field">
+                            {{ form.payee_name }}
+                            <div class="payee-suggestions" id="payee-name-suggestions" hidden></div>
+                            <div class="payee-suggestions" id="payee-combo-suggestions" hidden></div>
+                        </div>
+                        <div class="form-text">{{ form.payee_name.help_text }}</div>
+                        {% for error in form.payee_name.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="{{ form.category.id_for_label }}">Category</label>
+                        {{ form.category }}
+                        {% for error in form.category.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="{{ form.amount.id_for_label }}">Amount</label>
+                        {{ form.amount }}
+                        <div class="form-text">Positive = money in, negative = money out.</div>
+                        {% for error in form.amount.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label" for="{{ form.memo.id_for_label }}">Memo</label>
+                        {{ form.memo }}
+                        {% for error in form.memo.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="{{ form.tags.id_for_label }}">Tags</label>
+                        {{ form.tags }}
+                    </div>
+                    <div class="col-12 d-flex flex-wrap gap-4">
+                        <div class="form-check">
+                            {{ form.cleared }}
+                            <label class="form-check-label" for="{{ form.cleared.id_for_label }}">Cleared</label>
+                        </div>
+                        <div class="form-check">
+                            {{ form.reconciled }}
+                            <label class="form-check-label" for="{{ form.reconciled.id_for_label }}">Reconciled</label>
+                        </div>
+                    </div>
+                </div>
 
-        {% for error in form.non_field_errors %}<div class="text-danger small mt-2">{{ error }}</div>{% endfor %}
+                {% for error in form.non_field_errors %}<div class="text-danger small mt-2">{{ error }}</div>{% endfor %}
 
-        <div class="mt-4">
-            <button type="submit" class="btn btn-success">Save</button>
-            <a href="javascript:history.back()" class="btn btn-outline-secondary">Cancel</a>
+                <div class="d-flex gap-2 mt-4">
+                    <button type="submit" class="btn btn-primary px-4">Save</button>
+                    <a href="javascript:history.back()" class="btn btn-outline-secondary">Cancel</a>
+                </div>
+            </form>
         </div>
-    </form>
+    </div>
+    <div class="col-lg-5 col-xxl-4">
+        {% include "finance/includes/help_card.html" %}
+    </div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
+<script src="{% static 'finance/js/payee-autofill.js' %}"></script>
 <script>
-(function () {
-    const payeeInput = document.getElementById('{{ form.payee_name.id_for_label }}');
-    const datalist = document.getElementById('payee-list');
-    const categorySelect = document.getElementById('{{ form.category.id_for_label }}');
-    const memoInput = document.getElementById('{{ form.memo.id_for_label }}');
-    const amountInput = document.getElementById('{{ form.amount.id_for_label }}');
-
-    // Populate the datalist of known payees once.
-    fetch("{% url 'finance:api_payee_list' %}")
-        .then(r => r.json())
-        .then(data => {
-            (data.payees || []).forEach(name => {
-                const opt = document.createElement('option');
-                opt.value = name;
-                datalist.appendChild(opt);
-            });
-        });
-
-    let debounceTimer;
-    let userTouchedCategory = false;
-    let userTouchedMemo = false;
-    let userTouchedAmount = false;
-
-    categorySelect.addEventListener('change', () => userTouchedCategory = true);
-    memoInput.addEventListener('input', () => userTouchedMemo = true);
-    amountInput.addEventListener('input', () => userTouchedAmount = true);
-
-    payeeInput.addEventListener('input', function () {
-        clearTimeout(debounceTimer);
-        const name = payeeInput.value.trim();
-        if (!name) return;
-        debounceTimer = setTimeout(() => {
-            fetch(`{% url 'finance:api_payee_autofill' %}?name=${encodeURIComponent(name)}`)
-                .then(r => r.json())
-                .then(data => {
-                    if (!data || Object.keys(data).length === 0) return;
-                    if (data.category_id && !userTouchedCategory) {
-                        categorySelect.value = data.category_id;
-                    }
-                    if (data.memo && !userTouchedMemo && !memoInput.value) {
-                        memoInput.value = data.memo;
-                    }
-                    if (data.amount && !userTouchedAmount && !amountInput.value) {
-                        amountInput.value = data.amount;
-                    }
-                });
-        }, 250);
-    });
-})();
+stashyPayeeAutofill({
+    payeeInput: document.getElementById('{{ form.payee_name.id_for_label }}'),
+    categorySelect: document.getElementById('{{ form.category.id_for_label }}'),
+    memoInput: document.getElementById('{{ form.memo.id_for_label }}'),
+    amountInput: document.getElementById('{{ form.amount.id_for_label }}'),
+    nameSuggestions: document.getElementById('payee-name-suggestions'),
+    suggestions: document.getElementById('payee-combo-suggestions'),
+    autofillUrl: "{% url 'finance:api_payee_autofill' %}",
+    payeeListUrl: "{% url 'finance:api_payee_list' %}",
+});
 </script>
 {% endblock %}

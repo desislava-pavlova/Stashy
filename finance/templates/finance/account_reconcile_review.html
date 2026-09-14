@@ -1,0 +1,105 @@
+{% extends "finance/base.html" %}
+{% load static stashy_format %}
+{% block title %}Reconcile {{ account.name }} · Stashy{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1 class="h3 mb-0">Reconcile {{ account.name }}</h1>
+    <div class="text-muted small">Statement ending {{ statement_date|sdate }}</div>
+</div>
+
+<form method="post" id="reconcile-form">
+    {% csrf_token %}
+    <input type="hidden" name="stage" value="finish">
+    <input type="hidden" name="statement_date" value="{{ statement_date|date:'Y-m-d' }}">
+    <input type="hidden" name="statement_balance" value="{{ statement_balance }}">
+
+    <div id="reconcile-summary" class="card p-3 mb-3"
+         data-opening-balance="{{ opening_balance }}" data-statement-balance="{{ statement_balance }}"
+         data-currency-symbol="{{ account.currency|currency_symbol }}"
+         data-currency-suffix="{% if currency_is_suffix %}1{% endif %}">
+        <div class="d-flex flex-wrap gap-4">
+            <div><div class="text-muted small">Opening balance</div><strong>{{ opening_balance|moneyc:account.currency }}</strong></div>
+            <div><div class="text-muted small">Checked so far</div><strong data-checked-total>{{ 0|moneyc:account.currency }}</strong></div>
+            <div><div class="text-muted small">New balance</div><strong data-new-balance>{{ opening_balance|moneyc:account.currency }}</strong></div>
+            <div><div class="text-muted small">Statement balance</div><strong>{{ statement_balance|moneyc:account.currency }}</strong></div>
+            <div><div class="text-muted small">Difference</div><strong data-difference></strong></div>
+        </div>
+        <div class="form-check mt-2" data-accept-row hidden>
+            <input type="checkbox" class="form-check-input" id="accept-difference" name="accept_difference" value="1">
+            <label class="form-check-label small" for="accept-difference">
+                Accept this difference and create an adjustment transaction for it
+            </label>
+        </div>
+    </div>
+
+    <div class="d-flex justify-content-end mb-2">
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="mark-all-btn">Mark all</button>
+    </div>
+
+    <div class="row g-3">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">Deposits</div>
+                <table class="table table-sm mb-0 align-middle">
+                    <tbody>
+                    {% for t in deposits %}
+                        <tr>
+                            <td><input type="checkbox" name="transaction" value="{{ t.pk }}" data-amount="{{ t.amount }}" {% if t.was_checked %}checked{% endif %}></td>
+                            <td class="text-muted small text-nowrap">{{ t.date|sdate }}</td>
+                            <td>{{ t.display_payee }}</td>
+                            <td class="text-end text-nowrap amount-positive">{{ t.amount|moneyc:account.currency }}</td>
+                        </tr>
+                    {% empty %}
+                        <tr><td class="text-muted small py-3">No unreconciled deposits up to this date.</td></tr>
+                    {% endfor %}
+                    </tbody>
+                    {% if deposits %}
+                    <tfoot>
+                        <tr class="border-top">
+                            <td colspan="3" class="text-end text-muted small">Total</td>
+                            <td class="text-end text-nowrap fw-bold amount-positive">{{ deposits_total|moneyc:account.currency }}</td>
+                        </tr>
+                    </tfoot>
+                    {% endif %}
+                </table>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">Payments</div>
+                <table class="table table-sm mb-0 align-middle">
+                    <tbody>
+                    {% for t in payments %}
+                        <tr>
+                            <td><input type="checkbox" name="transaction" value="{{ t.pk }}" data-amount="{{ t.amount }}" {% if t.was_checked %}checked{% endif %}></td>
+                            <td class="text-muted small text-nowrap">{{ t.date|sdate }}</td>
+                            <td>{{ t.display_payee }}</td>
+                            <td class="text-end text-nowrap amount-negative">{{ t.amount|moneyc:account.currency }}</td>
+                        </tr>
+                    {% empty %}
+                        <tr><td class="text-muted small py-3">No unreconciled payments up to this date.</td></tr>
+                    {% endfor %}
+                    </tbody>
+                    {% if payments %}
+                    <tfoot>
+                        <tr class="border-top">
+                            <td colspan="3" class="text-end text-muted small">Total</td>
+                            <td class="text-end text-nowrap fw-bold amount-negative">{{ payments_total|moneyc:account.currency }}</td>
+                        </tr>
+                    </tfoot>
+                    {% endif %}
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="d-flex gap-2 mt-3">
+        <button type="submit" class="btn btn-primary px-4" data-finish-button>Finish reconciling</button>
+        <a href="{% url 'finance:account_detail' account.pk %}" class="btn btn-outline-secondary">Cancel</a>
+    </div>
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'finance/js/account_reconcile.js' %}"></script>
+{% endblock %}

@@ -1,0 +1,25 @@
+{% extends "finance/base.html" %}
+{% block title %}Edit reminder · Stashy{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1 class="h3 mb-0">Edit reminder</h1>
+</div>
+<div class="card p-4" style="max-width: 560px;">
+    <p>{{ reminder }} is connected to a recurring series. What would you like to edit?</p>
+    <div class="d-flex flex-column gap-2">
+        <a href="?scope=this" class="btn btn-outline-secondary text-start py-2">
+            <strong class="d-block">Just this occurrence</strong>
+            <span class="small text-muted">Changes apply only to this one reminder.</span>
+        </a>
+        <a href="?scope=series" class="btn btn-outline-secondary text-start py-2">
+            <strong class="d-block">The whole series</strong>
+            <span class="small text-muted">
+                Also updates the recurring reminder itself and every other upcoming, not-yet-resolved
+                occurrence to match (account, payee, category, amount, notes). Already paid or skipped
+                occurrences, and the schedule you pick here, are never applied to other rows.
+            </span>
+        </a>
+    </div>
+    <a href="javascript:history.back()" class="btn btn-link mt-2 px-0">Cancel</a>
+</div>
+{% endblock %}

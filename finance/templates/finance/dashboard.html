@@ -1,114 +1,148 @@
 {% extends "finance/base.html" %}
+{% load static stashy_format %}
 {% block title %}Dashboard · Stashy{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h3 class="mb-0">Dashboard</h3>
-    <a href="{% url 'finance:transaction_add' %}" class="btn btn-success"><i class="bi bi-plus-lg me-1"></i>New transaction</a>
-</div>
-
-<div class="row g-3 mb-4">
-    <div class="col-md-4">
-        <div class="card p-3">
-            <div class="text-muted small">Net worth</div>
-            <div class="stat-value">${{ net_worth|floatformat:2 }}</div>
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="card p-3">
-            <div class="text-muted small">This month's spending</div>
-            <div class="stat-value amount-negative">${{ month_spending|floatformat:2 }}</div>
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="card p-3">
-            <div class="text-muted small">This month's income</div>
-            <div class="stat-value amount-positive">${{ month_income|floatformat:2 }}</div>
-        </div>
-    </div>
-</div>
-
-<div class="row g-3 mb-4">
-    <div class="col-md-5">
-        <div class="card p-3 h-100">
-            <div class="text-muted small mb-2">Accounts</div>
-            {% for account in accounts %}
-            <div class="d-flex justify-content-between border-bottom py-2">
-                <a href="{% url 'finance:account_detail' account.pk %}" class="text-decoration-none text-body">{{ account.name }}</a>
-                <span class="{% if account.balance < 0 %}amount-negative{% else %}amount-positive{% endif %}">${{ account.balance|floatformat:2 }}</span>
+<div class="dash">
+    <div class="dash-header">
+        <div class="dash-greeting">
+            <img src="{% static 'finance/img/mascot-face-192.png' %}" alt="" width="56" height="56">
+            <div>
+                <h1>{{ greeting }}, {{ user.first_name|default:user.username }}</h1>
+                <p>Here's your stash on {{ today|date:"l, j F" }}.</p>
             </div>
-            {% empty %}
-            <p class="text-muted">No accounts yet. <a href="{% url 'finance:account_add' %}">Add your first account</a>.</p>
-            {% endfor %}
         </div>
+        <a href="{% url 'finance:transaction_add' %}" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>New transaction</a>
     </div>
-    <div class="col-md-7">
-        <div class="card p-3 h-100">
-            <div class="text-muted small mb-2">Spending by category (this month)</div>
-            <canvas id="categoryChart" height="180"></canvas>
-        </div>
-    </div>
-</div>
 
-<div class="row g-3">
-    <div class="col-md-7">
-        <div class="card p-3">
-            <div class="d-flex justify-content-between align-items-center mb-2">
-                <div class="text-muted small">Recent transactions</div>
-                <a href="{% url 'finance:transaction_list' %}" class="small">View all</a>
+    {% if not accounts %}
+    <div class="card">
+        {% url 'finance:account_add' as add_account_url %}
+        {% include "finance/includes/empty_state.html" with title="Let's start your stash" text="Add the accounts you use — cash, cards, savings — and Stashy will keep track of every acorn." cta_url=add_account_url cta_label="Add your first account" %}
+    </div>
+    {% else %}
+    <div class="stat-grid">
+        <div class="card stat-tile">
+            <div class="stat-icon stat-icon-forest"><i class="bi bi-safe2"></i></div>
+            <div class="min-w-0">
+                <div class="stat-label">Net worth</div>
+                <div class="stat-value{% if net_worth < 0 %} amount-negative{% endif %}">{{ net_worth|moneyc:main_currency }}</div>
+                <div class="stat-hint">{{ accounts|length }} active account{{ accounts|length|pluralize }}</div>
             </div>
-            <table class="table table-sm">
-                <tbody>
-                {% for t in recent_transactions %}
-                    <tr>
-                        <td class="text-muted small">{{ t.date }}</td>
-                        <td>{{ t.display_payee }}</td>
-                        <td class="text-muted small">{{ t.category|default:"—" }}</td>
-                        <td class="text-end {% if t.amount < 0 %}amount-negative{% else %}amount-positive{% endif %}">${{ t.amount|floatformat:2 }}</td>
-                    </tr>
-                {% empty %}
-                    <tr><td class="text-muted">No transactions yet.</td></tr>
+        </div>
+        <div class="card stat-tile">
+            <div class="stat-icon stat-icon-forest"><i class="bi bi-arrow-down-left-circle"></i></div>
+            <div class="min-w-0">
+                <div class="stat-label">Income this month</div>
+                <div class="stat-value amount-positive">{{ month_income|moneyc:main_currency }}</div>
+                <div class="stat-hint">Since 1 {{ today|date:"F" }}</div>
+            </div>
+        </div>
+        <div class="card stat-tile">
+            <div class="stat-icon stat-icon-acorn"><i class="bi bi-bag"></i></div>
+            <div class="min-w-0">
+                <div class="stat-label">Spent this month</div>
+                <div class="stat-value amount-negative">{{ month_spending|moneyc:main_currency }}</div>
+                <div class="stat-hint">Since 1 {{ today|date:"F" }}</div>
+            </div>
+        </div>
+        <div class="card stat-tile">
+            <div class="stat-icon stat-icon-gold"><i class="bi bi-piggy-bank"></i></div>
+            <div class="min-w-0 flex-grow-1">
+                <div class="stat-label">Saved in {{ last_month_start|date:"F" }}</div>
+                {% if savings_rate is None %}
+                <div class="stat-value">—</div>
+                <div class="stat-hint">No income recorded that month</div>
+                {% else %}
+                <div class="stat-value{% if savings_rate < 0 %} amount-negative{% endif %}">{{ savings_rate }}%</div>
+                <div class="savings-bar" aria-hidden="true"><span style="width: {{ savings_bar }}%"></span></div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="dash-panels">
+        <section class="card panel" aria-labelledby="accounts-title">
+            <div class="panel-head">
+                <h2 class="panel-title" id="accounts-title">Accounts</h2>
+                <a href="{% url 'finance:account_list' %}" class="small">All accounts</a>
+            </div>
+            <div class="panel-body">
+                {% for group in account_groups %}
+                {% if not forloop.first %}<div class="account-group-divider"></div>{% endif %}
+                {% for account in group.accounts %}
+                <a href="{% url 'finance:account_detail' account.pk %}" class="account-row">
+                    <span class="min-w-0">
+                        <span class="d-block fw-semibold text-truncate">{{ account.name }}</span>
+                        <small>{{ account.get_account_type_display }}</small>
+                    </span>
+                    <span class="num fw-bold{% if account.current_balance < 0 %} amount-negative{% endif %}">{{ account.current_balance|moneyc:account.currency }}</span>
+                </a>
                 {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-    <div class="col-md-5">
-        <div class="card p-3">
-            <div class="d-flex justify-content-between align-items-center mb-2">
-                <div class="text-muted small">Upcoming reminders</div>
-                <a href="{% url 'finance:reminder_list' %}" class="small">View all</a>
+                {% endfor %}
             </div>
-            {% for r in upcoming_reminders %}
-            <div class="d-flex justify-content-between border-bottom py-2">
+        </section>
+
+        <section class="card panel" id="spending-panel" aria-labelledby="spending-title"
+                 data-transactions-url="{% url 'finance:transaction_list' %}"
+                 data-main-currency="{{ main_currency|currency_symbol }}"
+                 data-currency-suffix="{% if currency_is_suffix %}1{% endif %}">
+            <div class="panel-head">
                 <div>
-                    <div>{{ r.name }}</div>
-                    <div class="text-muted small">{{ r.next_due_date }}</div>
+                    <h2 class="panel-title" id="spending-title">Spending in {{ today|date:"F" }}</h2>
+                    <div class="panel-subtitle" data-subtitle>Click a category to dig deeper</div>
                 </div>
-                <span class="{% if r.reminder_type == 'income' %}amount-positive{% else %}amount-negative{% endif %}">${{ r.amount|floatformat:2 }}</span>
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-back hidden><i class="bi bi-arrow-left me-1"></i>All categories</button>
             </div>
-            {% empty %}
-            <p class="text-muted">No reminders set up.</p>
-            {% endfor %}
-        </div>
+            <div class="panel-body">
+                {% if spending_tree %}
+                <div class="donut-layout">
+                    <div class="donut-canvas">
+                        <canvas id="spending-donut" aria-label="Spending by category"></canvas>
+                        <div class="donut-center"><strong data-center-value></strong><span data-center-label></span></div>
+                    </div>
+                    <div class="donut-legend" data-legend></div>
+                </div>
+                {% else %}
+                {% include "finance/includes/empty_state.html" with title="No spending yet this month" text="Your acorns are all still in the stash. Spending shows up here as you add transactions." %}
+                {% endif %}
+            </div>
+        </section>
+
+        <section class="card panel" aria-labelledby="due-title">
+            <div class="panel-head">
+                <div>
+                    <h2 class="panel-title" id="due-title">Due soon</h2>
+                    <div class="panel-subtitle">Next {{ reminder_lookahead_days }} days</div>
+                </div>
+                <a href="{% url 'finance:reminder_list' %}" class="small">All reminders</a>
+            </div>
+            <div class="panel-body">
+                {% for reminder in due_soon %}
+                <div class="due-item">
+                    <div class="due-date"><span class="day">{{ reminder.next_due_date|date:"j" }}</span><span class="month">{{ reminder.next_due_date|date:"M" }}</span></div>
+                    <div class="flex-grow-1 min-w-0">
+                        <div class="fw-semibold text-truncate">{{ reminder.payee.name|default:reminder.category|default:"Reminder" }}</div>
+                        <div class="small text-body-secondary due-meta">
+                            {% if reminder.days_until < 0 %}<span class="badge badge-overdue">Overdue</span>
+                            {% elif reminder.days_until == 0 %}<span class="badge badge-today">Today</span>
+                            {% else %}in {{ reminder.days_until }} day{{ reminder.days_until|pluralize }}{% endif %}
+                            · {{ reminder.account.name }}
+                        </div>
+                    </div>
+                    <div class="num {% if reminder.reminder_type == 'income' %}amount-positive{% else %}amount-negative{% endif %}">{{ reminder.signed_amount|moneyc:reminder.account.currency|default:"—" }}</div>
+                </div>
+                {% empty %}
+                {% include "finance/includes/empty_state.html" with title="Nothing due this week" text="Bills and income coming up in the next 7 days will show up here." %}
+                {% endfor %}
+            </div>
+        </section>
     </div>
+    {% endif %}
 </div>
+{{ spending_tree|json_script:"spending-tree" }}
+{{ spending_period|json_script:"spending-period" }}
 {% endblock %}
 
 {% block extra_js %}
-<script>
-const categoryLabels = [{% for row in category_totals %}"{{ row.category__name }}",{% endfor %}];
-const categoryValues = [{% for row in category_totals %}{{ row.total|floatformat:2|default:0 }},{% endfor %}].map(Math.abs);
-
-new Chart(document.getElementById('categoryChart'), {
-    type: 'doughnut',
-    data: {
-        labels: categoryLabels.length ? categoryLabels : ['No spending yet'],
-        datasets: [{
-            data: categoryValues.length ? categoryValues : [1],
-            backgroundColor: ['#2f9e6a','#3b82c4','#e0a12a','#c0392b','#8e6bbf','#4bb3a1','#d4708a','#6c757d'],
-        }]
-    },
-    options: { plugins: { legend: { position: 'right', labels: { boxWidth: 12 } } } }
-});
-</script>
+<script src="{% static 'finance/js/dashboard.js' %}"></script>
 {% endblock %}

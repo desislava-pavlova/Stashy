@@ -1,0 +1,15 @@
+{% extends "finance/generic_confirm_delete.html" %}
+{% block delete_warning %}
+{% if transaction_count or reminder_count or import_batch_count %}
+<div class="alert alert-warning">
+    <strong>This will also delete:</strong>
+    <ul class="my-2">
+        {% if transaction_count %}<li>{{ transaction_count }} transaction{{ transaction_count|pluralize }}</li>{% endif %}
+        {% if reminder_count %}<li>{{ reminder_count }} reminder{{ reminder_count|pluralize }}</li>{% endif %}
+        {% if import_batch_count %}<li>{{ import_batch_count }} import record{{ import_batch_count|pluralize }}</li>{% endif %}
+    </ul>
+    If you've just stopped using this account, cancel and edit it to untick <em>Is active</em> instead —
+    that hides it but keeps all of its history.
+</div>
+{% endif %}
+{% endblock %}
