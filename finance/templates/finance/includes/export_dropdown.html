@@ -1,0 +1,10 @@
+{% url export_url_name as export_url %}
+<div class="dropdown">
+    <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+        <i class="bi bi-download me-1"></i>Export
+    </button>
+    <ul class="dropdown-menu dropdown-menu-end">
+        <li><a class="dropdown-item" href="{{ export_url }}?{% if extra_query %}{{ extra_query }}&{% endif %}format=csv">CSV</a></li>
+        <li><a class="dropdown-item" href="{{ export_url }}?{% if extra_query %}{{ extra_query }}&{% endif %}format=xlsx">Excel (XLSX)</a></li>
+    </ul>
+</div>

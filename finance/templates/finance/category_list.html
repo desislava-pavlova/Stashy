@@ -3,7 +3,16 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h3 class="mb-0">Categories</h3>
-    <a href="{% url 'finance:category_add' %}" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>Add category</a>
+    <div class="d-flex gap-2">
+        {% include "finance/includes/export_dropdown.html" with export_url_name="finance:export_categories" %}
+        <form method="post" action="{% url 'finance:add_starter_categories' %}">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline-secondary" title="Adds whatever's in basic_categories.txt that you don't already have">
+                <i class="bi bi-stars me-1"></i>Add starter categories
+            </button>
+        </form>
+        <a href="{% url 'finance:category_add' %}" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>Add category</a>
+    </div>
 </div>
 <form method="get" class="card p-3 mb-3">
     <div class="row g-2">
@@ -38,6 +47,7 @@
                         <span class="category-main">{{ category.name }}</span>
                         {% endif %}
                         {% if category.is_system_managed %}<span class="badge text-bg-secondary ms-1">system</span>{% endif %}
+                        {% if category.is_auto_generated %}<span class="badge text-bg-warning ms-1" title="Created automatically during an import">auto</span>{% endif %}
                     </td>
                     <td class="text-end">
                         <a href="{% url 'finance:category_usage' category.pk %}" class="text-decoration-none {% if not category.usage_count %}usage-empty{% endif %}">

@@ -1,0 +1,67 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Choose a stash · Stashy</title>
+    {% include "finance/includes/head_assets.html" %}
+</head>
+<body>
+<div class="login-page">
+    <section class="login-art">
+        <div class="mascot-frame">
+            <img src="{% static 'finance/img/mascot-full-720.webp' %}" alt="Stashy the squirrel holding an acorn coin" width="720" height="720">
+        </div>
+        <div>
+            <h2>Stash smarter.</h2>
+            <p>Every coin you keep is an acorn for later. Stashy remembers where they all went — so you don't have to.</p>
+        </div>
+    </section>
+
+    <section class="login-form-side">
+        <div class="login-card">
+            <div class="d-flex align-items-center justify-content-between mb-4">
+                <span class="stashy-wordmark">Stashy</span>
+                <button type="button" class="icon-btn" data-theme-toggle aria-label="Switch to dark mode"><i class="bi bi-moon-stars"></i></button>
+            </div>
+            <h1 class="h3 mb-1">Choose a stash</h1>
+            <p class="text-body-secondary mb-4">Each stash is its own separate set of data. Pick one, or start a new one.</p>
+
+            {% for message in messages %}
+            <div class="alert alert-{{ message.tags|default:'info' }} py-2">{{ message }}</div>
+            {% endfor %}
+
+            {% if existing_stashes %}
+            <form method="post" class="mb-4">
+                {% csrf_token %}
+                <div class="mb-3">
+                    <label class="form-label" for="id_stash_name">Name</label>
+                    <select name="name" id="id_stash_name" class="form-select form-select-lg" required>
+                        {% for name in existing_stashes %}<option value="{{ name }}">{{ name }}</option>{% endfor %}
+                    </select>
+                </div>
+                <button type="submit" name="select_stash" value="1" class="btn btn-primary btn-lg w-100">Continue</button>
+            </form>
+            <div class="text-center text-body-secondary small mb-4">or</div>
+            {% endif %}
+
+            <h2 class="h6 mb-3">Create a new stash</h2>
+            {% for error in create_form.non_field_errors %}<div class="alert alert-danger py-2">{{ error }}</div>{% endfor %}
+            <form method="post">
+                {% csrf_token %}
+                {% for field in create_form %}
+                <div class="mb-3">
+                    <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                    {{ field }}
+                    {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+                    {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                </div>
+                {% endfor %}
+                <button type="submit" name="create_stash" value="1" class="btn btn-outline-secondary w-100">Create stash</button>
+            </form>
+        </div>
+    </section>
+</div>
+<script src="{% static 'finance/js/stashy.js' %}"></script>
+</body>
+</html>

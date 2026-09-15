@@ -1,0 +1,36 @@
+{% load stashy_format %}
+<div class="table-responsive">
+<table class="table table-sm mb-0">
+    <thead><tr><th>Category</th><th class="text-end">Current</th><th class="text-end">Average</th><th class="text-end">Difference</th></tr></thead>
+    <tbody>
+    {% for group in table.groups %}
+        {% if table.groups|length > 1 %}
+        <tr><td colspan="4" class="text-muted small fw-semibold pt-3">{{ group.name }}</td></tr>
+        {% endif %}
+        {% for row in group.rows %}
+        <tr{% if row.is_child %} data-cat-parent="{{ prefix }}-{{ row.parent_id }}" hidden{% else %} data-cat-id="{{ prefix }}-{{ row.id }}"{% endif %}>
+            <td{% if row.is_child %} class="ps-4"{% endif %}>
+                {% if row.has_children %}<i class="bi bi-chevron-down report-toggle-icon is-collapsed" data-toggle-target="{{ prefix }}-{{ row.id }}"></i>{% endif %}
+                <span class="{% if row.is_child %}category-sub{% else %}category-main{% endif %}">{{ row.name }}</span>
+            </td>
+            <td class="text-end {{ row.current|amount_class:signed }}{% if row.is_child %} report-value-sub{% endif %}">{{ row.current|moneyc:main_currency }}</td>
+            <td class="text-end text-muted{% if row.is_child %} report-value-sub{% endif %}">{{ row.average|moneyc:main_currency }}</td>
+            <td class="text-end {{ row.difference|amount_class }}{% if row.is_child %} report-value-sub{% endif %}">{{ row.difference|moneyc:main_currency }}</td>
+        </tr>
+        {% endfor %}
+    {% empty %}
+        <tr><td colspan="4" class="text-muted text-center py-3">No activity yet this period.</td></tr>
+    {% endfor %}
+    </tbody>
+    {% if table.totals %}
+    <tfoot>
+        <tr class="fw-semibold">
+            <td>Total</td>
+            <td class="text-end {{ table.totals.current|amount_class:signed }}">{{ table.totals.current|moneyc:main_currency }}</td>
+            <td class="text-end text-muted">{{ table.totals.average|moneyc:main_currency }}</td>
+            <td class="text-end {{ table.totals.difference|amount_class }}">{{ table.totals.difference|moneyc:main_currency }}</td>
+        </tr>
+    </tfoot>
+    {% endif %}
+</table>
+</div>

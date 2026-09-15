@@ -1,0 +1,44 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Forgot PIN · Stashy</title>
+    {% include "finance/includes/head_assets.html" %}
+</head>
+<body>
+<div class="login-page">
+    <section class="login-art">
+        <div class="mascot-frame">
+            <img src="{% static 'finance/img/mascot-full-720.webp' %}" alt="Stashy the squirrel holding an acorn coin" width="720" height="720">
+        </div>
+    </section>
+    <section class="login-form-side">
+        <div class="login-card">
+            <span class="stashy-wordmark d-block mb-4">Stashy</span>
+            <h1 class="h3 mb-1">Reset your PIN</h1>
+            <p class="text-body-secondary mb-4">For "{{ stash_name }}" — enter the recovery code you saved when this stash was created.</p>
+
+            {% if locked_out %}
+            <div class="alert alert-danger py-2">Too many wrong attempts. Try again in about {{ lockout_minutes }} minute{{ lockout_minutes|pluralize }}.</div>
+            {% else %}
+            {% for error in form.non_field_errors %}<div class="alert alert-danger py-2">{{ error }}</div>{% endfor %}
+            <form method="post">
+                {% csrf_token %}
+                {% for field in form %}
+                <div class="mb-3">
+                    <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                    {{ field }}
+                    {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                </div>
+                {% endfor %}
+                <button type="submit" class="btn btn-primary btn-lg w-100">Reset PIN</button>
+            </form>
+            {% endif %}
+            <div class="text-center mt-3"><a href="{% url 'login' %}">Back to login</a></div>
+        </div>
+    </section>
+</div>
+<script src="{% static 'finance/js/stashy.js' %}"></script>
+</body>
+</html>

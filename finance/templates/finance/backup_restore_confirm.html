@@ -1,0 +1,21 @@
+{% extends "finance/base.html" %}
+{% block title %}Restore backup · Stashy{% endblock %}
+{% block content %}
+<div class="card p-4 mx-auto mt-4" style="max-width: 560px;">
+    <div class="d-flex align-items-start gap-3 mb-3">
+        <div class="stat-icon stat-icon-danger"><i class="bi bi-arrow-counterclockwise"></i></div>
+        <div class="min-w-0">
+            <h3 class="mb-1">Restore from {{ backup }}?</h3>
+            <p class="mb-0 text-danger"><i class="bi bi-exclamation-triangle me-1"></i>Everything entered after this backup was made will be replaced.</p>
+        </div>
+    </div>
+    <p class="text-muted small mb-0">Stashy saves what's currently in the database as its own backup first, so this
+        can itself be undone by restoring again. After this finishes, restart Stashy so every open page picks up
+        the restored data.</p>
+    <form method="post" class="d-flex gap-2 mt-3">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-danger">Yes, restore this backup</button>
+        <a href="{% url 'finance:settings' %}" class="btn btn-outline-secondary">Cancel</a>
+    </form>
+</div>
+{% endblock %}

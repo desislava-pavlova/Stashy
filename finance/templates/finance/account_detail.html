@@ -54,8 +54,9 @@
                     {% elif t.cleared %}<span class="badge text-bg-secondary">C</span>
                     {% else %}<span class="badge text-bg-light text-muted border">—</span>{% endif %}
                 </td>
-                <td class="text-end">
-                    <a href="{% url 'finance:transaction_edit' t.pk %}?next={{ request.get_full_path|urlencode }}" class="btn btn-sm btn-outline-secondary btn-icon"><i class="bi bi-pencil"></i></a>
+                <td class="text-end text-nowrap">
+                    <a href="{% url 'finance:transaction_edit' t.pk %}?next={{ request.get_full_path|urlencode }}" class="btn btn-sm btn-outline-secondary btn-icon" aria-label="Edit"><i class="bi bi-pencil"></i></a>
+                    <a href="{% url 'finance:transaction_delete' t.pk %}?next={{ request.get_full_path|urlencode }}" class="btn btn-sm btn-outline-danger btn-icon" aria-label="Delete"><i class="bi bi-trash"></i></a>
                 </td>
             </tr>
         {% empty %}

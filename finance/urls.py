@@ -19,6 +19,7 @@ urlpatterns = [
     # Categories
     path("categories/", views.CategoryListView.as_view(), name="category_list"),
     path("categories/add/", views.CategoryCreateView.as_view(), name="category_add"),
+    path("categories/add-starter/", views.add_starter_categories_view, name="add_starter_categories"),
     path("categories/<int:pk>/edit/", views.CategoryUpdateView.as_view(), name="category_edit"),
     path("categories/<int:pk>/delete/", views.CategoryDeleteView.as_view(), name="category_delete"),
     path("categories/<int:pk>/usage/", views.category_usage, name="category_usage"),
@@ -46,11 +47,24 @@ urlpatterns = [
     # Import
     path("import/", views.import_transactions, name="import_transactions"),
 
+    # Export (Phase 10)
+    path("transactions/export/", views.export_transactions, name="export_transactions"),
+    path("accounts/export/", views.export_accounts, name="export_accounts"),
+    path("categories/export/", views.export_categories, name="export_categories"),
+    path("payees/export/", views.export_payees, name="export_payees"),
+
     # Reports
     path("reports/", views.reports_view, name="reports"),
+    path("reports/export/spending/", views.export_report_spending, name="export_report_spending"),
+    path("reports/export/spending-vs-average/", views.export_report_spending_vs_average, name="export_report_spending_vs_average"),
+    path("reports/export/income-expense/", views.export_report_income_expense, name="export_report_income_expense"),
+    path("reports/export/income-expense-vs-average/", views.export_report_income_expense_vs_average, name="export_report_income_expense_vs_average"),
+    path("reports/export/bills/", views.export_report_bills, name="export_report_bills"),
+    path("reports/export/net-worth/", views.export_report_net_worth, name="export_report_net_worth"),
 
     # Settings (currency + regional preferences)
     path("settings/", views.settings_view, name="settings"),
+    path("settings/backups/restore/", views.backup_restore, name="backup_restore"),
 
     # JSON APIs (used by the transaction form's autofill JS)
     path("api/payee-autofill/", views.api_payee_autofill, name="api_payee_autofill"),

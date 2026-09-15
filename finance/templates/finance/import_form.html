@@ -2,21 +2,36 @@
 {% load stashy_format %}
 {% block title %}Import · Stashy{% endblock %}
 {% block content %}
-<h3 class="mb-3">Import transactions</h3>
-<div class="card p-4 mb-4" style="max-width: 640px;">
-    <form method="post" enctype="multipart/form-data">
-        {% csrf_token %}
-        <div class="mb-3">
-            <label class="form-label">Account</label>
-            {{ form.account }}
+<div class="page-header">
+    <h1 class="h3 mb-0">Import transactions</h1>
+</div>
+<div class="row g-4 align-items-start mb-4">
+    <div class="col-lg-7 col-xxl-6">
+        <div class="card p-4">
+            <form method="post" enctype="multipart/form-data">
+                {% csrf_token %}
+                <div class="mb-3">
+                    <label class="form-label">Account</label>
+                    {{ form.account }}
+                    <div class="form-text">{{ form.account.help_text }}</div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">File</label>
+                    {{ form.file }}
+                    <div class="form-text">CSV, OFX or QFX from your bank or another finance app.</div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Date format</label>
+                    {{ form.date_format }}
+                    <div class="form-text">{{ form.date_format.help_text }}</div>
+                </div>
+                <button type="submit" class="btn btn-primary px-4">Import</button>
+            </form>
         </div>
-        <div class="mb-3">
-            <label class="form-label">File</label>
-            {{ form.file }}
-            <div class="form-text">{{ form.file.help_text }}. CSV columns recognized: Date, Payee/Description, Memo, Amount.</div>
-        </div>
-        <button type="submit" class="btn btn-primary">Import</button>
-    </form>
+    </div>
+    <div class="col-lg-5 col-xxl-4">
+        {% include "finance/includes/help_card.html" %}
+    </div>
 </div>
 
 <h5 class="mb-2">Recent imports</h5>

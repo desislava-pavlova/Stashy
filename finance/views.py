@@ -2,15 +2,20 @@ import csv
 import hashlib
 import io
 import json
+import re
 from datetime import date, datetime, timedelta
 from decimal import Decimal
+from pathlib import Path
 
 from dateutil.relativedelta import relativedelta
+from django.conf import settings
 from django.contrib import messages
+from django.contrib.auth import update_session_auth_hash
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.db import connections
 from django.db.models import Count, Sum, Q
-from django.http import JsonResponse
+from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
@@ -18,7 +23,9 @@ from django.views.generic import CreateView, DeleteView, ListView, UpdateView
 
 from audit.context import system_action
 
+from . import backup as finance_backup
 from . import regional
+from . import stashes
 from .currency import RateFetchError, RateTable, SUFFIX_CURRENCIES, convert_balances, fetch_latest_rates, format_money
 from .forms import (
     AccountCreateForm, AccountForm, CategoryForm, CheckRatesForm, DateRangeFilterForm, ImportUploadForm,
@@ -27,10 +34,18 @@ from .forms import (
 )
 from .models import (
     Account, Category, ImportBatch, Payee, Profile, Reconciliation, Reminder, Tag, Transaction,
-    grouped_accounts, grouped_categories,
+    categories_alphabetical, grouped_accounts, grouped_categories,
 )
+from .auth_forms import ChangePinForm
 from .money import CENT, ZERO, parse_amount
-from .reporting import excluding_transfers, income_and_spending, resolve_range, savings_rate, spending_tree, trunc_func
+from .starter_categories import add_starter_categories, starter_categories_path
+from .reporting import (
+    DEFAULT_LOOKBACK_PERIODS, bills_and_utilities_category, bills_and_utilities_category_ids,
+    bills_and_utilities_series, bills_and_utilities_totals, category_report_rows,
+    category_totals_top_level, category_totals_vs_average, category_vs_average_report_rows,
+    income_and_spending, income_and_spending_vs_average, net_worth_by_account, resolve_range,
+    savings_rate, spending_tree,
+)
 
 ACCOUNT_TIPS = [
     "Opening balance is what the account held on the day you start tracking it in Stashy — Stashy turns it into a real transaction.",
@@ -56,6 +71,15 @@ TRANSACTION_TIPS = [
     "Type a payee you've used before and Stashy fills in the category, memo and amount.",
     "Use a minus sign for money going out, like -12.50.",
     "Moving money between your own accounts? Use the Transfer button on the account page instead.",
+]
+IMPORT_TIPS = [
+    "CSV columns recognized: Date, Payee/Description, Memo, Amount, Account, Category.",
+    'A category that doesn\'t exist yet is created for you automatically - marked "auto" in '
+    'the category list - and understands "Parent:Child" or "Parent > Child".',
+    "An Account column lets one file cover several accounts at once; a row naming an account "
+    "that doesn't exist yet is skipped rather than guessed at.",
+    'Leave Date format on "Detect automatically" unless Stashy gets it wrong for this '
+    "particular file - it reads a sample of the dates first and only asks you to pick when it can't tell.",
 ]
 
 # The transaction list adds "All time" to Reports' own date-range presets (Phase 5) — a
@@ -358,6 +382,25 @@ class CategoryCreateView(LoginRequiredMixin, CreateView):
     extra_context = {"title": "Add category", "tips": CATEGORY_TIPS, "category_type_filter": True}
 
 
+@login_required
+def add_starter_categories_view(request):
+    """Creates whatever's in basic_categories.txt that doesn't already exist (Phase 12) - the
+    file itself, not this view, is where the actual list lives, so editing it needs no code
+    change. Safe to click more than once: already-existing names are skipped."""
+    if not starter_categories_path().exists():
+        messages.error(request, "basic_categories.txt wasn't found in the project folder.")
+        return redirect("finance:category_list")
+
+    with system_action("Added starter categories from basic_categories.txt"):
+        created = add_starter_categories()
+
+    if created:
+        messages.success(request, f"Added {len(created)} categor{'y' if len(created) == 1 else 'ies'}: {', '.join(created)}.")
+    else:
+        messages.info(request, "Every category in basic_categories.txt already exists - nothing to add.")
+    return redirect("finance:category_list")
+
+
 class SystemManagedCategoryGuard:
     """Blocks edit/delete of an account's own transfer category — it's managed automatically (D7)."""
 
@@ -435,6 +478,7 @@ PAYEE_SORT_KEYS = {
     "name": lambda row: row["payee"].name.lower(),
     "category": lambda row: row["categories_label"].lower(),
     "amount": lambda row: row["total_sort_value"],
+    "usage": lambda row: row["usage_count"],
 }
 
 
@@ -517,7 +561,7 @@ def payee_list(request):
         "search": search,
         "selected_category": category_id,
         "memo_filter": memo_filter,
-        "categories": Category.objects.select_related("parent").exclude(account__isnull=False),
+        "categories": categories_alphabetical(Category.objects.select_related("parent").exclude(account__isnull=False)),
         "sort": sort,
         "sort_next": sort_next,
     })
@@ -607,16 +651,22 @@ TRANSACTION_LIST_SORT_FIELDS = {
 }
 
 
-@login_required
-def transaction_list(request):
+def _filtered_transactions(request):
+    """Every filter the transaction list applies, shared with CSV/XLSX export (Phase 10) so
+    what you export always matches what you're currently looking at."""
     transactions = Transaction.objects.select_related("account", "category__parent", "payee")
 
     account_id = request.GET.get("account", "")
-    category_id = request.GET.get("category", "")
+    # Category is multi-select (2026-09-15 follow-up) — one or more "category" values, any mix
+    # of digit category ids and the literal "none" for uncategorized, matched with OR.
+    category_values = request.GET.getlist("category")
     status = request.GET.get("status", "")
     search = request.GET.get("q", "").strip()
     with_subcategories = request.GET.get("with_subcategories") == "1"
-    selected_category = None
+    include_uncategorized = "none" in category_values
+    selected_categories = list(Category.objects.filter(
+        pk__in=[v for v in category_values if v.isdigit()]
+    ).select_related("parent"))
 
     range_key = request.GET.get("range", "")
     start = _iso_date(request.GET.get("start"))
@@ -633,14 +683,15 @@ def transaction_list(request):
 
     if account_id.isdigit():
         transactions = transactions.filter(account_id=account_id)
-    if category_id == "none":
-        transactions = transactions.filter(category__isnull=True)
-    elif category_id.isdigit():
-        selected_category = Category.objects.filter(pk=category_id).first()
-        category_ids = [int(category_id)]
-        if with_subcategories and selected_category:
-            category_ids += [sub.pk for sub in selected_category.descendants()]
-        transactions = transactions.filter(category_id__in=category_ids)
+    if selected_categories or include_uncategorized:
+        category_ids = {c.pk for c in selected_categories}
+        if with_subcategories:
+            for category in selected_categories:
+                category_ids.update(sub.pk for sub in category.descendants())
+        category_filter = Q(category_id__in=category_ids) if category_ids else Q(pk__in=[])
+        if include_uncategorized:
+            category_filter |= Q(category__isnull=True)
+        transactions = transactions.filter(category_filter)
     if start:
         transactions = transactions.filter(date__gte=start)
     if end:
@@ -654,26 +705,158 @@ def transaction_list(request):
             Q(payee__name__icontains=search) | Q(payee_name__icontains=search) | Q(memo__icontains=search)
         )
 
+    return transactions, {
+        "account_id": account_id, "category_values": category_values,
+        "selected_categories": selected_categories, "include_uncategorized": include_uncategorized,
+        "with_subcategories": with_subcategories, "status": status, "range_key": range_key,
+        "start": start, "end": end, "search": search,
+    }
+
+
+@login_required
+def transaction_list(request):
+    transactions, filters = _filtered_transactions(request)
     transactions, sort, sort_next = _sorted(request, transactions, TRANSACTION_LIST_SORT_FIELDS)
+    # Mixes currencies across accounts without conversion, same known simplification as the
+    # accounts page's own net worth total (Phase 3/D2) - accurate for a single-currency setup.
+    total_amount = transactions.aggregate(total=Sum("amount"))["total"] or ZERO
+
+    selected_categories = filters["selected_categories"]
+    include_uncategorized = filters["include_uncategorized"]
+    picked_count = len(selected_categories) + (1 if include_uncategorized else 0)
+    if picked_count == 0:
+        category_filter_label = "All categories"
+    elif picked_count == 1:
+        category_filter_label = "Uncategorized" if include_uncategorized and not selected_categories else selected_categories[0].full_name
+    else:
+        category_filter_label = f"{picked_count} categories selected"
 
     context = {
         "transactions": transactions,
+        "total_amount": total_amount,
+        # Mixed currencies have no one true symbol either - the main currency is the same
+        # stand-in the accounts page's own net worth total already uses (Phase 3/D2).
+        "main_currency": Profile.for_user(request.user).main_currency,
         "accounts": Account.objects.all(),
-        "categories": Category.objects.select_related("parent"),
-        "selected_account": account_id,
-        "selected_category": category_id,
-        "selected_category_obj": selected_category,
-        "with_subcategories": with_subcategories,
-        "status": status,
-        "range": range_key,
+        # Income -> Expense -> Transfer, each main category with its own subcategories right
+        # under it - grouped_categories() is the category list page's own grouping, reused
+        # here (2026-09-15 follow-up) so the checkbox dropdown reads exactly like that page.
+        "category_groups": grouped_categories(Category.objects.select_related("parent")),
+        "category_filter_label": category_filter_label,
+        "selected_account": filters["account_id"],
+        "selected_category_values": set(filters["category_values"]),
+        "include_uncategorized": include_uncategorized,
+        # The "+ subcategories" chip only means something when it's unambiguous which one
+        # category it's talking about - still how the dashboard's own drill-down link (the
+        # only thing that sets with_subcategories) always arrives here, one category at a time.
+        "selected_category_obj": (
+            selected_categories[0]
+            if filters["with_subcategories"] and len(selected_categories) == 1 and not filters["include_uncategorized"]
+            else None
+        ),
+        "with_subcategories": filters["with_subcategories"],
+        "status": filters["status"],
+        "range": filters["range_key"],
         "range_choices": TRANSACTION_RANGE_CHOICES,
-        "start": start,
-        "end": end,
+        "start": filters["start"],
+        "end": filters["end"],
         "sort": sort,
         "sort_next": sort_next,
-        "search": search,
+        "search": filters["search"],
     }
     return render(request, "finance/transaction_list.html", context)
+
+
+# ---------------------------------------------------------------------------
+# Export (Phase 10) - CSV built in; XLSX via openpyxl
+# ---------------------------------------------------------------------------
+
+def _csv_response(filename, headers, rows):
+    response = HttpResponse(content_type="text/csv")
+    response["Content-Disposition"] = f'attachment; filename="{filename}.csv"'
+    writer = csv.writer(response)
+    writer.writerow(headers)
+    writer.writerows(rows)
+    return response
+
+
+def _xlsx_response(filename, headers, rows):
+    from openpyxl import Workbook
+
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.append(headers)
+    for row in rows:
+        sheet.append(row)
+    response = HttpResponse(
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    response["Content-Disposition"] = f'attachment; filename="{filename}.xlsx"'
+    workbook.save(response)
+    return response
+
+
+def _export_response(fmt, filename, headers, rows):
+    if fmt == "xlsx":
+        return _xlsx_response(filename, headers, rows)
+    return _csv_response(filename, headers, rows)
+
+
+@login_required
+def export_transactions(request):
+    """Exports whatever the transaction list is currently filtered/sorted to (Phase 10) -
+    same filters, so what you get matches what you were looking at."""
+    transactions, _filters = _filtered_transactions(request)
+    transactions, _sort, _sort_next = _sorted(request, transactions, TRANSACTION_LIST_SORT_FIELDS)
+    headers = ["Date", "Number", "Account", "Payee", "Category", "Memo", "Amount", "Currency", "Cleared", "Reconciled"]
+    rows = [
+        [
+            t.date.isoformat(), t.transaction_number or "", t.account.name, t.display_payee,
+            t.category.full_name if t.category_id else "", t.memo, str(t.amount), t.account.currency,
+            "Y" if t.cleared else "N", "Y" if t.reconciled else "N",
+        ]
+        for t in transactions
+    ]
+    filename = f"stashy-transactions-{date.today():%Y%m%d}"
+    return _export_response(request.GET.get("format", "csv"), filename, headers, rows)
+
+
+@login_required
+def export_accounts(request):
+    headers = ["Name", "Type", "Currency", "Institution", "Active", "Balance"]
+    rows = [
+        [a.name, a.get_account_type_display(), a.currency, a.institution, "Y" if a.is_active else "N", str(a.balance)]
+        for a in Account.objects.all()
+    ]
+    filename = f"stashy-accounts-{date.today():%Y%m%d}"
+    return _export_response(request.GET.get("format", "csv"), filename, headers, rows)
+
+
+@login_required
+def export_categories(request):
+    # Full export (2026-09-14 follow-up): includes system-managed transfer categories too,
+    # marked as such, rather than silently leaving them out of "export everything".
+    categories = Category.objects.select_related("parent", "account")
+    headers = ["Name", "Parent", "Type", "Auto-generated", "System-managed"]
+    rows = [
+        [
+            c.name, c.parent.name if c.parent_id else "", c.get_category_type_display(),
+            "Y" if c.is_auto_generated else "N", "Y" if c.account_id else "N",
+        ]
+        for c in categories
+    ]
+    filename = f"stashy-categories-{date.today():%Y%m%d}"
+    return _export_response(request.GET.get("format", "csv"), filename, headers, rows)
+
+
+@login_required
+def export_payees(request):
+    # Full export (2026-09-14 follow-up): includes system payees too, marked as such.
+    payees = Payee.objects.all()
+    headers = ["Name", "Active", "System-managed"]
+    rows = [[p.name, "Y" if p.is_active else "N", "Y" if p.name in Payee.SYSTEM_NAMES else "N"] for p in payees]
+    filename = f"stashy-payees-{date.today():%Y%m%d}"
+    return _export_response(request.GET.get("format", "csv"), filename, headers, rows)
 
 
 def _safe_next(url):
@@ -726,6 +909,18 @@ def transaction_form_view(request, pk=None):
     if request.method == "POST":
         form = TransactionForm(request.POST, instance=instance, initial=initial)
         if form.is_valid():
+            account = form.cleaned_data["account"]
+            if not account.is_active and request.POST.get("confirm_inactive_account") != "1":
+                # Don't silently reactivate, or silently block, an inactive account someone
+                # is trying to use - ask, and only act once they say yes (2026-09-15 follow-up).
+                return render(request, "finance/transaction_form.html", {
+                    "form": form, "instance": instance, "tips": TRANSACTION_TIPS, "next": next_url,
+                    "reminder": reminder, "inactive_account_confirm": account,
+                })
+            if not account.is_active:
+                with system_action(f"Account '{account.name}' made active again by entering a transaction on it"):
+                    account.is_active = True
+                    account.save(update_fields=["is_active"])
             txn = form.save()
             if reminder:
                 reminder.last_entered_transaction = txn
@@ -923,18 +1118,31 @@ def import_transactions(request):
 
             with system_action(f"Imported from {upload.name}"):
                 batch = ImportBatch.objects.create(account=account, source_filename=upload.name)
-                importer = _import_csv if filename.endswith(".csv") else _import_ofx
-                created, duplicates = importer(upload, account, batch)
+                if filename.endswith(".csv"):
+                    date_format = form.cleaned_data.get("date_format") or "auto"
+                    created, duplicates, unknown_account, resolved_format = _import_csv(upload, account, batch, date_format)
+                else:
+                    created, duplicates, unknown_account, resolved_format = _import_ofx(upload, account, batch)
                 batch.row_count = created
                 batch.duplicate_count = duplicates
                 batch.save(update_fields=["row_count", "duplicate_count"])
-            messages.success(request, f"Imported {created} transactions ({duplicates} duplicates skipped).")
+
+            summary = f"Imported {created} transactions ({duplicates} duplicates skipped)."
+            if unknown_account:
+                summary += (
+                    f" {unknown_account} row{'s' if unknown_account != 1 else ''} skipped - "
+                    "named an account that doesn't exist yet."
+                )
+            if resolved_format:
+                label = dict(regional.DATE_FORMAT_CHOICES).get(resolved_format, resolved_format)
+                summary += f" Read dates as {label}."
+            messages.success(request, summary)
             return redirect("finance:account_detail", pk=account.pk)
     else:
         form = ImportUploadForm()
 
     recent_batches = ImportBatch.objects.select_related("account")[:15]
-    return render(request, "finance/import_form.html", {"form": form, "recent_batches": recent_batches})
+    return render(request, "finance/import_form.html", {"form": form, "recent_batches": recent_batches, "tips": IMPORT_TIPS})
 
 
 def _fingerprint(account_id, txn_date, amount, payee):
@@ -952,17 +1160,79 @@ def _get_or_create_payee(name):
 
 
 def _guessed_category(payee):
-    """The category to pre-fill for an imported row: this payee's most recently used one, if any."""
+    """The category to pre-fill for an imported row with no Category column value: this
+    payee's most recently used category, if any."""
     if payee is None:
         return None
     history = payee.category_history()
     return history[0].category if history else None
 
 
-def _import_csv(upload, account, batch):
+_CATEGORY_SEPARATOR_RE = re.compile(r"\s*[:>]\s*")
+
+
+def _resolve_category(raw, amount):
+    """Resolve the category named in an import row, auto-creating it if Stashy doesn't already
+    have one by that name (Phase 9) - the main real-world use of this importer is a large
+    one-time historical migration, and requiring every category to exist beforehand would be
+    exactly the kind of friction that makes migrations painful. Matching is case-insensitive,
+    so "Groceries" from a file never creates a duplicate of an existing "groceries". Understands
+    "Parent:Child" or "Parent > Child" (Quicken's and this app's own separators) for one level
+    of subcategory - a third level, if a file somehow has one, folds into the child's own name
+    rather than erroring, since this app doesn't support deeper nesting anyway.
+    """
+    raw = (raw or "").strip()
+    if not raw:
+        return None
+    parts = _CATEGORY_SEPARATOR_RE.split(raw, maxsplit=1)
+    parent_name = parts[0].strip()
+    child_name = parts[1].strip() if len(parts) > 1 else ""
+    if not parent_name:
+        return None
+
+    category_type = Category.CategoryType.INCOME if amount > 0 else Category.CategoryType.EXPENSE
+    parent = Category.objects.filter(name__iexact=parent_name, parent__isnull=True, account__isnull=True).first()
+    if parent is None:
+        parent = Category.objects.create(name=parent_name, category_type=category_type, is_auto_generated=True)
+
+    if not child_name:
+        return parent
+
+    child = Category.objects.filter(name__iexact=child_name, parent=parent).first()
+    if child is None:
+        # A new subcategory always takes its parent's type - a mismatched pair (an "income"
+        # category with an "expense" child) would only confuse reports for no real benefit.
+        child = Category.objects.create(
+            name=child_name, category_type=parent.category_type, parent=parent, is_auto_generated=True
+        )
+    return child
+
+
+# A day value over 12 in either position settles day-first vs month-first; a 4-digit first
+# component is ISO. Ambiguous rows (both parts <= 12) are skipped - the caller falls back to
+# the profile's own format if nothing in the whole file was ever unambiguous.
+_DATE_SNIFF_RE = re.compile(r"^(\d{1,4})[./-](\d{1,2})[./-](\d{1,4})$")
+
+
+def _detect_date_format(raw_dates):
+    for raw in raw_dates:
+        match = _DATE_SNIFF_RE.match((raw or "").strip())
+        if not match:
+            continue
+        a, b, _c = match.groups()
+        if len(a) == 4:
+            return "ymd"
+        if int(a) > 12:
+            return "dmy"
+        if int(b) > 12:
+            return "mdy"
+    return None
+
+
+def _import_csv(upload, account, batch, date_format="auto"):
     text = io.TextIOWrapper(upload.file, encoding="utf-8-sig")
     reader = csv.DictReader(text)
-    created, duplicates = 0, 0
+    rows = list(reader)
 
     # Normalize header names so common bank export variants all work.
     fieldmap = {name.strip().lower(): name for name in (reader.fieldnames or [])}
@@ -973,16 +1243,30 @@ def _import_csv(upload, account, batch):
                 return (row.get(fieldmap[k]) or "").strip()
         return ""
 
-    for row in reader:
+    if date_format == "auto" or not date_format:
+        detected = _detect_date_format(get(row, "date", "transaction date") for row in rows)
+        date_format = detected or regional.current().date_format
+    date_formats = regional.Preferences(date_format=date_format).date_input_formats
+
+    # A file with its own Account column (a Quicken-style combined export, e.g.) can put each
+    # row in a different, already-existing account instead of the one picked above (D9 backlog
+    # "Accounts must already exist" - a wrong/typo'd name is the worst kind of import mistake to
+    # auto-correct silently, so an unmatched name skips just that row rather than guessing).
+    accounts_by_name = {a.name.lower(): a for a in Account.objects.all()}
+
+    created, duplicates, unknown_account = 0, 0, 0
+    for row in rows:
         raw_date = get(row, "date", "transaction date")
         raw_amount = get(row, "amount")
         payee_name = get(row, "payee", "description", "name")
         memo = get(row, "memo", "notes")
+        raw_account = get(row, "account")
+        raw_category = get(row, "category")
 
         if not raw_date or not raw_amount:
             continue
 
-        txn_date = _parse_date(raw_date)
+        txn_date = _parse_date(raw_date, date_formats)
         if not txn_date:
             continue
 
@@ -990,37 +1274,38 @@ def _import_csv(upload, account, batch):
         if amount is None:
             continue
 
-        fp = _fingerprint(account.id, txn_date, amount, payee_name)
+        row_account = account
+        if raw_account:
+            row_account = accounts_by_name.get(raw_account.lower())
+            if row_account is None:
+                unknown_account += 1
+                continue
+
+        fp = _fingerprint(row_account.id, txn_date, amount, payee_name)
         if Transaction.objects.filter(import_fingerprint=fp).exists():
             duplicates += 1
             continue
 
-        payee = None
-        if payee_name:
-            payee = _get_or_create_payee(payee_name)
+        payee = _get_or_create_payee(payee_name) if payee_name else None
+        category = _resolve_category(raw_category, amount) if raw_category else _guessed_category(payee)
 
         Transaction.objects.create(
-            account=account,
+            account=row_account,
             date=txn_date,
             payee=payee,
             memo=memo,
             amount=amount,
             import_batch=batch,
             import_fingerprint=fp,
-            category=_guessed_category(payee),
+            category=category,
         )
         created += 1
 
-    return created, duplicates
+    return created, duplicates, unknown_account, date_format
 
 
-# European formats only: mixing in American MM/DD would silently swap day and
-# month for any date where both are <= 12 (e.g. 03/04 read as 4 March).
-CSV_DATE_FORMATS = ("%Y-%m-%d", "%d/%m/%Y", "%d.%m.%Y", "%d-%m-%Y", "%d/%m/%y", "%d.%m.%y")
-
-
-def _parse_date(raw):
-    for fmt in CSV_DATE_FORMATS:
+def _parse_date(raw, formats):
+    for fmt in formats:
         try:
             return datetime.strptime(raw, fmt).date()
         except ValueError:
@@ -1061,107 +1346,218 @@ def _import_ofx(upload, account, batch):
                 category=_guessed_category(payee),
             )
             created += 1
-    return created, duplicates
+    # OFX has no per-row account text field and no ambiguous textual dates to detect.
+    return created, duplicates, 0, None
 
 
 # ---------------------------------------------------------------------------
 # Reports
 # ---------------------------------------------------------------------------
 
-@login_required
-def reports_view(request):
+def _report_filters(request):
+    """Shared by the reports page and every per-report export view, so both read the exact
+    same filters off the querystring - what you export always matches what's on screen."""
     form = DateRangeFilterForm(request.GET or None)
     filters = form.cleaned_data if form.is_valid() else {}
     start, end, interval = resolve_range(filters)
+    # "Average interval" is now how many periods the same length as [start, end] to average
+    # over (2026-09-15 follow-up), not a separate bucketing granularity - see
+    # reporting.vs_average_periods().
+    try:
+        lookback = int(interval)
+    except (TypeError, ValueError):
+        lookback = DEFAULT_LOOKBACK_PERIODS
+    return {
+        "form": form, "start": start, "end": end, "lookback": lookback,
+        "subtotal": filters.get("subtotal") or "",
+        "account": filters.get("account"),
+    }
 
-    qs = excluding_transfers(Transaction.objects.filter(date__gte=start, date__lte=end))
-    if filters.get("account"):
-        qs = qs.filter(account=filters["account"])
-    if filters.get("category"):
-        qs = qs.filter(category=filters["category"])
 
-    # --- Spending by category ---
-    spending_by_category = list(
-        qs.filter(amount__lt=0, category__isnull=False)
-        .values("category__name")
-        .annotate(total=Sum("amount"))
-        .order_by("total")
-    )
-    # Money stays Decimal for every calculation; float only at the JSON boundary for Chart.js.
-    for row in spending_by_category:
-        row["total"] = float(abs(row["total"]))
+@login_required
+def reports_view(request):
+    f = _report_filters(request)
+    start, end, lookback, subtotal, account = f["start"], f["end"], f["lookback"], f["subtotal"], f["account"]
 
-    # --- Income vs expense by category (over time, bucketed by interval) ---
-    trunc = trunc_func(interval)
-    timeseries = (
-        qs.annotate(period=trunc)
-        .values("period")
-        .annotate(
-            income=Sum("amount", filter=Q(amount__gt=0)),
-            expense=Sum("amount", filter=Q(amount__lt=0)),
+    # --- Spending by category (chart: main categories only, subcategories rolled up) ---
+    spending_by_category = category_totals_top_level(start, end, expense_only=True, account=account)
+    spending_table = category_report_rows(start, end, subtotal=subtotal, expense_only=True, account=account)
+
+    # --- Current spending by category vs. average over the last `lookback` periods the same
+    # length as the selected date range - the Account filter applies to both sides now
+    # (2026-09-15 follow-up: it silently didn't before, a real bug). ---
+    spending_vs_average = category_totals_vs_average(start, end, lookback, expense_only=True, account=account)
+    spending_vs_average_table = category_vs_average_report_rows(start, end, lookback, expense_only=True, account=account)
+
+    # --- Net worth over time (running balance across all accounts) ---
+    net_worth_series = _net_worth_series(start, end)
+    net_worth_table = net_worth_by_account(start, end, subtotal or "month")
+
+    # --- Bills & Utilities: spending by subcategory for the table, monthly trend for the
+    # line chart ("should be lines like net worth") ---
+    bills = bills_and_utilities_totals(start, end, account=account)
+    bills_table = None
+    bills_series = []
+    if bills:
+        top = bills_and_utilities_category()
+        bills_table = category_report_rows(
+            start, end, subtotal=subtotal, expense_only=True, account=account,
+            category_ids=bills_and_utilities_category_ids(top),
         )
-        .order_by("period")
-    )
-    timeseries = [
-        {
-            "period": row["period"].isoformat() if row["period"] else "",
-            "income": float(row["income"] or ZERO),
-            "expense": float(abs(row["expense"] or ZERO)),
-        }
-        for row in timeseries
+        bills_series = bills_and_utilities_series(start, end, account=account)
+
+    # --- Income & expense by category (chart: main categories only, plus 3 summary columns
+    # for Total income/Total expense/Total), the overall + vs.-average savings rate ---
+    income_expense_by_category = category_totals_top_level(start, end, account=account)
+    income_expense_table = category_report_rows(start, end, subtotal=subtotal, account=account)
+    totals = income_and_spending(start, end, account=account)
+    savings_rate_value = savings_rate(totals["income"], totals["spending"])
+    savings_rate_vs_average = income_and_spending_vs_average(start, end, lookback, account=account)
+    net_total = totals["income"] - totals["spending"]
+    income_expense_chart_rows = income_expense_by_category + [
+        {"category_id": "total_income", "name": "Total income", "total": totals["income"]},
+        {"category_id": "total_expense", "name": "Total expense", "total": -totals["spending"]},
+        {"category_id": "total_all", "name": "Total", "total": net_total},
     ]
 
-    # --- Current period spending vs historical average (same interval type) ---
-    current_period_start = _current_interval_start(interval)
-    current_spending = abs(
-        excluding_transfers(Transaction.objects.filter(date__gte=current_period_start, amount__lt=0))
-        .aggregate(total=Sum("amount"))["total"] or ZERO
-    )
-    history_start = current_period_start - relativedelta(months=12)
-    history_qs = (
-        excluding_transfers(Transaction.objects.filter(date__gte=history_start, date__lt=current_period_start, amount__lt=0))
-        .annotate(period=trunc_func(interval))
-        .values("period")
-        .annotate(total=Sum("amount"))
-    )
-    history_totals = [abs(r["total"] or ZERO) for r in history_qs]
-    average_spending = (
-        (sum(history_totals, ZERO) / len(history_totals)).quantize(CENT) if history_totals else ZERO
-    )
-
-    # --- Net worth over time (running balance across all accounts, sampled monthly) ---
-    net_worth_series = _net_worth_series(start, end)
+    # --- Income & expense by category vs. average over the last `lookback` periods ---
+    income_expense_vs_average = category_totals_vs_average(start, end, lookback, account=account)
+    income_expense_vs_average_table = category_vs_average_report_rows(start, end, lookback, account=account)
 
     context = {
-        "form": form,
+        "form": f["form"],
         "start": start,
         "end": end,
-        "interval": interval,
         # Reports sum every account's transactions without currency conversion (see the
         # Phase 3 backlog note) - this label is accurate for a single-currency setup and
         # a known simplification otherwise.
         "main_currency": Profile.for_user(request.user).main_currency,
-        "spending_by_category": json.dumps(spending_by_category),
-        "timeseries": json.dumps(timeseries),
-        "current_spending": current_spending,
-        "average_spending": average_spending,
-        "net_worth_series": json.dumps(net_worth_series),
+
+        "spending_by_category": spending_by_category,
+        "spending_chart": _float_rows(spending_by_category, "total"),
+        "spending_table": spending_table,
+
+        "spending_vs_average": spending_vs_average,
+        "spending_vs_average_chart": _float_rows(spending_vs_average, "current", "average"),
+        "spending_vs_average_table": spending_vs_average_table,
+
+        "net_worth_series": net_worth_series,
+        "net_worth_chart": [
+            {"period": row["period"].isoformat(), "net_worth": float(row["net_worth"])} for row in net_worth_series
+        ],
+        "net_worth_table": net_worth_table,
+
+        "bills": bills,
+        "bills_chart": [{"period": row["period"].isoformat(), "total": float(row["total"])} for row in bills_series],
+        "bills_table": bills_table,
+
+        "income_expense_by_category": income_expense_by_category,
+        "income_expense_chart": _float_rows(income_expense_chart_rows, "total"),
+        "income_expense_table": income_expense_table,
+        "income_total": totals["income"],
+        "expense_total": totals["spending"],
+        "net_total": net_total,
+        "savings_rate": savings_rate_value,
+        "savings_rate_average": savings_rate_vs_average["average_rate"],
+
+        "income_expense_vs_average": income_expense_vs_average,
+        "income_expense_vs_average_chart": _float_rows(income_expense_vs_average, "current", "average"),
+        "income_expense_vs_average_table": income_expense_vs_average_table,
     }
     return render(request, "finance/reports.html", context)
 
 
-def _current_interval_start(interval):
-    today = date.today()
-    if interval == "day":
-        return today
-    if interval == "week":
-        return today - relativedelta(days=today.weekday())
-    if interval == "quarter":
-        q_start_month = ((today.month - 1) // 3) * 3 + 1
-        return today.replace(month=q_start_month, day=1)
-    if interval == "year":
-        return today.replace(month=1, day=1)
-    return today.replace(day=1)  # month default
+def _export_category_table(request, table, filename, amount_label):
+    """Shared by the three "category rows" report exports (Spending, Income & expense, Bills
+    & Utilities) - same table shape category_report_rows() already builds for the page."""
+    periods = table["periods"]
+    headers = ["Category"] + (periods + ["Total"] if periods else [amount_label])
+    rows = []
+    for group in table["groups"]:
+        for row in group["rows"]:
+            name = ("  " if row["is_child"] else "") + row["name"]
+            rows.append([name] + [str(v) for v in row["values"]] + ([str(row["total"])] if periods else []))
+    if table["totals"]:
+        rows.append(
+            ["Total"] + [str(v) for v in table["totals"]["values"]] + ([str(table["totals"]["total"])] if periods else [])
+        )
+    return _export_response(request.GET.get("format", "csv"), filename, headers, rows)
+
+
+def _export_vs_average_table(request, table, filename):
+    headers = ["Category", "Current", "Average", "Difference"]
+    rows = [
+        [("  " if row["is_child"] else "") + row["name"], str(row["current"]), str(row["average"]), str(row["difference"])]
+        for group in table["groups"] for row in group["rows"]
+    ]
+    if table["totals"]:
+        t = table["totals"]
+        rows.append(["Total", str(t["current"]), str(t["average"]), str(t["difference"])])
+    return _export_response(request.GET.get("format", "csv"), filename, headers, rows)
+
+
+@login_required
+def export_report_spending(request):
+    f = _report_filters(request)
+    table = category_report_rows(f["start"], f["end"], subtotal=f["subtotal"], expense_only=True, account=f["account"])
+    return _export_category_table(request, table, f"stashy-spending-by-category-{date.today():%Y%m%d}", "Spending")
+
+
+@login_required
+def export_report_spending_vs_average(request):
+    f = _report_filters(request)
+    table = category_vs_average_report_rows(f["start"], f["end"], f["lookback"], expense_only=True, account=f["account"])
+    return _export_vs_average_table(request, table, f"stashy-spending-vs-average-{date.today():%Y%m%d}")
+
+
+@login_required
+def export_report_income_expense(request):
+    f = _report_filters(request)
+    table = category_report_rows(f["start"], f["end"], subtotal=f["subtotal"], account=f["account"])
+    return _export_category_table(request, table, f"stashy-income-expense-by-category-{date.today():%Y%m%d}", "Amount")
+
+
+@login_required
+def export_report_income_expense_vs_average(request):
+    f = _report_filters(request)
+    table = category_vs_average_report_rows(f["start"], f["end"], f["lookback"], account=f["account"])
+    return _export_vs_average_table(request, table, f"stashy-income-expense-vs-average-{date.today():%Y%m%d}")
+
+
+@login_required
+def export_report_bills(request):
+    f = _report_filters(request)
+    top = bills_and_utilities_category()
+    if top is None:
+        return HttpResponse('No "Bills & Utilities" category exists yet.', status=404)
+    table = category_report_rows(
+        f["start"], f["end"], subtotal=f["subtotal"], expense_only=True, account=f["account"],
+        category_ids=bills_and_utilities_category_ids(top),
+    )
+    return _export_category_table(request, table, f"stashy-bills-and-utilities-{date.today():%Y%m%d}", "Spending")
+
+
+@login_required
+def export_report_net_worth(request):
+    f = _report_filters(request)
+    table = net_worth_by_account(f["start"], f["end"], f["subtotal"] or "month")
+    headers = ["Account"] + table["periods"]
+    rows = []
+    for group in table["groups"]:
+        rows.append([group["name"]] + [str(v) for v in group["totals"]])
+        for row in group["rows"]:
+            rows.append(["  " + row["name"]] + [str(v) for v in row["values"]])
+    rows.append(["Total"] + [str(v) for v in table["totals"]])
+    return _export_response(
+        request.GET.get("format", "csv"), f"stashy-net-worth-{date.today():%Y%m%d}", headers, rows
+    )
+
+
+def _float_rows(rows, *decimal_keys):
+    """Copies a list of row dicts with the given Decimal keys converted to float, for the
+    JSON handed to Chart.js - keeps the original Decimal rows intact for the server-rendered
+    table (money stays Decimal for every calculation; float only at the JSON boundary)."""
+    return [{**row, **{key: float(row[key]) for key in decimal_keys}} for row in rows]
 
 
 def _net_worth_series(start, end):
@@ -1178,7 +1574,7 @@ def _net_worth_series(start, end):
         month_end = (cursor + relativedelta(months=1)) - relativedelta(days=1)
         sample_date = min(month_end, end)
         txns_to_date = Transaction.objects.filter(date__lte=sample_date).aggregate(total=Sum("amount"))["total"] or ZERO
-        points.append({"period": sample_date.isoformat(), "net_worth": float(txns_to_date)})
+        points.append({"period": sample_date, "net_worth": txns_to_date})
         cursor += relativedelta(months=1)
     return points
 
@@ -1187,10 +1583,37 @@ def _net_worth_series(start, end):
 # Settings (D2 main currency, D10 regional preferences)
 # ---------------------------------------------------------------------------
 
+def _stash_backup_root(request):
+    """Each stash keeps its own backups/ folder next to its own db.sqlite3 (Phase 12) -
+    reachable only once a stash is selected for this session (finance.middleware.
+    RequireStashMiddleware blocks every finance URL, this one included, until then). Always
+    BASE_DIR under `manage.py test`: TESTING also bypasses that middleware gate (see
+    finance/middleware.py), and whatever a real session happens to have selected on the
+    machine running the suite must never change what a test expects - this project's fixtures
+    all assume BASE_DIR."""
+    stash_name = request.session.get("stash") if not settings.TESTING else None
+    if stash_name:
+        return settings.STASHES_DIR / stash_name
+    return Path(settings.BASE_DIR)
+
+
 @login_required
 def settings_view(request):
     profile = Profile.for_user(request.user)
     currencies = convertible_currencies(Account.objects.all()) or [profile.main_currency]
+
+    is_pin_change = request.method == "POST" and "change_pin" in request.POST
+    if is_pin_change:
+        pin_form = ChangePinForm(request.POST, user=request.user)
+        if pin_form.is_valid():
+            request.user.set_password(pin_form.cleaned_data["new_pin"])
+            request.user.save(update_fields=["password"])
+            update_session_auth_hash(request, request.user)
+            messages.success(request, "PIN changed.")
+            return redirect("finance:settings")
+        messages.error(request, "PIN wasn't changed - see the errors below.")
+    else:
+        pin_form = ChangePinForm(user=request.user)
 
     if request.method == "POST" and "check_rates" in request.POST:
         try:
@@ -1204,7 +1627,16 @@ def settings_view(request):
                 messages.warning(request, f"No rate available for: {', '.join(unavailable)}. Enter it by hand in the admin if you need one.")
         return redirect("finance:settings")
 
-    if request.method == "POST":
+    backup_root = _stash_backup_root(request)
+    if request.method == "POST" and "backup_now" in request.POST:
+        backup = finance_backup.backup_now(_current_stash_db_path(request), backup_root)
+        if backup:
+            messages.success(request, f"Backed up to {backup.relative_to(backup_root)}.")
+        else:
+            messages.error(request, "Nothing to back up yet - there's no database file.")
+        return redirect("finance:settings")
+
+    if request.method == "POST" and not is_pin_change:
         form = ProfileForm(request.POST, instance=profile)
         if form.is_valid():
             form.save()
@@ -1217,9 +1649,62 @@ def settings_view(request):
     known_rates = [
         (code, rates.known(code)) for code in currencies if code != profile.main_currency
     ]
+    recent_backups = finance_backup.list_backups(backup_root, limit=5)
     return render(request, "finance/settings.html", {
         "form": form,
+        "pin_form": pin_form,
+        "stash_name": request.session.get("stash", ""),
         "check_rates_form": CheckRatesForm(),
         "profile": profile,
         "known_rates": known_rates,
+        "recent_backups": [
+            {"name": p.name, "size_kb": p.stat().st_size // 1024} for p in recent_backups
+        ],
     })
+
+
+def _current_stash_db_path(request):
+    """The actual db.sqlite3 file behind this session's selected stash - not
+    settings.DATABASES["default"]["NAME"], which since the Phase 12 live-switching rewrite is
+    always the inert picker placeholder, never a real stash's own file."""
+    stash_name = request.session.get("stash") if not settings.TESTING else None
+    if stash_name:
+        return stashes.stash_db_path(stash_name)
+    return settings.DATABASES["default"]["NAME"]
+
+
+def _backup_path_or_404(request, name):
+    """Only ever resolves to a file that's actually inside the current stash's own backups/
+    - `name` comes straight off the querystring, so this guards against it smuggling in a
+    path (e.g. "../../other-stash/db.sqlite3")."""
+    backup_root = _stash_backup_root(request)
+    candidate = backup_root / "backups" / Path(name).name
+    if candidate not in finance_backup.list_backups(backup_root):
+        raise Http404("No such backup.")
+    return candidate
+
+
+@login_required
+def backup_restore(request):
+    """Restoring overwrites the live database, so this is a confirm-then-act page (like a
+    delete) rather than a one-click button on Settings - a wrong pick here is far more costly
+    than a wrong pick almost anywhere else in the app."""
+    name = request.POST.get("name") or request.GET.get("name", "")
+    backup_path = _backup_path_or_404(request, name)
+
+    if request.method == "POST":
+        db_path = _current_stash_db_path(request)
+        finance_backup.restore_from(backup_path, db_path, _stash_backup_root(request))
+        # The live server may already hold an open connection to this stash's file (this
+        # request's own thread included) - close this thread's so its very next query
+        # reconnects to the file as just restored, rather than a stale cached connection.
+        stash_name = request.session.get("stash")
+        if stash_name and not settings.TESTING:
+            connections[stash_name].close()
+        messages.success(
+            request,
+            f"Restored from {backup_path.name}. A safety backup of what was there before is in backups/ too.",
+        )
+        return redirect("finance:settings")
+
+    return render(request, "finance/backup_restore_confirm.html", {"backup": backup_path.name})

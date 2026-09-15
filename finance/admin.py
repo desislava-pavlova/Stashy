@@ -26,8 +26,8 @@ class ExchangeRateAdmin(AuditHistoryAdminMixin, admin.ModelAdmin):
 
 @admin.register(Category)
 class CategoryAdmin(AuditHistoryAdminMixin, admin.ModelAdmin):
-    list_display = ("full_name", "category_type", "parent", "account")
-    list_filter = ("category_type",)
+    list_display = ("full_name", "category_type", "parent", "account", "is_auto_generated")
+    list_filter = ("category_type", "is_auto_generated")
     search_fields = ("name",)
 
 

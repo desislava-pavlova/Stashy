@@ -8,6 +8,7 @@ from audit.context import system_action
 
 from . import regional
 from .models import Account, Category, Payee, Profile, Reminder, Transaction, categories_alphabetical
+from .money import ZERO
 
 
 class DateInput(forms.DateInput):
@@ -60,16 +61,26 @@ class AccountForm(BootstrapFormMixin, forms.ModelForm):
             # Currency conversion only ever uses the latest known rate, not per-transaction
             # history, so changing it after transactions exist would misstate every past one.
             self.fields["currency"].disabled = True
-            self.fields["currency"].help_text = "Set when the account was created — transactions are already in this currency."
+
+    def clean_is_active(self):
+        is_active = self.cleaned_data["is_active"]
+        # Only ever checks an *existing* account's real, already-saved balance - a brand new
+        # account (no pk yet) has no transactions to have a balance from regardless of what's
+        # typed into this same submission (AccountCreateForm.clean() below covers that case).
+        if not is_active and self.instance.pk and self.instance.balance != ZERO:
+            raise ValidationError(
+                "This account still has a balance - it can't be made inactive until its balance is zero."
+            )
+        return is_active
 
 
 class AccountCreateForm(AccountForm):
-    """Account creation also asks for an opening balance, which becomes a real transaction (D1)."""
+    """Account creation also asks for an opening balance, which becomes a real transaction (D1).
+    Every new account gets one, even a zero-amount one dated today by default (2026-09-15
+    follow-up) - so a fresh account's register never starts empty, and reconciliation always
+    has a starting transaction to reconcile from."""
 
-    opening_balance = forms.DecimalField(
-        max_digits=12, decimal_places=2, required=False, initial=0,
-        help_text="What this account held on the day below. Becomes a regular transaction you can edit or delete later.",
-    )
+    opening_balance = forms.DecimalField(max_digits=12, decimal_places=2, required=False, initial=0)
     opening_balance_date = forms.DateField(required=False, widget=DateInput(), initial=date.today)
 
     field_order = ["name", "account_type", "currency", "institution", "opening_balance", "opening_balance_date", "is_active", "notes"]
@@ -77,19 +88,22 @@ class AccountCreateForm(AccountForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["currency"].disabled = False
-        self.fields["currency"].help_text = ""
         self.fields["currency"].initial = regional.current().main_currency
 
     def clean(self):
         cleaned = super().clean()
-        if cleaned.get("opening_balance") and not cleaned.get("opening_balance_date"):
-            raise ValidationError("Give the opening balance a date.")
+        if cleaned.get("opening_balance") is None:
+            cleaned["opening_balance"] = ZERO
+        if not cleaned.get("opening_balance_date"):
+            cleaned["opening_balance_date"] = date.today()
+        if not cleaned.get("is_active", True) and cleaned.get("opening_balance"):
+            raise ValidationError("A new account can't be inactive if it has an opening balance.")
         return cleaned
 
     def save(self, commit=True):
         account = super().save(commit=commit)
-        amount = self.cleaned_data.get("opening_balance")
-        if commit and amount:
+        amount = self.cleaned_data.get("opening_balance", ZERO)
+        if commit:
             with system_action(f"Opening balance transaction created for account '{account.name}'"):
                 Transaction.objects.create(
                     account=account,
@@ -343,13 +357,23 @@ class ReminderForm(BootstrapFormMixin, forms.ModelForm):
 
 
 class ImportUploadForm(forms.Form):
-    account = forms.ModelChoiceField(queryset=Account.objects.filter(is_active=True))
-    file = forms.FileField(help_text="CSV (Date, Payee, Memo, Amount) or OFX/QFX")
+    DATE_FORMAT_CHOICES = [("auto", "Detect automatically (recommended)")] + regional.DATE_FORMAT_CHOICES
+
+    account = forms.ModelChoiceField(
+        queryset=Account.objects.filter(is_active=True),
+        help_text="Used for every row, unless the file has its own Account column (Phase 9) - that takes over per row.",
+    )
+    file = forms.FileField(help_text="CSV (Date, Payee, Memo, Amount, optionally Account/Category) or OFX/QFX")
+    date_format = forms.ChoiceField(
+        choices=DATE_FORMAT_CHOICES, required=False, initial="auto",
+        help_text="Stashy checks the file's own dates first - override only if it guesses wrong.",
+    )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["account"].widget.attrs["class"] = "form-select"
         self.fields["file"].widget.attrs["class"] = "form-control"
+        self.fields["date_format"].widget.attrs["class"] = "form-select"
 
 
 class DateRangeFilterForm(forms.Form):
@@ -363,18 +387,32 @@ class DateRangeFilterForm(forms.Form):
         ("last_year", "Last year"),
         ("custom", "Custom range"),
     ]
+    # How many periods the same length as the selected date range to average against,
+    # immediately preceding it (2026-09-15 follow-up) - not a separate bucketing granularity;
+    # see reporting.vs_average_periods().
     INTERVAL_CHOICES = [
-        ("day", "Daily"),
-        ("week", "Weekly"),
-        ("month", "Monthly"),
-        ("quarter", "Quarterly"),
-        ("year", "Yearly"),
+        ("3", "Last 3 periods"),
+        ("6", "Last 6 periods"),
+        ("9", "Last 9 periods"),
+        ("12", "Last 12 periods"),
+    ]
+    # Same granularities as Interval, plus half-year - only meaningful for slicing a date
+    # range into columns (Interval instead sizes the trailing window for "vs. average", which
+    # a half-year is too coarse to average 12 months of data over usefully).
+    SUBTOTAL_CHOICES = [
+        ("", "No subtotal"),
+        ("week", "Week"),
+        ("month", "Month"),
+        ("quarter", "Quarter"),
+        ("half_year", "Half-year"),
+        ("year", "Year"),
     ]
 
-    range = forms.ChoiceField(choices=RANGE_CHOICES, required=False, initial="last_12_months")
+    range = forms.ChoiceField(choices=RANGE_CHOICES, required=False, initial="ytd")
     start = forms.DateField(required=False, widget=DateInput())
     end = forms.DateField(required=False, widget=DateInput())
-    interval = forms.ChoiceField(choices=INTERVAL_CHOICES, required=False, initial="month")
+    interval = forms.ChoiceField(choices=INTERVAL_CHOICES, required=False, initial="12", label="Average interval")
+    subtotal = forms.ChoiceField(choices=SUBTOTAL_CHOICES, required=False, label="Subtotal tables by")
     account = forms.ModelChoiceField(queryset=Account.objects.all(), required=False)
     category = forms.ModelChoiceField(queryset=Category.objects.all(), required=False)
 

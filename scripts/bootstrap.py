@@ -38,6 +38,16 @@ HOST, PORT = "127.0.0.1", _configured_port()
 URL = f"http://{HOST}:{PORT}/"
 
 
+def _stash_dirs():
+    """Every stash's own folder (Phase 12: live switching means there's no single "current"
+    stash at launch time any more - a session picks one after Stashy is already running - so
+    setup steps that used to touch just "the current stash" now loop over all of them)."""
+    stashes_dir = ROOT / "stashes"
+    if not stashes_dir.exists():
+        return []
+    return sorted(p for p in stashes_dir.iterdir() if p.is_dir() and (p / "db.sqlite3").exists())
+
+
 class SetupError(Exception):
     pass
 
@@ -105,19 +115,29 @@ def ensure_env_file():
 
 
 def migrate_database():
+    """Migrates the picker's own placeholder database, then every stash in turn (Phase 12:
+    with no restart needed to switch stashes, any of them could be picked on this launch, so
+    all of them need to be current, not just whichever one happened to be selected last)."""
     pending = run_python("manage.py", "migrate", "--check", capture_output=True)
-    if pending.returncode == 0:
-        return
-    database = ROOT / "db.sqlite3"
-    if database.exists():
-        backups = ROOT / "backups"
+    if pending.returncode != 0:
+        step("Preparing the database...")
+        if run_python("manage.py", "migrate", "--noinput").returncode != 0:
+            raise SetupError("Preparing the database failed - see the messages above.")
+
+    for stash_dir in _stash_dirs():
+        name = stash_dir.name
+        db_file = stash_dir / "db.sqlite3"
+        pending = run_python("manage.py", "migrate", "--database", name, "--check", capture_output=True)
+        if pending.returncode == 0:
+            continue
+        backups = stash_dir / "backups"
         backups.mkdir(exist_ok=True)
         backup = backups / f"db_before_update_{datetime.now():%Y%m%d_%H%M%S}.sqlite3"
-        shutil.copy2(database, backup)
-        print(f"   Your data was backed up first to {backup.relative_to(ROOT)}")
-    step("Preparing the database...")
-    if run_python("manage.py", "migrate", "--noinput").returncode != 0:
-        raise SetupError("Preparing the database failed - see the messages above.")
+        shutil.copy2(db_file, backup)
+        print(f"   '{name}' was backed up first to {backup.relative_to(ROOT)}")
+        step(f"Preparing the '{name}' stash's database...")
+        if run_python("manage.py", "migrate", "--database", name, "--noinput").returncode != 0:
+            raise SetupError(f"Preparing the '{name}' stash's database failed - see the messages above.")
 
 
 def collect_static_files():
@@ -126,22 +146,20 @@ def collect_static_files():
         raise SetupError("Preparing Stashy's style and script files failed - see the messages above.")
 
 
-def ensure_login_exists():
-    sys.path.insert(0, str(ROOT))
-    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "stashy.settings")
-    import django
-
-    django.setup()
-    from django.contrib.auth import get_user_model
-
-    if get_user_model().objects.exists():
+def run_quarterly_backup():
+    """No background scheduler - just checked once, here, at every launch (D8), for every
+    stash there is (Phase 12: no single "current" one any more) - nothing to back up yet if
+    none exist, the picker screen handles that."""
+    stash_dirs = _stash_dirs()
+    if not stash_dirs:
         return
-    step("Create your Stashy login")
-    print("   Pick a username and password - you'll use them to log in to Stashy.")
-    print("   Email is optional: just press Enter to skip it.")
-    print("   (While typing the password nothing will appear on screen - that's normal.)\n")
-    if run_python("manage.py", "createsuperuser").returncode != 0:
-        raise SetupError("The login wasn't created. Run Stashy.bat again to retry.")
+    sys.path.insert(0, str(ROOT))
+    from finance.backup import quarterly_backup_if_due
+
+    for stash_dir in stash_dirs:
+        backup = quarterly_backup_if_due(stash_dir / "db.sqlite3", stash_dir)
+        if backup:
+            print(f"   Quarterly backup for '{stash_dir.name}' saved to {backup.relative_to(ROOT)}")
 
 
 def open_browser_when_ready():
@@ -162,7 +180,7 @@ def main():
         ensure_env_file()
         migrate_database()
         collect_static_files()
-        ensure_login_exists()
+        run_quarterly_backup()
     except SetupError as error:
         print(f"\n!! {error}")
         return 1

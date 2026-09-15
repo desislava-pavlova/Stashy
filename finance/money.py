@@ -7,6 +7,15 @@ ZERO = Decimal("0.00")
 _NON_NUMERIC = re.compile(r"[^\d,.\-+]")
 
 
+def to_cent(value):
+    """Quantize a Decimal to cents (rounding half up). Use on every Sum()/average result
+    pulled out of an aggregate query before storing or exporting it raw - SQLite can hand
+    back a Decimal with far more decimal places than the underlying amounts actually have
+    (e.g. Decimal("-132.370000000000")), which is invisible through |moneyc's own rounding
+    but shows up ugly in a plain str() export or a difference computed from two such values."""
+    return (value if value is not None else ZERO).quantize(CENT, rounding=ROUND_HALF_UP)
+
+
 def parse_amount(raw):
     """Parse a money string from any common bank format into a Decimal rounded to cents.
 

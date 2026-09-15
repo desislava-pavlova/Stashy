@@ -30,6 +30,14 @@ class Profile(models.Model):
     number_format = models.CharField(max_length=12, choices=regional.NUMBER_FORMAT_CHOICES, default="space_dot")
     first_day_of_week = models.PositiveSmallIntegerField(choices=regional.FIRST_DAY_CHOICES, default=1)
 
+    # Multi-stash login (Phase 12): a stash's one-time recovery code, hashed the same way a
+    # password is - shown to the user once, at stash creation, never stored in the clear.
+    # Lockout state lives here too, since a stash's single Profile row is the natural place
+    # for "this stash" data that isn't a regional preference.
+    recovery_code_hash = models.CharField(max_length=128, blank=True, default="")
+    failed_pin_attempts = models.PositiveSmallIntegerField(default=0)
+    locked_until = models.DateTimeField(null=True, blank=True)
+
     def __str__(self):
         return f"Preferences for {self.user}"
 
@@ -195,6 +203,10 @@ class Category(models.Model):
         Account, null=True, blank=True, editable=False, on_delete=models.CASCADE, related_name="transfer_category",
         help_text="Set only on an account's own transfer category, which Stashy creates and deletes with the account.",
     )
+    # Set when an import (Phase 9) created this category itself because the file named one
+    # Stashy didn't already have - flagged for visibility/later cleanup rather than baked into
+    # the name forever, same idea as system-managed categories getting a badge, not a label.
+    is_auto_generated = models.BooleanField(default=False)
 
     class Meta:
         verbose_name_plural = "categories"
@@ -238,13 +250,21 @@ def categories_alphabetical(queryset):
     """Order a Category queryset so a subcategory sorts right next to its own parent instead of
     in a separate "all subcategories" block after every top-level one - so typing a letter into
     a <select> (its built-in type-ahead) or scanning it by eye finds every category under, say,
-    "Personal Care" together, in one alphabetical run (2026-09-14 follow-up). For dropdowns
-    only - the category *list page* keeps its own deliberate Income/Expense grouping
-    (grouped_categories(), above), which wasn't asked to change."""
+    "Personal Care" together, in one alphabetical run (2026-09-14 follow-up). Grouped by type
+    first - Income, then Expense, then Transfer last (2026-09-15 follow-up) - matching the
+    category list page's own Income/Expense/Transfer grouping (grouped_categories(), below);
+    a type with no categories in the queryset simply contributes no rows, no empty group to
+    skip. For dropdowns only - the category *list page* keeps using grouped_categories() itself."""
     return queryset.annotate(
+        _sort_type=Case(
+            When(category_type=Category.CategoryType.INCOME, then=Value(0)),
+            When(category_type=Category.CategoryType.EXPENSE, then=Value(1)),
+            When(category_type=Category.CategoryType.TRANSFER, then=Value(2)),
+            default=Value(99),
+        ),
         _sort_group=Lower(Coalesce("parent__name", "name")),
         _sort_child=Case(When(parent__isnull=True, then=Value("")), default=Lower("name")),
-    ).order_by("_sort_group", "_sort_child")
+    ).order_by("_sort_type", "_sort_group", "_sort_child")
 
 
 def grouped_categories(categories):
@@ -612,7 +632,7 @@ class ExchangeRate(models.Model):
 
     class Source(models.TextChoices):
         MANUAL = "manual", "Typed in"
-        FRANKFURTER = "frankfurter", "Frankfurter (ECB)"
+        FRANKFURTER = "Frankfurter", "Frankfurter (ECB)"
 
     base_currency = models.CharField("from", max_length=3, choices=CURRENCY_CHOICES)
     quote_currency = models.CharField("to", max_length=3, choices=CURRENCY_CHOICES)

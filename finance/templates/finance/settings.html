@@ -6,8 +6,8 @@
     <h1 class="h3 mb-0">Settings</h1>
 </div>
 <div class="row g-4 align-items-start">
-    <div class="col-lg-7 col-xxl-6">
-        <div class="card p-4 mb-4">
+    <div class="col-lg-5 col-xxl-4">
+        <div class="card p-4">
             <h2 class="h5 mb-3">Currency &amp; regional preferences</h2>
             <form method="post">
                 {% csrf_token %}
@@ -22,9 +22,34 @@
                 {% endfor %}
                 <button type="submit" class="btn btn-primary px-4">Save</button>
             </form>
+            <hr class="my-4">
+            <ul class="text-muted small mb-0 ps-3">
+                <li>These were guessed from this computer's own settings the first time Stashy ran — change anything that doesn't match how you want dates and numbers shown.</li>
+                <li>Changing date/number format only affects how things are displayed from now on — nothing already stored changes.</li>
+                <li>Main currency is used for net worth. Each account keeps the currency it was created with.</li>
+            </ul>
         </div>
 
-        <div class="card p-4">
+        <div class="card p-4 mt-4">
+            <h2 class="h5 mb-1">Login</h2>
+            <p class="text-muted small">You're in stash "<strong>{{ stash_name }}</strong>".
+                <a href="{% url 'switch_stash' %}">Switch stash</a></p>
+            <form method="post">
+                {% csrf_token %}
+                {% for error in pin_form.non_field_errors %}<div class="alert alert-danger py-2">{{ error }}</div>{% endfor %}
+                {% for field in pin_form %}
+                <div class="mb-3">
+                    <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                    {{ field }}
+                    {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                </div>
+                {% endfor %}
+                <button type="submit" name="change_pin" value="1" class="btn btn-outline-secondary">Change PIN</button>
+            </form>
+        </div>
+    </div>
+    <div class="col-lg-7 col-xxl-8">
+        <div class="card p-4 mb-4">
             <h2 class="h5 mb-1">Exchange rates</h2>
             <p class="text-muted small">Net worth converts every account into {{ profile.main_currency }} using the
                 latest known rate. "Check rates" needs an internet connection — without one, Stashy keeps using the
@@ -57,16 +82,36 @@
             <p class="text-muted small mb-0">Every account already uses {{ profile.main_currency }}, so there's nothing to convert.</p>
             {% endif %}
         </div>
-    </div>
-    <div class="col-lg-5 col-xxl-4">
-        <aside class="card help-card p-4">
-            <div class="card-title-sm">Good to know</div>
-            <ul>
-                <li>These were guessed from this computer's own settings the first time Stashy ran — change anything that doesn't match how you want dates and numbers shown.</li>
-                <li>Changing date/number format only affects how things are displayed from now on — nothing already stored changes.</li>
-                <li>Main currency is used for net worth. Each account keeps the currency it was created with.</li>
-            </ul>
-        </aside>
+
+        <div class="card p-4">
+            <h2 class="h5 mb-1">Backups</h2>
+            <p class="text-muted small">A quarterly backup happens automatically
+                whenever you launch Stashy, no more than every ~90 days.</p>
+            <form method="post" class="mb-3">
+                {% csrf_token %}
+                <button type="submit" name="backup_now" value="1" class="btn btn-outline-secondary">
+                    <i class="bi bi-archive me-1"></i>Create a backup
+                </button>
+            </form>
+            {% if recent_backups %}
+            <table class="table table-sm mb-0 align-middle">
+                <thead><tr><th>File</th><th class="text-end">Size</th><th></th></tr></thead>
+                <tbody>
+                {% for b in recent_backups %}
+                    <tr>
+                        <td class="text-muted small">{{ b.name }}</td>
+                        <td class="text-end text-muted small text-nowrap">{{ b.size_kb }} KB</td>
+                        <td class="text-end">
+                            <a href="{% url 'finance:backup_restore' %}?name={{ b.name }}" class="btn btn-sm btn-outline-secondary">Restore</a>
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p class="text-muted small mb-0">No backups yet.</p>
+            {% endif %}
+        </div>
     </div>
 </div>
 {% endblock %}

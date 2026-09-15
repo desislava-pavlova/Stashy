@@ -203,6 +203,27 @@ h1, h2, h3, h4, h5, h6,
     font-weight: 600;
 }
 
+/* Transactions list category filter (2026-09-15): a button styled like a plain closed <select>
+   (form-select gives it the same border/height/chevron) that opens a checkbox list instead of
+   a native <select multiple> - looks like a single-select until you open it. */
+.category-filter { width: 100%; }
+.category-filter .dropdown-toggle { width: 100%; }
+.category-filter-menu {
+    max-height: 320px;
+    overflow-y: auto;
+    min-width: 100%;
+}
+.category-filter-item {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    padding: .25rem .5rem;
+    border-radius: .375rem;
+    font-size: .875rem;
+    cursor: pointer;
+}
+.category-filter-item:hover { background: var(--stashy-surface-2); }
+
 .page-header {
     display: flex;
     flex-wrap: wrap;
@@ -332,6 +353,12 @@ h1, h2, h3, h4, h5, h6,
 .category-main { font-weight: 700; color: var(--stashy-ink); }
 .category-sub { display: inline-flex; align-items: center; gap: .4rem; color: var(--stashy-muted); }
 .category-connector { font-size: .8rem; color: var(--stashy-line); }
+
+/* Report tables (Phase 11.1): a parent row's collapse chevron, and a lighter shade for its
+   children's own values - on top of the usual positive/negative color, not instead of it. */
+.report-toggle-icon { cursor: pointer; font-size: .75rem; margin-right: .3rem; display: inline-block; transition: transform .15s ease; }
+.report-toggle-icon.is-collapsed { transform: rotate(-90deg); }
+.report-value-sub { opacity: .72; }
 
 /* Compact register tables for long, unpaginated transaction lists. */
 .register { font-size: .875rem; }
@@ -652,6 +679,9 @@ h1, h2, h3, h4, h5, h6,
     .login-art h2 { margin: 0; font-size: 1.5rem; }
     .login-art p { display: none; }
 }
+
+/* A 4-digit PIN reads better centered and spaced out than a normal password field. */
+.pin-input { text-align: center; font-size: 1.75rem; letter-spacing: .6em; text-indent: .6em; }
 
 /* ---------- Date picker (flatpickr) following the theme ---------- */
 

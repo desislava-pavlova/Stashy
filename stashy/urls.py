@@ -18,13 +18,22 @@ from django.contrib import admin
 from django.contrib.auth import views as auth_views
 from django.urls import include, path
 
+from finance import auth_views as stash_auth_views
+
 admin.site.site_header = "Stashy admin"
 admin.site.site_title = "Stashy admin"
 admin.site.index_title = "Data, users & audit log"
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('accounts/login/', auth_views.LoginView.as_view(template_name='registration/login.html'), name='login'),
+    path('accounts/login/', stash_auth_views.StashLoginView.as_view(), name='login'),
     path('accounts/logout/', auth_views.LogoutView.as_view(next_page='login'), name='logout'),
+    path('accounts/forgot-pin/', stash_auth_views.forgot_pin, name='forgot_pin'),
+    # Multi-stash login (Phase 12): the picker only works before a stash is chosen for this
+    # session (see finance.middleware.RequireStashMiddleware) - these two are its whole URL
+    # surface, deliberately outside finance/urls.py since they run before any stash's own
+    # data (or even its database) is reachable.
+    path('stashes/', stash_auth_views.stash_picker, name='stash_picker'),
+    path('stashes/switch/', stash_auth_views.switch_stash, name='switch_stash'),
     path('', include('finance.urls')),
 ]

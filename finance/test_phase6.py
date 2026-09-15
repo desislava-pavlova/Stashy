@@ -157,6 +157,16 @@ class PayeeListFilterAndSortTests(LoggedInTestCase):
         names = [r["payee"].name for r in self.rows(sort="amount")]
         self.assertEqual(names, ["Ikea", "Lidl"])
 
+    def test_sort_by_usage(self):
+        # Both have 1 use each until a second Lidl transaction is added - lets least-used
+        # payees sort first, for spotting ones worth deleting (2026-09-14 follow-up).
+        Transaction.objects.create(
+            account=self.account, date=date(2026, 2, 1), payee=self.lidl,
+            category=self.groceries, memo="second visit", amount=Decimal("-10.00"),
+        )
+        names = [r["payee"].name for r in self.rows(sort="usage")]
+        self.assertEqual(names, ["Ikea", "Lidl"])
+
     def test_each_row_shows_all_categories_total_amount_and_usage(self):
         Transaction.objects.create(
             account=self.account, date=date(2026, 2, 1), payee=self.lidl,

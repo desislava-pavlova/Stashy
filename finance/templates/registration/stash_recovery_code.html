@@ -1,0 +1,43 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Save your recovery code · Stashy</title>
+    {% include "finance/includes/head_assets.html" %}
+</head>
+<body>
+<div class="login-page">
+    <section class="login-art">
+        <div class="mascot-frame">
+            <img src="{% static 'finance/img/mascot-full-720.webp' %}" alt="Stashy the squirrel holding an acorn coin" width="720" height="720">
+        </div>
+    </section>
+    <section class="login-form-side">
+        <div class="login-card">
+            <span class="stashy-wordmark d-block mb-4">Stashy</span>
+            {% if pin_was_reset %}
+            <h1 class="h3 mb-1">PIN changed</h1>
+            <p class="text-body-secondary mb-3">Your PIN for "{{ stash_name }}" was reset. Using the recovery code invalidated it — here's a new one.</p>
+            {% else %}
+            <h1 class="h3 mb-1">Stash "{{ stash_name }}" created</h1>
+            <p class="text-body-secondary mb-3">This recovery code is the only way back in if you ever forget your PIN.</p>
+            {% endif %}
+
+            <div class="alert alert-warning py-2 mb-3">
+                <i class="bi bi-exclamation-triangle me-1"></i>
+                Shown once. Write it down somewhere safe — Stashy doesn't keep a copy you can look up later.
+            </div>
+            <div class="card p-3 mb-4 text-center">
+                <code class="fs-3">{{ recovery_code }}</code>
+            </div>
+
+            <a href="{% url 'login' %}" class="btn btn-primary btn-lg w-100" onclick="return confirm('Make sure you\'ve written the code down — it will not be shown again. Continue?');">
+                I've saved it — {% if pin_was_reset %}log in{% else %}continue to login{% endif %}
+            </a>
+        </div>
+    </section>
+</div>
+<script src="{% static 'finance/js/stashy.js' %}"></script>
+</body>
+</html>

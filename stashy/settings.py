@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/6.1/ref/settings/
 """
 
 import os
+import sys
 from pathlib import Path
 
 from decouple import config
@@ -18,6 +19,13 @@ from django.contrib.messages import constants as message_constants
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# True under `manage.py test` - the finance app's own test suite logs straight into a
+# fully-migrated in-memory database (Django always uses :memory: for SQLite tests regardless
+# of NAME below) and never goes through the stash picker, so RequireStashMiddleware
+# (finance/middleware.py) skips its gate entirely in this mode rather than requiring every
+# test to fake having picked a stash first.
+TESTING = len(sys.argv) > 1 and sys.argv[1] == 'test'
 
 
 # SECURITY WARNING: keep the secret key used in production secret!
@@ -48,7 +56,9 @@ MIDDLEWARE = [
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
+    'finance.middleware.StashSelectionMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'finance.middleware.RequireStashMiddleware',
     'audit.middleware.AuditContextMiddleware',
     'finance.middleware.RegionalPreferencesMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
@@ -79,11 +89,20 @@ WSGI_APPLICATION = 'stashy.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.1/ref/settings/#databases
 
-# Stashy is a local, single-user app — SQLite only, no separate database server to install.
+# Stashy is a local, single-user-per-database app — SQLite only, no separate database server
+# to install. Multi-stash login (Phase 12, rewritten 2026-09-15 to switch live): each "stash"
+# is its own db.sqlite3 under stashes/<name>/, registered as its own connection alias
+# (finance.stashes.ensure_registered()) and routed to per-request, by session, through
+# DATABASE_ROUTERS below - not decided once at process start from a file, so switching stashes
+# no longer needs restarting Stashy. `default` here is just the inert placeholder database
+# Django's own machinery falls back to before any stash is selected for a session (see
+# finance.middleware.RequireStashMiddleware) - no real app data is ever stored in it.
+STASHES_DIR = BASE_DIR / 'stashes'
+
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'NAME': BASE_DIR / '_picker.sqlite3',
         # Every request is all-or-nothing: if anything fails part-way, nothing it changed is kept.
         'ATOMIC_REQUESTS': True,
         'OPTIONS': {
@@ -94,6 +113,13 @@ DATABASES = {
         },
     }
 }
+DATABASE_ROUTERS = ['finance.db_router.StashRouter']
+
+# Signed-cookie sessions (not the default DB-backed ones): the session itself has to work
+# *before* a stash - the only place a DB-backed session could live - has even been chosen, to
+# hold the picker's own "which stash did you pick" state. Fine for a local, single-user app;
+# session data here is small (a user id, the stash name, an auth hash).
+SESSION_ENGINE = 'django.contrib.sessions.backends.signed_cookies'
 
 
 # Password validation

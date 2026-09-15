@@ -1,0 +1,84 @@
+"""SQLite backup (Phase 10 / D8): a plain timestamped file copy into backups/.
+
+Pure standard library on purpose - `scripts/bootstrap.py` calls `quarterly_backup_if_due()`
+at launch, before the rest of the app is necessarily importable, and the Settings page's
+"Back up now" and "Restore" actions call the other functions here the same way.
+
+Caveat: a plain file copy is only safe while SQLite runs in its default (non-WAL) journal
+mode, as this project does. If WAL mode is ever turned on, back up with SQLite's own backup
+API instead - a plain copy taken mid-write could miss recent changes.
+"""
+import re
+import shutil
+from datetime import date, datetime, timedelta
+from pathlib import Path
+
+BACKUP_DIR_NAME = "backups"
+QUARTERLY_MIN_GAP_DAYS = 90
+
+# backup_<tag>_2026-09-14_11-57-36.sqlite3 - readable at a glance in a file listing, unlike
+# the original db_<tag>_20260914_115736.sqlite3. Old backups are never renamed to match (no
+# reason to touch a file nobody asked to change), so _parse_stamp() below still recognizes
+# the old scheme too - both for the quarterly-due check and for listing recent backups.
+_TIMESTAMP_FORMAT = "%Y-%m-%d_%H-%M-%S"
+_STAMP_RE = re.compile(
+    r"^(?:backup|db)_[A-Za-z0-9]+_(?P<stamp>\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}|\d{8}_\d{6})$"
+)
+
+
+def _parse_stamp(path):
+    """Best-effort timestamp from a backup's filename, across old and new naming schemes -
+    falls back to the file's own mtime if the name doesn't match either (never blocks
+    startup or the Settings page over an oddly-named file)."""
+    match = _STAMP_RE.match(path.stem)
+    if match:
+        stamp = match.group("stamp")
+        fmt = _TIMESTAMP_FORMAT if "-" in stamp else "%Y%m%d_%H%M%S"
+        try:
+            return datetime.strptime(stamp, fmt)
+        except ValueError:
+            pass
+    return datetime.fromtimestamp(path.stat().st_mtime)
+
+
+def backup_now(db_path, project_root, tag="manual"):
+    """Copy the database to backups/backup_<tag>_<timestamp>.sqlite3. Returns the new Path,
+    or None if there's no database file yet (nothing to back up on a brand new install)."""
+    db_path = Path(db_path)
+    if not db_path.exists():
+        return None
+    backups_dir = Path(project_root) / BACKUP_DIR_NAME
+    backups_dir.mkdir(exist_ok=True)
+    destination = backups_dir / f"backup_{tag}_{datetime.now().strftime(_TIMESTAMP_FORMAT)}.sqlite3"
+    shutil.copy2(db_path, destination)
+    return destination
+
+
+def list_backups(project_root, limit=None):
+    """Every backup of any tag, newest first (by the timestamp in its name, not filesystem
+    order - the two naming schemes don't sort the same way as plain strings)."""
+    backups_dir = Path(project_root) / BACKUP_DIR_NAME
+    if not backups_dir.exists():
+        return []
+    found = list(backups_dir.glob("backup_*.sqlite3")) + list(backups_dir.glob("db_*.sqlite3"))
+    found.sort(key=_parse_stamp, reverse=True)
+    return found[:limit] if limit else found
+
+
+def quarterly_backup_if_due(db_path, project_root):
+    """Called once at app launch, never on a background schedule (D8). Backs up only if the
+    most recent quarterly backup is missing or more than ~90 days old. Returns the new Path,
+    or None if a backup wasn't due (or there's no database yet)."""
+    existing = [p for p in list_backups(project_root) if p.stem.startswith(("backup_quarterly_", "db_quarterly_"))]
+    if existing:
+        if date.today() - _parse_stamp(existing[0]).date() < timedelta(days=QUARTERLY_MIN_GAP_DAYS):
+            return None
+    return backup_now(db_path, project_root, tag="quarterly")
+
+
+def restore_from(backup_path, db_path, project_root):
+    """Restores the database from a backup file, after saving the current database under its
+    own safety backup first (tag "before_restore") - so picking the wrong one is itself
+    recoverable the same way."""
+    backup_now(db_path, project_root, tag="before_restore")
+    shutil.copy2(Path(backup_path), Path(db_path))

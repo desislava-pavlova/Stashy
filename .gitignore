@@ -61,6 +61,13 @@ local_settings.py
 db.sqlite3
 db.sqlite3-journal
 
+# Stashy multi-stash login (Phase 12): each stash's own database/backups, and which one is
+# currently active - none of this is code, and it can contain real financial data.
+/stashes/
+/current_stash.txt
+/_picker.sqlite3
+/backups/
+
 # Flask stuff:
 instance/
 .webassets-cache

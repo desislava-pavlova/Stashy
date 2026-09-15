@@ -1,10 +1,13 @@
 {% extends "finance/base.html" %}
-{% load stashy_format %}
+{% load static stashy_format %}
 {% block title %}Transactions · Stashy{% endblock %}
 {% block content %}
 <div class="page-header">
     <h1 class="h3 mb-0">Transactions</h1>
-    <a href="{% url 'finance:transaction_add' %}" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>New transaction</a>
+    <div class="d-flex gap-2">
+        {% include "finance/includes/export_dropdown.html" with export_url_name="finance:export_transactions" extra_query=request.GET.urlencode %}
+        <a href="{% url 'finance:transaction_add' %}" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>New transaction</a>
+    </div>
 </div>
 
 <form method="get" class="card p-3 mb-3">
@@ -37,11 +40,26 @@
             </select>
         </div>
         <div class="col-md-3">
-            <select name="category" class="form-select form-select-sm" onchange="this.form.submit()" aria-label="Category">
-                <option value="">All categories</option>
-                <option value="none" {% if selected_category == "none" %}selected{% endif %}>Uncategorized</option>
-                {% for c in categories %}<option value="{{ c.pk }}" {% if selected_category == c.pk|stringformat:"s" %}selected{% endif %}>{{ c.full_name }}</option>{% endfor %}
-            </select>
+            <div class="dropdown category-filter">
+                <button type="button" class="form-select form-select-sm text-start dropdown-toggle" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+                    {{ category_filter_label }}
+                </button>
+                <div class="dropdown-menu category-filter-menu p-2">
+                    <label class="category-filter-item">
+                        <input type="checkbox" name="category" value="none" {% if "none" in selected_category_values %}checked{% endif %}>
+                        Uncategorized
+                    </label>
+                    {% for group in category_groups %}
+                    <div class="text-muted small fw-semibold pt-2 px-1">{{ group.name }}</div>
+                    {% for c in group.categories %}
+                    <label class="category-filter-item{% if c.parent_id %} ps-4{% endif %}">
+                        <input type="checkbox" name="category" value="{{ c.pk }}" data-category-id="{{ c.pk }}" data-parent-id="{{ c.parent_id|default:'' }}" {% if c.pk|stringformat:"s" in selected_category_values %}checked{% endif %}>
+                        {{ c.name }}
+                    </label>
+                    {% endfor %}
+                    {% endfor %}
+                </div>
+            </div>
         </div>
         <div class="col-md-4">
             <input type="text" name="q" class="form-control form-control-sm" placeholder="Search payee or memo" value="{{ search }}" aria-label="Search payee or memo">
@@ -58,9 +76,12 @@
     {% endif %}
 </form>
 
-<div class="text-body-secondary small mb-2">
-    {{ transactions|length }} transaction{{ transactions|length|pluralize }}
-    {% if start or end %}· {{ start|sdate|default:"…" }} – {{ end|sdate|default:"…" }}{% endif %}
+<div class="d-flex justify-content-between align-items-baseline text-body-secondary small mb-2">
+    <div>
+        {{ transactions|length }} transaction{{ transactions|length|pluralize }}
+        {% if start or end %}· {{ start|sdate|default:"…" }} – {{ end|sdate|default:"…" }}{% endif %}
+    </div>
+    <div>Total: <span class="{{ total_amount|amount_class }}">{{ total_amount|moneyc:main_currency }}</span></div>
 </div>
 <div class="card">
     <table class="table table-hover mb-0 align-middle register">
@@ -99,4 +120,8 @@
         </tbody>
     </table>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'finance/js/category-filter.js' %}"></script>
 {% endblock %}

@@ -51,13 +51,18 @@ class OpeningBalanceTests(LoggedInTestCase):
         opening.refresh_from_db()
         self.assertEqual(opening.amount, Decimal("25.00"))
 
-    def test_no_opening_balance_means_no_transaction(self):
+    def test_no_opening_balance_still_makes_a_zero_dated_today_transaction(self):
+        """2026-09-15 follow-up: every new account always gets an opening balance transaction,
+        even a zero one dated today when the fields are left blank."""
         self.client.post(reverse("finance:account_add"), {
             "name": "Wallet", "account_type": "cash", "currency": "EUR", "is_active": "on",
         })
         account = Account.objects.get(name="Wallet")
         self.assertEqual(account.balance, Decimal("0.00"))
-        self.assertFalse(Transaction.objects.filter(account=account).exists())
+        opening = Transaction.objects.get(account=account)
+        self.assertEqual(opening.amount, Decimal("0.00"))
+        self.assertEqual(opening.date, date.today())
+        self.assertEqual(opening.payee.name, Payee.OPENING_BALANCE)
 
 
 class TransferCategoryTests(TestCase):

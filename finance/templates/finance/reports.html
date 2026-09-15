@@ -1,26 +1,22 @@
 {% extends "finance/base.html" %}
-{% load stashy_format l10n %}
+{% load static stashy_format %}
 {% block title %}Reports · Stashy{% endblock %}
 {% block content %}
 <h3 class="mb-3">Reports</h3>
 
-<form method="get" class="card p-3 mb-4">
+<form method="get" class="card p-3 mb-2">
     <div class="row g-2 align-items-end">
         <div class="col-md-2">
             <label class="form-label small mb-1">Date range</label>
             {{ form.range }}
         </div>
         <div class="col-md-2">
-            <label class="form-label small mb-1">Start</label>
-            {{ form.start }}
-        </div>
-        <div class="col-md-2">
-            <label class="form-label small mb-1">End</label>
-            {{ form.end }}
-        </div>
-        <div class="col-md-2">
-            <label class="form-label small mb-1">Interval</label>
+            <label class="form-label small mb-1">Average interval</label>
             {{ form.interval }}
+        </div>
+        <div class="col-md-2">
+            <label class="form-label small mb-1">Subtotal tables by</label>
+            {{ form.subtotal }}
         </div>
         <div class="col-md-2">
             <label class="form-label small mb-1">Account</label>
@@ -30,114 +26,204 @@
             <button class="btn btn-sm btn-outline-secondary w-100">Apply</button>
         </div>
     </div>
+    <div class="row g-2 mt-2">
+        <div class="col-md-2">
+            <label class="form-label small mb-1">Start</label>
+            {{ form.start }}
+        </div>
+        <div class="col-md-2">
+            <label class="form-label small mb-1">End</label>
+            {{ form.end }}
+        </div>
+    </div>
     {% if form.errors %}
     <div class="alert alert-danger py-2 mt-3 mb-0 small">
         {% for field, errors in form.errors.items %}{% for error in errors %}{% if field != "__all__" %}{{ field|capfirst }}: {% endif %}{{ error }} {% endfor %}{% endfor %}
         Your filters weren't applied — showing the default range instead.
     </div>
     {% endif %}
-    <div class="text-muted small mt-2">Showing {{ start }} to {{ end }}, bucketed {{ interval }}.</div>
 </form>
+<div class="text-body-secondary small mb-4">Showing {{ start|sdate }} to {{ end|sdate }}.</div>
 
-<div class="row g-3 mb-4">
-    <div class="col-md-6">
-        <div class="card p-3 h-100">
-            <div class="text-muted small mb-2">Spending by category</div>
+<div class="row g-3 mb-3 report-row">
+    <div class="col-md-6 report-col">
+        <div class="card p-3 h-100 report-card">
+            <div class="d-flex justify-content-between align-items-start mb-2 gap-2">
+                <div class="text-muted small">Spending by category</div>
+                <div class="d-flex gap-2">
+                    <div class="report-export" hidden>{% include "finance/includes/export_dropdown.html" with export_url_name="finance:export_report_spending" extra_query=request.GET.urlencode %}</div>
+                    <button type="button" class="btn btn-outline-secondary btn-sm report-expand-btn">
+                        <i class="bi bi-arrows-fullscreen me-1" data-expand-icon></i><span data-expand-text>Expand</span>
+                    </button>
+                </div>
+            </div>
             <canvas id="spendingByCategoryChart" height="220"></canvas>
+            <div class="report-table mt-3" hidden>
+                {% include "finance/includes/report_category_table.html" with table=spending_table amount_label="Spending" signed=False main_currency=main_currency prefix="spend" %}
+            </div>
         </div>
     </div>
-    <div class="col-md-6">
-        <div class="card p-3 h-100">
-            <div class="text-muted small mb-2">Current {{ interval }} spending vs. 12-{{ interval }} average</div>
-            <canvas id="currentVsAverageChart" height="220"></canvas>
-            <div class="row text-center mt-3">
-                <div class="col-6">
-                    <div class="text-muted small">Current</div>
-                    <div class="stat-value amount-negative">{{ current_spending|moneyc:main_currency }}</div>
+    <div class="col-md-6 report-col">
+        <div class="card p-3 h-100 report-card">
+            <div class="d-flex justify-content-between align-items-start mb-2 gap-2">
+                <div class="text-muted small">Current spending by category vs. average</div>
+                <div class="d-flex gap-2">
+                    <div class="report-export" hidden>{% include "finance/includes/export_dropdown.html" with export_url_name="finance:export_report_spending_vs_average" extra_query=request.GET.urlencode %}</div>
+                    <button type="button" class="btn btn-outline-secondary btn-sm report-expand-btn">
+                        <i class="bi bi-arrows-fullscreen me-1" data-expand-icon></i><span data-expand-text>Expand</span>
+                    </button>
                 </div>
-                <div class="col-6">
-                    <div class="text-muted small">Average</div>
-                    <div class="stat-value">{{ average_spending|moneyc:main_currency }}</div>
-                </div>
+            </div>
+            <canvas id="spendingVsAverageChart" height="220"></canvas>
+            <div class="report-table mt-3" hidden>
+                {% include "finance/includes/report_vs_average_table.html" with table=spending_vs_average_table signed=False main_currency=main_currency prefix="spendavg" %}
             </div>
         </div>
     </div>
 </div>
 
-<div class="row g-3 mb-4">
-    <div class="col-md-6">
-        <div class="card p-3 h-100">
-            <div class="text-muted small mb-2">Income vs. expense over time</div>
-            <canvas id="incomeExpenseChart" height="220"></canvas>
+<div class="row g-3 mb-3 report-row">
+    <div class="col-md-6 report-col">
+        <div class="card p-3 h-100 report-card">
+            <div class="d-flex justify-content-between align-items-start mb-2 gap-2">
+                <div class="text-muted small">Income &amp; expense by category</div>
+                <div class="d-flex gap-2">
+                    <div class="report-export" hidden>{% include "finance/includes/export_dropdown.html" with export_url_name="finance:export_report_income_expense" extra_query=request.GET.urlencode %}</div>
+                    <button type="button" class="btn btn-outline-secondary btn-sm report-expand-btn">
+                        <i class="bi bi-arrows-fullscreen me-1" data-expand-icon></i><span data-expand-text>Expand</span>
+                    </button>
+                </div>
+            </div>
+            <canvas id="incomeExpenseByCategoryChart" height="220"></canvas>
+            <div class="row text-center mt-3">
+                <div class="col-3">
+                    <div class="text-muted small">Income</div>
+                    <div class="stat-value amount-positive">{{ income_total|moneyc:main_currency }}</div>
+                </div>
+                <div class="col-3">
+                    <div class="text-muted small">Expense</div>
+                    <div class="stat-value amount-negative">{{ expense_total|moneyc:main_currency }}</div>
+                </div>
+                <div class="col-3">
+                    <div class="text-muted small">Total</div>
+                    <div class="stat-value {{ net_total|amount_class }}">{{ net_total|moneyc:main_currency }}</div>
+                </div>
+                <div class="col-3">
+                    <div class="text-muted small">Savings rate</div>
+                    <div class="stat-value">{% if savings_rate is not None %}{{ savings_rate }}%{% else %}—{% endif %}</div>
+                    <div class="text-muted small">{% if savings_rate_average is not None %}avg {{ savings_rate_average }}%{% endif %}</div>
+                </div>
+            </div>
+            <div class="report-table mt-3" hidden>
+                {% include "finance/includes/report_category_table.html" with table=income_expense_table amount_label="Amount" signed=True main_currency=main_currency prefix="incexp" %}
+            </div>
         </div>
     </div>
-    <div class="col-md-6">
-        <div class="card p-3 h-100">
-            <div class="text-muted small mb-2">Net worth over time</div>
-            <canvas id="netWorthChart" height="220"></canvas>
+    <div class="col-md-6 report-col">
+        <div class="card p-3 h-100 report-card">
+            <div class="d-flex justify-content-between align-items-start mb-2 gap-2">
+                <div class="text-muted small">Income &amp; expense by category vs. average</div>
+                <div class="d-flex gap-2">
+                    <div class="report-export" hidden>{% include "finance/includes/export_dropdown.html" with export_url_name="finance:export_report_income_expense_vs_average" extra_query=request.GET.urlencode %}</div>
+                    <button type="button" class="btn btn-outline-secondary btn-sm report-expand-btn">
+                        <i class="bi bi-arrows-fullscreen me-1" data-expand-icon></i><span data-expand-text>Expand</span>
+                    </button>
+                </div>
+            </div>
+            <canvas id="incomeExpenseVsAverageChart" height="220"></canvas>
+            <div class="report-table mt-3" hidden>
+                {% include "finance/includes/report_vs_average_table.html" with table=income_expense_vs_average_table signed=True main_currency=main_currency prefix="incexpavg" %}
+            </div>
         </div>
     </div>
 </div>
+
+<div class="row g-3 mb-3 report-row">
+    <div class="col-md-6 report-col">
+        <div class="card p-3 h-100 report-card">
+            <div class="d-flex justify-content-between align-items-start mb-2 gap-2">
+                <div class="text-muted small">Net worth over time</div>
+                <div class="d-flex gap-2">
+                    <div class="report-export" hidden>{% include "finance/includes/export_dropdown.html" with export_url_name="finance:export_report_net_worth" extra_query=request.GET.urlencode %}</div>
+                    <button type="button" class="btn btn-outline-secondary btn-sm report-expand-btn">
+                        <i class="bi bi-arrows-fullscreen me-1" data-expand-icon></i><span data-expand-text>Expand</span>
+                    </button>
+                </div>
+            </div>
+            <canvas id="netWorthChart" height="220"></canvas>
+            <div class="report-table mt-3" hidden>
+                <div class="table-responsive">
+                <table class="table table-sm mb-0">
+                    <thead><tr><th>Account</th>{% for label in net_worth_table.periods %}<th class="text-end">{{ label }}</th>{% endfor %}</tr></thead>
+                    <tbody>
+                    {% for group in net_worth_table.groups %}
+                    <tr data-cat-id="networth-{{ group.key }}" class="fw-semibold">
+                        <td>
+                            {% if group.rows %}<i class="bi bi-chevron-down report-toggle-icon" data-toggle-target="networth-{{ group.key }}"></i>{% endif %}
+                            <span class="category-main">{{ group.name }}</span>
+                        </td>
+                        {% for value in group.totals %}<td class="text-end {{ value|amount_class }}">{{ value|moneyc:main_currency }}</td>{% endfor %}
+                    </tr>
+                    {% for row in group.rows %}
+                    <tr data-cat-parent="networth-{{ group.key }}">
+                        <td class="ps-4"><span class="category-sub">{{ row.name }}</span></td>
+                        {% for value in row.values %}<td class="text-end {{ value|amount_class }} report-value-sub">{{ value|moneyc:main_currency }}</td>{% endfor %}
+                    </tr>
+                    {% endfor %}
+                    {% empty %}
+                    <tr><td colspan="{{ net_worth_table.periods|length|add:1 }}" class="text-muted text-center py-3">No accounts yet.</td></tr>
+                    {% endfor %}
+                    </tbody>
+                    {% if net_worth_table.groups %}
+                    <tfoot>
+                        <tr class="fw-semibold">
+                            <td>Total</td>
+                            {% for value in net_worth_table.totals %}<td class="text-end {{ value|amount_class }}">{{ value|moneyc:main_currency }}</td>{% endfor %}
+                        </tr>
+                    </tfoot>
+                    {% endif %}
+                </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 report-col">
+        <div class="card p-3 h-100 report-card">
+            <div class="d-flex justify-content-between align-items-start mb-2 gap-2">
+                <div class="text-muted small">Bills &amp; Utilities</div>
+                {% if bills %}
+                <div class="d-flex gap-2">
+                    <div class="report-export" hidden>{% include "finance/includes/export_dropdown.html" with export_url_name="finance:export_report_bills" extra_query=request.GET.urlencode %}</div>
+                    <button type="button" class="btn btn-outline-secondary btn-sm report-expand-btn">
+                        <i class="bi bi-arrows-fullscreen me-1" data-expand-icon></i><span data-expand-text>Expand</span>
+                    </button>
+                </div>
+                {% endif %}
+            </div>
+            {% if bills %}
+            <canvas id="billsChart" height="220"></canvas>
+            <div class="report-table mt-3" hidden>
+                {% include "finance/includes/report_category_table.html" with table=bills_table amount_label="Spending" signed=False main_currency=main_currency prefix="bills" expanded=True %}
+            </div>
+            {% else %}
+            <div class="empty-state py-4">
+                <h3 class="h6">Missing "Bills &amp; Utilities" category</h3>
+                <p class="text-muted small mb-2">Add a top-level category named exactly "Bills &amp; Utilities" - electricity, water, internet and the like can live underneath it as subcategories - to see this report.</p>
+                <a href="{% url 'finance:category_add' %}" class="btn btn-sm btn-outline-secondary">Add category</a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{{ spending_chart|json_script:"spending-chart-data" }}
+{{ spending_vs_average_chart|json_script:"spending-vs-average-chart-data" }}
+{{ income_expense_chart|json_script:"income-expense-chart-data" }}
+{{ income_expense_vs_average_chart|json_script:"income-expense-vs-average-chart-data" }}
+{{ net_worth_chart|json_script:"net-worth-chart-data" }}
+{{ bills_chart|json_script:"bills-chart-data" }}
 {% endblock %}
 
 {% block extra_js %}
-<script>
-const spendingByCategory = {{ spending_by_category|safe|default:"[]" }};
-const timeseries = {{ timeseries|safe|default:"[]" }};
-const netWorthSeries = {{ net_worth_series|safe|default:"[]" }};
-
-const spendingChart = new Chart(document.getElementById('spendingByCategoryChart'), {
-    type: 'bar',
-    data: {
-        labels: spendingByCategory.map(r => r.category__name),
-        datasets: [{ label: 'Spending', data: spendingByCategory.map(r => r.total), borderRadius: 6 }]
-    },
-    options: { indexAxis: 'y', plugins: { legend: { display: false } } }
-});
-
-const incomeExpenseChart = new Chart(document.getElementById('incomeExpenseChart'), {
-    type: 'bar',
-    data: {
-        labels: timeseries.map(r => stashyDate(r.period)),
-        datasets: [
-            { label: 'Income', data: timeseries.map(r => r.income), borderRadius: 6 },
-            { label: 'Expense', data: timeseries.map(r => r.expense), borderRadius: 6 },
-        ]
-    },
-    options: { plugins: { legend: { position: 'bottom' } } }
-});
-
-const currentVsAverageChart = new Chart(document.getElementById('currentVsAverageChart'), {
-    type: 'bar',
-    data: {
-        labels: ['Current', 'Average'],
-        datasets: [{ data: [{{ current_spending|unlocalize }}, {{ average_spending|unlocalize }}], borderRadius: 6 }]
-    },
-    options: { plugins: { legend: { display: false } } }
-});
-
-const netWorthChart = new Chart(document.getElementById('netWorthChart'), {
-    type: 'line',
-    data: {
-        labels: netWorthSeries.map(r => stashyDate(r.period)),
-        datasets: [{ label: 'Net worth', data: netWorthSeries.map(r => r.net_worth), fill: true, tension: .25 }]
-    },
-    options: { plugins: { legend: { display: false } } }
-});
-
-// Chart colors come from the theme's CSS variables, and are re-applied when light/dark mode changes.
-function colorReportCharts() {
-    const positive = stashyCssVar('--stashy-positive');
-    const negative = stashyCssVar('--stashy-negative');
-    spendingChart.data.datasets[0].backgroundColor = negative;
-    incomeExpenseChart.data.datasets[0].backgroundColor = positive;
-    incomeExpenseChart.data.datasets[1].backgroundColor = negative;
-    currentVsAverageChart.data.datasets[0].backgroundColor = [negative, stashyCssVar('--stashy-muted')];
-    netWorthChart.data.datasets[0].borderColor = positive;
-    netWorthChart.data.datasets[0].backgroundColor = positive + '22';
-    [spendingChart, incomeExpenseChart, currentVsAverageChart, netWorthChart].forEach(chart => chart.update());
-}
-colorReportCharts();
-document.addEventListener('stashy:themechange', colorReportCharts);
-</script>
+<script src="{% static 'finance/js/reports.js' %}"></script>
 {% endblock %}

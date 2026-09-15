@@ -47,6 +47,18 @@ def moneyc(value, currency):
 
 
 @register.filter
+def amount_class(value, signed=True):
+    """CSS class for a signed amount ("amount-negative"/"amount-positive"). Pass signed=False
+    for an already-abs'd magnitude that should always read as spending (negative-styled) -
+    used by the report tables, where an expense-only column's values are magnitudes, not
+    signed amounts, but a mixed income/expense or plain-difference column still needs its own
+    sign to decide the color."""
+    if not signed:
+        return "amount-negative"
+    return "amount-negative" if value < 0 else "amount-positive"
+
+
+@register.filter
 def abs_value(value):
     """abs() for templates — used to show a signed amount unsigned in a Payment/Deposit column (D3),
     where the column itself already says which direction the money moved."""

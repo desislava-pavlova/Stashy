@@ -4,7 +4,10 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h3 class="mb-0">Memorized payees</h3>
-    <a href="{% url 'finance:payee_add' %}" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>Add payee</a>
+    <div class="d-flex gap-2">
+        {% include "finance/includes/export_dropdown.html" with export_url_name="finance:export_payees" %}
+        <a href="{% url 'finance:payee_add' %}" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>Add payee</a>
+    </div>
 </div>
 
 <form method="get" class="card p-3 mb-3">
@@ -38,7 +41,7 @@
                 <th><a href="{% querystring sort=sort_next.name %}" class="sort-link">Payee{% include "finance/includes/sort_arrow.html" with column="name" %}</a></th>
                 <th><a href="{% querystring sort=sort_next.category %}" class="sort-link">Categories{% include "finance/includes/sort_arrow.html" with column="category" %}</a></th>
                 <th class="text-end"><a href="{% querystring sort=sort_next.amount %}" class="sort-link">Total amount{% include "finance/includes/sort_arrow.html" with column="amount" %}</a></th>
-                <th class="text-end">Usage</th>
+                <th class="text-end"><a href="{% querystring sort=sort_next.usage %}" class="sort-link">Usage{% include "finance/includes/sort_arrow.html" with column="usage" %}</a></th>
                 <th></th>
             </tr>
         </thead>

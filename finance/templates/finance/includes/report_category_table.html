@@ -1,0 +1,44 @@
+{% load stashy_format %}
+<div class="table-responsive">
+<table class="table table-sm mb-0">
+    <thead>
+        <tr>
+            <th>Category</th>
+            {% if table.periods %}
+                {% for label in table.periods %}<th class="text-end">{{ label }}</th>{% endfor %}
+                <th class="text-end">Total</th>
+            {% else %}
+                <th class="text-end">{{ amount_label }}</th>
+            {% endif %}
+        </tr>
+    </thead>
+    <tbody>
+    {% for group in table.groups %}
+        {% if table.groups|length > 1 %}
+        <tr><td colspan="{{ table.periods|length|add:2 }}" class="text-muted small fw-semibold pt-3">{{ group.name }}</td></tr>
+        {% endif %}
+        {% for row in group.rows %}
+        <tr{% if row.is_child %} data-cat-parent="{{ prefix }}-{{ row.parent_id }}"{% if not expanded %} hidden{% endif %}{% else %} data-cat-id="{{ prefix }}-{{ row.id }}"{% endif %}>
+            <td{% if row.is_child %} class="ps-4"{% endif %}>
+                {% if row.has_children %}<i class="bi bi-chevron-down report-toggle-icon{% if not expanded %} is-collapsed{% endif %}" data-toggle-target="{{ prefix }}-{{ row.id }}"></i>{% endif %}
+                <span class="{% if row.is_child %}category-sub{% else %}category-main{% endif %}">{{ row.name }}</span>
+            </td>
+            {% for value in row.values %}<td class="text-end {{ value|amount_class:signed }}{% if row.is_child %} report-value-sub{% endif %}">{{ value|moneyc:main_currency }}</td>{% endfor %}
+            {% if table.periods %}<td class="text-end fw-semibold {{ row.total|amount_class:signed }}{% if row.is_child %} report-value-sub{% endif %}">{{ row.total|moneyc:main_currency }}</td>{% endif %}
+        </tr>
+        {% endfor %}
+    {% empty %}
+        <tr><td colspan="{{ table.periods|length|add:2 }}" class="text-muted text-center py-3">No activity in this period.</td></tr>
+    {% endfor %}
+    </tbody>
+    {% if table.totals %}
+    <tfoot>
+        <tr class="fw-semibold">
+            <td>Total</td>
+            {% for value in table.totals.values %}<td class="text-end {{ value|amount_class:signed }}">{{ value|moneyc:main_currency }}</td>{% endfor %}
+            {% if table.periods %}<td class="text-end {{ table.totals.total|amount_class:signed }}">{{ table.totals.total|moneyc:main_currency }}</td>{% endif %}
+        </tr>
+    </tfoot>
+    {% endif %}
+</table>
+</div>
