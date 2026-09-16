@@ -14,8 +14,8 @@
                 <span class="{% if row.is_child %}category-sub{% else %}category-main{% endif %}">{{ row.name }}</span>
             </td>
             <td class="text-end {{ row.current|amount_class:signed }}{% if row.is_child %} report-value-sub{% endif %}">{{ row.current|moneyc:main_currency }}</td>
-            <td class="text-end text-muted{% if row.is_child %} report-value-sub{% endif %}">{{ row.average|moneyc:main_currency }}</td>
-            <td class="text-end {{ row.difference|amount_class }}{% if row.is_child %} report-value-sub{% endif %}">{{ row.difference|moneyc:main_currency }}</td>
+            <td class="text-end text-muted{% if row.is_child %} report-value-sub{% endif %}">{{ row.average|moneyc:main_currency|default:"—" }}</td>
+            <td class="text-end {{ row.difference|amount_class }}{% if row.is_child %} report-value-sub{% endif %}">{{ row.difference|moneyc:main_currency|default:"—" }}</td>
         </tr>
         {% endfor %}
     {% empty %}
@@ -25,10 +25,10 @@
     {% if table.totals %}
     <tfoot>
         <tr class="fw-semibold">
-            <td>Total</td>
+            <td>{{ total_label|default:"Total" }}</td>
             <td class="text-end {{ table.totals.current|amount_class:signed }}">{{ table.totals.current|moneyc:main_currency }}</td>
-            <td class="text-end text-muted">{{ table.totals.average|moneyc:main_currency }}</td>
-            <td class="text-end {{ table.totals.difference|amount_class }}">{{ table.totals.difference|moneyc:main_currency }}</td>
+            <td class="text-end text-muted">{{ table.totals.average|moneyc:main_currency|default:"—" }}</td>
+            <td class="text-end {{ table.totals.difference|amount_class }}">{{ table.totals.difference|moneyc:main_currency|default:"—" }}</td>
         </tr>
     </tfoot>
     {% endif %}

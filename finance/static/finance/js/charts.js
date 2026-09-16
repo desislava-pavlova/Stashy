@@ -26,6 +26,15 @@ function stashyDate(isoDate) {
 (function () {
     if (!window.Chart) return;
 
+    // Every chart on this site sits in an explicitly-sized wrapper div (e.g. .report-chart-wrap,
+    // .donut-canvas) so it can be resized from JS (Phase 13's per-report expand sizing) or CSS
+    // breakpoints - Chart.js only fills that wrapper's height when told not to preserve its own
+    // aspect ratio instead.
+    Chart.defaults.maintainAspectRatio = false;
+    // Reports charts size their own wrapper from the data specifically so every category/period
+    // label stays readable (Phase 13) - never thin them out automatically.
+    Chart.defaults.scales.category.ticks.autoSkip = false;
+
     Chart.defaults.scales.linear.ticks.callback = function (value) {
         return stashyNumber(value, Number.isInteger(value) ? 0 : 2);
     };

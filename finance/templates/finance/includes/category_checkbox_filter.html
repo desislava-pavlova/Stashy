@@ -1,0 +1,23 @@
+{# Reusable "tick some categories" dropdown, shared by Transactions and Settings' Watched expenses. #}
+<div class="dropdown category-filter">
+    <button type="button" class="form-select form-select-sm text-start dropdown-toggle" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+        {{ button_label }}
+    </button>
+    <div class="dropdown-menu category-filter-menu p-2">
+        {% if include_uncategorized %}
+        <label class="category-filter-item">
+            <input type="checkbox" name="{{ field_name }}" value="none" {% if "none" in selected_values %}checked{% endif %}>
+            Uncategorized
+        </label>
+        {% endif %}
+        {% for group in category_groups %}
+        {% if category_groups|length > 1 %}<div class="text-muted small fw-semibold pt-2 px-1">{{ group.name }}</div>{% endif %}
+        {% for c in group.categories %}
+        <label class="category-filter-item{% if c.parent_id %} ps-4{% endif %}">
+            <input type="checkbox" name="{{ field_name }}" value="{{ c.pk }}" data-category-id="{{ c.pk }}" data-parent-id="{{ c.parent_id|default:'' }}" {% if c.pk|stringformat:"s" in selected_values %}checked{% endif %}>
+            {{ c.name }}
+        </label>
+        {% endfor %}
+        {% endfor %}
+    </div>
+</div>

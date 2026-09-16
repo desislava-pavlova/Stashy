@@ -181,13 +181,3 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # Audit log: every create/update/delete of models in these apps is recorded (see the audit app).
 AUDIT_TRACKED_APPS = ['finance']
-
-
-# Email
-# https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration
-
-MAILERS = {
-    'default': {
-        'BACKEND': 'django.core.mail.backends.console.EmailBackend',
-    },
-}

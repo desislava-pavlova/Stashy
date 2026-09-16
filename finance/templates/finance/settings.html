@@ -1,5 +1,5 @@
 {% extends "finance/base.html" %}
-{% load stashy_format %}
+{% load static stashy_format %}
 {% block title %}Settings · Stashy{% endblock %}
 {% block content %}
 <div class="page-header">
@@ -83,6 +83,31 @@
             {% endif %}
         </div>
 
+        <div class="card p-4 mb-4">
+            <h2 class="h5 mb-1">Watched expenses</h2>
+            <p class="text-muted small">Pick the expense categories the "Watched expenses" report on the Reports page
+                tracks closely - your regular bills, or anything else you want to keep an eye on.</p>
+            <form method="post">
+                {% csrf_token %}
+                {% for error in watched_form.non_field_errors %}<div class="alert alert-danger py-2">{{ error }}</div>{% endfor %}
+                <div class="row g-2 align-items-end">
+                    <div class="col-sm-5 col-lg-4">
+                        <label class="form-label" for="{{ watched_form.watched_expenses_title.id_for_label }}">Title</label>
+                        {{ watched_form.watched_expenses_title }}
+                        {% for error in watched_form.watched_expenses_title.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                    </div>
+                    <div class="col-sm-5 col-lg-4">
+                        <label class="form-label">Categories</label>
+                        {% include "finance/includes/category_checkbox_filter.html" with field_name="watched_expenses_categories" category_groups=watched_category_groups selected_values=watched_selected_values button_label=watched_button_label include_uncategorized=False %}
+                        {% for error in watched_form.watched_expenses_categories.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                    </div>
+                    <div class="col-sm-2 col-lg-4">
+                        <button type="submit" name="save_watched_expenses" value="1" class="btn btn-outline-secondary">Save</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+
         <div class="card p-4">
             <h2 class="h5 mb-1">Backups</h2>
             <p class="text-muted small">A quarterly backup happens automatically
@@ -114,4 +139,8 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'finance/js/category-filter.js' %}"></script>
 {% endblock %}

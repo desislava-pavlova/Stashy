@@ -122,7 +122,8 @@ class CategoryVsAverageReportRowsTests(LoggedInTestCase):
         Transaction.objects.create(account=self.account, date=start, category=groceries, amount=Decimal("-50.00"))
         Transaction.objects.create(account=self.account, date=period_start, category=groceries, amount=Decimal("-30.00"))
 
-        table = reporting.category_vs_average_report_rows(start, end, 1, expense_only=True)
+        periods = reporting.vs_average_periods(start, end, 1)
+        table = reporting.category_vs_average_report_rows(start, end, periods, expense_only=True)
         row = next(r for group in table["groups"] for r in group["rows"] if r["name"] == "Groceries")
         self.assertEqual(row["current"], Decimal("50.00"))
         self.assertEqual(row["average"], Decimal("30.00"))
@@ -130,9 +131,19 @@ class CategoryVsAverageReportRowsTests(LoggedInTestCase):
         self.assertEqual(table["totals"]["difference"], Decimal("20.00"))
 
     def test_no_activity_returns_no_groups(self):
-        table = reporting.category_vs_average_report_rows(date(2026, 3, 1), date(2026, 3, 31), 3, expense_only=True)
+        periods = reporting.vs_average_periods(date(2026, 3, 1), date(2026, 3, 31), 3)
+        table = reporting.category_vs_average_report_rows(date(2026, 3, 1), date(2026, 3, 31), periods, expense_only=True)
         self.assertEqual(table["groups"], [])
         self.assertIsNone(table["totals"])
+
+    def test_no_earlier_activity_means_no_average_or_difference(self):
+        groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
+        start, end = date(2026, 3, 1), date(2026, 3, 31)
+        Transaction.objects.create(account=self.account, date=start, category=groceries, amount=Decimal("-50.00"))
+        table = reporting.category_vs_average_report_rows(start, end, [], expense_only=True)
+        row = next(r for group in table["groups"] for r in group["rows"] if r["name"] == "Groceries")
+        self.assertIsNone(row["average"])
+        self.assertIsNone(row["difference"])
 
 
 class NetWorthByAccountTests(LoggedInTestCase):
@@ -200,8 +211,8 @@ class ReportExportTests(LoggedInTestCase):
         self.assertIn("Total", rows[0])
         self.assertGreater(len(rows[0]), 2)  # Category + at least one period + Total
 
-    def test_bills_export_404s_when_the_category_does_not_exist(self):
-        response = self.client.get(reverse("finance:export_report_bills"), {"format": "csv"})
+    def test_watched_expenses_export_404s_when_nothing_is_chosen(self):
+        response = self.client.get(reverse("finance:export_report_watched_expenses"), {"format": "csv"})
         self.assertEqual(response.status_code, 404)
 
     def test_net_worth_export_has_a_group_row_an_account_row_and_a_total_row(self):

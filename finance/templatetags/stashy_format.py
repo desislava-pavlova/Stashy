@@ -52,7 +52,10 @@ def amount_class(value, signed=True):
     for an already-abs'd magnitude that should always read as spending (negative-styled) -
     used by the report tables, where an expense-only column's values are magnitudes, not
     signed amounts, but a mixed income/expense or plain-difference column still needs its own
-    sign to decide the color."""
+    sign to decide the color. None (R4: no earlier data to average) is neither - a plain muted
+    class, same as the "—" placeholder text shown for it."""
+    if value is None:
+        return "text-muted"
     if not signed:
         return "amount-negative"
     return "amount-negative" if value < 0 else "amount-positive"

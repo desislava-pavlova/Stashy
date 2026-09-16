@@ -1,6 +1,7 @@
-"""Tests for the Phase 11.1 follow-up: main-categories-only charts, the Bills & Utilities
-line chart, collapsible parent/child table rows, and the transaction list total's position."""
-import json
+"""Tests for the Phase 11.1 follow-up: main-categories-only charts, collapsible parent/child
+table rows, and the transaction list total's position. The Bills & Utilities line-chart tests
+were retired in Phase 13 (replaced by Settings-configurable "Watched expenses", tested in
+test_phase13_reports.py)."""
 from datetime import date
 from decimal import Decimal
 
@@ -39,18 +40,13 @@ class CategoryTotalsTopLevelTests(LoggedInTestCase):
         self.assertEqual(by_name["Groceries"], Decimal("-20.00"))
         self.assertEqual(by_name["Salary"], Decimal("2000.00"))
 
-
-class BillsAndUtilitiesSeriesTests(LoggedInTestCase):
-    def test_returns_empty_when_the_category_does_not_exist(self):
-        self.assertEqual(reporting.bills_and_utilities_series(date(2026, 1, 1), date(2026, 1, 31)), [])
-
-    def test_one_point_per_month_with_the_periods_total(self):
-        top = Category.objects.create(name="Bills & Utilities", category_type=Category.CategoryType.EXPENSE)
-        Transaction.objects.create(account=self.account, date=date(2026, 1, 5), category=top, amount=Decimal("-50.00"))
-        Transaction.objects.create(account=self.account, date=date(2026, 2, 5), category=top, amount=Decimal("-70.00"))
-        points = reporting.bills_and_utilities_series(date(2026, 1, 1), date(2026, 2, 28))
-        self.assertEqual([p["period"] for p in points], [date(2026, 1, 1), date(2026, 2, 1)])
-        self.assertEqual([p["total"] for p in points], [Decimal("50.00"), Decimal("70.00")])
+    def test_income_only_returns_positive_magnitudes_sorted_biggest_first(self):
+        salary = Category.objects.create(name="Salary", category_type=Category.CategoryType.INCOME)
+        gift = Category.objects.create(name="Gifts", category_type=Category.CategoryType.INCOME)
+        Transaction.objects.create(account=self.account, date=date(2026, 1, 5), category=salary, amount=Decimal("2000.00"))
+        Transaction.objects.create(account=self.account, date=date(2026, 1, 6), category=gift, amount=Decimal("50.00"))
+        rows = reporting.category_totals_top_level(date(2026, 1, 1), date(2026, 1, 31), income_only=True)
+        self.assertEqual([r["name"] for r in rows], ["Salary", "Gifts"])
 
 
 class ReportsPageMarkupTests(LoggedInTestCase):
@@ -82,28 +78,24 @@ class ReportsPageMarkupTests(LoggedInTestCase):
         self.assertIn("hidden", body[row_start:row_end])
 
     def test_export_is_hidden_until_a_report_is_expanded(self):
-        # No Bootstrap display-utility class here (2026-09-15 fix) - "d-inline-block" carries
-        # "!important" on display, which silently overrides the "hidden" attribute's own
-        # display:none and left the export button visible on every collapsed card.
+        # No Bootstrap display-utility class here - "d-inline-block" carries "!important" on
+        # display, which silently overrides the "hidden" attribute's own display:none.
         response = self.client.get(reverse("finance:reports"))
         body = response.content.decode()
         self.assertIn('class="report-export" hidden', body)
 
-    def test_income_expense_chart_data_includes_the_three_totals(self):
+    def test_net_replaces_total_in_the_income_expense_stat_row(self):
         response = self.client.get(reverse("finance:reports"))
-        body = response.content.decode()
-        start = body.index('id="income-expense-chart-data"')
-        end = body.index("</script>", start)
-        data = json.loads(body[body.index(">", start) + 1:end])
-        names = [row["name"] for row in data]
-        self.assertIn("Total income", names)
-        self.assertIn("Total expense", names)
-        self.assertIn("Total", names)
+        self.assertContains(response, ">Net<")
 
     def test_filter_form_has_the_new_row_layout_fields(self):
         response = self.client.get(reverse("finance:reports"))
         self.assertContains(response, "Average interval")
-        self.assertContains(response, "Subtotal tables by")
+        self.assertContains(response, "Subtotal by")
+
+    def test_show_hide_all_button_is_present(self):
+        response = self.client.get(reverse("finance:reports"))
+        self.assertContains(response, "report-showhide-btn")
 
 
 class TransactionListTotalPositionTests(LoggedInTestCase):

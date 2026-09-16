@@ -38,6 +38,14 @@ class Profile(models.Model):
     failed_pin_attempts = models.PositiveSmallIntegerField(default=0)
     locked_until = models.DateTimeField(null=True, blank=True)
 
+    # "Watched expenses" (R8, Phase 13) - a Settings-configurable replacement for the old
+    # hardcoded "Bills & Utilities" report: any set of expense categories worth watching closely.
+    watched_expenses_title = models.CharField(max_length=60, default="Bills & Utilities")
+    watched_expenses_categories = models.ManyToManyField(
+        "Category", blank=True, related_name="+",
+        help_text="Which expense categories the Watched expenses report tracks.",
+    )
+
     def __str__(self):
         return f"Preferences for {self.user}"
 

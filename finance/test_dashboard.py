@@ -48,7 +48,9 @@ class SpendingTreeTests(TestCase):
 
         tree = spending_tree(date(2026, 9, 1), date(2026, 9, 30))
 
-        self.assertEqual([group["name"] for group in tree], ["Rent", "Food", "Uncategorized"])
+        # Uncategorized transactions are excluded from every report (R1, Phase 13) - the two
+        # category=None rows above never show up here, on the dashboard or anywhere else.
+        self.assertEqual([group["name"] for group in tree], ["Rent", "Food"])
         self.assertEqual(tree[0]["total"], 500.0)
         food = tree[1]
         self.assertEqual(food["total"], 50.0)
@@ -56,7 +58,6 @@ class SpendingTreeTests(TestCase):
             {"id": self.groceries.pk, "name": "Groceries", "with_subcategories": True, "total": 42.5},
             {"id": self.food.pk, "name": "Food (general)", "with_subcategories": False, "total": 7.5},
         ])
-        self.assertIsNone(tree[2]["id"])
 
     def test_a_category_that_is_its_own_parent_does_not_hang(self):
         Category.objects.filter(pk=self.rent.pk).update(parent=self.rent)
@@ -95,8 +96,14 @@ class LoggedInTestCase(TestCase):
 @mock.patch("django.utils.timezone.localdate", return_value=TODAY)
 class DashboardTests(LoggedInTestCase):
     def test_shows_last_months_savings_rate(self, _):
-        for on, amount in [(date(2026, 8, 1), "2000.00"), (date(2026, 8, 20), "-500.00"), (date(2026, 9, 3), "-40.00")]:
-            Transaction.objects.create(account=self.account, date=on, amount=Decimal(amount))
+        # A category's type decides income vs. spending (R1, Phase 13) - amount alone no longer
+        # does, so these need real Income/Expense categories to count toward the rate.
+        salary = Category.objects.create(name="Salary", category_type=Category.CategoryType.INCOME)
+        rent = Category.objects.create(name="Rent", category_type=Category.CategoryType.EXPENSE)
+        for on, amount, category in [
+            (date(2026, 8, 1), "2000.00", salary), (date(2026, 8, 20), "-500.00", rent), (date(2026, 9, 3), "-40.00", rent),
+        ]:
+            Transaction.objects.create(account=self.account, date=on, amount=Decimal(amount), category=category)
         response = self.client.get(reverse("finance:dashboard"))
         self.assertEqual(response.context["savings_rate"], Decimal("75.0"))
         self.assertEqual(response.context["savings_bar"], 75)

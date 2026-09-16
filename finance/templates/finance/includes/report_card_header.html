@@ -1,0 +1,18 @@
+{# Shared chrome for every report card: title, Show all/Hide all, Export, Expand/Collapse. #}
+<div class="d-flex justify-content-between align-items-start mb-2 gap-2">
+    <div class="text-muted small">{{ title }}</div>
+    <div class="d-flex gap-2">
+        {% if show_hide_all %}
+        {# Wrapped in a plain div, like Export: "hidden" on the button itself loses to .btn's own display rule. #}
+        <div class="report-showhide" hidden>
+            <button type="button" class="btn btn-outline-secondary btn-sm report-showhide-btn">Show all</button>
+        </div>
+        {% endif %}
+        {% if export_url_name %}
+        <div class="report-export" hidden>{% include "finance/includes/export_dropdown.html" with export_url_name=export_url_name extra_query=request.GET.urlencode %}</div>
+        {% endif %}
+        <button type="button" class="btn btn-outline-secondary btn-sm report-expand-btn">
+            <i class="bi bi-arrows-fullscreen me-1" data-expand-icon></i><span data-expand-text>Expand</span>
+        </button>
+    </div>
+</div>

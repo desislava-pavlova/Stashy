@@ -57,10 +57,12 @@ urlpatterns = [
     path("reports/", views.reports_view, name="reports"),
     path("reports/export/spending/", views.export_report_spending, name="export_report_spending"),
     path("reports/export/spending-vs-average/", views.export_report_spending_vs_average, name="export_report_spending_vs_average"),
+    path("reports/export/income/", views.export_report_income, name="export_report_income"),
+    path("reports/export/income-vs-average/", views.export_report_income_vs_average, name="export_report_income_vs_average"),
     path("reports/export/income-expense/", views.export_report_income_expense, name="export_report_income_expense"),
     path("reports/export/income-expense-vs-average/", views.export_report_income_expense_vs_average, name="export_report_income_expense_vs_average"),
-    path("reports/export/bills/", views.export_report_bills, name="export_report_bills"),
     path("reports/export/net-worth/", views.export_report_net_worth, name="export_report_net_worth"),
+    path("reports/export/watched-expenses/", views.export_report_watched_expenses, name="export_report_watched_expenses"),
 
     # Settings (currency + regional preferences)
     path("settings/", views.settings_view, name="settings"),

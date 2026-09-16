@@ -385,6 +385,7 @@ class DateRangeFilterForm(forms.Form):
         ("last_12_months", "Last 12 months"),
         ("this_year", "This year"),
         ("last_year", "Last year"),
+        ("earliest", "Earliest to date"),
         ("custom", "Custom range"),
     ]
     # How many periods the same length as the selected date range to average against,
@@ -408,13 +409,14 @@ class DateRangeFilterForm(forms.Form):
         ("year", "Year"),
     ]
 
-    range = forms.ChoiceField(choices=RANGE_CHOICES, required=False, initial="ytd")
+    # R3 (Phase 13): reports default to This month, Last 3 periods - a fresh, unbound form
+    # shows these as selected even before any filter is submitted.
+    range = forms.ChoiceField(choices=RANGE_CHOICES, required=False, initial="this_month")
     start = forms.DateField(required=False, widget=DateInput())
     end = forms.DateField(required=False, widget=DateInput())
-    interval = forms.ChoiceField(choices=INTERVAL_CHOICES, required=False, initial="12", label="Average interval")
-    subtotal = forms.ChoiceField(choices=SUBTOTAL_CHOICES, required=False, label="Subtotal tables by")
+    interval = forms.ChoiceField(choices=INTERVAL_CHOICES, required=False, initial="3", label="Average interval")
+    subtotal = forms.ChoiceField(choices=SUBTOTAL_CHOICES, required=False, label="Subtotal by")
     account = forms.ModelChoiceField(queryset=Account.objects.all(), required=False)
-    category = forms.ModelChoiceField(queryset=Category.objects.all(), required=False)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -423,9 +425,6 @@ class DateRangeFilterForm(forms.Form):
                 field.widget.attrs["class"] = "form-select form-select-sm"
             else:
                 field.widget.attrs["class"] = "form-control form-control-sm"
-        self.fields["category"].queryset = categories_alphabetical(
-            self.fields["category"].queryset.exclude(account__isnull=False)
-        )
         _use_regional_dates(self)
 
     def clean(self):
@@ -454,6 +453,26 @@ class ProfileForm(BootstrapFormMixin, forms.ModelForm):
 
 class CheckRatesForm(forms.Form):
     """No fields — just the button that triggers a Frankfurter fetch; needs an internet connection."""
+
+
+class WatchedExpensesForm(BootstrapFormMixin, forms.ModelForm):
+    """Settings: which expense categories the "Watched expenses" report tracks (R8), replacing
+    the old hardcoded "Bills & Utilities" report. Categories are rendered by hand in
+    includes/category_checkbox_filter.html (same tick-the-subcategories widget the Transactions
+    filter uses), not by this field's own default widget - Django still binds/validates against
+    this field's name either way."""
+
+    class Meta:
+        model = Profile
+        fields = ["watched_expenses_title", "watched_expenses_categories"]
+        labels = {"watched_expenses_title": "Title", "watched_expenses_categories": "Categories"}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["watched_expenses_categories"].queryset = categories_alphabetical(
+            Category.objects.filter(category_type=Category.CategoryType.EXPENSE, account__isnull=True)
+        )
+        self.fields["watched_expenses_title"].widget.attrs["class"] = "form-control"
 
 
 def convertible_currencies(accounts):

@@ -1,10 +1,15 @@
-"""One-off loader for test_data.TXT (a Quicken 'Register Report' export) into the real
-database, purely so there's realistic data to look at while building the UI.
+"""One-off loader for test_data.TXT (a Quicken 'Register Report' export) into one stash,
+purely so there's realistic data to look at while building the UI.
 
 Not the CSV/OFX importer — this is a different, tab-delimited report format with a
 header banner and summary rows mixed in, so it gets its own small parser. Run with:
-    .venv\\Scripts\\python.exe scripts\\load_test_data.py
+    .venv\\Scripts\\python.exe scripts\\load_test_data.py --stash test
+
+It WIPES every finance row in that stash first (see wipe_placeholder_data()), so it lists
+what it's about to delete and asks you to type the stash's name before touching anything.
+--yes skips that question.
 """
+import argparse
 import os
 import re
 import sys
@@ -23,6 +28,7 @@ django.setup()
 from django.db import transaction as db_transaction  # noqa: E402
 
 from audit.context import system_action  # noqa: E402
+from finance import db_router, stashes  # noqa: E402
 from finance.models import Account, Category, ImportBatch, Payee, Reminder, Tag, Transaction  # noqa: E402
 from finance.money import parse_amount  # noqa: E402
 
@@ -31,6 +37,7 @@ DATE_RE = re.compile(r"^\d{1,2}\.\d{1,2}\.\d{4}$")
 INCOME_TOP_LEVEL = {"Work Income", "Other Income"}
 # The report header says "(in Euro)" — every account in this file is EUR (D2's per-account currency).
 CURRENCY = "EUR"
+WIPED_MODELS = (Transaction, Reminder, ImportBatch, Payee, Category, Account, Tag)
 
 # Best-effort account type for each account name found in the report, using Phase 3's
 # liquidity taxonomy (Physical Liquid / Digital Liquid / Illiquid).
@@ -97,29 +104,57 @@ def parse_rows():
         }
 
 
-def wipe_placeholder_data():
-    """Clears every finance row before reloading test_data.TXT from scratch.
+def select_stash(name):
+    """Sends every query in this script to the named stash. Since stashes switch live (Phase 12),
+    Django's `default` database is only the picker's empty placeholder - without this, the load
+    would quietly land there instead of in any stash."""
+    if not stashes.stash_exists(name):
+        available = ", ".join(stashes.list_stashes()) or "none yet"
+        raise SystemExit(f'No stash named "{name}". Existing stashes: {available}.')
+    stashes.ensure_registered(name)
+    db_router.set_current_stash_alias(name)
 
-    STOP AND THINK BEFORE RUNNING THIS against the real db.sqlite3: it deletes ALL accounts,
-    transactions, categories, payees AND reminders unconditionally - including anything typed
-    into the real app by hand since the last load (a reminder, a manually added account,
-    anything). This was written back when the database only held a handful of throwaway rows
-    from early manual testing; it stopped being safe to run casually the moment the user
-    started actually using the app between sessions, which is exactly what happened once (a
-    real reminder was lost this way - see DEVLOG.md, 13/09/2026). Only rerun this deliberately,
-    after checking with the user, when a schema change genuinely requires reloading the dataset."""
-    for model in (Transaction, Reminder, ImportBatch, Payee, Category, Account, Tag):
+
+def confirm_wipe(name):
+    """Lists what the wipe would delete and asks for the stash's own name back - typing it is a
+    deliberate act, unlike pressing Enter or "y" on autopilot."""
+    existing = [(model._meta.verbose_name_plural, model.objects.count()) for model in WIPED_MODELS]
+    existing = [(label, count) for label, count in existing if count]
+    if not existing:
+        return True
+    print(f'This deletes everything below from the "{name}" stash before loading {SOURCE.name}:')
+    for label, count in existing:
+        print(f"  {count} {label}")
+    try:
+        answer = input(f'Type the stash name ("{name}") to continue, or anything else to stop: ')
+    except EOFError:
+        return False
+    return answer.strip() == name
+
+
+def wipe_placeholder_data():
+    """Clears every finance row in the selected stash before reloading test_data.TXT from scratch.
+
+    STOP AND THINK BEFORE RUNNING THIS against a stash with anything you care about in it: it
+    deletes ALL accounts, transactions, categories, payees AND reminders unconditionally -
+    including anything typed into the app by hand since the last load. That already happened
+    once (a real reminder was lost this way - see DEVLOG.md, 13/09/2026), which is why the script
+    now asks for the stash's name first. Only rerun this deliberately, after checking with the
+    user."""
+    for model in WIPED_MODELS:
         count = model.objects.count()
         if count:
             print(f"  clearing {count} existing {model._meta.verbose_name_plural}")
             model.objects.all().delete()
 
 
-def load():
+def load(stash_name):
     rows = list(parse_rows())
     created, skipped = 0, 0
 
-    with db_transaction.atomic(), system_action(f"Loaded from {SOURCE.name} (Quicken register export) for visual testing"):
+    # atomic() opens its transaction on `default` unless told otherwise - the router only picks
+    # where each query goes, not which connection a transaction block wraps - so name the stash.
+    with db_transaction.atomic(using=stash_name), system_action(f"Loaded from {SOURCE.name} (Quicken register export) for visual testing"):
         wipe_placeholder_data()
         for row in rows:
             amount = parse_amount(row["amount"])
@@ -156,11 +191,25 @@ def load():
             )
             created += 1
 
-    print(f"Created {created} transactions ({skipped} rows skipped).")
+    print(f'Loaded into the "{stash_name}" stash: {created} transactions ({skipped} rows skipped).')
     print(f"Accounts: {Account.objects.count()}, Categories: {Category.objects.count()}, Payees: {Payee.objects.count()}")
     for account in Account.objects.all():
         print(f"  {account.name:14} {account.get_account_type_display():24} balance {account.balance:>12} {account.currency}")
 
 
+def main():
+    parser = argparse.ArgumentParser(description=f"Wipe one stash's finance data and reload it from {SOURCE.name}.")
+    parser.add_argument("--stash", required=True, help="the stash to load into (a folder name under stashes/)")
+    parser.add_argument("--yes", action="store_true", help="skip the confirmation question")
+    args = parser.parse_args()
+
+    select_stash(args.stash)
+    if not args.yes and not confirm_wipe(args.stash):
+        print("Stopped - nothing was changed.")
+        return 1
+    load(args.stash)
+    return 0
+
+
 if __name__ == "__main__":
-    load()
+    sys.exit(main())

@@ -7,7 +7,6 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
-from dateutil.relativedelta import relativedelta
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import update_session_auth_hash
@@ -29,7 +28,7 @@ from . import stashes
 from .currency import RateFetchError, RateTable, SUFFIX_CURRENCIES, convert_balances, fetch_latest_rates, format_money
 from .forms import (
     AccountCreateForm, AccountForm, CategoryForm, CheckRatesForm, DateRangeFilterForm, ImportUploadForm,
-    PayeeForm, ProfileForm, ReconcileStartForm, ReminderForm, TransactionForm, TransferForm,
+    PayeeForm, ProfileForm, ReconcileStartForm, ReminderForm, TransactionForm, TransferForm, WatchedExpensesForm,
     convertible_currencies,
 )
 from .models import (
@@ -40,11 +39,11 @@ from .auth_forms import ChangePinForm
 from .money import CENT, ZERO, parse_amount
 from .starter_categories import add_starter_categories, starter_categories_path
 from .reporting import (
-    DEFAULT_LOOKBACK_PERIODS, bills_and_utilities_category, bills_and_utilities_category_ids,
-    bills_and_utilities_series, bills_and_utilities_totals, category_report_rows,
-    category_totals_top_level, category_totals_vs_average, category_vs_average_report_rows,
-    income_and_spending, income_and_spending_vs_average, net_worth_by_account, resolve_range,
-    savings_rate, spending_tree,
+    DEFAULT_LOOKBACK_PERIODS, DEFAULT_RANGE_KEY, category_report_rows, category_totals_top_level,
+    category_totals_vs_average, category_vs_average_report_rows, income_and_spending,
+    income_and_spending_vs_average, net_worth_by_account, resolve_range, savings_rate, spending_tree,
+    subtotal_overflow_message, trimmed_average_periods, uncategorized_count, watched_expenses_category_ids, watched_expenses_series,
+    watched_expenses_totals,
 )
 
 ACCOUNT_TIPS = [
@@ -1356,120 +1355,258 @@ def _import_ofx(upload, account, batch):
 
 def _report_filters(request):
     """Shared by the reports page and every per-report export view, so both read the exact
-    same filters off the querystring - what you export always matches what's on screen."""
-    form = DateRangeFilterForm(request.GET or None)
-    filters = form.cleaned_data if form.is_valid() else {}
-    start, end, interval = resolve_range(filters)
-    # "Average interval" is now how many periods the same length as [start, end] to average
-    # over (2026-09-15 follow-up), not a separate bucketing granularity - see
-    # reporting.vs_average_periods().
+    same filters off the querystring - what you export always matches what's on screen.
+
+    On an invalid submission (R5, Phase 13), `form` is swapped for a fresh, unbound one so the
+    widgets show the defaults actually being used rather than echoing back the rejected values;
+    the original errors are kept separately in "form_errors" for the page's warning banner."""
+    submitted = DateRangeFilterForm(request.GET or None)
+    invalid = bool(request.GET) and not submitted.is_valid()
+    filters = submitted.cleaned_data if submitted.is_valid() else {}
+    account = filters.get("account")
+    start, end, interval = resolve_range(filters, account=account)
+    # "Average interval" is how many periods the same length as [start, end] to average over,
+    # immediately preceding it - see reporting.vs_average_periods().
     try:
         lookback = int(interval)
     except (TypeError, ValueError):
         lookback = DEFAULT_LOOKBACK_PERIODS
+    range_key = filters.get("range") or DEFAULT_RANGE_KEY
+    periods = trimmed_average_periods(start, end, lookback, account=account, range_key=range_key)
     return {
-        "form": form, "start": start, "end": end, "lookback": lookback,
+        "form": DateRangeFilterForm() if invalid else submitted,
+        "form_errors": submitted.errors if invalid else None,
+        "start": start, "end": end, "lookback": lookback,
+        "periods": periods, "average_periods": len(periods),
+        # One earlier period isn't an average, and none at all is nothing to compare with -
+        # the vs-average reports say so instead of drawing one (user, 16/09/2026).
+        "has_average": len(periods) >= 2,
         "subtotal": filters.get("subtotal") or "",
-        "account": filters.get("account"),
+        "account": account,
+    }
+
+
+def _stacked_series(periods, rows):
+    """Transpose category_report_rows()' per-row-per-period shape into per-period lists of
+    {name, value} - top-level categories only (R2), magnitudes only (a stack's height is never
+    negative) - what the split-by-category column charts (reports 1/2 with a subtotal, and 5)
+    draw from."""
+    labels = periods or ["Total"]
+    return [
+        {
+            "period": labels[i],
+            "categories": [
+                {"name": r["name"], "value": abs(float(r["values"][i]))}
+                for r in rows if not r["is_child"] and abs(r["values"][i]) > 0
+            ],
+        }
+        for i in range(len(labels))
+    ]
+
+
+def _top_level_rows(table, group_key):
+    group = next((g for g in table["groups"] if g["key"] == group_key), None)
+    return group["rows"] if group else []
+
+
+def _vs_average_chart_rows(rows):
+    """Like _float_rows(), but "average" may legitimately be None (R4: no earlier data) - Chart.js
+    reads a JSON null as a gap in the marker line rather than crashing on it."""
+    return [
+        {"name": r["name"], "current": float(r["current"]), "average": None if r["average"] is None else float(r["average"])}
+        for r in rows
+    ]
+
+
+def _vs_average_stat(label, current, average, higher_is_better, formatter):
+    """current / average / difference for report 6's stat row, with a ▲▼ arrow that reflects
+    the actual direction of change and a "good"/"bad" color that depends on the metric (R6:
+    "green means good, so spending less is green" - a falling Expense is good, a falling
+    Income isn't)."""
+    if current is None or average is None:
+        return {"label": label, "current": formatter(current) if current is not None else "—", "average": "—", "diff_text": "", "good": None}
+    diff = current - average
+    if diff == 0:
+        return {"label": label, "current": formatter(current), "average": formatter(average), "diff_text": formatter(diff), "good": None}
+    arrow = "▲" if diff > 0 else "▼"
+    good = (diff > 0) == higher_is_better
+    return {
+        "label": label, "current": formatter(current), "average": formatter(average),
+        "diff_text": f"{arrow} {formatter(abs(diff))}", "good": good,
     }
 
 
 @login_required
 def reports_view(request):
     f = _report_filters(request)
-    start, end, lookback, subtotal, account = f["start"], f["end"], f["lookback"], f["subtotal"], f["account"]
+    start, end, periods, subtotal, account = f["start"], f["end"], f["periods"], f["subtotal"], f["account"]
 
-    # --- Spending by category (chart: main categories only, subcategories rolled up) ---
-    spending_by_category = category_totals_top_level(start, end, expense_only=True, account=account)
-    spending_table = category_report_rows(start, end, subtotal=subtotal, expense_only=True, account=account)
+    profile = Profile.for_user(request.user)
+    main_currency = profile.main_currency
+    rates = RateTable(main_currency)
+    # A once-per-page-load warning (R7) - not per report, since the same missing rate would
+    # otherwise repeat itself on every card that happens to touch that currency.
+    missing_currencies = sorted({
+        a.currency for a in Account.objects.exclude(currency=main_currency) if rates.known(a.currency) is None
+    })
 
-    # --- Current spending by category vs. average over the last `lookback` periods the same
-    # length as the selected date range - the Account filter applies to both sides now
-    # (2026-09-15 follow-up: it silently didn't before, a real bug). ---
-    spending_vs_average = category_totals_vs_average(start, end, lookback, expense_only=True, account=account)
-    spending_vs_average_table = category_vs_average_report_rows(start, end, lookback, expense_only=True, account=account)
+    uncategorized = uncategorized_count(start, end, account=account)
 
-    # --- Net worth over time (running balance across all accounts) ---
-    net_worth_series = _net_worth_series(start, end)
-    net_worth_table = net_worth_by_account(start, end, subtotal or "month")
+    # --- 1. Spending by category (chart: main categories only, R2) ---
+    spending_by_category = category_totals_top_level(start, end, expense_only=True, account=account, rates=rates)
+    spending_table = category_report_rows(start, end, subtotal=subtotal, expense_only=True, account=account, rates=rates)
 
-    # --- Bills & Utilities: spending by subcategory for the table, monthly trend for the
-    # line chart ("should be lines like net worth") ---
-    bills = bills_and_utilities_totals(start, end, account=account)
-    bills_table = None
-    bills_series = []
-    if bills:
-        top = bills_and_utilities_category()
-        bills_table = category_report_rows(
-            start, end, subtotal=subtotal, expense_only=True, account=account,
-            category_ids=bills_and_utilities_category_ids(top),
-        )
-        bills_series = bills_and_utilities_series(start, end, account=account)
+    # --- 2. Income by category (new, mirrors Spending) ---
+    income_by_category = category_totals_top_level(start, end, income_only=True, account=account, rates=rates)
+    income_table = category_report_rows(start, end, subtotal=subtotal, income_only=True, account=account, rates=rates)
 
-    # --- Income & expense by category (chart: main categories only, plus 3 summary columns
-    # for Total income/Total expense/Total), the overall + vs.-average savings rate ---
-    income_expense_by_category = category_totals_top_level(start, end, account=account)
-    income_expense_table = category_report_rows(start, end, subtotal=subtotal, account=account)
-    totals = income_and_spending(start, end, account=account)
+    # --- 3. Spending vs. average / 4. Income vs. average (new) - charts show main categories
+    # only (R2), tables keep subcategories ---
+    spending_vs_average = category_totals_vs_average(start, end, periods, expense_only=True, account=account, rates=rates, top_level=True)
+    spending_vs_average_table = category_vs_average_report_rows(start, end, periods, expense_only=True, account=account, rates=rates)
+    income_vs_average = category_totals_vs_average(start, end, periods, income_only=True, account=account, rates=rates, top_level=True)
+    income_vs_average_table = category_vs_average_report_rows(start, end, periods, income_only=True, account=account, rates=rates)
+
+    # --- 5. Income & expense by category - combined signed table (unchanged shape); the chart
+    # is a stacked column per Subtotal period, split by category (R6) ---
+    income_expense_table = category_report_rows(start, end, subtotal=subtotal, account=account, rates=rates)
+    totals = income_and_spending(start, end, account=account, rates=rates)
     savings_rate_value = savings_rate(totals["income"], totals["spending"])
-    savings_rate_vs_average = income_and_spending_vs_average(start, end, lookback, account=account)
     net_total = totals["income"] - totals["spending"]
-    income_expense_chart_rows = income_expense_by_category + [
-        {"category_id": "total_income", "name": "Total income", "total": totals["income"]},
-        {"category_id": "total_expense", "name": "Total expense", "total": -totals["spending"]},
-        {"category_id": "total_all", "name": "Total", "total": net_total},
-    ]
+    income_expense_income_series = _stacked_series(income_expense_table["periods"], _top_level_rows(income_expense_table, "income"))
+    income_expense_expense_series = _stacked_series(income_expense_table["periods"], _top_level_rows(income_expense_table, "expense"))
 
-    # --- Income & expense by category vs. average over the last `lookback` periods ---
-    income_expense_vs_average = category_totals_vs_average(start, end, lookback, account=account)
-    income_expense_vs_average_table = category_vs_average_report_rows(start, end, lookback, account=account)
+    # --- 6. Income & expense vs. average: Income/Expense (split by category, current period
+    # only) + Net, each with an average marker ---
+    vs_average_totals = income_and_spending_vs_average(start, end, periods, account=account, rates=rates)
+    money_fmt = lambda v: format_money(v, main_currency)  # noqa: E731
+    percent_fmt = lambda v: f"{v}%"  # noqa: E731
+    vs_average_stats = [
+        _vs_average_stat("Income", vs_average_totals["current_income"], vs_average_totals["average_income"], True, money_fmt),
+        _vs_average_stat("Expense", vs_average_totals["current_spending"], vs_average_totals["average_spending"], False, money_fmt),
+        _vs_average_stat("Net", vs_average_totals["current_net"], vs_average_totals["average_net"], True, money_fmt),
+        _vs_average_stat("Savings rate", vs_average_totals["current_rate"], vs_average_totals["average_rate"], True, percent_fmt),
+    ]
+    # The table keeps the same per-category breakdown as report 5's, plus Income total/Expense
+    # total/Net summary rows (already computed above) so the whole picture is in one table.
+    income_expense_vs_average_table = category_vs_average_report_rows(start, end, periods, account=account, rates=rates)
+    income_expense_vs_average_table["groups"] = income_expense_vs_average_table["groups"] + [{
+        "key": "summary", "name": "Summary", "rows": [
+            {
+                "id": "summary_income", "parent_id": None, "name": "Income total", "is_child": False, "has_children": False,
+                "current": vs_average_totals["current_income"], "average": vs_average_totals["average_income"],
+                "difference": None if vs_average_totals["average_income"] is None else vs_average_totals["current_income"] - vs_average_totals["average_income"],
+            },
+            {
+                "id": "summary_expense", "parent_id": None, "name": "Expense total", "is_child": False, "has_children": False,
+                "current": vs_average_totals["current_spending"], "average": vs_average_totals["average_spending"],
+                "difference": None if vs_average_totals["average_spending"] is None else vs_average_totals["current_spending"] - vs_average_totals["average_spending"],
+            },
+        ],
+    }]
+
+    # --- 7. Net worth over time - the chart plots the table's own Total row, so both follow
+    # the Subtotal filter (month when none is chosen) ---
+    net_worth_table = net_worth_by_account(start, end, subtotal or "month", rates=rates)
+
+    # --- 8. Watched expenses (Settings-configurable, R8) ---
+    watched_category_ids = watched_expenses_category_ids(profile)
+    watched_totals = watched_expenses_totals(start, end, watched_category_ids, account=account, rates=rates)
+    watched_table = None
+    watched_series = []
+    watched_chart_overflow = None
+    if watched_category_ids:
+        watched_table = category_report_rows(
+            start, end, subtotal=subtotal, expense_only=True, account=account, rates=rates, category_ids=watched_category_ids,
+        )
+        watched_chart_overflow = subtotal_overflow_message(start, end, subtotal or "month")
+        if not watched_chart_overflow:
+            watched_series = watched_expenses_series(
+                start, end, watched_category_ids, granularity=subtotal or "month", account=account, rates=rates,
+            )
 
     context = {
         "form": f["form"],
+        "form_errors": f["form_errors"],
         "start": start,
         "end": end,
-        # Reports sum every account's transactions without currency conversion (see the
-        # Phase 3 backlog note) - this label is accurate for a single-currency setup and
-        # a known simplification otherwise.
-        "main_currency": Profile.for_user(request.user).main_currency,
+        "subtotal": subtotal,
+        "main_currency": main_currency,
+        "missing_currencies": missing_currencies,
+        "uncategorized_count": uncategorized,
+        "average_periods": f["average_periods"],
+        "has_average": f["has_average"],
 
         "spending_by_category": spending_by_category,
         "spending_chart": _float_rows(spending_by_category, "total"),
+        "spending_stacked_chart": _stacked_series(spending_table["periods"], [r for g in spending_table["groups"] for r in g["rows"]]),
         "spending_table": spending_table,
 
+        "income_by_category": income_by_category,
+        "income_chart": _float_rows(income_by_category, "total"),
+        "income_stacked_chart": _stacked_series(income_table["periods"], [r for g in income_table["groups"] for r in g["rows"]]),
+        "income_table": income_table,
+
         "spending_vs_average": spending_vs_average,
-        "spending_vs_average_chart": _float_rows(spending_vs_average, "current", "average"),
+        "spending_vs_average_chart": _vs_average_chart_rows(spending_vs_average),
         "spending_vs_average_table": spending_vs_average_table,
 
-        "net_worth_series": net_worth_series,
-        "net_worth_chart": [
-            {"period": row["period"].isoformat(), "net_worth": float(row["net_worth"])} for row in net_worth_series
-        ],
-        "net_worth_table": net_worth_table,
+        "income_vs_average": income_vs_average,
+        "income_vs_average_chart": _vs_average_chart_rows(income_vs_average),
+        "income_vs_average_table": income_vs_average_table,
 
-        "bills": bills,
-        "bills_chart": [{"period": row["period"].isoformat(), "total": float(row["total"])} for row in bills_series],
-        "bills_table": bills_table,
-
-        "income_expense_by_category": income_expense_by_category,
-        "income_expense_chart": _float_rows(income_expense_chart_rows, "total"),
         "income_expense_table": income_expense_table,
+        "income_expense_chart": {
+            "periods": income_expense_table["periods"] or ["Total"],
+            "income": income_expense_income_series,
+            "expense": income_expense_expense_series,
+        },
         "income_total": totals["income"],
         "expense_total": totals["spending"],
         "net_total": net_total,
         "savings_rate": savings_rate_value,
-        "savings_rate_average": savings_rate_vs_average["average_rate"],
 
-        "income_expense_vs_average": income_expense_vs_average,
-        "income_expense_vs_average_chart": _float_rows(income_expense_vs_average, "current", "average"),
+        "vs_average_totals": vs_average_totals,
+        "vs_average_stats": vs_average_stats,
         "income_expense_vs_average_table": income_expense_vs_average_table,
+        "income_expense_vs_average_chart": {
+            "income": _float_rows(income_by_category, "total"),
+            "expense": _float_rows(spending_by_category, "total"),
+            "current_income": float(vs_average_totals["current_income"]),
+            "current_expense": float(vs_average_totals["current_spending"]),
+            "current_net": float(vs_average_totals["current_net"]),
+            "average_income": None if vs_average_totals["average_income"] is None else float(vs_average_totals["average_income"]),
+            "average_expense": None if vs_average_totals["average_spending"] is None else float(vs_average_totals["average_spending"]),
+            "average_net": None if vs_average_totals["average_net"] is None else float(vs_average_totals["average_net"]),
+        },
+
+        "net_worth_chart": [
+            {"label": label, "total": float(total)}
+            for label, total in zip(net_worth_table["periods"], net_worth_table["totals"])
+        ],
+        "net_worth_table": net_worth_table,
+
+        "watched_expenses_title": profile.watched_expenses_title,
+        # Whether categories are *chosen* - not whether any were spent in this range, which is a
+        # different question (an empty range still shows the chart and table, just at zero).
+        "watched_has_categories": bool(watched_category_ids),
+        "watched_totals": watched_totals,
+        "watched_table": watched_table,
+        "watched_chart_overflow": watched_chart_overflow,
+        "watched_chart": [
+            {
+                "category_id": series["category_id"], "name": series["name"],
+                "points": [{"period": p["period"], "total": float(p["total"])} for p in series["points"]],
+            }
+            for series in watched_series
+        ],
     }
     return render(request, "finance/reports.html", context)
 
 
 def _export_category_table(request, table, filename, amount_label):
-    """Shared by the three "category rows" report exports (Spending, Income & expense, Bills
-    & Utilities) - same table shape category_report_rows() already builds for the page."""
+    """Shared by every "category rows" report export (Spending, Income, Income & expense,
+    Watched expenses) - same table shape category_report_rows() already builds for the page."""
     periods = table["periods"]
     headers = ["Category"] + (periods + ["Total"] if periods else [amount_label])
     rows = []
@@ -1487,60 +1624,86 @@ def _export_category_table(request, table, filename, amount_label):
 def _export_vs_average_table(request, table, filename):
     headers = ["Category", "Current", "Average", "Difference"]
     rows = [
-        [("  " if row["is_child"] else "") + row["name"], str(row["current"]), str(row["average"]), str(row["difference"])]
+        [
+            ("  " if row["is_child"] else "") + row["name"], str(row["current"]),
+            "" if row["average"] is None else str(row["average"]),
+            "" if row["difference"] is None else str(row["difference"]),
+        ]
         for group in table["groups"] for row in group["rows"]
     ]
     if table["totals"]:
         t = table["totals"]
-        rows.append(["Total", str(t["current"]), str(t["average"]), str(t["difference"])])
+        rows.append(["Total", str(t["current"]), "" if t["average"] is None else str(t["average"]), "" if t["difference"] is None else str(t["difference"])])
     return _export_response(request.GET.get("format", "csv"), filename, headers, rows)
+
+
+@login_required
+def _export_rates(request):
+    """The same RateTable every export view converts through, so a CSV export always matches
+    the converted figures on screen (R7)."""
+    return RateTable(Profile.for_user(request.user).main_currency)
 
 
 @login_required
 def export_report_spending(request):
     f = _report_filters(request)
-    table = category_report_rows(f["start"], f["end"], subtotal=f["subtotal"], expense_only=True, account=f["account"])
+    table = category_report_rows(f["start"], f["end"], subtotal=f["subtotal"], expense_only=True, account=f["account"], rates=_export_rates(request))
     return _export_category_table(request, table, f"stashy-spending-by-category-{date.today():%Y%m%d}", "Spending")
 
 
 @login_required
 def export_report_spending_vs_average(request):
     f = _report_filters(request)
-    table = category_vs_average_report_rows(f["start"], f["end"], f["lookback"], expense_only=True, account=f["account"])
+    table = category_vs_average_report_rows(f["start"], f["end"], f["periods"], expense_only=True, account=f["account"], rates=_export_rates(request))
     return _export_vs_average_table(request, table, f"stashy-spending-vs-average-{date.today():%Y%m%d}")
+
+
+@login_required
+def export_report_income(request):
+    f = _report_filters(request)
+    table = category_report_rows(f["start"], f["end"], subtotal=f["subtotal"], income_only=True, account=f["account"], rates=_export_rates(request))
+    return _export_category_table(request, table, f"stashy-income-by-category-{date.today():%Y%m%d}", "Income")
+
+
+@login_required
+def export_report_income_vs_average(request):
+    f = _report_filters(request)
+    table = category_vs_average_report_rows(f["start"], f["end"], f["periods"], income_only=True, account=f["account"], rates=_export_rates(request))
+    return _export_vs_average_table(request, table, f"stashy-income-vs-average-{date.today():%Y%m%d}")
 
 
 @login_required
 def export_report_income_expense(request):
     f = _report_filters(request)
-    table = category_report_rows(f["start"], f["end"], subtotal=f["subtotal"], account=f["account"])
+    table = category_report_rows(f["start"], f["end"], subtotal=f["subtotal"], account=f["account"], rates=_export_rates(request))
     return _export_category_table(request, table, f"stashy-income-expense-by-category-{date.today():%Y%m%d}", "Amount")
 
 
 @login_required
 def export_report_income_expense_vs_average(request):
     f = _report_filters(request)
-    table = category_vs_average_report_rows(f["start"], f["end"], f["lookback"], account=f["account"])
+    table = category_vs_average_report_rows(f["start"], f["end"], f["periods"], account=f["account"], rates=_export_rates(request))
     return _export_vs_average_table(request, table, f"stashy-income-expense-vs-average-{date.today():%Y%m%d}")
 
 
 @login_required
-def export_report_bills(request):
+def export_report_watched_expenses(request):
     f = _report_filters(request)
-    top = bills_and_utilities_category()
-    if top is None:
-        return HttpResponse('No "Bills & Utilities" category exists yet.', status=404)
+    profile = Profile.for_user(request.user)
+    category_ids = watched_expenses_category_ids(profile)
+    if not category_ids:
+        return HttpResponse("No Watched expenses categories are chosen yet - add some in Settings.", status=404)
     table = category_report_rows(
-        f["start"], f["end"], subtotal=f["subtotal"], expense_only=True, account=f["account"],
-        category_ids=bills_and_utilities_category_ids(top),
+        f["start"], f["end"], subtotal=f["subtotal"], expense_only=True, account=f["account"], category_ids=category_ids,
+        rates=RateTable(profile.main_currency),
     )
-    return _export_category_table(request, table, f"stashy-bills-and-utilities-{date.today():%Y%m%d}", "Spending")
+    return _export_category_table(request, table, f"stashy-watched-expenses-{date.today():%Y%m%d}", "Spending")
 
 
 @login_required
 def export_report_net_worth(request):
     f = _report_filters(request)
-    table = net_worth_by_account(f["start"], f["end"], f["subtotal"] or "month")
+    table = net_worth_by_account(f["start"], f["end"], f["subtotal"] or "month", rates=_export_rates(request))
     headers = ["Account"] + table["periods"]
     rows = []
     for group in table["groups"]:
@@ -1558,25 +1721,6 @@ def _float_rows(rows, *decimal_keys):
     JSON handed to Chart.js - keeps the original Decimal rows intact for the server-rendered
     table (money stays Decimal for every calculation; float only at the JSON boundary)."""
     return [{**row, **{key: float(row[key]) for key in decimal_keys}} for row in rows]
-
-
-def _net_worth_series(start, end):
-    """Sample total net worth (all transactions to date, opening balances included per D1)
-    at each month-end between start and end.
-
-    Note: this sums every account's transactions in its own currency without conversion — a
-    known simplification for Phase 3 (see D2), since historical per-day exchange rates are a
-    bigger feature. It's exact for a single-currency setup and only used for this one chart.
-    """
-    points = []
-    cursor = start.replace(day=1)
-    while cursor <= end:
-        month_end = (cursor + relativedelta(months=1)) - relativedelta(days=1)
-        sample_date = min(month_end, end)
-        txns_to_date = Transaction.objects.filter(date__lte=sample_date).aggregate(total=Sum("amount"))["total"] or ZERO
-        points.append({"period": sample_date, "net_worth": txns_to_date})
-        cursor += relativedelta(months=1)
-    return points
 
 
 # ---------------------------------------------------------------------------
@@ -1636,7 +1780,18 @@ def settings_view(request):
             messages.error(request, "Nothing to back up yet - there's no database file.")
         return redirect("finance:settings")
 
-    if request.method == "POST" and not is_pin_change:
+    is_watched_expenses_save = request.method == "POST" and "save_watched_expenses" in request.POST
+    if is_watched_expenses_save:
+        watched_form = WatchedExpensesForm(request.POST, instance=profile)
+        if watched_form.is_valid():
+            watched_form.save()
+            messages.success(request, "Watched expenses saved.")
+            return redirect("finance:settings")
+        messages.error(request, "Watched expenses weren't saved - see the errors below.")
+    else:
+        watched_form = WatchedExpensesForm(instance=profile)
+
+    if request.method == "POST" and not is_pin_change and not is_watched_expenses_save:
         form = ProfileForm(request.POST, instance=profile)
         if form.is_valid():
             form.save()
@@ -1645,6 +1800,15 @@ def settings_view(request):
     else:
         form = ProfileForm(instance=profile)
 
+    watched_selected_values = {str(pk) for pk in profile.watched_expenses_categories.values_list("pk", flat=True)}
+    watched_count = len(watched_selected_values)
+    if watched_count == 0:
+        watched_button_label = "No categories chosen"
+    elif watched_count == 1:
+        watched_button_label = next(iter(profile.watched_expenses_categories.all())).full_name
+    else:
+        watched_button_label = f"{watched_count} categories selected"
+
     rates = RateTable(profile.main_currency)
     known_rates = [
         (code, rates.known(code)) for code in currencies if code != profile.main_currency
@@ -1652,6 +1816,12 @@ def settings_view(request):
     recent_backups = finance_backup.list_backups(backup_root, limit=5)
     return render(request, "finance/settings.html", {
         "form": form,
+        "watched_form": watched_form,
+        "watched_category_groups": grouped_categories(
+            Category.objects.filter(category_type=Category.CategoryType.EXPENSE, account__isnull=True)
+        ),
+        "watched_selected_values": watched_selected_values,
+        "watched_button_label": watched_button_label,
         "pin_form": pin_form,
         "stash_name": request.session.get("stash", ""),
         "check_rates_form": CheckRatesForm(),

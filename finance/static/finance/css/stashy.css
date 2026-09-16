@@ -102,14 +102,21 @@
     --stashy-negative-soft: #f9e1dd;
     --stashy-shadow: 0 1px 2px rgba(43, 35, 31, .05), 0 6px 20px rgba(43, 35, 31, .06);
 
-    --stashy-chart-1: #e07a3f;
-    --stashy-chart-2: #3f8f6b;
-    --stashy-chart-3: #e9a825;
-    --stashy-chart-4: #5b7fb8;
-    --stashy-chart-5: #b5577a;
-    --stashy-chart-6: #7d9b4a;
-    --stashy-chart-7: #9a6fc0;
-    --stashy-chart-8: #8a7d72;
+    /* Categorical chart palette: validated with the dataviz skill's checks against this
+       surface (#ffffff) - passes adjacent-pair CVD (worst ΔE 9.1) and the normal-vision floor
+       (worst ΔE 19.6). Used where each series needs its own identity (the dashboard donut,
+       Watched expenses lines); report stacks use income/expense/net colors instead. */
+    --stashy-chart-1: #2a78d6;
+    --stashy-chart-2: #eb6834;
+    --stashy-chart-3: #1baf7a;
+    --stashy-chart-4: #eda100;
+    --stashy-chart-5: #e87ba4;
+    --stashy-chart-6: #008300;
+    --stashy-chart-7: #4a3aa7;
+    --stashy-chart-8: #e34948;
+    --stashy-net: #2a78d6;
+    /* The lines between stacked pieces and the average dots: dark brown in light mode. */
+    --stashy-chart-line: #4a3020;
 
     --bs-body-font-family: var(--stashy-font-body);
     --bs-body-bg: var(--stashy-cream);
@@ -154,6 +161,21 @@
     --stashy-negative-soft: #3d1f1b;
     --stashy-shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 6px 20px rgba(0, 0, 0, .3);
     --bs-link-hover-color-rgb: 246, 162, 111;
+
+    /* Same 8 hues, stepped for the dark surface (#1f1a17) - validated separately, not a flip of
+       the light values (worst adjacent CVD ΔE 8.4, normal-vision floor 19.3). The light steps
+       were silently reused here before Phase 13; this is the first real dark-mode chart palette. */
+    --stashy-chart-1: #3987e5;
+    --stashy-chart-2: #d95926;
+    --stashy-chart-3: #199e70;
+    --stashy-chart-4: #c98500;
+    --stashy-chart-5: #d55181;
+    --stashy-chart-6: #008300;
+    --stashy-chart-7: #9085e9;
+    --stashy-chart-8: #e66767;
+    --stashy-net: #3987e5;
+    /* Dark mode needs the opposite: pale lines and dots against the dark colors. */
+    --stashy-chart-line: #f2eae2;
 }
 
 /* ---------- Base ---------- */
@@ -359,6 +381,13 @@ h1, h2, h3, h4, h5, h6,
 .report-toggle-icon { cursor: pointer; font-size: .75rem; margin-right: .3rem; display: inline-block; transition: transform .15s ease; }
 .report-toggle-icon.is-collapsed { transform: rotate(-90deg); }
 .report-value-sub { opacity: .72; }
+
+/* Chart height/width is set from JS (Phase 13) - a fixed collapsed preview, sized to the data
+   once a card is expanded (one row per bar/category; a minimum width per column, scrolling
+   sideways only when columns still don't fit - never squeezed to fit). */
+.report-chart-wrap { position: relative; height: 220px; overflow-x: auto; }
+.report-col.col-12 .report-chart-wrap { height: auto; min-height: 220px; }
+.report-chart-inner { position: relative; height: 100%; min-width: 100%; }
 
 /* Compact register tables for long, unpaginated transaction lists. */
 .register { font-size: .875rem; }

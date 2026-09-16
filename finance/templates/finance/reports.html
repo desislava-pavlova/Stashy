@@ -6,78 +6,97 @@
 
 <form method="get" class="card p-3 mb-2">
     <div class="row g-2 align-items-end">
-        <div class="col-md-2">
-            <label class="form-label small mb-1">Date range</label>
+        <div class="col-md-3">
+            <label class="form-label small mb-1 d-flex align-items-center gap-1">Date range
+                <i class="bi bi-question-circle text-muted" data-bs-toggle="popover" data-bs-trigger="hover focus" tabindex="0" role="button"
+                   data-bs-content="Which dates the reports cover. Affects every report. For the vs-average reports, this is the &quot;current&quot; period."></i>
+            </label>
             {{ form.range }}
         </div>
-        <div class="col-md-2">
-            <label class="form-label small mb-1">Average interval</label>
-            {{ form.interval }}
-        </div>
-        <div class="col-md-2">
-            <label class="form-label small mb-1">Subtotal tables by</label>
+        <div class="col-md-3">
+            <label class="form-label small mb-1 d-flex align-items-center gap-1">Subtotal by
+                <i class="bi bi-question-circle text-muted" data-bs-toggle="popover" data-bs-trigger="hover focus" tabindex="0" role="button"
+                   data-bs-content="Splits tables into one column per period plus a Total, and switches the Spending, Income and Income &amp; expense charts to one column per period. Doesn't affect the vs-average reports."></i>
+            </label>
             {{ form.subtotal }}
         </div>
-        <div class="col-md-2">
-            <label class="form-label small mb-1">Account</label>
+        <div class="col-md-3">
+            <label class="form-label small mb-1 d-flex align-items-center gap-1">Average interval
+                <i class="bi bi-question-circle text-muted" data-bs-toggle="popover" data-bs-trigger="hover focus" tabindex="0" role="button"
+                   data-bs-content="How many earlier periods before your Date range, the average is built from. Affects the three vs-average reports and the comparison stats."></i>
+            </label>
+            {{ form.interval }}
+        </div>
+        <div class="col-md-3">
+            <label class="form-label small mb-1 d-flex align-items-center gap-1">Account
+                <i class="bi bi-question-circle text-muted" data-bs-toggle="popover" data-bs-trigger="hover focus" tabindex="0" role="button"
+                   data-bs-content="Limits reports to one account. Affects every report except Net worth, which always includes all accounts."></i>
+            </label>
             {{ form.account }}
         </div>
-        <div class="col-md-2">
-            <button class="btn btn-sm btn-outline-secondary w-100">Apply</button>
-        </div>
     </div>
-    <div class="row g-2 mt-2">
-        <div class="col-md-2">
+    <div class="row g-2 mt-2 align-items-end">
+        <div class="col-md-3">
             <label class="form-label small mb-1">Start</label>
             {{ form.start }}
         </div>
-        <div class="col-md-2">
+        <div class="col-md-3">
             <label class="form-label small mb-1">End</label>
             {{ form.end }}
         </div>
+        <div class="col-md-3">
+            <button class="btn btn-sm btn-outline-secondary w-100">Apply</button>
+        </div>
     </div>
-    {% if form.errors %}
+    {% if form_errors %}
     <div class="alert alert-danger py-2 mt-3 mb-0 small">
-        {% for field, errors in form.errors.items %}{% for error in errors %}{% if field != "__all__" %}{{ field|capfirst }}: {% endif %}{{ error }} {% endfor %}{% endfor %}
+        {% for field, errors in form_errors.items %}{% for error in errors %}{% if field != "__all__" %}{{ field|capfirst }}: {% endif %}{{ error }} {% endfor %}{% endfor %}
         Your filters weren't applied — showing the default range instead.
     </div>
     {% endif %}
 </form>
-<div class="text-body-secondary small mb-4">Showing {{ start|sdate }} to {{ end|sdate }}.</div>
+<div class="text-body-secondary small mb-2">Showing {{ start|sdate }} to {{ end|sdate }}.</div>
+
+{% if uncategorized_count %}
+<div class="alert alert-warning py-2 small d-flex justify-content-between align-items-center">
+    <span>{{ uncategorized_count }} uncategorized transaction{{ uncategorized_count|pluralize }} in this period aren't included here, since they're neither income nor expense.</span>
+    <a href="{% url 'finance:transaction_list' %}?category=none&start={{ start|sdate }}&end={{ end|sdate }}{% if account %}&account={{ account.pk }}{% endif %}&range=custom" class="text-nowrap">View them</a>
+</div>
+{% endif %}
+{% if missing_currencies %}
+<div class="alert alert-warning py-2 small mb-3">
+    No exchange rate known for: {{ missing_currencies|join:", " }} — amounts in those currencies aren't included in these totals.
+    <a href="{% url 'finance:settings' %}">Check rates in Settings</a>.
+</div>
+{% endif %}
 
 <div class="row g-3 mb-3 report-row">
     <div class="col-md-6 report-col">
         <div class="card p-3 h-100 report-card">
-            <div class="d-flex justify-content-between align-items-start mb-2 gap-2">
-                <div class="text-muted small">Spending by category</div>
-                <div class="d-flex gap-2">
-                    <div class="report-export" hidden>{% include "finance/includes/export_dropdown.html" with export_url_name="finance:export_report_spending" extra_query=request.GET.urlencode %}</div>
-                    <button type="button" class="btn btn-outline-secondary btn-sm report-expand-btn">
-                        <i class="bi bi-arrows-fullscreen me-1" data-expand-icon></i><span data-expand-text>Expand</span>
-                    </button>
-                </div>
-            </div>
-            <canvas id="spendingByCategoryChart" height="220"></canvas>
+            {% include "finance/includes/report_card_header.html" with title="Spending by Category" export_url_name="finance:export_report_spending" show_hide_all=True %}
+            {% if spending_table.overflow %}
+            <div class="alert alert-warning py-2 small mb-0">{{ spending_table.overflow }}</div>
+            {% else %}
+            <div class="report-chart-wrap"><div class="report-chart-inner"><canvas id="spendingByCategoryChart" data-subtotal="{{ subtotal }}"></canvas></div></div>
             <div class="report-table mt-3" hidden>
                 {% include "finance/includes/report_category_table.html" with table=spending_table amount_label="Spending" signed=False main_currency=main_currency prefix="spend" %}
             </div>
+            {% endif %}
         </div>
     </div>
     <div class="col-md-6 report-col">
         <div class="card p-3 h-100 report-card">
-            <div class="d-flex justify-content-between align-items-start mb-2 gap-2">
-                <div class="text-muted small">Current spending by category vs. average</div>
-                <div class="d-flex gap-2">
-                    <div class="report-export" hidden>{% include "finance/includes/export_dropdown.html" with export_url_name="finance:export_report_spending_vs_average" extra_query=request.GET.urlencode %}</div>
-                    <button type="button" class="btn btn-outline-secondary btn-sm report-expand-btn">
-                        <i class="bi bi-arrows-fullscreen me-1" data-expand-icon></i><span data-expand-text>Expand</span>
-                    </button>
-                </div>
-            </div>
-            <canvas id="spendingVsAverageChart" height="220"></canvas>
+            {% include "finance/includes/report_card_header.html" with title="Current Spending vs. Average Spending by Category" export_url_name="finance:export_report_spending_vs_average" show_hide_all=True %}
+            {% if has_average %}
+            <div class="report-chart-wrap"><div class="report-chart-inner"><canvas id="spendingVsAverageChart"></canvas></div></div>
             <div class="report-table mt-3" hidden>
                 {% include "finance/includes/report_vs_average_table.html" with table=spending_vs_average_table signed=False main_currency=main_currency prefix="spendavg" %}
             </div>
+            {% else %}
+            <div class="empty-state py-4">
+                <p class="text-muted small mb-0">No earlier data to compare with.</p>
+            </div>
+            {% endif %}
         </div>
     </div>
 </div>
@@ -85,17 +104,43 @@
 <div class="row g-3 mb-3 report-row">
     <div class="col-md-6 report-col">
         <div class="card p-3 h-100 report-card">
-            <div class="d-flex justify-content-between align-items-start mb-2 gap-2">
-                <div class="text-muted small">Income &amp; expense by category</div>
-                <div class="d-flex gap-2">
-                    <div class="report-export" hidden>{% include "finance/includes/export_dropdown.html" with export_url_name="finance:export_report_income_expense" extra_query=request.GET.urlencode %}</div>
-                    <button type="button" class="btn btn-outline-secondary btn-sm report-expand-btn">
-                        <i class="bi bi-arrows-fullscreen me-1" data-expand-icon></i><span data-expand-text>Expand</span>
-                    </button>
-                </div>
+            {% include "finance/includes/report_card_header.html" with title="Income by Category" export_url_name="finance:export_report_income" show_hide_all=True %}
+            {% if income_table.overflow %}
+            <div class="alert alert-warning py-2 small mb-0">{{ income_table.overflow }}</div>
+            {% else %}
+            <div class="report-chart-wrap"><div class="report-chart-inner"><canvas id="incomeByCategoryChart" data-subtotal="{{ subtotal }}"></canvas></div></div>
+            <div class="report-table mt-3" hidden>
+                {% include "finance/includes/report_category_table.html" with table=income_table amount_label="Income" signed=False main_currency=main_currency prefix="inc" %}
             </div>
-            <canvas id="incomeExpenseByCategoryChart" height="220"></canvas>
-            <div class="row text-center mt-3">
+            {% endif %}
+        </div>
+    </div>
+    <div class="col-md-6 report-col">
+        <div class="card p-3 h-100 report-card">
+            {% include "finance/includes/report_card_header.html" with title="Current Income vs. Average Income by Category" export_url_name="finance:export_report_income_vs_average" show_hide_all=True %}
+            {% if has_average %}
+            <div class="report-chart-wrap"><div class="report-chart-inner"><canvas id="incomeVsAverageChart"></canvas></div></div>
+            <div class="report-table mt-3" hidden>
+                {% include "finance/includes/report_vs_average_table.html" with table=income_vs_average_table signed=False main_currency=main_currency prefix="incavg" %}
+            </div>
+            {% else %}
+            <div class="empty-state py-4">
+                <p class="text-muted small mb-0">No earlier data to compare with.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-3 report-row">
+    <div class="col-md-6 report-col">
+        <div class="card p-3 h-100 report-card">
+            {% include "finance/includes/report_card_header.html" with title="Income/Expense by Category" export_url_name="finance:export_report_income_expense" show_hide_all=True %}
+            {% if income_expense_table.overflow %}
+            <div class="alert alert-warning py-2 small mb-0">{{ income_expense_table.overflow }}</div>
+            {% else %}
+            <div class="report-chart-wrap"><div class="report-chart-inner"><canvas id="incomeExpenseChart"></canvas></div></div>
+            <div class="row text-center my-3">
                 <div class="col-3">
                     <div class="text-muted small">Income</div>
                     <div class="stat-value amount-positive">{{ income_total|moneyc:main_currency }}</div>
@@ -105,35 +150,45 @@
                     <div class="stat-value amount-negative">{{ expense_total|moneyc:main_currency }}</div>
                 </div>
                 <div class="col-3">
-                    <div class="text-muted small">Total</div>
+                    <div class="text-muted small">Net</div>
                     <div class="stat-value {{ net_total|amount_class }}">{{ net_total|moneyc:main_currency }}</div>
                 </div>
                 <div class="col-3">
                     <div class="text-muted small">Savings rate</div>
                     <div class="stat-value">{% if savings_rate is not None %}{{ savings_rate }}%{% else %}—{% endif %}</div>
-                    <div class="text-muted small">{% if savings_rate_average is not None %}avg {{ savings_rate_average }}%{% endif %}</div>
                 </div>
             </div>
             <div class="report-table mt-3" hidden>
                 {% include "finance/includes/report_category_table.html" with table=income_expense_table amount_label="Amount" signed=True main_currency=main_currency prefix="incexp" %}
             </div>
+            {% endif %}
         </div>
     </div>
     <div class="col-md-6 report-col">
         <div class="card p-3 h-100 report-card">
-            <div class="d-flex justify-content-between align-items-start mb-2 gap-2">
-                <div class="text-muted small">Income &amp; expense by category vs. average</div>
-                <div class="d-flex gap-2">
-                    <div class="report-export" hidden>{% include "finance/includes/export_dropdown.html" with export_url_name="finance:export_report_income_expense_vs_average" extra_query=request.GET.urlencode %}</div>
-                    <button type="button" class="btn btn-outline-secondary btn-sm report-expand-btn">
-                        <i class="bi bi-arrows-fullscreen me-1" data-expand-icon></i><span data-expand-text>Expand</span>
-                    </button>
+            {% include "finance/includes/report_card_header.html" with title="Current Income/Expense vs. Income/Expense by Category" export_url_name="finance:export_report_income_expense_vs_average" show_hide_all=True %}
+            {% if has_average %}
+            <div class="report-chart-wrap"><div class="report-chart-inner"><canvas id="incomeExpenseVsAverageChart"></canvas></div></div>
+            <div class="row text-center my-3 small">
+                {% for stat in vs_average_stats %}
+                <div class="col-3">
+                    <div class="text-muted">{{ stat.label }}</div>
+                    <div class="fw-semibold">{{ stat.current }}</div>
+                    <div class="text-muted">avg {{ stat.average }}</div>
+                    {% if stat.diff_text %}
+                    <div class="{% if stat.good is None %}text-muted{% elif stat.good %}amount-positive{% else %}amount-negative{% endif %}">{{ stat.diff_text }}</div>
+                    {% endif %}
                 </div>
+                {% endfor %}
             </div>
-            <canvas id="incomeExpenseVsAverageChart" height="220"></canvas>
             <div class="report-table mt-3" hidden>
-                {% include "finance/includes/report_vs_average_table.html" with table=income_expense_vs_average_table signed=True main_currency=main_currency prefix="incexpavg" %}
+                {% include "finance/includes/report_vs_average_table.html" with table=income_expense_vs_average_table signed=True main_currency=main_currency prefix="incexpavg" total_label="Net" %}
             </div>
+            {% else %}
+            <div class="empty-state py-4">
+                <p class="text-muted small mb-0">No earlier data to compare with.</p>
+            </div>
+            {% endif %}
         </div>
     </div>
 </div>
@@ -141,16 +196,14 @@
 <div class="row g-3 mb-3 report-row">
     <div class="col-md-6 report-col">
         <div class="card p-3 h-100 report-card">
-            <div class="d-flex justify-content-between align-items-start mb-2 gap-2">
-                <div class="text-muted small">Net worth over time</div>
-                <div class="d-flex gap-2">
-                    <div class="report-export" hidden>{% include "finance/includes/export_dropdown.html" with export_url_name="finance:export_report_net_worth" extra_query=request.GET.urlencode %}</div>
-                    <button type="button" class="btn btn-outline-secondary btn-sm report-expand-btn">
-                        <i class="bi bi-arrows-fullscreen me-1" data-expand-icon></i><span data-expand-text>Expand</span>
-                    </button>
-                </div>
-            </div>
-            <canvas id="netWorthChart" height="220"></canvas>
+            {% include "finance/includes/report_card_header.html" with title="Net Worth" export_url_name="finance:export_report_net_worth" show_hide_all=True %}
+            {% if net_worth_table.overflow %}
+            <div class="alert alert-warning py-2 small mb-0">{{ net_worth_table.overflow }}</div>
+            {% else %}
+            {% if net_worth_table.missing_accounts %}
+            <div class="alert alert-warning py-2 small">No exchange rate known for: {{ net_worth_table.missing_accounts|join:", " }} - left out of net worth.</div>
+            {% endif %}
+            <div class="report-chart-wrap"><div class="report-chart-inner"><canvas id="netWorthChart"></canvas></div></div>
             <div class="report-table mt-3" hidden>
                 <div class="table-responsive">
                 <table class="table table-sm mb-0">
@@ -185,31 +238,28 @@
                 </table>
                 </div>
             </div>
+            {% endif %}
         </div>
     </div>
     <div class="col-md-6 report-col">
         <div class="card p-3 h-100 report-card">
-            <div class="d-flex justify-content-between align-items-start mb-2 gap-2">
-                <div class="text-muted small">Bills &amp; Utilities</div>
-                {% if bills %}
-                <div class="d-flex gap-2">
-                    <div class="report-export" hidden>{% include "finance/includes/export_dropdown.html" with export_url_name="finance:export_report_bills" extra_query=request.GET.urlencode %}</div>
-                    <button type="button" class="btn btn-outline-secondary btn-sm report-expand-btn">
-                        <i class="bi bi-arrows-fullscreen me-1" data-expand-icon></i><span data-expand-text>Expand</span>
-                    </button>
-                </div>
-                {% endif %}
-            </div>
-            {% if bills %}
-            <canvas id="billsChart" height="220"></canvas>
-            <div class="report-table mt-3" hidden>
-                {% include "finance/includes/report_category_table.html" with table=bills_table amount_label="Spending" signed=False main_currency=main_currency prefix="bills" expanded=True %}
-            </div>
-            {% else %}
+            {% include "finance/includes/report_card_header.html" with title=watched_expenses_title export_url_name="finance:export_report_watched_expenses" show_hide_all=True %}
+            {% if not watched_has_categories %}
             <div class="empty-state py-4">
-                <h3 class="h6">Missing "Bills &amp; Utilities" category</h3>
-                <p class="text-muted small mb-2">Add a top-level category named exactly "Bills &amp; Utilities" - electricity, water, internet and the like can live underneath it as subcategories - to see this report.</p>
-                <a href="{% url 'finance:category_add' %}" class="btn btn-sm btn-outline-secondary">Add category</a>
+                <h3 class="h6">No categories chosen</h3>
+                <p class="text-muted small mb-2">Please go to Settings to change that.</p>
+                <a href="{% url 'finance:settings' %}" class="btn btn-sm btn-outline-secondary">Go to Settings</a>
+            </div>
+            {% elif watched_table.overflow %}
+            <div class="alert alert-warning py-2 small mb-0">{{ watched_table.overflow }}</div>
+            {% else %}
+            {% if watched_chart_overflow %}
+            <div class="alert alert-warning py-2 small mb-0">{{ watched_chart_overflow }}</div>
+            {% else %}
+            <div class="report-chart-wrap"><div class="report-chart-inner"><canvas id="watchedExpensesChart"></canvas></div></div>
+            {% endif %}
+            <div class="report-table mt-3" hidden>
+                {% include "finance/includes/report_category_table.html" with table=watched_table amount_label="Spending" signed=False main_currency=main_currency prefix="watched" expanded=True %}
             </div>
             {% endif %}
         </div>
@@ -217,11 +267,15 @@
 </div>
 
 {{ spending_chart|json_script:"spending-chart-data" }}
+{{ spending_stacked_chart|json_script:"spending-stacked-chart-data" }}
+{{ income_chart|json_script:"income-chart-data" }}
+{{ income_stacked_chart|json_script:"income-stacked-chart-data" }}
 {{ spending_vs_average_chart|json_script:"spending-vs-average-chart-data" }}
+{{ income_vs_average_chart|json_script:"income-vs-average-chart-data" }}
 {{ income_expense_chart|json_script:"income-expense-chart-data" }}
 {{ income_expense_vs_average_chart|json_script:"income-expense-vs-average-chart-data" }}
 {{ net_worth_chart|json_script:"net-worth-chart-data" }}
-{{ bills_chart|json_script:"bills-chart-data" }}
+{{ watched_chart|json_script:"watched-chart-data" }}
 {% endblock %}
 
 {% block extra_js %}
