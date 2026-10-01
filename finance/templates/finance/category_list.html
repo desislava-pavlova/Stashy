@@ -5,12 +5,6 @@
     <h3 class="mb-0">Categories</h3>
     <div class="d-flex gap-2">
         {% include "finance/includes/export_dropdown.html" with export_url_name="finance:export_categories" %}
-        <form method="post" action="{% url 'finance:add_starter_categories' %}">
-            {% csrf_token %}
-            <button type="submit" class="btn btn-outline-secondary" title="Adds whatever's in basic_categories.txt that you don't already have">
-                <i class="bi bi-stars me-1"></i>Add starter categories
-            </button>
-        </form>
         <a href="{% url 'finance:category_add' %}" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>Add category</a>
     </div>
 </div>

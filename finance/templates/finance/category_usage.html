@@ -45,7 +45,7 @@
     <div class="card p-3 mt-3 d-flex flex-row flex-wrap align-items-center gap-2">
         <label class="form-label mb-0" for="move-to">Move selected to</label>
         <select name="move_to" id="move-to" class="form-select form-select-sm w-auto">
-            {% for c in other_categories %}<option value="{{ c.pk }}">{{ c.full_name }}</option>{% endfor %}
+            {% for c in other_categories %}<option value="{{ c.pk }}">{{ c.indented_name }}</option>{% endfor %}
         </select>
         <button type="submit" class="btn btn-sm btn-primary">Move selected transactions</button>
     </div>

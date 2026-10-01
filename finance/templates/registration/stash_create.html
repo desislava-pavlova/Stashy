@@ -1,0 +1,51 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Create a new stash · Stashy</title>
+    {% include "finance/includes/head_assets.html" %}
+</head>
+<body>
+<div class="login-page">
+    <section class="login-art">
+        <div class="mascot-frame">
+            <img src="{% static 'finance/img/mascot-full-720.webp' %}" alt="Stashy the squirrel holding an acorn coin" width="720" height="720">
+        </div>
+        <div>
+            <h2>Stash smarter.</h2>
+            <p>Every coin you keep is an acorn for later. Stashy remembers where they all went — so you don't have to.</p>
+        </div>
+    </section>
+
+    <section class="login-form-side">
+        <div class="login-card">
+            <div class="d-flex align-items-center justify-content-between mb-4">
+                <span class="stashy-wordmark">Stashy</span>
+                <button type="button" class="icon-btn" data-theme-toggle aria-label="Switch to dark mode"><i class="bi bi-moon-stars"></i></button>
+            </div>
+            <h1 class="h3 mb-1">Create a new stash</h1>
+            <p class="text-body-secondary mb-4">Each stash is its own separate set of data.</p>
+
+            {% for error in form.non_field_errors %}<div class="alert alert-danger py-2">{{ error }}</div>{% endfor %}
+            <form method="post">
+                {% csrf_token %}
+                {% for field in form %}
+                <div class="mb-3">
+                    <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                    {{ field }}
+                    {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+                    {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                </div>
+                {% endfor %}
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-primary px-4">Create stash</button>
+                    <a href="{% url 'stash_picker' %}" class="btn btn-outline-secondary">Back</a>
+                </div>
+            </form>
+        </div>
+    </section>
+</div>
+<script src="{% static 'finance/js/stashy.js' %}"></script>
+</body>
+</html>

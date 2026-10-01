@@ -90,7 +90,7 @@
             {% if has_average %}
             <div class="report-chart-wrap"><div class="report-chart-inner"><canvas id="spendingVsAverageChart"></canvas></div></div>
             <div class="report-table mt-3" hidden>
-                {% include "finance/includes/report_vs_average_table.html" with table=spending_vs_average_table signed=False main_currency=main_currency prefix="spendavg" %}
+                {% include "finance/includes/report_vs_average_table.html" with table=spending_vs_average_table signed=False lower_is_good=True main_currency=main_currency prefix="spendavg" %}
             </div>
             {% else %}
             <div class="empty-state py-4">
@@ -121,7 +121,7 @@
             {% if has_average %}
             <div class="report-chart-wrap"><div class="report-chart-inner"><canvas id="incomeVsAverageChart"></canvas></div></div>
             <div class="report-table mt-3" hidden>
-                {% include "finance/includes/report_vs_average_table.html" with table=income_vs_average_table signed=False main_currency=main_currency prefix="incavg" %}
+                {% include "finance/includes/report_vs_average_table.html" with table=income_vs_average_table signed=False lower_is_good=False main_currency=main_currency prefix="incavg" %}
             </div>
             {% else %}
             <div class="empty-state py-4">
@@ -166,7 +166,7 @@
     </div>
     <div class="col-md-6 report-col">
         <div class="card p-3 h-100 report-card">
-            {% include "finance/includes/report_card_header.html" with title="Current Income/Expense vs. Income/Expense by Category" export_url_name="finance:export_report_income_expense_vs_average" show_hide_all=True %}
+            {% include "finance/includes/report_card_header.html" with title="Current Income/Expense vs. Average Income/Expense by Category" export_url_name="finance:export_report_income_expense_vs_average" show_hide_all=True %}
             {% if has_average %}
             <div class="report-chart-wrap"><div class="report-chart-inner"><canvas id="incomeExpenseVsAverageChart"></canvas></div></div>
             <div class="row text-center my-3 small">
@@ -182,7 +182,7 @@
                 {% endfor %}
             </div>
             <div class="report-table mt-3" hidden>
-                {% include "finance/includes/report_vs_average_table.html" with table=income_expense_vs_average_table signed=True main_currency=main_currency prefix="incexpavg" total_label="Net" %}
+                {% include "finance/includes/report_vs_average_table.html" with table=income_expense_vs_average_table signed=True lower_is_good=False main_currency=main_currency prefix="incexpavg" total_label="Net" %}
             </div>
             {% else %}
             <div class="empty-state py-4">

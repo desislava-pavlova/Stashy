@@ -63,15 +63,7 @@
                         {{ form.memo }}
                         {% for error in form.memo.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
                     </div>
-                    <div class="col-md-6">
-                        <label class="form-label" for="{{ form.tags.id_for_label }}">Tags</label>
-                        {{ form.tags }}
-                    </div>
                     <div class="col-12 d-flex flex-wrap gap-4">
-                        <div class="form-check">
-                            {{ form.cleared }}
-                            <label class="form-check-label" for="{{ form.cleared.id_for_label }}">Cleared</label>
-                        </div>
                         <div class="form-check">
                             {{ form.reconciled }}
                             <label class="form-check-label" for="{{ form.reconciled.id_for_label }}">Reconciled</label>
@@ -83,6 +75,9 @@
 
                 <div class="d-flex gap-2 mt-4">
                     <button type="submit" class="btn btn-primary px-4">Save</button>
+                    {% if not instance and not reminder %}
+                    <button type="submit" name="save_and_add" value="1" class="btn btn-outline-primary">Save and add another</button>
+                    {% endif %}
                     <a href="javascript:history.back()" class="btn btn-outline-secondary">Cancel</a>
                 </div>
             </form>

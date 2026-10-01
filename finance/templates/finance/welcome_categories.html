@@ -1,0 +1,42 @@
+{% extends "finance/welcome_base.html" %}
+{% block welcome_title %}Categories{% endblock %}
+{% block card_width %}login-card-wide{% endblock %}
+{% block step_title %}Categories{% endblock %}
+{% block step_content %}
+<p class="text-body-secondary">Pick a starting list - you can always add, edit or delete
+    categories later.</p>
+{% if available %}
+<div class="row g-3">
+    <div class="col-sm-6">
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="sheet" value="Basic">
+            <button type="submit" class="btn btn-outline-secondary w-100 h-100 p-3 text-start" {% if "Basic" not in available %}disabled{% endif %}>
+                <span class="d-block fw-semibold mb-1">Basic</span>
+                <span class="d-block text-muted small">26 top-level categories - a simple, uncluttered list.</span>
+            </button>
+            {% if "Basic" not in available %}<p class="text-muted small mt-1 mb-0">Not available - starter_categories.xlsx has no "Basic" sheet.</p>{% endif %}
+        </form>
+    </div>
+    <div class="col-sm-6">
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="sheet" value="Extended">
+            <button type="submit" class="btn btn-outline-secondary w-100 h-100 p-3 text-start" {% if "Extended" not in available %}disabled{% endif %}>
+                <span class="d-block fw-semibold mb-1">Extended</span>
+                <span class="d-block text-muted small">The same categories, plus all their subcategories.</span>
+            </button>
+            {% if "Extended" not in available %}<p class="text-muted small mt-1 mb-0">Not available - starter_categories.xlsx has no "Extended" sheet.</p>{% endif %}
+        </form>
+    </div>
+</div>
+{% else %}
+<div class="alert alert-warning py-2">starter_categories.xlsx wasn't found in the project
+    folder, so there's nothing to pick from. You can add categories by hand later.</div>
+<form method="post">
+    {% csrf_token %}
+    <button type="submit" name="skip" value="1" class="btn btn-primary btn-lg w-100">Next</button>
+</form>
+{% endif %}
+<div class="mt-3"><a href="{% url 'finance:welcome_step' step=step_number|add:'-1' %}">Back</a></div>
+{% endblock %}

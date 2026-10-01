@@ -24,7 +24,7 @@
     <form method="post" action="{% url 'logout' %}">
         {% csrf_token %}
         <button type="submit" class="sidebar-action">
-            <i class="bi bi-box-arrow-right"></i><span>Log out <span class="opacity-75">({{ user.username }})</span></span>
+            <i class="bi bi-box-arrow-right"></i><span>Log out <span class="opacity-75">({{ stash_owner_name }})</span></span>
         </button>
     </form>
     {% endif %}

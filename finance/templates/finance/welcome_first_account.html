@@ -1,0 +1,33 @@
+{% extends "finance/welcome_base.html" %}
+{% block welcome_title %}Create your first account{% endblock %}
+{% block card_width %}login-card-wide{% endblock %}
+{% block step_title %}Create your first account{% endblock %}
+{% block step_content %}
+<p class="text-body-secondary">A checking account, a cash wallet, a card - whatever you'll
+    track first. Optional - skip it and add one later from Accounts.</p>
+<form method="post">
+    {% csrf_token %}
+    {% for error in form.non_field_errors %}<div class="alert alert-danger py-2">{{ error }}</div>{% endfor %}
+    {% for field in form %}
+    {% if field.widget_type == "checkbox" %}
+    <div class="form-check mb-3">
+        {{ field }}
+        <label class="form-check-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+        {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+    </div>
+    {% else %}
+    <div class="mb-3">
+        <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+        {{ field }}
+        {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+        {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+    </div>
+    {% endif %}
+    {% endfor %}
+    <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary px-4">Finish</button>
+        <button type="submit" name="skip" value="1" class="btn btn-outline-secondary">Skip</button>
+    </div>
+</form>
+<div class="mt-3"><a href="{% url 'finance:welcome_step' step=step_number|add:'-1' %}">Back</a></div>
+{% endblock %}

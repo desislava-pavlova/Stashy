@@ -10,6 +10,7 @@
 <form method="get" class="d-flex flex-wrap align-items-center gap-2 mb-3">
     <div class="btn-group btn-group-sm" role="group" aria-label="Due within">
         <a href="{% querystring window="all" %}" class="btn btn-outline-secondary {% if window == "all" %}active{% endif %}">All</a>
+        <a href="{% querystring window="month" %}" class="btn btn-outline-secondary {% if window == "month" %}active{% endif %}">This month</a>
         <a href="{% querystring window="15" %}" class="btn btn-outline-secondary {% if window == "15" %}active{% endif %}">Next 15 days</a>
         <a href="{% querystring window="30" %}" class="btn btn-outline-secondary {% if window == "30" %}active{% endif %}">Next 30 days</a>
         <a href="{% querystring window="90" %}" class="btn btn-outline-secondary {% if window == "90" %}active{% endif %}">Next 90 days</a>
@@ -17,6 +18,7 @@
     </div>
     <input type="hidden" name="window" value="{{ window }}">
     <div class="form-check ms-2">
+        <input type="hidden" name="show_done" value="0">
         <input type="checkbox" class="form-check-input" id="show-done" name="show_done" value="1" {% if show_done %}checked{% endif %} onchange="this.form.submit()">
         <label class="form-check-label small" for="show-done">Show paid/skipped</label>
     </div>

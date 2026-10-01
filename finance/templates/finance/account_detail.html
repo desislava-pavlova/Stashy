@@ -51,7 +51,6 @@
                 <td class="text-end text-nowrap amount-positive">{% if t.amount > 0 %}{{ t.amount|moneyc:account.currency }}{% endif %}</td>
                 <td>
                     {% if t.reconciled %}<span class="badge text-bg-success">R</span>
-                    {% elif t.cleared %}<span class="badge text-bg-secondary">C</span>
                     {% else %}<span class="badge text-bg-light text-muted border">—</span>{% endif %}
                 </td>
                 <td class="text-end text-nowrap">

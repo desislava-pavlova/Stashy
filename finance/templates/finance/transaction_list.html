@@ -6,9 +6,12 @@
     <h1 class="h3 mb-0">Transactions</h1>
     <div class="d-flex gap-2">
         {% include "finance/includes/export_dropdown.html" with export_url_name="finance:export_transactions" extra_query=request.GET.urlencode %}
+        <button type="button" id="edit-mode-toggle" class="btn btn-outline-secondary"><i class="bi bi-pencil-square me-1"></i>Edit mode</button>
         <a href="{% url 'finance:transaction_add' %}" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>New transaction</a>
     </div>
 </div>
+<div id="transactions-csrf" class="d-none">{% csrf_token %}</div>
+<datalist id="quick-edit-payee-names"></datalist>
 
 <form method="get" class="card p-3 mb-3">
     {% if with_subcategories %}<input type="hidden" name="with_subcategories" value="1">{% endif %}
@@ -65,7 +68,9 @@
     <div>Total: <span class="{{ total_amount|amount_class }}">{{ total_amount|moneyc:main_currency }}</span></div>
 </div>
 <div class="card">
-    <table class="table table-hover mb-0 align-middle register">
+    <table class="table table-hover mb-0 align-middle register" id="transactions-table"
+           data-quick-edit-url-base="{% url 'finance:transaction_quick_edit' 0 %}"
+           data-payee-list-url="{% url 'finance:api_payee_list' %}">
         <thead>
             <tr>
                 <th><a href="{% querystring sort=sort_next.date %}" class="sort-link">Date{% include "finance/includes/sort_arrow.html" with column="date" %}</a></th>
@@ -76,27 +81,62 @@
                 <th><a href="{% querystring sort=sort_next.memo %}" class="sort-link">Memo{% include "finance/includes/sort_arrow.html" with column="memo" %}</a></th>
                 <th class="text-end"><a href="{% querystring sort=sort_next.amount %}" class="sort-link">Payment{% include "finance/includes/sort_arrow.html" with column="amount" %}</a></th>
                 <th class="text-end"><a href="{% querystring sort=sort_next.amount %}" class="sort-link">Deposit{% include "finance/includes/sort_arrow.html" with column="amount" %}</a></th>
+                <th class="text-center" title="Reconciled">Rec.</th>
                 <th></th>
             </tr>
         </thead>
         <tbody>
         {% for t in transactions %}
-            <tr{% if t.reconciled %} class="row-reconciled"{% endif %}>
-                <td class="text-body-secondary text-nowrap">{{ t.date|sdate }}</td>
-                <td class="text-body-secondary">{{ t.transaction_number|default:"—" }}</td>
-                <td class="text-body-secondary">{{ t.account.name }}</td>
-                <td>{{ t.display_payee }}</td>
-                <td class="text-body-secondary">{{ t.category|default:"—" }}</td>
-                <td class="text-body-secondary">{{ t.memo }}</td>
-                <td class="text-end text-nowrap amount-negative">{% if t.amount < 0 %}{{ t.amount|abs_value|moneyc:t.account.currency }}{% endif %}</td>
-                <td class="text-end text-nowrap amount-positive">{% if t.amount > 0 %}{{ t.amount|moneyc:t.account.currency }}{% endif %}</td>
+            <tr{% if t.reconciled %} class="row-reconciled"{% endif %} data-pk="{{ t.pk }}">
+                <td class="text-body-secondary text-nowrap">
+                    <span class="quick-edit-view" data-view="date">{{ t.date|sdate }}</span>
+                    <input type="text" data-datepicker data-field="date" value="{{ t.date|sdate }}" class="form-control form-control-sm quick-edit-cell d-none">
+                </td>
+                <td class="text-body-secondary">
+                    <span class="quick-edit-view" data-view="transaction_number">{{ t.transaction_number|default:"—" }}</span>
+                    <input type="text" data-field="transaction_number" value="{{ t.transaction_number|default_if_none:'' }}" class="form-control form-control-sm quick-edit-cell d-none">
+                </td>
+                <td class="text-body-secondary">
+                    <span class="quick-edit-view" data-view="account_name">{{ t.account.name }}</span>
+                    <select data-field="account" class="form-select form-select-sm quick-edit-cell d-none">
+                        {% for a in accounts %}<option value="{{ a.pk }}" {% if a.pk == t.account_id %}selected{% endif %}>{{ a.name }}</option>{% endfor %}
+                    </select>
+                </td>
+                <td>
+                    <span class="quick-edit-view" data-view="payee">{{ t.display_payee }}</span>
+                    <input type="text" data-field="payee_name" value="{{ t.display_payee }}" list="quick-edit-payee-names" autocomplete="off" class="form-control form-control-sm quick-edit-cell d-none">
+                </td>
+                <td class="text-body-secondary">
+                    <span class="quick-edit-view" data-view="category_name">{{ t.category|default:"—" }}</span>
+                    <select data-field="category" class="form-select form-select-sm quick-edit-cell d-none">
+                        <option value="">Uncategorized</option>
+                        {% for c in edit_categories %}<option value="{{ c.pk }}" {% if c.pk == t.category_id %}selected{% endif %}>{{ c.indented_name }}</option>{% endfor %}
+                        {% if t.category_id and t.category.account_id %}<option value="{{ t.category.pk }}" selected>{{ t.category.full_name }}</option>{% endif %}
+                    </select>
+                </td>
+                <td class="text-body-secondary">
+                    <span class="quick-edit-view" data-view="memo">{{ t.memo }}</span>
+                    <input type="text" data-field="memo" value="{{ t.memo }}" class="form-control form-control-sm quick-edit-cell d-none">
+                </td>
+                <td class="text-end text-nowrap amount-negative">
+                    <span class="quick-edit-view" data-view="payment">{% if t.amount < 0 %}{{ t.amount|abs_value|moneyc:t.account.currency }}{% endif %}</span>
+                    <input type="number" step="0.01" min="0" value="{% if t.amount < 0 %}{{ t.amount|abs_value }}{% endif %}" class="form-control form-control-sm text-end quick-edit-cell quick-edit-payment d-none">
+                </td>
+                <td class="text-end text-nowrap amount-positive">
+                    <span class="quick-edit-view" data-view="deposit">{% if t.amount > 0 %}{{ t.amount|moneyc:t.account.currency }}{% endif %}</span>
+                    <input type="number" step="0.01" min="0" value="{% if t.amount > 0 %}{{ t.amount }}{% endif %}" class="form-control form-control-sm text-end quick-edit-cell quick-edit-deposit d-none">
+                </td>
+                <td class="text-center">
+                    <span class="quick-edit-view" data-view="reconciled">{% if t.reconciled %}<i class="bi bi-check-lg"></i>{% else %}—{% endif %}</span>
+                    <input type="checkbox" data-field="reconciled" {% if t.reconciled %}checked{% endif %} class="form-check-input quick-edit-cell d-none">
+                </td>
                 <td class="text-end text-nowrap">
                     <a href="{% url 'finance:transaction_edit' t.pk %}?next={{ request.get_full_path|urlencode }}" class="btn btn-sm btn-outline-secondary btn-icon" aria-label="Edit"><i class="bi bi-pencil"></i></a>
                     <a href="{% url 'finance:transaction_delete' t.pk %}?next={{ request.get_full_path|urlencode }}" class="btn btn-sm btn-outline-danger btn-icon" aria-label="Delete"><i class="bi bi-trash"></i></a>
                 </td>
             </tr>
         {% empty %}
-            <tr><td colspan="9">{% include "finance/includes/empty_state.html" with title="Nothing here" text="No transactions match these filters." %}</td></tr>
+            <tr><td colspan="10">{% include "finance/includes/empty_state.html" with title="Nothing here" text="No transactions match these filters." %}</td></tr>
         {% endfor %}
         </tbody>
     </table>
@@ -105,4 +145,5 @@
 
 {% block extra_js %}
 <script src="{% static 'finance/js/category-filter.js' %}"></script>
+<script src="{% static 'finance/js/transaction-quick-edit.js' %}"></script>
 {% endblock %}

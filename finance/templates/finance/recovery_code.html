@@ -1,0 +1,33 @@
+{% extends "finance/base.html" %}
+{% block title %}Get a new recovery code · Stashy{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1 class="h3 mb-0">Get a new recovery code</h1>
+</div>
+<div class="row g-4">
+    <div class="col-lg-5 col-xxl-4">
+        <div class="card p-4">
+            {% if new_code %}
+            <div class="alert alert-warning py-2">
+                <i class="bi bi-exclamation-triangle me-1"></i>
+                Write this down now. It won't be shown again.
+            </div>
+            <div class="card p-3 mb-4 text-center">
+                <code class="fs-3">{{ new_code }}</code>
+            </div>
+            <a href="{% url 'finance:settings' %}" class="btn btn-outline-secondary">Back</a>
+            {% else %}
+            <div class="alert alert-warning py-2">
+                <i class="bi bi-exclamation-triangle me-1"></i>
+                This replaces your recovery code. The old one will stop working as soon as you click Generate.
+            </div>
+            <form method="post" class="d-flex gap-2">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-primary px-4">Generate</button>
+                <a href="{% url 'finance:settings' %}" class="btn btn-outline-secondary">Back</a>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

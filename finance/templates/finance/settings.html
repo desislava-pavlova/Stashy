@@ -4,6 +4,7 @@
 {% block content %}
 <div class="page-header">
     <h1 class="h3 mb-0">Settings</h1>
+    <p class="text-muted small mb-0">You're in {{ profile.owner_possessive }} stash.</p>
 </div>
 <div class="row g-4 align-items-start">
     <div class="col-lg-5 col-xxl-4">
@@ -22,30 +23,14 @@
                 {% endfor %}
                 <button type="submit" class="btn btn-primary px-4">Save</button>
             </form>
-            <hr class="my-4">
-            <ul class="text-muted small mb-0 ps-3">
-                <li>These were guessed from this computer's own settings the first time Stashy ran — change anything that doesn't match how you want dates and numbers shown.</li>
-                <li>Changing date/number format only affects how things are displayed from now on — nothing already stored changes.</li>
-                <li>Main currency is used for net worth. Each account keeps the currency it was created with.</li>
-            </ul>
         </div>
 
         <div class="card p-4 mt-4">
-            <h2 class="h5 mb-1">Login</h2>
-            <p class="text-muted small">You're in stash "<strong>{{ stash_name }}</strong>".
-                <a href="{% url 'switch_stash' %}">Switch stash</a></p>
-            <form method="post">
-                {% csrf_token %}
-                {% for error in pin_form.non_field_errors %}<div class="alert alert-danger py-2">{{ error }}</div>{% endfor %}
-                {% for field in pin_form %}
-                <div class="mb-3">
-                    <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
-                    {{ field }}
-                    {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
-                </div>
-                {% endfor %}
-                <button type="submit" name="change_pin" value="1" class="btn btn-outline-secondary">Change PIN</button>
-            </form>
+            <h2 class="h5 mb-3">PIN &amp; recovery code</h2>
+            <div class="d-flex flex-column gap-2">
+                <a href="{% url 'finance:change_pin' %}" class="btn btn-outline-secondary">Change PIN</a>
+                <a href="{% url 'finance:recovery_code' %}" class="btn btn-outline-secondary">Get a new recovery code</a>
+            </div>
         </div>
     </div>
     <div class="col-lg-7 col-xxl-8">

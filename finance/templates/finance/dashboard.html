@@ -7,7 +7,7 @@
         <div class="dash-greeting">
             <img src="{% static 'finance/img/mascot-face-192.png' %}" alt="" width="56" height="56">
             <div>
-                <h1>{{ greeting }}, {{ user.first_name|default:user.username }}</h1>
+                <h1>{{ greeting }}, {{ stash_owner_name }}</h1>
                 <p>Here's your stash on {{ today|date:"l, j F" }}.</p>
             </div>
         </div>

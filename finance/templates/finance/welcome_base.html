@@ -1,0 +1,38 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block welcome_title %}Welcome{% endblock %} · Stashy</title>
+    {% include "finance/includes/head_assets.html" %}
+</head>
+<body data-date-format="{{ regional.picker_date_format }}" data-first-day="{{ regional.first_day_of_week }}"
+      data-thousands-separator="{{ regional.thousands_separator }}" data-decimal-separator="{{ regional.decimal_separator }}">
+<div class="login-page">
+    <section class="login-art">
+        <div class="mascot-frame">
+            <img src="{% static 'finance/img/mascot-full-720.webp' %}" alt="Stashy the squirrel holding an acorn coin" width="720" height="720">
+        </div>
+    </section>
+
+    <section class="login-form-side">
+        <div class="login-card {% block card_width %}{% endblock %}">
+            <div class="d-flex align-items-center justify-content-between mb-4">
+                <span class="stashy-wordmark">Stashy</span>
+                <button type="button" class="icon-btn" data-theme-toggle aria-label="Switch to dark mode"><i class="bi bi-moon-stars"></i></button>
+            </div>
+            <p class="text-body-secondary small mb-1">Step {{ step_number }} of {{ step_total }}</p>
+            <h1 class="h3 mb-4">{% block step_title %}{% endblock %}</h1>
+            {% for message in messages %}
+            <div class="alert alert-{{ message.tags|default:'info' }} py-2">{{ message }}</div>
+            {% endfor %}
+            {% block step_content %}{% endblock %}
+        </div>
+    </section>
+</div>
+<script src="{% static 'finance/vendor/bootstrap/js/bootstrap.bundle.min.js' %}"></script>
+<script src="{% static 'finance/vendor/flatpickr/flatpickr.min.js' %}"></script>
+<script src="{% static 'finance/js/stashy.js' %}"></script>
+{% block extra_js %}{% endblock %}
+</body>
+</html>

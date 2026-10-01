@@ -24,8 +24,8 @@
                 <span class="stashy-wordmark">Stashy</span>
                 <button type="button" class="icon-btn" data-theme-toggle aria-label="Switch to dark mode"><i class="bi bi-moon-stars"></i></button>
             </div>
-            <h1 class="h3 mb-1">Welcome back</h1>
-            <p class="text-body-secondary mb-4">"{{ stash_name }}" — enter your PIN to continue.</p>
+            <h1 class="h3 mb-1">Welcome back, {{ owner_name }}</h1>
+            <p class="text-body-secondary mb-4">Enter your PIN to continue.</p>
             {% if locked_out %}
             <div class="alert alert-danger py-2">Too many wrong PINs. Try again in about {{ lockout_minutes }} minute{{ lockout_minutes|pluralize }}, or <a href="{% url 'forgot_pin' %}">reset it with your recovery code</a>.</div>
             {% else %}
@@ -43,7 +43,7 @@
             </form>
             <div class="text-center mt-3"><a href="{% url 'forgot_pin' %}">Forgot PIN?</a></div>
             {% endif %}
-            <div class="text-center mt-2"><a href="{% url 'switch_stash' %}">Switch stash</a></div>
+            <div class="text-center mt-2"><a href="{% url 'switch_stash' %}">Choose a different stash</a></div>
         </div>
     </section>
 </div>

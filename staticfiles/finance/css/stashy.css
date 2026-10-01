@@ -203,6 +203,13 @@ h1, h2, h3, h4, h5, h6,
 .amount-positive { color: var(--stashy-positive); font-weight: 700; }
 .amount-negative { color: var(--stashy-negative); font-weight: 700; }
 
+/* vs-average Difference cells: a pale tint says good (green) or bad (pink) at a glance;
+   translucent so it sits right on both the light and dark surfaces.
+   Scoped to `.table td` and set through --bs-table-bg: Bootstrap paints every table cell with
+   `background-color: var(--bs-table-bg)` at a higher specificity than a lone class. */
+.table td.diff-good { --bs-table-bg: rgba(25, 135, 84, .16); background-color: rgba(25, 135, 84, .16); }
+.table td.diff-bad { --bs-table-bg: rgba(230, 90, 140, .18); background-color: rgba(230, 90, 140, .18); }
+
 .card-title-sm {
     font-size: .72rem;
     font-weight: 700;
@@ -398,6 +405,15 @@ h1, h2, h3, h4, h5, h6,
    out more at a glance - opacity dims everything proportionally, including the red/green
    payment-deposit coloring, rather than fighting its color with a flat muted text color. */
 .row-reconciled { opacity: .6; }
+
+/* Edit mode (2026-09-22) - each row's cells hold both a view span and an edit control;
+   JS toggles which one is visible, so entering/leaving Edit mode needs no page reload. */
+.register .quick-edit-cell { min-width: 6rem; }
+.register .quick-edit-saved { animation: quick-edit-flash .6s ease-out; }
+@keyframes quick-edit-flash {
+    from { background-color: rgba(var(--stashy-success-rgb, 25, 135, 84), .18); }
+    to { background-color: transparent; }
+}
 
 .icon-btn {
     display: inline-flex;
@@ -701,6 +717,9 @@ h1, h2, h3, h4, h5, h6,
 .login-art p { max-width: 26rem; margin: 0 auto; color: rgba(255, 255, 255, .78); }
 .login-form-side { display: flex; align-items: center; justify-content: center; padding: 2rem 1.25rem; }
 .login-card { width: 100%; max-width: 380px; }
+/* The welcome wizard's Categories and Create-an-account steps need more room than a PIN or a
+   single name field - same card, just wider. */
+.login-card-wide { max-width: 560px; }
 @media (max-width: 991.98px) {
     .login-page { grid-template-rows: auto minmax(0, 1fr); }
     .login-art { flex-direction: row; gap: 1rem; padding: 1.25rem; text-align: left; }

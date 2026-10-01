@@ -81,3 +81,15 @@ def sdate(value):
 def sdatetime(value):
     """Date + time, in the viewer's preferences — for the few places a time matters (import history, audit log)."""
     return regional.format_datetime(value)
+
+
+@register.filter
+def diff_tint(value, lower_is_good=False):
+    """Pale background class for a vs-average Difference cell: green when the change is good,
+    pink when it's bad, nothing when it's zero or there's no average to compare against. For
+    spending "good" is a fall (lower_is_good); for income, net and signed income/expense rows
+    it's a rise. Deliberately not the bold red/green text color - that is for amounts."""
+    if not value:
+        return ""
+    good = (value < 0) if lower_is_good else (value > 0)
+    return "diff-good" if good else "diff-bad"

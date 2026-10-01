@@ -17,7 +17,7 @@
         <div class="login-card">
             <span class="stashy-wordmark d-block mb-4">Stashy</span>
             <h1 class="h3 mb-1">Reset your PIN</h1>
-            <p class="text-body-secondary mb-4">For "{{ stash_name }}" — enter the recovery code you saved when this stash was created.</p>
+            <p class="text-body-secondary mb-4">For {{ owner_possessive }} stash — enter the recovery code you saved when this stash was created.</p>
 
             {% if locked_out %}
             <div class="alert alert-danger py-2">Too many wrong attempts. Try again in about {{ lockout_minutes }} minute{{ lockout_minutes|pluralize }}.</div>

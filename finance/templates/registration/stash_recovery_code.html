@@ -18,9 +18,9 @@
             <span class="stashy-wordmark d-block mb-4">Stashy</span>
             {% if pin_was_reset %}
             <h1 class="h3 mb-1">PIN changed</h1>
-            <p class="text-body-secondary mb-3">Your PIN for "{{ stash_name }}" was reset. Using the recovery code invalidated it — here's a new one.</p>
+            <p class="text-body-secondary mb-3">Your PIN for {{ owner_possessive }} stash was reset. Using the recovery code invalidated it — here's a new one.</p>
             {% else %}
-            <h1 class="h3 mb-1">Stash "{{ stash_name }}" created</h1>
+            <h1 class="h3 mb-1">{{ owner_possessive }} stash is ready</h1>
             <p class="text-body-secondary mb-3">This recovery code is the only way back in if you ever forget your PIN.</p>
             {% endif %}
 

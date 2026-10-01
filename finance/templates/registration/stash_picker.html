@@ -31,34 +31,18 @@
             <div class="alert alert-{{ message.tags|default:'info' }} py-2">{{ message }}</div>
             {% endfor %}
 
-            {% if existing_stashes %}
-            <form method="post" class="mb-4">
+            <form method="post" class="mb-3">
                 {% csrf_token %}
                 <div class="mb-3">
                     <label class="form-label" for="id_stash_name">Name</label>
                     <select name="name" id="id_stash_name" class="form-select form-select-lg" required>
-                        {% for name in existing_stashes %}<option value="{{ name }}">{{ name }}</option>{% endfor %}
+                        {% for folder_name, owner_name in choices %}<option value="{{ folder_name }}">{{ owner_name }}</option>{% endfor %}
                     </select>
                 </div>
                 <button type="submit" name="select_stash" value="1" class="btn btn-primary btn-lg w-100">Continue</button>
             </form>
-            <div class="text-center text-body-secondary small mb-4">or</div>
-            {% endif %}
-
-            <h2 class="h6 mb-3">Create a new stash</h2>
-            {% for error in create_form.non_field_errors %}<div class="alert alert-danger py-2">{{ error }}</div>{% endfor %}
-            <form method="post">
-                {% csrf_token %}
-                {% for field in create_form %}
-                <div class="mb-3">
-                    <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
-                    {{ field }}
-                    {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
-                    {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
-                </div>
-                {% endfor %}
-                <button type="submit" name="create_stash" value="1" class="btn btn-outline-secondary w-100">Create stash</button>
-            </form>
+            <div class="text-center text-body-secondary small mb-3">or</div>
+            <a href="{% url 'stash_create' %}" class="btn btn-outline-secondary w-100">Create a new stash</a>
         </div>
     </section>
 </div>
