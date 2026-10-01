@@ -43,7 +43,10 @@
             </form>
             <div class="text-center mt-3"><a href="{% url 'forgot_pin' %}">Forgot PIN?</a></div>
             {% endif %}
-            <div class="text-center mt-2"><a href="{% url 'switch_stash' %}">Choose a different stash</a></div>
+            <form method="post" action="{% url 'switch_stash' %}" class="text-center mt-2">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-link p-0 align-baseline">Choose a different stash</button>
+            </form>
         </div>
     </section>
 </div>

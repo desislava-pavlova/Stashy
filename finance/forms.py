@@ -177,6 +177,21 @@ class ReconcileStartForm(forms.Form):
         _use_regional_dates(self)
 
 
+class ReconcileFinishForm(forms.Form):
+    """Step 2's "Finish reconciling" (Phase 8): the statement figures carried over from step 1
+    in hidden fields, plus the ticked transactions. Validated like any other form, so a
+    tampered or half-sent submission gets a message instead of a server error."""
+
+    statement_date = forms.DateField(input_formats=["%Y-%m-%d"])
+    statement_balance = forms.DecimalField(max_digits=12, decimal_places=2)
+    transaction = forms.ModelMultipleChoiceField(queryset=Transaction.objects.none(), required=False)
+    accept_difference = forms.BooleanField(required=False)
+
+    def __init__(self, *args, account, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["transaction"].queryset = account.transactions.filter(reconciled=False)
+
+
 class CategoryParentSelect(forms.Select):
     """Tags each <option> with its category's own type, so JS can narrow the Parent list to
     only categories matching whichever type is currently chosen above (Phase 4)."""

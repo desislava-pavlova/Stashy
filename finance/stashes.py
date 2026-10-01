@@ -23,7 +23,7 @@ from django.db import connections
 from django.db.models import signals as model_signals
 from django.utils import timezone
 
-from . import regional
+from . import backup, regional
 
 STASHES_DIR_NAME = "stashes"
 BACKUPS_DIR_NAME = "backups"
@@ -89,7 +89,26 @@ def ensure_registered(name):
         return
     template = deepcopy(connections.databases["default"])
     template["NAME"] = str(stash_db_path(name))
+    # Django wraps a view in atomic() for *every* alias with ATOMIC_REQUESTS, so leaving it on
+    # here would take a write lock on every stash for every request. Only the stash this request
+    # actually uses gets a transaction - see finance.middleware.StashAtomicRequestMiddleware.
+    template["ATOMIC_REQUESTS"] = False
     connections.databases[name] = template
+
+
+def restore_stash(name, backup_path):
+    """Restore stash `name` from one of its backups and bring it onto today's schema.
+
+    A backup taken before an update has fewer migrations applied, and the running server only
+    migrates at launch - so the restore migrates straight away instead of leaving pages to
+    crash until the next start. The caller must not hold a transaction on this stash
+    (backup_restore is non-atomic for that reason)."""
+    ensure_registered(name)
+    backup.restore_from(backup_path, stash_db_path(name), stash_path(name))
+    # This thread's connection reopens on its next query; other threads' connections are still
+    # valid, because SQLite's backup API rewrites the file in a way they notice.
+    connections[name].close()
+    call_command("migrate", database=name, interactive=False, verbosity=0)
 
 
 def possessive(name):

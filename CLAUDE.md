@@ -41,7 +41,7 @@ terms.
 ## Commands
 
 ```
-.venv\Scripts\python.exe manage.py test                          # full suite, ~4 min (510 tests on 27/09/2026)
+.venv\Scripts\python.exe manage.py test                          # full suite, ~5.5 min (540 tests on 01/10/2026)
 .venv\Scripts\python.exe manage.py test finance.test_phase15     # one module
 .venv\Scripts\python.exe manage.py migrate --database <stash>    # one stash (Stashy.bat does all, with backups)
 .venv\Scripts\python.exe manage.py reset_pin <owner name>        # real, visible action - ask first
@@ -72,9 +72,10 @@ terms.
   - `reporting.py`: all report maths. `currency.py`: RateTable,
     Frankfurter. `money.py`: Decimal helpers, `parse_amount`.
     `regional.py`: date and number formats per user.
-  - `stashes.py`: stash folders, aliases, PIN and lockout. `db_router.py`,
-    `middleware.py`, `backup.py` (standard library only; bootstrap imports
-    it before Django).
+  - `stashes.py`: stash folders, aliases, PIN and lockout, and
+    `restore_stash()` (restore + migrate). `db_router.py`, `middleware.py`,
+    `backup.py` (standard library only, since bootstrap imports it before
+    Django; copies go through SQLite's backup API, never a file copy).
   - `starter_categories.py` reads `starter_categories.xlsx`.
   - `templatetags/stashy_format.py`: the `money`, `moneyc`, `sdate` and
     `diff_tint` filters.
@@ -87,16 +88,30 @@ terms.
   - Sessions are signed cookies, because they must work before a stash is
     chosen.
   - `transaction.atomic()` and `on_commit()` go to `default` unless given
-    `using=<stash alias>`. The router doesn't choose a transaction's
-    connection.
+    `using=<stash alias>`; use `router.db_for_write(Model)`. The router
+    doesn't choose a transaction's connection.
+  - Stash aliases have `ATOMIC_REQUESTS=False`. `StashAtomicRequestMiddleware`
+    (last in the chain, in `process_view`) wraps the view in a transaction on
+    the *active* stash only. A view that must not hold the write lock (network
+    calls, restore) uses `@transaction.non_atomic_requests` and wraps its own
+    writes (see `_stash_atomic()` in `settings_view`).
 - Middleware chain: StashSelection → Auth → RequireStash (picker or the
   last-stash cookie) → AuditContext → RegionalPreferences (sets
-  `request.stashy_profile`) → RequireSetup (welcome wizard).
+  `request.stashy_profile`) → RequireSetup (welcome wizard) → … →
+  StashAtomicRequest.
+- Exports: pass real values (`Decimal`, `date`, `None`) to
+  `_export_response()`, never `str()`. The writers format them, escape
+  formula-like text in CSV and keep text as text in XLSX.
+- `/admin/login/` redirects to the stash PIN login (`admin_login`), so the
+  lockout covers every login. Secrets shown once (a new recovery code) go in
+  the local-memory cache, never the signed-cookie session.
 - Tests: `finance/test_phase*.py`, `finance/test_*.py`, `audit/tests.py`.
   `settings.TESTING` (set from `sys.argv`) currently bypasses the stash and
   setup middleware and stash registration. Plan 02 phase 7 removes that.
   `test_phase13.py` belongs to Phase 12.1; Phase 13's tests are in
-  `test_phase13_reports.py`.
+  `test_phase13_reports.py`. Plan 02's tests are `test_cleanup_phase<N>.py`.
+  `TemporaryStashesMixin` (in `test_cleanup_phase1.py`) gives a test real
+  stash aliases in a temp folder, registered the way the app does it.
 
 ## Domain rules (settled with the user; don't change them silently)
 
@@ -166,8 +181,10 @@ terms.
   - Add a DEVLOG.md entry: what changed, why, and a short teaching note.
   - Keep README.md accurate for anything the user can see.
   - Update this file if the architecture or the rules changed.
-  - List the new files the user needs to `git add` (migrations are
-    committed; nothing in `.gitignore` hides them any more).
+  - List the new files the user needs to `git add`. Migrations are kept
+    out of git for now (the user's choice, 01/10/2026; `.gitignore` has
+    `**/migrations/*.py`), so don't list them. Discussion parked in plan 02,
+    item 3.6.
   - Report, and let the user choose what comes next.
 - **The user writes dates as DD/MM/YYYY**, and so should plans and DEVLOG.
 

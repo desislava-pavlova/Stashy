@@ -5,7 +5,8 @@ project: architecture, SOLID, PEP 8, Django conventions). No code was changed
 by the review itself. Reviewed again on 27/09/2026 against the code: 18
 findings added (F41–F58), five items dropped or moved (see "Plan review,
 27/09/2026" below). Test baseline that day: 510 tests, all green, 243 s.
-Progress is tracked with the checkboxes below. **Status:** not started.
+Progress is tracked with the checkboxes below. **Status:** Phase 1 done
+(01/10/2026, 540 tests green); Phase 2 next.
 
 Work through it phase by phase. Every phase leaves the app working and the
 full test suite green, so we can stop and resume anywhere. Line numbers in
@@ -216,8 +217,8 @@ Each finding has an ID used by the phases below.
   `.gitignore` but five of its files are still tracked.)*
   *(Also 27/09/2026: `.gitignore` had `**/migrations/*.py`, so git held only
   `finance/migrations/0001_initial.py` - a fresh clone couldn't build the
-  database. The ignore lines were removed that day; the user commits
-  `finance/migrations` and `audit/migrations`.)*
+  database. The ignore lines were removed that day, then put back by the
+  user on 01/10/2026: migrations stay out of git for now - see 3.6.)*
 
 ### F. Performance
 
@@ -365,17 +366,23 @@ Each finding has an ID used by the phases below.
 **Why first:** these can lose or corrupt data, crash on bad input, or show
 wrong totals.
 
-- [ ] **1.1** Stop atomic requests on inactive stashes (F1): set
+- [x] **1.1** Stop atomic requests on inactive stashes (F1): set
   `ATOMIC_REQUESTS=False` in the alias template in `ensure_registered()`, and
   wrap the view call in `transaction.atomic(using=alias)` for the *active*
   alias only (in `StashSelectionMiddleware` or a small dedicated middleware).
   Keep `default` behaving as today. **Same step (F42):** every explicit
   `atomic()`/`on_commit()` gets `using=` the routed alias
   (`router.db_for_write(Model)`); grep for bare `atomic(` and `on_commit(`.
-- [ ] **1.2** Test: a request on stash A must not open a connection or
+  *Done 01/10/2026 (Claude's call on the how):* `StashAtomicRequestMiddleware`,
+  last in `MIDDLEWARE`, wraps the view in `atomic(using=<active stash>)` from
+  `process_view` - a plain middleware wrapping `get_response` would see a 500
+  *response*, not the exception, and commit half a change. A view marked
+  `@transaction.non_atomic_requests` (no `using`) skips it, since a stash's
+  alias isn't known when the decorator runs.
+- [x] **1.2** Test: a request on stash A must not open a connection or
   transaction on stash B (inspect `connections[...].in_atomic_block` /
   `connection` state from inside a test view).
-- [ ] **1.3** Backups via SQLite's own API (F2): `backup.backup_now()` uses
+- [x] **1.3** Backups via SQLite's own API (F2): `backup.backup_now()` uses
   `sqlite3.connect(src).backup(dst)`; `restore_from()` does the reverse into
   the live file after the safety backup. Mark `backup_restore` with
   `@transaction.non_atomic_requests`, and close the stash's connection on
@@ -384,21 +391,29 @@ wrong totals.
   run `migrate --database=<stash>` right after a restore, so an older backup
   comes back on today's schema. Test this by restoring a copy taken before the
   last migration. Fix `_STAMP_RE` so tags with `_` in them parse.
-- [ ] **1.4** Keep `scripts/bootstrap.py`'s quarterly backup working - it
+  *Done 01/10/2026:* SQLite's backup API keeps other threads' open
+  connections valid (a test proves an open connection sees the restored
+  data), so no connection-closing across threads is needed.
+  `stashes.restore_stash()` restores, closes this thread's connection and
+  migrates.
+- [x] **1.4** Keep `scripts/bootstrap.py`'s quarterly backup working - it
   imports `backup.py` before Django is set up, so stay standard-library only.
 - [x] ~~**1.5** Remove `@login_required` from `_export_rates` (F4); rename it
   `_rates_for(request)`.~~ Moved into 5.2 on 27/09/2026 (nothing is broken
   today; the helper goes away with the export registry).
-- [ ] **1.6** Add `ReconcileFinishForm` (statement_date, statement_balance,
+- [x] **1.6** Add `ReconcileFinishForm` (statement_date, statement_balance,
   transaction ids, accept_difference) and use it in the finish stage (F5).
   Test: missing/garbled values re-render with an error, never a 500.
-- [ ] **1.7** Make `switch_stash` POST-only (`@require_POST`) and change the
+  *Claude's call:* the fields are hidden, so a bad submission can only come
+  from a tampered page or transactions reconciled meanwhile - it goes back to
+  step 1 with "Something in that reconciliation didn't come through".
+- [x] **1.7** Make `switch_stash` POST-only (`@require_POST`) and change the
   sidebar/login "Choose a different stash" links into small POST forms (F6).
   Render-check the pages afterwards (no browser here).
-- [ ] **1.8** Dashboard converts through `RateTable(main_currency)` like
+- [x] **1.8** Dashboard converts through `RateTable(main_currency)` like
   Reports: pass `rates` to `income_and_spending()` and give `spending_tree()`
   a `rates` parameter (F30). Test with two accounts in different currencies.
-- [ ] **1.9** `spending_tree()` follows R1: net each category against its own
+- [x] **1.9** `spending_tree()` follows R1: net each category against its own
   total and leave out (or show as zero) a category that nets positive,
   instead of `abs()` (F31). Agree the exact display with the user first -
   it changes what the donut shows. **Answered 27/09/2026 (user):** only
@@ -410,33 +425,39 @@ wrong totals.
   equals the Spending tile). The same applies one level down, to a
   subcategory inside a main category's drill-down. Test with a refund bigger
   than the spend.
-- [ ] **1.10** Import error handling (F32): catch decode/parse errors and
+- [x] **1.10** Import error handling (F32): catch decode/parse errors and
   show a clear message ("This file isn't UTF-8 - save it as CSV UTF-8 and try
-  again"); optionally try `cp1251`/`cp1252` as a fallback. Tests with a
+  again"); optionally try `cp1251`/`cp1252` as a fallback. *Claude's call:*
+  UTF-8 first, then Windows-1251 only (Bulgarian bank exports), and the
+  import summary says so, since a Windows-1252 file would get Cyrillic letters
+  in place of its accents. Tests with a
   Windows-1251 CSV and a garbled OFX. **Also (F47):** count skipped rows and
   say so ("3 rows skipped - unreadable date or amount"); a bad `Num` (negative,
   huge, `inf`) becomes "no number" instead of a crash.
-- [ ] **1.11** Exports escape cells starting with `= + - @` (F33) - but not
+- [x] **1.11** Exports escape cells starting with `= + - @` (F33) - but not
   real negative numbers: only text columns (payee, memo, category, account
   name) are escaped, amounts stay numeric. **Also (F46):** amounts go into
   XLSX as real numbers with a 2-decimal format and dates as real dates; CSV
   starts with a UTF-8 BOM so Excel reads Cyrillic correctly. Test: open the
   XLSX with openpyxl and check the cell types.
-- [ ] **1.12** Admin login goes through the stash login (F41): send
+- [x] **1.12** Admin login goes through the stash login (F41): send
   `/admin/login/` to `StashLoginView` with `?next=`, or count failures in one
   place every login path shares (a `user_login_failed` receiver). Test: five
-  wrong PINs via `/admin/login/` lock the stash.
-- [ ] **1.13** "Check rates" doesn't hold the lock during the network call
+  wrong PINs via `/admin/login/` lock the stash. *Claude's call:* the
+  redirect - `/admin/login/` now sends you to the PIN screen with `?next=`,
+  so no PIN is ever checked there at all (tested: posting a PIN to it logs
+  nobody in).
+- [x] **1.13** "Check rates" doesn't hold the lock during the network call
   (F43): that endpoint is `@transaction.non_atomic_requests` (per alias), and
   `fetch_latest_rates()` opens its own short `atomic(using=...)` only for the
   writes, after the download. Fix the docstring. Easiest after 5.3 gives it
   its own URL; if Phase 1 comes first, mark `settings_view` itself.
-- [ ] **1.14** The recovery code never goes into the cookie (F45). Claude's
+- [x] **1.14** The recovery code never goes into the cookie (F45). Claude's
   call: keep the code server-side in Django's local-memory cache under a
   random one-time key, and store only that key in the session. The page reads
   the code once and deletes it. Stashy runs as a single process, so that
   cache is enough.
-- [ ] **1.15** Fix the open redirect in `_safe_next()` (F55, brought forward
+- [x] **1.15** Fix the open redirect in `_safe_next()` (F55, brought forward
   from 4.6): replace it with `url_has_allowed_host_and_scheme(url,
   allowed_hosts={request.get_host()})`. Test: `next=/\evil.com` is refused.
 
@@ -514,6 +535,11 @@ rejected at the database level.
   `test_data.TXT` are gone). Untracking needs
   `git rm -r --cached staticfiles .idea`. **The user runs that** (Claude
   doesn't run git).
+  **To discuss with the user (parked 01/10/2026, their choice):** migrations
+  are kept out of git (`**/migrations/*.py` in `.gitignore`), so git only has
+  `finance/migrations/0001_initial.py`. A fresh clone gets models that no
+  committed migration builds. Options: commit them all, or keep them local
+  and accept that the repo alone can't set up a new copy.
 - [ ] **3.7** `bootstrap.py` writes `DEBUG=False` into new `.env` files
   (F37). Existing `.env` files are the user's to change - tell them, don't
   edit them. Check that WhiteNoise still serves static files with
@@ -718,6 +744,9 @@ settings; test count is the same or higher than before.
   (Claude's call):** it has no "All time", and its charts need a real start
   date. An old bookmark with `range=earliest` on the Transactions page lands
   on "All time". For 8.11, "All time" counts as longer than a year.
+  **Answered 01/10/2026 (user):** the option is renamed **"All dates"** (on
+  Transactions; the URL value can stay as it is). Everything above that says
+  "All time" means this option.
 - [ ] **8.14** Typing a Start/End date switches the Range dropdown to "Custom
   range" (user, 27/09/2026). Today, a typed date is silently ignored
   whenever a preset is selected. The switch happens without reloading the

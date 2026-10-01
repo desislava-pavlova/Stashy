@@ -3,8 +3,10 @@ import hashlib
 import io
 import json
 import re
+import secrets
 from datetime import date, datetime, timedelta
-from decimal import Decimal
+from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -14,11 +16,13 @@ from django.contrib import messages
 from django.contrib.auth import update_session_auth_hash
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.db import connections
+from django.core.cache import cache
+from django.db import router, transaction
 from django.db.models import Count, Sum, Q
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 from django.views.generic import CreateView, DeleteView, ListView, UpdateView
@@ -31,7 +35,7 @@ from . import stashes
 from .currency import RateFetchError, RateTable, SUFFIX_CURRENCIES, convert_balances, fetch_latest_rates, format_money
 from .forms import (
     AccountCreateForm, AccountForm, CategoryForm, CheckRatesForm, DateRangeFilterForm, ImportUploadForm,
-    PayeeForm, ProfileForm, ReconcileStartForm, ReminderForm, TransactionForm, TransferForm, WatchedExpensesForm,
+    PayeeForm, ProfileForm, ReconcileFinishForm, ReconcileStartForm, ReminderForm, TransactionForm, TransferForm, WatchedExpensesForm,
     convertible_currencies,
 )
 from .models import (
@@ -139,8 +143,11 @@ def dashboard(request):
     # inactive accounts never reach this panel, since `accounts` above already excludes them.
     account_groups = grouped_accounts(accounts)
 
-    this_month = income_and_spending(month_start, today)
-    last_month = income_and_spending(last_month_start, last_month_end)
+    # Converted into the main currency exactly like Reports, so the tiles, the donut and the
+    # reports never disagree when accounts use different currencies.
+    rates = RateTable(main_currency)
+    this_month = income_and_spending(month_start, today, rates=rates)
+    last_month = income_and_spending(last_month_start, last_month_end, rates=rates)
     rate = savings_rate(last_month["income"], last_month["spending"])
 
     due_soon = list(
@@ -169,7 +176,7 @@ def dashboard(request):
         "savings_bar": max(0, min(100, int(rate))) if rate is not None else 0,
         "due_soon": due_soon,
         "reminder_lookahead_days": REMINDER_LOOKAHEAD_DAYS,
-        "spending_tree": spending_tree(month_start, today),
+        "spending_tree": spending_tree(month_start, today, rates=rates),
         "spending_period": {"start": month_start.isoformat(), "end": today.isoformat()},
         # The donut chart (JS) needs to know whether its symbol goes before or after the
         # number, same convention |moneyc already applies server-side.
@@ -298,16 +305,25 @@ def account_reconcile(request, pk):
     account = get_object_or_404(Account, pk=pk)
 
     if request.method == "POST" and request.POST.get("stage") == "finish":
-        statement_date = date.fromisoformat(request.POST["statement_date"])
-        statement_balance = Decimal(request.POST["statement_balance"])
-        checked_ids = set(request.POST.getlist("transaction"))
-        checked = account.transactions.filter(pk__in=checked_ids, reconciled=False)
+        finish_form = ReconcileFinishForm(request.POST, account=account)
+        if not finish_form.is_valid():
+            # Only a tampered or half-sent page gets here (the fields are hidden), or one whose
+            # transactions were reconciled elsewhere meanwhile - start over from step 1.
+            messages.error(request, "Something in that reconciliation didn't come through. Please start it again.")
+            return render(request, "finance/account_reconcile_start.html", {
+                "account": account, "form": ReconcileStartForm(initial={"statement_date": date.today()}),
+                "opening_balance": account.reconciled_balance(),
+            })
+        statement_date = finish_form.cleaned_data["statement_date"]
+        statement_balance = finish_form.cleaned_data["statement_balance"]
+        checked = list(finish_form.cleaned_data["transaction"])
+        checked_ids = {str(t.pk) for t in checked}
         opening_balance = account.reconciled_balance()
         checked_total = sum((t.amount for t in checked), ZERO)
         new_balance = opening_balance + checked_total
         difference = (statement_balance - new_balance).quantize(CENT)
 
-        if difference != ZERO and request.POST.get("accept_difference") != "1":
+        if difference != ZERO and not finish_form.cleaned_data["accept_difference"]:
             messages.error(
                 request,
                 f"That leaves a difference of {format_money(difference, account.currency)} — "
@@ -763,23 +779,60 @@ def transaction_list(request):
 # Export (Phase 10) - CSV built in; XLSX via openpyxl
 # ---------------------------------------------------------------------------
 
+# Excel, LibreOffice and Google Sheets treat a cell starting with one of these as a formula, and
+# imported bank text can start with anything - so text cells that do get a leading apostrophe in
+# CSV, the usual "this is text" marker (OWASP's advice for CSV injection).
+_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _csv_cell(value):
+    """One export value as CSV text: amounts with exactly two decimals, ISO dates (what
+    Stashy's own import reads back), and text made safe from formula injection."""
+    if value is None:
+        return ""
+    if isinstance(value, Decimal):
+        return f"{value:.2f}"
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, str) and value.startswith(_FORMULA_PREFIXES):
+        return "'" + value
+    return value
+
+
 def _csv_response(filename, headers, rows):
-    response = HttpResponse(content_type="text/csv")
+    response = HttpResponse(content_type="text/csv; charset=utf-8")
     response["Content-Disposition"] = f'attachment; filename="{filename}.csv"'
+    # A BOM first, or Excel guesses the wrong encoding and shows Cyrillic as garbage.
+    response.write("\ufeff")
     writer = csv.writer(response)
     writer.writerow(headers)
-    writer.writerows(rows)
+    writer.writerows([_csv_cell(value) for value in row] for row in rows)
     return response
 
 
 def _xlsx_response(filename, headers, rows):
+    """Amounts go in as real numbers and dates as real dates, so Excel can add them up and sort
+    them. Text is always stored as text - openpyxl would otherwise write a string starting with
+    "=" as a formula."""
     from openpyxl import Workbook
+    from openpyxl.cell.cell import TYPE_STRING
 
+    date_format = regional.current().date_placeholder
     workbook = Workbook()
     sheet = workbook.active
     sheet.append(headers)
-    for row in rows:
-        sheet.append(row)
+    for row_index, row in enumerate(rows, start=2):
+        for column_index, value in enumerate(row, start=1):
+            cell = sheet.cell(row=row_index, column=column_index)
+            if value is None:
+                continue
+            cell.value = value
+            if isinstance(value, Decimal):
+                cell.number_format = "0.00"
+            elif isinstance(value, date):
+                cell.number_format = date_format
+            elif isinstance(value, str):
+                cell.data_type = TYPE_STRING
     response = HttpResponse(
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
@@ -803,8 +856,8 @@ def export_transactions(request):
     headers = ["Date", "Number", "Account", "Payee", "Category", "Memo", "Amount", "Currency", "Reconciled"]
     rows = [
         [
-            t.date.isoformat(), t.transaction_number or "", t.account.name, t.display_payee,
-            t.category.full_name if t.category_id else "", t.memo, str(t.amount), t.account.currency,
+            t.date, t.transaction_number, t.account.name, t.display_payee,
+            t.category.full_name if t.category_id else "", t.memo, t.amount, t.account.currency,
             "Y" if t.reconciled else "N",
         ]
         for t in transactions
@@ -817,7 +870,7 @@ def export_transactions(request):
 def export_accounts(request):
     headers = ["Name", "Type", "Currency", "Institution", "Active", "Balance"]
     rows = [
-        [a.name, a.get_account_type_display(), a.currency, a.institution, "Y" if a.is_active else "N", str(a.balance)]
+        [a.name, a.get_account_type_display(), a.currency, a.institution, "Y" if a.is_active else "N", a.balance]
         for a in Account.objects.all()
     ]
     filename = f"stashy-accounts-{date.today():%Y%m%d}"
@@ -851,15 +904,20 @@ def export_payees(request):
     return _export_response(request.GET.get("format", "csv"), filename, headers, rows)
 
 
-def _safe_next(url):
-    """Only ever redirect back to a page of this same app - never off-site."""
-    return url if url.startswith("/") and not url.startswith("//") else ""
+def _safe_next(request, url):
+    """`url` if it stays on this site, else "" - never redirect off-site. Django's own check
+    also refuses tricks a plain "starts with /" test lets through, like `/\\evil.com`, which
+    browsers read as `//evil.com`."""
+    allowed = url_has_allowed_host_and_scheme(
+        url, allowed_hosts={request.get_host()}, require_https=request.is_secure()
+    )
+    return url if allowed else ""
 
 
 @login_required
 def transaction_form_view(request, pk=None):
     instance = get_object_or_404(Transaction, pk=pk) if pk else None
-    next_url = _safe_next(request.POST.get("next") or request.GET.get("next", ""))
+    next_url = _safe_next(request, request.POST.get("next") or request.GET.get("next", ""))
     reminder = None
     reminder_id = request.POST.get("reminder") or request.GET.get("reminder")
     # Only for a brand-new transaction - editing an existing one never carries a reminder link.
@@ -1003,13 +1061,13 @@ class TransactionDeleteView(LoginRequiredMixin, DeleteView):
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        ctx["next"] = _safe_next(self.request.GET.get("next", ""))
+        ctx["next"] = _safe_next(self.request, self.request.GET.get("next", ""))
         return ctx
 
     def get_success_url(self):
         # Back to wherever the delete link was opened from (e.g. the all-accounts list),
         # same as editing already does - otherwise falls back to the transaction's own account.
-        next_url = _safe_next(self.request.POST.get("next", ""))
+        next_url = _safe_next(self.request, self.request.POST.get("next", ""))
         return next_url or reverse("finance:account_detail", kwargs={"pk": self.object.account_id})
 
 
@@ -1175,36 +1233,69 @@ def import_transactions(request):
                 messages.error(request, "Unsupported file type. Please upload a .csv, .xlsx, .ofx, or .qfx file.")
                 return redirect("finance:import_transactions")
 
+            # The whole file is read and checked before anything is written, so a file Stashy
+            # can't read gets a message and leaves nothing behind.
+            encoding_note = ""
+            try:
+                if filename.endswith(".csv"):
+                    fieldnames, rows, encoding_note = _read_csv(upload)
+                elif filename.endswith(".xlsx"):
+                    fieldnames, rows = _read_xlsx(upload)
+                else:
+                    ofx_rows = _read_ofx(upload)
+            except ImportFileError as error:
+                messages.error(request, str(error))
+                return redirect("finance:import_transactions")
+
             with system_action(f"Imported from {upload.name}"):
                 batch = ImportBatch.objects.create(account=account, source_filename=upload.name)
-                if filename.endswith(".csv"):
+                if filename.endswith((".csv", ".xlsx")):
                     date_format = form.cleaned_data.get("date_format") or "auto"
-                    created, duplicates, unknown_account, resolved_format = _import_csv(upload, account, batch, date_format)
-                elif filename.endswith(".xlsx"):
-                    date_format = form.cleaned_data.get("date_format") or "auto"
-                    created, duplicates, unknown_account, resolved_format = _import_xlsx(upload, account, batch, date_format)
+                    result = _import_rows(fieldnames, rows, account, batch, date_format)
                 else:
-                    created, duplicates, unknown_account, resolved_format = _import_ofx(upload, account, batch)
-                batch.row_count = created
-                batch.duplicate_count = duplicates
+                    result = _import_ofx_rows(ofx_rows, account, batch)
+                batch.row_count = result.created
+                batch.duplicate_count = result.duplicates
                 batch.save(update_fields=["row_count", "duplicate_count"])
 
-            summary = f"Imported {created} transactions ({duplicates} duplicates skipped)."
-            if unknown_account:
-                summary += (
-                    f" {unknown_account} row{'s' if unknown_account != 1 else ''} skipped - "
-                    "named an account that doesn't exist yet."
-                )
-            if resolved_format:
-                label = dict(regional.DATE_FORMAT_CHOICES).get(resolved_format, resolved_format)
-                summary += f" Read dates as {label}."
-            messages.success(request, summary)
+            messages.success(request, _import_summary(result, encoding_note))
             return redirect("finance:account_detail", pk=account.pk)
     else:
         form = ImportUploadForm()
 
     recent_batches = ImportBatch.objects.select_related("account")[:15]
     return render(request, "finance/import_form.html", {"form": form, "recent_batches": recent_batches, "tips": IMPORT_TIPS})
+
+
+class ImportFileError(Exception):
+    """The uploaded file couldn't be read at all - the message is shown to the user as is."""
+
+
+@dataclass
+class ImportResult:
+    created: int = 0
+    duplicates: int = 0
+    unknown_account: int = 0
+    unreadable: int = 0
+    date_format: str | None = None
+
+
+def _plural(count, word):
+    return f"{count} {word}{'' if count == 1 else 's'}"
+
+
+def _import_summary(result, encoding_note=""):
+    summary = f"Imported {_plural(result.created, 'transaction')} ({result.duplicates} duplicates skipped)."
+    if result.unknown_account:
+        summary += f" {_plural(result.unknown_account, 'row')} skipped - named an account that doesn't exist yet."
+    if result.unreadable:
+        summary += f" {_plural(result.unreadable, 'row')} skipped - unreadable date or amount."
+    if result.date_format:
+        label = dict(regional.DATE_FORMAT_CHOICES).get(result.date_format, result.date_format)
+        summary += f" Read dates as {label}."
+    if encoding_note:
+        summary += f" {encoding_note}"
+    return summary
 
 
 def _fingerprint(account_id, txn_date, amount, payee):
@@ -1291,24 +1382,56 @@ def _detect_date_format(raw_dates):
     return None
 
 
-def _import_csv(upload, account, batch, date_format="auto"):
-    text = io.TextIOWrapper(upload.file, encoding="utf-8-sig")
-    reader = csv.DictReader(text)
-    rows = list(reader)
-    return _import_rows(reader.fieldnames or [], rows, account, batch, date_format)
+def _read_csv(upload):
+    """(fieldnames, rows, encoding note) from an uploaded CSV.
+
+    UTF-8 first (with or without Excel's BOM). Bulgarian bank exports are often Windows-1251,
+    so that's the fallback (Claude's call, plan 02 item 1.10) - and the summary says so, since a
+    Western file in Windows-1252 would come out with Cyrillic letters in place of its accents.
+    """
+    raw = upload.read()
+    try:
+        text, note = raw.decode("utf-8-sig"), ""
+    except UnicodeDecodeError:
+        try:
+            text = raw.decode("cp1251")
+        except UnicodeDecodeError:
+            raise ImportFileError(
+                'Stashy couldn\'t read this file\'s text. Save it as "CSV UTF-8" and try again.'
+            ) from None
+        note = (
+            "The file wasn't UTF-8, so it was read as Windows-1251 (Cyrillic) - if names look wrong, "
+            'delete what was imported, save the file as "CSV UTF-8" and import it again.'
+        )
+    try:
+        reader = csv.DictReader(io.StringIO(text, newline=""))
+        rows = list(reader)
+    except csv.Error as error:
+        raise ImportFileError(f"This doesn't look like a CSV file Stashy can read ({error}).") from None
+    return reader.fieldnames or [], rows, note
 
 
-def _import_xlsx(upload, account, batch, date_format="auto"):
+def _read_xlsx(upload):
+    """(fieldnames, rows) from the first sheet of an uploaded Excel file."""
+    from zipfile import BadZipFile
+
     from openpyxl import load_workbook
+    from openpyxl.utils.exceptions import InvalidFileException
 
-    workbook = load_workbook(upload, data_only=True, read_only=True)
-    sheet = workbook.active
-    rows_iter = sheet.iter_rows(values_only=True)
-    header = next(rows_iter, [])
+    try:
+        workbook = load_workbook(upload, data_only=True, read_only=True)
+        all_rows = list(workbook.active.iter_rows(values_only=True))
+        workbook.close()
+    except (BadZipFile, InvalidFileException, KeyError, OSError, ValueError, TypeError):
+        raise ImportFileError(
+            "Stashy couldn't open this Excel file - it may be damaged or not really an .xlsx file."
+        ) from None
+
+    header = all_rows[0] if all_rows else []
     fieldnames = [str(cell).strip() if cell is not None else "" for cell in header]
 
     rows = []
-    for values in rows_iter:
+    for values in all_rows[1:]:
         row = {}
         for name, value in zip(fieldnames, values):
             if not name:
@@ -1322,9 +1445,7 @@ def _import_xlsx(upload, account, batch, date_format="auto"):
             else:
                 row[name] = str(value)
         rows.append(row)
-    workbook.close()
-
-    return _import_rows(fieldnames, rows, account, batch, date_format)
+    return fieldnames, rows
 
 
 _RECONCILED_FALSE_VALUES = {"", "n", "no", "false", "0", "unreconciled", "uncleared", "u"}
@@ -1353,8 +1474,10 @@ def _import_rows(fieldnames, rows, account, batch, date_format="auto"):
 
     accounts_by_name = {a.name.lower(): a for a in Account.objects.all()}
 
-    created, duplicates, unknown_account = 0, 0, 0
+    result = ImportResult(date_format=date_format)
     for row in rows:
+        if not any(isinstance(value, str) and value.strip() for value in row.values()):
+            continue  # a completely empty line isn't a skipped transaction
         raw_date = get(row, "date", "transaction date")
         raw_amount = get(row, "amount")
         raw_num = get(row, "num", "number", "check number")
@@ -1364,45 +1487,31 @@ def _import_rows(fieldnames, rows, account, batch, date_format="auto"):
         raw_category = get(row, "category")
         raw_reconciled = get(row, "reconciled", "cleared", "status")
 
-        if not raw_date:
-            continue
-
-        txn_date = _parse_date(raw_date, date_formats)
-        if not txn_date:
-            continue
-
-        if not raw_amount:
-            continue
-        amount = parse_amount(raw_amount)
-        if amount is None:
+        txn_date = _parse_date(raw_date, date_formats) if raw_date else None
+        amount = parse_amount(raw_amount) if raw_amount else None
+        if txn_date is None or amount is None:
+            result.unreadable += 1
             continue
 
         row_account = account
         if raw_account:
             row_account = accounts_by_name.get(raw_account.lower())
             if row_account is None:
-                unknown_account += 1
+                result.unknown_account += 1
                 continue
 
         fp = _fingerprint(row_account.id, txn_date, amount, payee_name)
         if Transaction.objects.filter(import_fingerprint=fp).exists():
-            duplicates += 1
+            result.duplicates += 1
             continue
 
         payee = _get_or_create_payee(payee_name) if payee_name else None
         category = _resolve_category(raw_category, amount) if raw_category else _guessed_category(payee)
 
-        txn_number = None
-        if raw_num:
-            try:
-                txn_number = int(float(raw_num))
-            except ValueError:
-                txn_number = None
-
         Transaction.objects.create(
             account=row_account,
             date=txn_date,
-            transaction_number=txn_number,
+            transaction_number=_parse_transaction_number(raw_num),
             payee=payee,
             memo=memo,
             amount=amount,
@@ -1411,9 +1520,26 @@ def _import_rows(fieldnames, rows, account, batch, date_format="auto"):
             import_fingerprint=fp,
             category=category,
         )
-        created += 1
+        result.created += 1
 
-    return created, duplicates, unknown_account, date_format
+    return result
+
+
+# The largest value Django guarantees a PositiveIntegerField can hold on every database.
+_MAX_TRANSACTION_NUMBER = 2_147_483_647
+
+
+def _parse_transaction_number(raw):
+    """A Num cell as a transaction number, or None ("no number") when it isn't a whole number
+    Stashy can store - blank, negative, huge, "inf", "12.5" or plain text."""
+    try:
+        number = Decimal(raw.strip())
+    except (InvalidOperation, AttributeError):
+        return None
+    if not number.is_finite() or number != number.to_integral_value():
+        return None
+    number = int(number)
+    return number if 0 <= number <= _MAX_TRANSACTION_NUMBER else None
 
 
 def _parse_date(raw, formats):
@@ -1425,41 +1551,48 @@ def _parse_date(raw, formats):
     return None
 
 
-def _import_ofx(upload, account, batch):
-    try:
-        from ofxparse import OfxParser
-    except ImportError:
-        raise RuntimeError("The 'ofxparse' package is required for OFX/QFX import. pip install ofxparse")
+def _read_ofx(upload):
+    """Every transaction in an OFX/QFX file as (date, raw amount, payee name, memo)."""
+    from ofxparse import OfxParser
 
-    ofx = OfxParser.parse(upload)
-    created, duplicates = 0, 0
-    for ofx_account in ofx.accounts:
-        for txn in ofx_account.statement.transactions:
-            txn_date = txn.date.date()
-            amount = parse_amount(txn.amount)
-            if amount is None:
-                continue
-            payee_name = (txn.payee or "").strip()
-            fp = _fingerprint(account.id, txn_date, amount, payee_name)
-            if Transaction.objects.filter(import_fingerprint=fp).exists():
-                duplicates += 1
-                continue
-            payee = None
-            if payee_name:
-                payee = _get_or_create_payee(payee_name)
-            Transaction.objects.create(
-                account=account,
-                date=txn_date,
-                payee=payee,
-                memo=getattr(txn, "memo", "") or "",
-                amount=amount,
-                import_batch=batch,
-                import_fingerprint=fp,
-                category=_guessed_category(payee),
-            )
-            created += 1
+    try:
+        ofx = OfxParser.parse(upload)
+        return [
+            (txn.date.date(), txn.amount, (txn.payee or "").strip(), getattr(txn, "memo", "") or "")
+            for ofx_account in ofx.accounts
+            for txn in ofx_account.statement.transactions
+        ]
+    except Exception:  # noqa: BLE001 - ofxparse raises many unrelated exception types on a bad file
+        raise ImportFileError(
+            "Stashy couldn't read this OFX/QFX file - it may be damaged or in a different format."
+        ) from None
+
+
+def _import_ofx_rows(ofx_rows, account, batch):
+    result = ImportResult()
+    for txn_date, raw_amount, payee_name, memo in ofx_rows:
+        amount = parse_amount(raw_amount)
+        if amount is None:
+            result.unreadable += 1
+            continue
+        fp = _fingerprint(account.id, txn_date, amount, payee_name)
+        if Transaction.objects.filter(import_fingerprint=fp).exists():
+            result.duplicates += 1
+            continue
+        payee = _get_or_create_payee(payee_name) if payee_name else None
+        Transaction.objects.create(
+            account=account,
+            date=txn_date,
+            payee=payee,
+            memo=memo,
+            amount=amount,
+            import_batch=batch,
+            import_fingerprint=fp,
+            category=_guessed_category(payee),
+        )
+        result.created += 1
     # OFX has no per-row account text field and no ambiguous textual dates to detect.
-    return created, duplicates, 0, None
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -1727,27 +1860,21 @@ def _export_category_table(request, table, filename, amount_label):
     for group in table["groups"]:
         for row in group["rows"]:
             name = ("  " if row["is_child"] else "") + row["name"]
-            rows.append([name] + [str(v) for v in row["values"]] + ([str(row["total"])] if periods else []))
+            rows.append([name] + list(row["values"]) + ([row["total"]] if periods else []))
     if table["totals"]:
-        rows.append(
-            ["Total"] + [str(v) for v in table["totals"]["values"]] + ([str(table["totals"]["total"])] if periods else [])
-        )
+        rows.append(["Total"] + list(table["totals"]["values"]) + ([table["totals"]["total"]] if periods else []))
     return _export_response(request.GET.get("format", "csv"), filename, headers, rows)
 
 
 def _export_vs_average_table(request, table, filename):
     headers = ["Category", "Current", "Average", "Difference"]
     rows = [
-        [
-            ("  " if row["is_child"] else "") + row["name"], str(row["current"]),
-            "" if row["average"] is None else str(row["average"]),
-            "" if row["difference"] is None else str(row["difference"]),
-        ]
+        [("  " if row["is_child"] else "") + row["name"], row["current"], row["average"], row["difference"]]
         for group in table["groups"] for row in group["rows"]
     ]
     if table["totals"]:
-        t = table["totals"]
-        rows.append(["Total", str(t["current"]), "" if t["average"] is None else str(t["average"]), "" if t["difference"] is None else str(t["difference"])])
+        totals = table["totals"]
+        rows.append(["Total", totals["current"], totals["average"], totals["difference"]])
     return _export_response(request.GET.get("format", "csv"), filename, headers, rows)
 
 
@@ -1821,10 +1948,10 @@ def export_report_net_worth(request):
     headers = ["Account"] + table["periods"]
     rows = []
     for group in table["groups"]:
-        rows.append([group["name"]] + [str(v) for v in group["totals"]])
+        rows.append([group["name"]] + list(group["totals"]))
         for row in group["rows"]:
-            rows.append(["  " + row["name"]] + [str(v) for v in row["values"]])
-    rows.append(["Total"] + [str(v) for v in table["totals"]])
+            rows.append(["  " + row["name"]] + list(row["values"]))
+    rows.append(["Total"] + list(table["totals"]))
     return _export_response(
         request.GET.get("format", "csv"), f"stashy-net-worth-{date.today():%Y%m%d}", headers, rows
     )
@@ -1855,8 +1982,18 @@ def _stash_backup_root(request):
     return Path(settings.BASE_DIR)
 
 
+def _stash_atomic():
+    """A transaction on the stash this request uses, for views that run without the
+    per-request one (see StashAtomicRequestMiddleware)."""
+    return transaction.atomic(using=router.db_for_write(Profile))
+
+
 @login_required
+@transaction.non_atomic_requests
 def settings_view(request):
+    """Runs without the per-request transaction so "Check rates" never holds the stash's write
+    lock while it waits on the internet (fetch_latest_rates() takes its own short one for the
+    writes). Every other change here is wrapped in _stash_atomic()."""
     profile = Profile.for_user(request.user)
     currencies = convertible_currencies(Account.objects.all()) or [profile.main_currency]
 
@@ -1885,7 +2022,8 @@ def settings_view(request):
     if is_watched_expenses_save:
         watched_form = WatchedExpensesForm(request.POST, instance=profile)
         if watched_form.is_valid():
-            watched_form.save()
+            with _stash_atomic():
+                watched_form.save()
             messages.success(request, "Watched expenses saved.")
             return redirect("finance:settings")
         messages.error(request, "Watched expenses weren't saved - see the errors below.")
@@ -1895,7 +2033,8 @@ def settings_view(request):
     if request.method == "POST" and not is_watched_expenses_save:
         form = ProfileForm(request.POST, instance=profile)
         if form.is_valid():
-            form.save()
+            with _stash_atomic():
+                form.save()
             messages.success(request, "Preferences saved.")
             return redirect("finance:settings")
     else:
@@ -1949,19 +2088,37 @@ def change_pin_view(request):
     return render(request, "finance/change_pin.html", {"form": form})
 
 
+RECOVERY_CODE_CACHE_SECONDS = 5 * 60
+
+
+def _recovery_code_cache_key(token):
+    return f"stashy:new-recovery-code:{token}"
+
+
 @login_required
 def recovery_code_view(request):
-    """Its own page (L8): a warning with Generate/Back first; Generate mints a new code,
-    stashes it in the session for exactly one reveal, and redirects back to this same URL -
-    a real page reload, so refreshing afterward can't regenerate a second code by resubmitting
-    a form, and doesn't leave the code sitting around anywhere it could be re-shown by accident."""
+    """Its own page (L8): a warning with Generate/Back first; Generate mints a new code and
+    redirects back to this same URL - a real page reload, so refreshing afterward can't
+    regenerate a second code by resubmitting a form.
+
+    The code itself waits in the server's memory cache, and the session (a signed but readable
+    cookie) only carries a random one-time key to it. The page shows it once and deletes it.
+    Stashy is one process, so the local-memory cache is shared by every request."""
     if request.method == "POST":
         profile = Profile.for_user(request.user)
-        request.session["new_recovery_code"] = stashes.regenerate_recovery_code(profile)
+        token = secrets.token_urlsafe(16)
+        cache.set(
+            _recovery_code_cache_key(token), stashes.regenerate_recovery_code(profile), RECOVERY_CODE_CACHE_SECONDS
+        )
+        request.session["new_recovery_code_token"] = token
         return redirect("finance:recovery_code")
-    return render(request, "finance/recovery_code.html", {
-        "new_code": request.session.pop("new_recovery_code", None),
-    })
+    new_code = None
+    token = request.session.pop("new_recovery_code_token", None)
+    if token:
+        key = _recovery_code_cache_key(token)
+        new_code = cache.get(key)
+        cache.delete(key)
+    return render(request, "finance/recovery_code.html", {"new_code": new_code})
 
 
 def _current_stash_db_path(request):
@@ -1986,22 +2143,21 @@ def _backup_path_or_404(request, name):
 
 
 @login_required
+@transaction.non_atomic_requests
 def backup_restore(request):
     """Restoring overwrites the live database, so this is a confirm-then-act page (like a
     delete) rather than a one-click button on Settings - a wrong pick here is far more costly
-    than a wrong pick almost anywhere else in the app."""
+    than a wrong pick almost anywhere else in the app. Runs without the per-request
+    transaction: the restore needs the stash's write lock itself."""
     name = request.POST.get("name") or request.GET.get("name", "")
     backup_path = _backup_path_or_404(request, name)
 
     if request.method == "POST":
-        db_path = _current_stash_db_path(request)
-        finance_backup.restore_from(backup_path, db_path, _stash_backup_root(request))
-        # The live server may already hold an open connection to this stash's file (this
-        # request's own thread included) - close this thread's so its very next query
-        # reconnects to the file as just restored, rather than a stale cached connection.
-        stash_name = request.session.get("stash")
-        if stash_name and not settings.TESTING:
-            connections[stash_name].close()
+        stash_name = request.session.get("stash") if not settings.TESTING else None
+        if stash_name:
+            stashes.restore_stash(stash_name, backup_path)
+        else:
+            finance_backup.restore_from(backup_path, _current_stash_db_path(request), _stash_backup_root(request))
         messages.success(
             request,
             f"Restored from {backup_path.name}. A safety backup of what was there before is in backups/ too.",

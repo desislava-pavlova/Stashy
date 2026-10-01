@@ -1,15 +1,16 @@
-"""SQLite backup (Phase 10 / D8): a plain timestamped file copy into backups/.
+"""SQLite backup (Phase 10 / D8): timestamped copies in backups/, and restoring one.
 
 Pure standard library on purpose - `scripts/bootstrap.py` calls `quarterly_backup_if_due()`
 at launch, before the rest of the app is necessarily importable, and the Settings page's
 "Back up now" and "Restore" actions call the other functions here the same way.
 
-Caveat: a plain file copy is only safe while SQLite runs in its default (non-WAL) journal
-mode, as this project does. If WAL mode is ever turned on, back up with SQLite's own backup
-API instead - a plain copy taken mid-write could miss recent changes.
+Copies go through SQLite's own backup API (`Connection.backup`), never a plain file copy:
+SQLite takes the locks it needs, so a backup is a consistent snapshot even if Stashy is
+writing at that moment, and a restore rewrites the live file page by page in a way every
+connection the running server still holds notices on its next query.
 """
 import re
-import shutil
+import sqlite3
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -21,9 +22,13 @@ QUARTERLY_MIN_GAP_DAYS = 90
 # reason to touch a file nobody asked to change), so _parse_stamp() below still recognizes
 # the old scheme too - both for the quarterly-due check and for listing recent backups.
 _TIMESTAMP_FORMAT = "%Y-%m-%d_%H-%M-%S"
+# The tag may contain underscores itself (before_restore, before_update), so it's matched lazily
+# and the timestamp anchors the end.
 _STAMP_RE = re.compile(
-    r"^(?:backup|db)_[A-Za-z0-9]+_(?P<stamp>\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}|\d{8}_\d{6})$"
+    r"^(?:backup|db)_\w+?_(?P<stamp>\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}|\d{8}_\d{6})$"
 )
+# How long a restore waits for other connections to finish writing before giving up.
+_LOCK_TIMEOUT_SECONDS = 20
 
 
 def _parse_stamp(path):
@@ -50,8 +55,21 @@ def backup_now(db_path, project_root, tag="manual"):
     backups_dir = Path(project_root) / BACKUP_DIR_NAME
     backups_dir.mkdir(exist_ok=True)
     destination = backups_dir / f"backup_{tag}_{datetime.now().strftime(_TIMESTAMP_FORMAT)}.sqlite3"
-    shutil.copy2(db_path, destination)
+    _sqlite_copy(db_path, destination)
     return destination
+
+
+def _sqlite_copy(source, destination):
+    """Copy one SQLite database into another with SQLite's backup API."""
+    src = sqlite3.connect(str(source), timeout=_LOCK_TIMEOUT_SECONDS)
+    try:
+        dst = sqlite3.connect(str(destination), timeout=_LOCK_TIMEOUT_SECONDS)
+        try:
+            src.backup(dst)
+        finally:
+            dst.close()
+    finally:
+        src.close()
 
 
 def list_backups(project_root, limit=None):
@@ -79,6 +97,10 @@ def quarterly_backup_if_due(db_path, project_root):
 def restore_from(backup_path, db_path, project_root):
     """Restores the database from a backup file, after saving the current database under its
     own safety backup first (tag "before_restore") - so picking the wrong one is itself
-    recoverable the same way."""
+    recoverable the same way.
+
+    The caller must not hold an open transaction on `db_path` (the restore needs its write
+    lock), and must bring the schema up to date afterwards: a backup from before an update
+    comes back with that older schema."""
     backup_now(db_path, project_root, tag="before_restore")
-    shutil.copy2(Path(backup_path), Path(db_path))
+    _sqlite_copy(Path(backup_path), Path(db_path))

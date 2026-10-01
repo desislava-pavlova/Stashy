@@ -193,7 +193,14 @@ like `DD/MM/YYYY`, `DD.MM.YYYY`, `DD-MM-YYYY`, or ISO `YYYY-MM-DD`), and you can
 override it on the import page. Amounts are read exactly (never as floating
 point) in either style — `1 234.56`, `1,234.56`, `1.234,56`, `12,50`, or
 `(12.00)` for a negative. Duplicate rows (same account, date, amount, and
-payee) are automatically skipped on re-import.
+payee) are automatically skipped on re-import. CSV files can be UTF-8 or
+Windows-1251 (Cyrillic); the summary says which was used, and how many rows
+were skipped because their date or amount couldn't be read. A file Stashy
+can't read at all gets a message and imports nothing.
+
+Exports (CSV or Excel) can be opened straight in Excel: Excel files keep
+amounts as numbers and dates as dates, and CSV files show Cyrillic
+correctly.
 
 OFX/QFX files exported directly from your bank are also supported.
 
@@ -232,9 +239,10 @@ Stashy/
 - Run the tests with `python manage.py test` (on Windows:
   `.venv\Scripts\python.exe manage.py test`). They use a throwaway
   in-memory database and never touch a stash.
-- After changing a model, run `python manage.py makemigrations` and commit
-  the new migration with the change. `Stashy.bat` applies it to every stash
-  (after a backup) on its next launch.
+- After changing a model, run `python manage.py makemigrations`.
+  `Stashy.bat` applies the new migration to every stash (after a backup) on
+  its next launch. Migration files aren't in git for now (see plan 02, item
+  3.6).
 - Planned work lives in `plans/`, and the reasoning behind past changes in
   `DEVLOG.md`.
 

@@ -13,7 +13,7 @@ from functools import partial
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.db import models, transaction
+from django.db import models, router, transaction
 from django.utils import timezone
 
 from .context import SYSTEM, current_context, new_operation_id
@@ -169,6 +169,9 @@ def _log_cleared_references_after_commit(instance):
     "changed" entry.
     """
     context = _resolved_context()
+    # on_commit() waits for the commit of one database only - the stash this delete writes to,
+    # not `default` (the picker's empty placeholder), which is what it uses without `using=`.
+    using = router.db_for_write(type(instance), instance=instance)
     old_value = f"{instance.pk} ({describe(instance)})"
     reason = f"Cleared because {instance._meta.verbose_name} '{describe(instance)}' (#{instance.pk}) was deleted"
     for relation in instance._meta.get_fields(include_hidden=True):
@@ -182,7 +185,8 @@ def _log_cleared_references_after_commit(instance):
         )
         if pks:
             transaction.on_commit(
-                partial(_log_cleared_references, relation.related_model, field, pks, old_value, reason, context)
+                partial(_log_cleared_references, relation.related_model, field, pks, old_value, reason, context),
+                using=using,
             )
 
 

@@ -664,11 +664,15 @@ def watched_expenses_series(start, end, category_ids, granularity="month", accou
     ]
 
 
-def spending_tree(start, end):
+def spending_tree(start, end, rates=None):
     """Spending grouped by top-level category, each broken down one level further.
 
-    Shaped for the dashboard's drill-down donut. Money is summed as Decimal and only
-    becomes float at the very end, for JSON.
+    Shaped for the dashboard's drill-down donut. Every category is its own net total (R1: the
+    category decides, never the sign) - spent 40 and refunded 100 is -60, not +60. The donut
+    draws only positive totals but lists the negative ones too, so the totals of every group
+    still add up to the Spending tile. Amounts convert into the main currency through `rates`
+    like every report, and are summed as Decimal; they only become float at the very end, for
+    JSON.
     """
     categories = {category.pk: category for category in Category.objects.all()}
 
@@ -682,27 +686,21 @@ def spending_tree(start, end):
             current = categories.get(current.parent_id)
         return chain
 
-    groups = {}
-    rows = (
-        excluding_transfers(Transaction.objects.filter(
-            date__gte=start, date__lte=end, category__category_type=Category.CategoryType.EXPENSE,
-        ))
-        .values("category_id")
-        .annotate(total=Sum("amount"))
-    )
+    spent = {}
+    rows = excluding_transfers(Transaction.objects.filter(
+        date__gte=start, date__lte=end, category__category_type=Category.CategoryType.EXPENSE,
+    )).values("category_id", "amount", "account__currency")
     for row in rows:
-        amount = abs(row["total"])
-        chain = lineage(row["category_id"]) if row["category_id"] else []
-        top = chain[0] if chain else None
-        group = groups.setdefault(top.pk if top else None, {
-            "id": top.pk if top else None,
-            "name": top.name if top else "Uncategorized",
-            "total": ZERO,
-            "children": {},
-        })
+        # Spending is stored negative, so a refund (positive) reduces what was spent.
+        amount = -_convert(row["amount"], row["account__currency"], rates)
+        spent[row["category_id"]] = spent.get(row["category_id"], ZERO) + amount
+
+    groups = {}
+    for category_id, amount in spent.items():
+        chain = lineage(category_id)
+        top = chain[0]
+        group = groups.setdefault(top.pk, {"id": top.pk, "name": top.name, "total": ZERO, "children": {}})
         group["total"] += amount
-        if top is None:
-            continue
         branch = chain[1] if len(chain) > 1 else None
         key = branch.pk if branch else top.pk
         child = group["children"].setdefault(key, {
@@ -718,9 +716,9 @@ def spending_tree(start, end):
         {
             "id": group["id"],
             "name": group["name"],
-            "total": float(group["total"]),
+            "total": float(to_cent(group["total"])),
             "children": [
-                {**child, "total": float(child["total"])}
+                {**child, "total": float(to_cent(child["total"]))}
                 for child in sorted(group["children"].values(), key=by_total, reverse=True)
             ],
         }

@@ -1,8 +1,43 @@
 from django.conf import settings
+from django.db import DEFAULT_DB_ALIAS, transaction
 from django.shortcuts import redirect
 
 from . import db_router, regional, stashes
 from .models import Profile
+
+
+class StashAtomicRequestMiddleware:
+    """ATOMIC_REQUESTS, for the one stash this request uses.
+
+    Django's own ATOMIC_REQUESTS wraps the view in atomic() for every database that has the
+    flag. Stashes are registered at runtime and any of them could be the active one, so the
+    flag is off for them (stashes.ensure_registered) and this wraps the view for the active
+    stash only - every change the view makes is kept or rolled back together, and the other
+    stashes' files are never locked. Before a stash is chosen there's no active alias, and
+    Django's normal handling of `default` applies.
+
+    It works in process_view (the last view middleware to run, so CSRF has already been
+    checked) and calls the view itself inside the transaction: Django skips its own
+    atomic-wrapping when a view middleware returns the response. A view marked with
+    @transaction.non_atomic_requests (no `using`) runs without a transaction, because the
+    stash's alias isn't known when the decorator runs.
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        return self.get_response(request)
+
+    def process_view(self, request, view_func, view_args, view_kwargs):
+        alias = db_router.current_stash_alias()
+        if alias is None:
+            return None
+        non_atomic = getattr(view_func, "_non_atomic_requests", set())
+        if alias in non_atomic or DEFAULT_DB_ALIAS in non_atomic:
+            return view_func(request, *view_args, **view_kwargs)
+        with transaction.atomic(using=alias):
+            return view_func(request, *view_args, **view_kwargs)
 
 
 class StashSelectionMiddleware:

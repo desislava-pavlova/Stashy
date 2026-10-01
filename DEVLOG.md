@@ -3485,3 +3485,93 @@ has to come out *before* the first commit that includes the file.
 `finance/models.py`, `finance/stashes.py` (docstrings),
 `finance/test_phase15.py`, `finance/test_phase6_3.py`,
 `scripts/load_test_data.py`.
+
+---
+
+## 01/10/2026 — Plan 02, Phase 1: data safety and wrong numbers
+
+**What changed** (details and ticks in `plans/02_architecture_cleanup.md`):
+- **One stash, one transaction (1.1, 1.2).** Every request used to open a
+  `BEGIN IMMEDIATE` write lock on *every* stash's file. Now only the stash
+  you're using gets a transaction (`StashAtomicRequestMiddleware`), and the
+  two places that opened a transaction or an "after commit" step without
+  naming a database now name the stash.
+- **Backups and restore (1.3, 1.4).** Both go through SQLite's own backup
+  API instead of copying the file. Restoring migrates the stash straight
+  away, so a backup from before an update comes back on today's tables.
+  Backups whose tag has an underscore (`before_restore`, `before_update`)
+  now sort by the time in their name.
+- **Reconcile (1.6):** a garbled "Finish" step returns to step 1 with a
+  message instead of a server error.
+- **"Choose a different stash" (1.7)** is a button that sends a form, not a
+  link, so another website can't log you out.
+- **Dashboard (1.8, 1.9):** the tiles and the donut convert other currencies
+  into your main one, like Reports. Each donut category is its own net
+  total: spending 40 and getting 100 back shows as −60. It gets no wedge
+  (a donut can't draw a negative slice) but stays in the list, and the
+  centre total nets it, so it matches the Spending tile.
+- **Import (1.10):** the whole file is read before anything is saved, so a
+  broken CSV, Excel or OFX file gets a message and leaves nothing behind.
+  CSV can be UTF-8 or Windows-1251. Rows with an unreadable date or amount
+  are counted in the summary, and a bad `Num` (negative, huge, `inf`) means
+  "no number" instead of a crash.
+- **Export (1.11):** Excel files hold real numbers and dates, CSV starts with
+  a BOM so Excel shows Cyrillic, and text that looks like a formula can't
+  run as one.
+- **Admin login (1.12):** `/admin/login/` sends you to the PIN screen, so the
+  lockout covers it too.
+- **"Check rates" (1.13)** no longer locks the stash while it waits on the
+  internet.
+- **Recovery code (1.14):** a new code waits in the server's memory, not in
+  the session cookie.
+- **Open redirect (1.15):** `next=/\evil.com` is refused now.
+
+**Teaching note — why the transaction wraps the view, not the middleware
+chain:** the obvious version is a middleware that does
+`with atomic(): return get_response(request)`. But by the time an error
+comes back up through the middleware chain, Django has already turned it
+into a 500 *response*, so the `with` block sees a normal return and commits
+whatever the view did halfway. Django's own `ATOMIC_REQUESTS` wraps just the
+view, where the exception is still an exception. `process_view` is the hook
+that runs right before the view, so the new middleware calls the view there,
+inside the transaction.
+
+**Teaching note — copying a live database:** a SQLite file is pages plus a
+counter that tells every open connection "something changed, re-read".
+Copying the file over itself bypasses that: other connections keep stale
+pages in memory, and a copy taken mid-write can be half old, half new.
+SQLite's backup API copies page by page under SQLite's own locks and bumps
+that counter, so a backup is always consistent and a restore is seen by
+every connection the server still holds. A new test proves the second part.
+
+**Teaching note — signed is not secret:** Stashy's session lives in a cookie
+that's *signed* (it can't be changed without the server noticing) but not
+*encrypted* (anyone holding it can read it). Fine for "which stash", wrong
+for a recovery code. The code now waits in the server's memory under a
+random one-time key, and only that key travels in the cookie.
+
+**Verification:** full suite green: 540 tests in 335 s (510 in 243 s
+before; the new restore test really migrates a stash, twice), 30 new tests (`finance/test_cleanup_phase1.py`, plus two in
+`test_phase10.py`), and an end-to-end run through the real login and
+middleware chain on two throwaway stashes in a temp folder: back up, change,
+restore, confirm the change is gone, and confirm the other stash was never
+locked. Both real stashes were backed up first
+(`backup_before_plan02_phase1_*`). Not checked in a browser: the
+"Choose a different stash" button (styled as a link) and the donut with a
+negative category.
+
+**Files:** `finance/middleware.py`, `finance/stashes.py`, `finance/backup.py`,
+`finance/views.py`, `finance/forms.py`, `finance/reporting.py`,
+`finance/currency.py`, `finance/auth_views.py`,
+`finance/static/finance/js/dashboard.js`,
+`finance/templates/registration/login.html`, `audit/signals.py`,
+`stashy/settings.py`, `stashy/urls.py`; tests `finance/test_cleanup_phase1.py`
+(new), `finance/test_phase10.py`, `finance/test_phase11_follow_up.py`,
+`audit/tests.py`; `README.md`, `CLAUDE.md`, the plan.
+
+**Afterwards, same day:** you checked the new "Choose a different stash"
+button (fine; the donut had no refund-heavy category to show). You also put
+`**/migrations/*.py` back in `.gitignore`: migrations stay out of git for
+now, and the pros and cons are parked in the plan (3.6) to discuss later.
+The Transactions range "All time" will be called "All dates" when 8.13 is
+built.

@@ -64,6 +64,8 @@ MIDDLEWARE = [
     'finance.middleware.RequireSetupMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    # Last, so its process_view runs after every other one (CSRF included).
+    'finance.middleware.StashAtomicRequestMiddleware',
 ]
 
 ROOT_URLCONF = 'stashy.urls'
@@ -122,6 +124,15 @@ DATABASE_ROUTERS = ['finance.db_router.StashRouter']
 # hold the picker's own "which stash did you pick" state. Fine for a local, single-user app;
 # session data here is small (a user id, the stash name, an auth hash).
 SESSION_ENGINE = 'django.contrib.sessions.backends.signed_cookies'
+
+# Django's default, spelled out because Stashy relies on it: a signed cookie can be read by
+# anyone holding it, so a secret shown once (a new recovery code) waits here, in this one
+# server process's memory, and the session only carries a random key to it.
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+    }
+}
 
 
 # Password validation

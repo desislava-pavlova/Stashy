@@ -183,8 +183,10 @@ class ImportLoggingTests(AuditTestCase):
     def test_failed_import_leaves_nothing_behind(self):
         account = Account.objects.create(name="Checking")
         upload = SimpleUploadedFile("broken.ofx", b"this is not an OFX file")
-        with self.assertRaises(Exception):
-            self.client.post(reverse("finance:import_transactions"), {"account": account.pk, "file": upload})
+        response = self.client.post(
+            reverse("finance:import_transactions"), {"account": account.pk, "file": upload}, follow=True
+        )
+        self.assertContains(response, "couldn&#x27;t read this OFX/QFX file")
         self.assertFalse(ImportBatch.objects.exists())
         self.assertFalse(self.entries(ImportBatch).exists())
 

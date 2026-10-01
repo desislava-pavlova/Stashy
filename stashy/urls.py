@@ -25,6 +25,8 @@ admin.site.site_title = "Stashy admin"
 admin.site.index_title = "Data, users & audit log"
 
 urlpatterns = [
+    # Before admin.site.urls, so it replaces the admin's own login page (F41).
+    path('admin/login/', stash_auth_views.admin_login, name='admin_login'),
     path('admin/', admin.site.urls),
     path('accounts/login/', stash_auth_views.StashLoginView.as_view(), name='login'),
     path('accounts/logout/', auth_views.LogoutView.as_view(next_page='login'), name='logout'),

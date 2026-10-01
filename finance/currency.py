@@ -12,6 +12,7 @@ from datetime import date
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from urllib.parse import urlencode
 
+from django.db import router
 from django.db import transaction as db_transaction
 from django.db.models import F, Q
 
@@ -202,7 +203,9 @@ def fetch_latest_rates(main_currency, currencies):
         ) from error
 
     stored = []
-    with db_transaction.atomic(), system_action("Exchange rates fetched from Frankfurter (European Central Bank)"):
+    # Short and only for the writes, on the stash's own database (`atomic()` alone would open
+    # it on `default`, the picker's empty placeholder).
+    with db_transaction.atomic(using=router.db_for_write(ExchangeRate)), system_action("Exchange rates fetched from Frankfurter (European Central Bank)"):
         for code in wanted:
             rate = rates.get(code)
             if rate is None or rate <= 0:

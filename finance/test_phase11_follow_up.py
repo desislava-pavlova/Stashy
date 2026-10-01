@@ -201,7 +201,7 @@ class ReportExportTests(LoggedInTestCase):
     def test_spending_export_has_a_plain_amount_column_when_not_subtotaled(self):
         response = self.client.get(reverse("finance:export_report_spending"), {"format": "csv"})
         import csv, io
-        rows = list(csv.reader(io.StringIO(response.content.decode())))
+        rows = list(csv.reader(io.StringIO(response.content.decode("utf-8-sig"))))
         self.assertEqual(rows[0], ["Category", "Spending"])
 
     def test_spending_export_gets_period_columns_when_subtotaled(self):

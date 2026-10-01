@@ -20,9 +20,10 @@
     // Same symbol-placement convention the |moneyc template filter already uses server-side
     // ("9.66 €" for a suffix currency, "$9.66" everywhere else).
     function formatAmount(value) {
-        const number = stashyNumber(value, 2);
-        if (!mainCurrency) return number;
-        return currencySuffix ? number + ' ' + mainCurrency : mainCurrency + number;
+        const number = stashyNumber(Math.abs(value), 2);
+        const sign = value < 0 ? '-' : '';
+        if (!mainCurrency) return sign + number;
+        return sign + (currencySuffix ? number + ' ' + mainCurrency : mainCurrency + number);
     }
 
     function palette() {
@@ -81,7 +82,14 @@
         if (hits.length) select(hits[0].index);
     });
 
-    function legendItem(item, index, color, total) {
+    // A category whose refunds outweigh its spending has a negative total. A donut can't draw a
+    // negative wedge, so it gets none, but it stays in the legend with its minus amount, and
+    // the centre total nets it (so it matches the Spending tile).
+    function wedgeSize(item) {
+        return Math.max(item.total, 0);
+    }
+
+    function legendItem(item, index, color, wedgeTotal) {
         const button = document.createElement('button');
         button.type = 'button';
         button.className = 'legend-item';
@@ -89,7 +97,7 @@
 
         const dot = document.createElement('span');
         dot.className = 'legend-dot';
-        dot.style.background = color;
+        dot.style.background = item.total > 0 ? color : 'transparent';
         const name = document.createElement('span');
         name.className = 'legend-name';
         name.textContent = item.name;
@@ -99,7 +107,7 @@
         amount.textContent = formatAmount(item.total);
         const share = document.createElement('span');
         share.className = 'legend-share';
-        share.textContent = total ? Math.round((item.total / total) * 100) + '%' : '';
+        share.textContent = wedgeTotal && item.total > 0 ? Math.round((item.total / wedgeTotal) * 100) + '%' : '';
 
         button.append(dot, name, amount, share);
         return button;
@@ -109,9 +117,10 @@
         const items = currentItems();
         const colors = palette();
         const total = items.reduce(function (sum, item) { return sum + item.total; }, 0);
+        const wedgeTotal = items.reduce(function (sum, item) { return sum + wedgeSize(item); }, 0);
 
         chart.data.labels = items.map(function (item) { return item.name; });
-        chart.data.datasets[0].data = items.map(function (item) { return item.total; });
+        chart.data.datasets[0].data = items.map(wedgeSize);
         chart.data.datasets[0].backgroundColor = items.map(function (_, i) { return colors[i % colors.length]; });
         chart.data.datasets[0].borderColor = stashyCssVar('--stashy-surface');
         chart.update();
@@ -124,7 +133,7 @@
             : 'Click a category to dig deeper';
         backButton.hidden = openGroup === null;
         legend.replaceChildren.apply(legend, items.map(function (item, i) {
-            return legendItem(item, i, colors[i % colors.length], total);
+            return legendItem(item, i, colors[i % colors.length], wedgeTotal);
         }));
     }
 

@@ -3,6 +3,7 @@ Settings page's "Back up now" button), and CSV/XLSX export for transactions/acco
 categories/payees."""
 import csv
 import io
+import sqlite3
 import tempfile
 from datetime import date, datetime, timedelta
 from decimal import Decimal
@@ -18,19 +19,37 @@ from . import backup as finance_backup
 from .models import Account, Category, Payee, Transaction
 
 
+def write_db(path, content):
+    """A real (tiny) SQLite database holding one text value - backups go through SQLite's own
+    backup API, so the files have to be real databases."""
+    with sqlite3.connect(path) as connection:
+        connection.execute("CREATE TABLE IF NOT EXISTS note (content TEXT)")
+        connection.execute("DELETE FROM note")
+        connection.execute("INSERT INTO note VALUES (?)", [content])
+    connection.close()
+
+
+def read_db(path):
+    connection = sqlite3.connect(path)
+    try:
+        return connection.execute("SELECT content FROM note").fetchone()[0]
+    finally:
+        connection.close()
+
+
 class BackupHelperTests(SimpleTestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
         self.db = self.root / "db.sqlite3"
-        self.db.write_text("fake sqlite content")
+        write_db(self.db, "current content")
 
     def test_backup_now_copies_the_file_into_backups(self):
         result = finance_backup.backup_now(self.db, self.root, tag="manual")
         self.assertTrue(result.exists())
         self.assertTrue(result.name.startswith("backup_manual_"))
-        self.assertEqual(result.read_text(), "fake sqlite content")
+        self.assertEqual(read_db(result), "current content")
 
     def test_backup_now_returns_none_when_theres_no_database_yet(self):
         missing = self.root / "no-such-file.sqlite3"
@@ -80,15 +99,39 @@ class BackupHelperTests(SimpleTestCase):
     def test_restore_from_copies_the_backup_over_the_database_and_keeps_a_safety_copy(self):
         finance_backup.backup_now(self.db, self.root, tag="manual")
         target = next((self.root / "backups").glob("backup_manual_*.sqlite3"))
-        target.write_text("chosen backup content")
-        self.db.write_text("current (about to be overwritten) content")
+        write_db(target, "chosen backup content")
+        write_db(self.db, "current (about to be overwritten) content")
 
         finance_backup.restore_from(target, self.db, self.root)
 
-        self.assertEqual(self.db.read_text(), "chosen backup content")
+        self.assertEqual(read_db(self.db), "chosen backup content")
         safety_copies = list((self.root / "backups").glob("backup_before_restore_*.sqlite3"))
         self.assertEqual(len(safety_copies), 1)
-        self.assertEqual(safety_copies[0].read_text(), "current (about to be overwritten) content")
+        self.assertEqual(read_db(safety_copies[0]), "current (about to be overwritten) content")
+
+    def test_a_connection_left_open_sees_the_restored_data(self):
+        # The running server keeps connections open across requests. SQLite's backup API
+        # rewrites the file in a way those connections notice, unlike a plain file copy.
+        target = finance_backup.backup_now(self.db, self.root, tag="manual")
+        write_db(self.db, "changed after the backup")
+        open_connection = sqlite3.connect(self.db)
+        self.addCleanup(open_connection.close)
+        self.assertEqual(open_connection.execute("SELECT content FROM note").fetchone()[0], "changed after the backup")
+
+        finance_backup.restore_from(target, self.db, self.root)
+
+        self.assertEqual(open_connection.execute("SELECT content FROM note").fetchone()[0], "current content")
+
+    def test_tags_with_underscores_sort_by_the_time_in_their_name(self):
+        backups_dir = self.root / "backups"
+        backups_dir.mkdir()
+        newest = backups_dir / "backup_before_restore_2026-09-20_10-00-00.sqlite3"
+        older = backups_dir / "db_before_update_20260915_090000.sqlite3"
+        oldest = backups_dir / "backup_manual_2026-09-01_08-00-00.sqlite3"
+        for path in (oldest, newest, older):  # file times say the opposite of the names
+            write_db(path, path.name)
+        self.assertEqual(finance_backup.list_backups(self.root), [newest, older, oldest])
+        self.assertEqual(finance_backup._parse_stamp(older), datetime(2026, 9, 15, 9, 0, 0))
 
 
 class LoggedInTestCase(TestCase):
@@ -127,8 +170,8 @@ class ExportTransactionsTests(LoggedInTestCase):
 
     def test_csv_export_contains_the_row(self):
         response = self.client.get(reverse("finance:export_transactions"), {"format": "csv"})
-        self.assertEqual(response["Content-Type"], "text/csv")
-        rows = list(csv.reader(io.StringIO(response.content.decode())))
+        self.assertEqual(response["Content-Type"], "text/csv; charset=utf-8")
+        rows = list(csv.reader(io.StringIO(response.content.decode("utf-8-sig"))))
         self.assertEqual(rows[0], ["Date", "Number", "Account", "Payee", "Category", "Memo", "Amount", "Currency", "Reconciled"])
         self.assertIn(["2026-01-01", rows[1][1], "Checking", "Landlord", "Rent", "January rent", "-500.00", "EUR", "Y"], rows)
 

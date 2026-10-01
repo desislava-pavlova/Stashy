@@ -9,6 +9,8 @@ from django.contrib import messages
 from django.contrib.auth import logout
 from django.contrib.auth.views import LoginView
 from django.shortcuts import redirect, render
+from django.urls import reverse
+from django.views.decorators.http import require_POST
 
 from . import stashes
 from .auth_forms import ForgotPinForm, StashCreateForm, StashLoginForm
@@ -64,13 +66,24 @@ def stash_create(request):
     return render(request, "registration/stash_create.html", {"form": form})
 
 
+@require_POST
 def switch_stash(request):
     """Logs out and forgets this session's chosen stash, straight back to the picker - no
     restart needed. logout() already flushes the whole session (a fresh session belonging to
     no stash's user), which is exactly what letting go of the current stash means here too.
-    Also used by the PIN screen's "Choose a different stash" link (L3)."""
+    Also used by the PIN screen's "Choose a different stash" button (L3). POST only, like
+    Django's own LogoutView: a GET could be triggered by any link or image on another site."""
     logout(request)
     return redirect("stash_picker")
+
+
+def admin_login(request):
+    """Stands in for the Django admin's own login page, which knows nothing about Stashy's PIN
+    lockout - every stash's user is a superuser, so a 4-digit PIN could be guessed there
+    without limit. Sends you to the stash's PIN screen instead, keeping `?next=`, so every way
+    of logging in goes through StashLoginView."""
+    query = request.GET.urlencode()
+    return redirect(f"{reverse('login')}?{query}" if query else reverse("login"))
 
 
 class StashLoginView(LoginView):
