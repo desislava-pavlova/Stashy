@@ -12,7 +12,7 @@ import zoneinfo
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, replace
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from importlib import resources
 from pathlib import Path
@@ -137,6 +137,20 @@ def format_datetime(value, seconds=False, preferences=None):
         value = timezone.localtime(value)
     time_pattern = "%H:%M:%S" if seconds else "%H:%M"
     return value.strftime(f"{(preferences or current()).date_pattern} {time_pattern}")
+
+
+def format_audit_timestamp(value):
+    """The audit log's own timestamp column (Phase 14 / A3): always ISO-style, with milliseconds
+    and the offset, in the viewer's own time zone - unlike every other date/time in the app,
+    it never follows the date_format preference, since it reads like a database log."""
+    if value is None or value == "":
+        return ""
+    local = timezone.localtime(value) if timezone.is_aware(value) else value
+    offset = local.utcoffset() if timezone.is_aware(local) else None
+    minutes = int((offset or timedelta()).total_seconds() // 60)
+    sign = "+" if minutes >= 0 else "-"
+    hours, minutes = divmod(abs(minutes), 60)
+    return f"{local:%Y-%m-%d %H:%M:%S}.{local.microsecond // 1000:03d} {sign}{hours:02d}:{minutes:02d}"
 
 
 # --- reading this computer's settings -----------------------------------------

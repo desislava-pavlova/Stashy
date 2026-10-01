@@ -16,21 +16,20 @@ def _pin_widget(autofocus=False):
 
 
 class StashCreateForm(forms.Form):
-    name = forms.CharField(
-        max_length=40, label="Name",
-        widget=forms.TextInput(attrs={"class": "form-control", "autofocus": True}),
-        help_text="Letters, numbers, hyphens and underscores only - this is also what you'll pick from the list to log back in.",
+    owner_name = forms.CharField(
+        max_length=60, label="Whose stash?",
+        widget=forms.TextInput(attrs={"class": "form-control", "autofocus": True, "placeholder": "Alex, Acme Ltd, The Smiths…"}),
+        help_text="A person, a business or a family - shown everywhere instead of an internal name.",
     )
     pin = forms.CharField(max_length=4, min_length=4, label="PIN", widget=_pin_widget())
     pin_confirm = forms.CharField(max_length=4, min_length=4, label="Confirm PIN", widget=_pin_widget())
 
-    def clean_name(self):
-        name = self.cleaned_data["name"].strip()
-        if not stashes.NAME_RE.match(name):
-            raise ValidationError("Letters, numbers, hyphens and underscores only, starting with a letter or number.")
-        if stashes.stash_exists(name):
-            raise ValidationError(f'A stash named "{name}" already exists.')
-        return name
+    def clean_owner_name(self):
+        owner_name = self.cleaned_data["owner_name"].strip()
+        try:
+            return stashes.validate_owner_name(owner_name)
+        except stashes.StashError as error:
+            raise ValidationError(str(error))
 
     def clean_pin(self):
         pin = self.cleaned_data.get("pin", "")

@@ -61,6 +61,7 @@ MIDDLEWARE = [
     'finance.middleware.RequireStashMiddleware',
     'audit.middleware.AuditContextMiddleware',
     'finance.middleware.RegionalPreferencesMiddleware',
+    'finance.middleware.RequireSetupMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -78,6 +79,7 @@ TEMPLATES = [
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
                 'finance.context_processors.regional_preferences',
+                'finance.context_processors.stash_owner',
             ],
         },
     },

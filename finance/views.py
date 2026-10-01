@@ -6,7 +6,9 @@ import re
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
+from urllib.parse import urlencode
 
+from dateutil.relativedelta import relativedelta
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import update_session_auth_hash
@@ -18,6 +20,7 @@ from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
+from django.views.decorators.http import require_POST
 from django.views.generic import CreateView, DeleteView, ListView, UpdateView
 
 from audit.context import system_action
@@ -32,12 +35,11 @@ from .forms import (
     convertible_currencies,
 )
 from .models import (
-    Account, Category, ImportBatch, Payee, Profile, Reconciliation, Reminder, Tag, Transaction,
+    Account, Category, ImportBatch, Payee, Profile, Reconciliation, Reminder, Transaction,
     categories_alphabetical, grouped_accounts, grouped_categories,
 )
 from .auth_forms import ChangePinForm
 from .money import CENT, ZERO, parse_amount
-from .starter_categories import add_starter_categories, starter_categories_path
 from .reporting import (
     DEFAULT_LOOKBACK_PERIODS, DEFAULT_RANGE_KEY, category_report_rows, category_totals_top_level,
     category_totals_vs_average, category_vs_average_report_rows, income_and_spending,
@@ -72,7 +74,8 @@ TRANSACTION_TIPS = [
     "Moving money between your own accounts? Use the Transfer button on the account page instead.",
 ]
 IMPORT_TIPS = [
-    "CSV columns recognized: Date, Payee/Description, Memo, Amount, Account, Category.",
+    "CSV or XLSX columns recognized: Date, Num, Account, Payee, Category, Memo, Amount, Reconciled - "
+    "only Date needs a value; the rest can be left blank.",
     'A category that doesn\'t exist yet is created for you automatically - marked "auto" in '
     'the category list - and understands "Parent:Child" or "Parent > Child".',
     "An Account column lets one file cover several accounts at once; a row naming an account "
@@ -270,11 +273,10 @@ def _reconcile_review_context(account, statement_date, statement_balance, checke
         account.transactions.filter(reconciled=False, date__lte=statement_date).order_by("date", "transaction_number")
     )
     if checked_ids is None:
-        # First visit to the checklist - pre-check anything already marked "cleared" (the
-        # register's own C badge), since that's already been confirmed against something once.
-        # A retry after an unaccepted-difference error always passes the exact set actually
-        # submitted instead, even if that's empty.
-        checked_ids = {str(t.pk) for t in candidates if t.cleared}
+        # First visit to the checklist starts with nothing checked - use "Mark all" if the
+        # statement covers everything. A retry after an unaccepted-difference error always
+        # passes the exact set actually submitted instead, even if that's empty.
+        checked_ids = set()
     for t in candidates:
         t.was_checked = str(t.pk) in checked_ids
     deposits = [t for t in candidates if t.amount > 0]
@@ -301,8 +303,8 @@ def account_reconcile(request, pk):
         checked_ids = set(request.POST.getlist("transaction"))
         checked = account.transactions.filter(pk__in=checked_ids, reconciled=False)
         opening_balance = account.reconciled_balance()
-        cleared_total = sum((t.amount for t in checked), ZERO)
-        new_balance = opening_balance + cleared_total
+        checked_total = sum((t.amount for t in checked), ZERO)
+        new_balance = opening_balance + checked_total
         difference = (statement_balance - new_balance).quantize(CENT)
 
         if difference != ZERO and request.POST.get("accept_difference") != "1":
@@ -318,16 +320,15 @@ def account_reconcile(request, pk):
         adjustment = None
         with system_action(f"Account '{account.name}' reconciled to {regional.format_date(statement_date)}"):
             for t in checked:
-                t.cleared = True
                 t.reconciled = True
-                t.save(update_fields=["cleared", "reconciled"])
+                t.save(update_fields=["reconciled"])
             if difference != ZERO:
                 # Not real income/spending - excluded from reports the same way a transfer or
                 # opening balance is (D1/D7), since it's a bookkeeping correction, not a purchase.
                 adjustment = Transaction.objects.create(
                     account=account, date=statement_date, payee=Payee.system(Payee.RECONCILIATION_ADJUSTMENT),
                     category=account.ensure_transfer_category(), memo="Reconciliation adjustment",
-                    amount=difference, cleared=True, reconciled=True,
+                    amount=difference, reconciled=True,
                 )
             Reconciliation.objects.create(
                 account=account, statement_date=statement_date, statement_balance=statement_balance,
@@ -381,23 +382,6 @@ class CategoryCreateView(LoginRequiredMixin, CreateView):
     extra_context = {"title": "Add category", "tips": CATEGORY_TIPS, "category_type_filter": True}
 
 
-@login_required
-def add_starter_categories_view(request):
-    """Creates whatever's in basic_categories.txt that doesn't already exist (Phase 12) - the
-    file itself, not this view, is where the actual list lives, so editing it needs no code
-    change. Safe to click more than once: already-existing names are skipped."""
-    if not starter_categories_path().exists():
-        messages.error(request, "basic_categories.txt wasn't found in the project folder.")
-        return redirect("finance:category_list")
-
-    with system_action("Added starter categories from basic_categories.txt"):
-        created = add_starter_categories()
-
-    if created:
-        messages.success(request, f"Added {len(created)} categor{'y' if len(created) == 1 else 'ies'}: {', '.join(created)}.")
-    else:
-        messages.info(request, "Every category in basic_categories.txt already exists - nothing to add.")
-    return redirect("finance:category_list")
 
 
 class SystemManagedCategoryGuard:
@@ -720,6 +704,8 @@ def transaction_list(request):
     # accounts page's own net worth total (Phase 3/D2) - accurate for a single-currency setup.
     total_amount = transactions.aggregate(total=Sum("amount"))["total"] or ZERO
 
+    category_groups = grouped_categories(Category.objects.select_related("parent"))
+
     selected_categories = filters["selected_categories"]
     include_uncategorized = filters["include_uncategorized"]
     picked_count = len(selected_categories) + (1 if include_uncategorized else 0)
@@ -740,8 +726,15 @@ def transaction_list(request):
         # Income -> Expense -> Transfer, each main category with its own subcategories right
         # under it - grouped_categories() is the category list page's own grouping, reused
         # here (2026-09-15 follow-up) so the checkbox dropdown reads exactly like that page.
-        "category_groups": grouped_categories(Category.objects.select_related("parent")),
+        "category_groups": category_groups,
         "category_filter_label": category_filter_label,
+        # Edit mode's per-row category <select> - same categories, same order, as the checkbox
+        # filter above (just flattened and stripped of transfer/system ones, which - like the
+        # transaction form - aren't picked by hand); built from the groups already fetched
+        # above rather than a second query.
+        "edit_categories": [
+            category for group in category_groups for category in group["categories"] if category.account_id is None
+        ],
         "selected_account": filters["account_id"],
         "selected_category_values": set(filters["category_values"]),
         "include_uncategorized": include_uncategorized,
@@ -807,12 +800,12 @@ def export_transactions(request):
     same filters, so what you get matches what you were looking at."""
     transactions, _filters = _filtered_transactions(request)
     transactions, _sort, _sort_next = _sorted(request, transactions, TRANSACTION_LIST_SORT_FIELDS)
-    headers = ["Date", "Number", "Account", "Payee", "Category", "Memo", "Amount", "Currency", "Cleared", "Reconciled"]
+    headers = ["Date", "Number", "Account", "Payee", "Category", "Memo", "Amount", "Currency", "Reconciled"]
     rows = [
         [
             t.date.isoformat(), t.transaction_number or "", t.account.name, t.display_payee,
             t.category.full_name if t.category_id else "", t.memo, str(t.amount), t.account.currency,
-            "Y" if t.cleared else "N", "Y" if t.reconciled else "N",
+            "Y" if t.reconciled else "N",
         ]
         for t in transactions
     ]
@@ -900,7 +893,12 @@ def transaction_form_view(request, pk=None):
             default_account = request.GET.get("account")
             if default_account:
                 initial["account"] = default_account
-            initial["date"] = date.today()
+            # "Save and add another" hands back the date just used; anything unparseable
+            # falls back to today.
+            try:
+                initial["date"] = date.fromisoformat(request.GET.get("date", ""))
+            except ValueError:
+                initial["date"] = date.today()
             # A preview of what Stashy would assign anyway - change the date and clear the
             # number to have it recomputed for that date's year instead.
             initial["transaction_number"] = Transaction.next_number(initial["date"])
@@ -928,14 +926,27 @@ def transaction_form_view(request, pk=None):
                     # Nothing left to advance to - it's now permanently "Paid" (status()).
                     messages.success(request, f"Entered {reminder}.")
                 else:
+                    # The reminder now stands for the *next* period, which hasn't been paid -
+                    # drop the link to the transaction just entered so it doesn't show "Paid".
+                    reminder.record_period(transaction=txn)
+                    reminder.last_entered_transaction = None
+                    reminder.save(update_fields=["last_entered_transaction"])
                     reminder.advance_due_date()
                     messages.success(
                         request, f"Entered {reminder} and moved it to {reminder.next_due_date:%d/%m/%Y}."
                     )
                 return redirect("finance:reminder_list")
             messages.success(request, "Transaction saved.")
-            # Back to wherever you opened this from (the account register or the all-accounts
-            # list) if we know it; otherwise the transaction's own account, as before.
+            if not instance:
+                if "save_and_add" in request.POST:
+                    # Straight back to a blank form on the same account, ready for the next one.
+                    query = {"account": txn.account_id, "date": txn.date.isoformat()}
+                    if next_url:
+                        query["next"] = next_url
+                    return redirect(f"{reverse('finance:transaction_add')}?{urlencode(query)}")
+                return redirect("finance:transaction_list")
+            # Editing: back to wherever you opened this from (the account register or the
+            # all-accounts list) if we know it; otherwise the transaction's own account.
             return redirect(next_url or reverse("finance:account_detail", kwargs={"pk": txn.account_id}))
     else:
         form = TransactionForm(instance=instance, initial=initial)
@@ -943,6 +954,47 @@ def transaction_form_view(request, pk=None):
     return render(request, "finance/transaction_form.html", {
         "form": form, "instance": instance, "tips": TRANSACTION_TIPS, "next": next_url, "reminder": reminder,
     })
+
+
+def _quick_edit_row(txn):
+    """The formatted values Edit mode swaps back in for a row's view-mode cells once a
+    field's autosave succeeds - same formatting the plain list rendering uses, so toggling
+    Edit mode off shows exactly what a full page reload would."""
+    return {
+        "date": regional.format_date(txn.date),
+        "transaction_number": txn.transaction_number if txn.transaction_number is not None else "—",
+        "account_name": txn.account.name,
+        "payee": txn.display_payee,
+        "category_name": txn.category.full_name if txn.category_id else "—",
+        "memo": txn.memo,
+        "payment": format_money(-txn.amount, txn.account.currency) if txn.amount < 0 else "",
+        "deposit": format_money(txn.amount, txn.account.currency) if txn.amount > 0 else "",
+        "reconciled": txn.reconciled,
+    }
+
+
+@login_required
+@require_POST
+def transaction_quick_edit(request, pk):
+    """Autosaves one field-change from the transactions list's Edit mode (2026-09-22) - reuses
+    TransactionForm so validation and payee resolution stay identical to the full edit page,
+    just without a page navigation."""
+    instance = get_object_or_404(Transaction, pk=pk)
+    form = TransactionForm(request.POST, instance=instance)
+    if not form.is_valid():
+        errors = {field: list(messages) for field, messages in form.errors.items()}
+        return JsonResponse({"ok": False, "errors": errors}, status=400)
+    account = form.cleaned_data["account"]
+    if not account.is_active:
+        # The full edit page offers a confirm-and-reactivate dialog for this; Edit mode's
+        # per-row autosave has no room for a confirmation step, so it points you there instead
+        # of silently reactivating an account nobody asked to reactivate.
+        return JsonResponse(
+            {"ok": False, "errors": {"account": ["This account is inactive - use the full edit page to reactivate it."]}},
+            status=400,
+        )
+    txn = form.save()
+    return JsonResponse({"ok": True, "row": _quick_edit_row(txn)})
 
 
 class TransactionDeleteView(LoginRequiredMixin, DeleteView):
@@ -968,6 +1020,8 @@ class TransactionDeleteView(LoginRequiredMixin, DeleteView):
 def _reminder_window_cutoff(window, today):
     """Same "yearly = through 31 December" meaning as Reminder.default_generation_horizon.
     None means no cutoff at all (the explicit "All" choice)."""
+    if window == "month":
+        return date(today.year, today.month, 1) + relativedelta(months=1, days=-1)
     if window in ("15", "30", "90"):
         return today + timedelta(days=int(window))
     if window == "yearly":
@@ -978,18 +1032,23 @@ def _reminder_window_cutoff(window, today):
 @login_required
 def reminder_list(request):
     today = timezone.localdate()
-    # A fresh visit (no "window" param at all) defaults to 15 days out; once anything's been
+    # A fresh visit (no "window" param at all) defaults to this calendar month; once anything's been
     # picked - including "All" (window=all) - that stays sticky rather than snapping back,
     # same "can Django tell unset apart from explicitly chosen" pattern the transaction list
     # already uses for its own default range (2026-09-14 follow-up).
     window = request.GET.get("window")
     if window is None:
-        window = "15"
-    show_done = request.GET.get("show_done") == "1"
+        window = "month"
+    # Paid/skipped rows show by default on "This month" (the whole month's picture) and stay
+    # hidden by default elsewhere; the form always sends an explicit 0/1 once it's used.
+    show_done_param = request.GET.get("show_done")
+    show_done = (window == "month") if show_done_param is None else show_done_param == "1"
     reminders = Reminder.objects.select_related("account", "category", "payee")
     cutoff = _reminder_window_cutoff(window, today)
     if cutoff is not None:
         reminders = reminders.filter(next_due_date__lte=cutoff)
+    if window == "month":
+        reminders = reminders.filter(next_due_date__gte=today.replace(day=1))
     reminders = list(reminders)
     if not show_done:
         reminders = [r for r in reminders if r.status(today) not in ("paid", "skipped")]
@@ -1091,6 +1150,7 @@ def reminder_skip(request, pk):
     else:
         # A skip is explicitly "not paying this one" - clear any stale link from a previous
         # Enter so the next occurrence doesn't show as "paid" before it's actually due.
+        reminder.record_period(skipped=True)
         reminder.last_entered_transaction = None
         reminder.save(update_fields=["last_entered_transaction"])
         reminder.advance_due_date()
@@ -1111,8 +1171,8 @@ def import_transactions(request):
             upload = form.cleaned_data["file"]
             filename = upload.name.lower()
 
-            if not filename.endswith((".csv", ".ofx", ".qfx")):
-                messages.error(request, "Unsupported file type. Please upload a .csv, .ofx, or .qfx file.")
+            if not filename.endswith((".csv", ".xlsx", ".ofx", ".qfx")):
+                messages.error(request, "Unsupported file type. Please upload a .csv, .xlsx, .ofx, or .qfx file.")
                 return redirect("finance:import_transactions")
 
             with system_action(f"Imported from {upload.name}"):
@@ -1120,6 +1180,9 @@ def import_transactions(request):
                 if filename.endswith(".csv"):
                     date_format = form.cleaned_data.get("date_format") or "auto"
                     created, duplicates, unknown_account, resolved_format = _import_csv(upload, account, batch, date_format)
+                elif filename.endswith(".xlsx"):
+                    date_format = form.cleaned_data.get("date_format") or "auto"
+                    created, duplicates, unknown_account, resolved_format = _import_xlsx(upload, account, batch, date_format)
                 else:
                     created, duplicates, unknown_account, resolved_format = _import_ofx(upload, account, batch)
                 batch.row_count = created
@@ -1232,9 +1295,50 @@ def _import_csv(upload, account, batch, date_format="auto"):
     text = io.TextIOWrapper(upload.file, encoding="utf-8-sig")
     reader = csv.DictReader(text)
     rows = list(reader)
+    return _import_rows(reader.fieldnames or [], rows, account, batch, date_format)
 
+
+def _import_xlsx(upload, account, batch, date_format="auto"):
+    from openpyxl import load_workbook
+
+    workbook = load_workbook(upload, data_only=True, read_only=True)
+    sheet = workbook.active
+    rows_iter = sheet.iter_rows(values_only=True)
+    header = next(rows_iter, [])
+    fieldnames = [str(cell).strip() if cell is not None else "" for cell in header]
+
+    rows = []
+    for values in rows_iter:
+        row = {}
+        for name, value in zip(fieldnames, values):
+            if not name:
+                continue
+            if isinstance(value, datetime):
+                value = value.date()
+            if isinstance(value, date):
+                row[name] = value.isoformat()
+            elif value is None:
+                row[name] = ""
+            else:
+                row[name] = str(value)
+        rows.append(row)
+    workbook.close()
+
+    return _import_rows(fieldnames, rows, account, batch, date_format)
+
+
+_RECONCILED_FALSE_VALUES = {"", "n", "no", "false", "0", "unreconciled", "uncleared", "u"}
+
+
+def _import_rows(fieldnames, rows, account, batch, date_format="auto"):
+    """Shared row processing for CSV and XLSX imports. Recognizes Date, Num, Account, Payee,
+    Category, Memo, Amount and Reconciled columns (the layout Quicken/Money "transaction
+    report" exports use) - only Date needs to be present in a row; Num, Payee, Category, Memo
+    and Reconciled can all be blank. Amount still has to parse, since a transaction can't be
+    saved without one, and an Account column naming an account that doesn't exist is skipped
+    rather than guessed at (D9 backlog "Accounts must already exist")."""
     # Normalize header names so common bank export variants all work.
-    fieldmap = {name.strip().lower(): name for name in (reader.fieldnames or [])}
+    fieldmap = {name.strip().lower(): name for name in fieldnames if name}
 
     def get(row, *keys):
         for k in keys:
@@ -1247,28 +1351,28 @@ def _import_csv(upload, account, batch, date_format="auto"):
         date_format = detected or regional.current().date_format
     date_formats = regional.Preferences(date_format=date_format).date_input_formats
 
-    # A file with its own Account column (a Quicken-style combined export, e.g.) can put each
-    # row in a different, already-existing account instead of the one picked above (D9 backlog
-    # "Accounts must already exist" - a wrong/typo'd name is the worst kind of import mistake to
-    # auto-correct silently, so an unmatched name skips just that row rather than guessing).
     accounts_by_name = {a.name.lower(): a for a in Account.objects.all()}
 
     created, duplicates, unknown_account = 0, 0, 0
     for row in rows:
         raw_date = get(row, "date", "transaction date")
         raw_amount = get(row, "amount")
+        raw_num = get(row, "num", "number", "check number")
         payee_name = get(row, "payee", "description", "name")
         memo = get(row, "memo", "notes")
         raw_account = get(row, "account")
         raw_category = get(row, "category")
+        raw_reconciled = get(row, "reconciled", "cleared", "status")
 
-        if not raw_date or not raw_amount:
+        if not raw_date:
             continue
 
         txn_date = _parse_date(raw_date, date_formats)
         if not txn_date:
             continue
 
+        if not raw_amount:
+            continue
         amount = parse_amount(raw_amount)
         if amount is None:
             continue
@@ -1288,12 +1392,21 @@ def _import_csv(upload, account, batch, date_format="auto"):
         payee = _get_or_create_payee(payee_name) if payee_name else None
         category = _resolve_category(raw_category, amount) if raw_category else _guessed_category(payee)
 
+        txn_number = None
+        if raw_num:
+            try:
+                txn_number = int(float(raw_num))
+            except ValueError:
+                txn_number = None
+
         Transaction.objects.create(
             account=row_account,
             date=txn_date,
+            transaction_number=txn_number,
             payee=payee,
             memo=memo,
             amount=amount,
+            reconciled=raw_reconciled.strip().lower() not in _RECONCILED_FALSE_VALUES,
             import_batch=batch,
             import_fingerprint=fp,
             category=category,
@@ -1499,6 +1612,7 @@ def reports_view(request):
             },
             {
                 "id": "summary_expense", "parent_id": None, "name": "Expense total", "is_child": False, "has_children": False,
+                "lower_is_good": True,
                 "current": vs_average_totals["current_spending"], "average": vs_average_totals["average_spending"],
                 "difference": None if vs_average_totals["average_spending"] is None else vs_average_totals["current_spending"] - vs_average_totals["average_spending"],
             },
@@ -1746,19 +1860,6 @@ def settings_view(request):
     profile = Profile.for_user(request.user)
     currencies = convertible_currencies(Account.objects.all()) or [profile.main_currency]
 
-    is_pin_change = request.method == "POST" and "change_pin" in request.POST
-    if is_pin_change:
-        pin_form = ChangePinForm(request.POST, user=request.user)
-        if pin_form.is_valid():
-            request.user.set_password(pin_form.cleaned_data["new_pin"])
-            request.user.save(update_fields=["password"])
-            update_session_auth_hash(request, request.user)
-            messages.success(request, "PIN changed.")
-            return redirect("finance:settings")
-        messages.error(request, "PIN wasn't changed - see the errors below.")
-    else:
-        pin_form = ChangePinForm(user=request.user)
-
     if request.method == "POST" and "check_rates" in request.POST:
         try:
             stored, unavailable = fetch_latest_rates(profile.main_currency, currencies)
@@ -1791,7 +1892,7 @@ def settings_view(request):
     else:
         watched_form = WatchedExpensesForm(instance=profile)
 
-    if request.method == "POST" and not is_pin_change and not is_watched_expenses_save:
+    if request.method == "POST" and not is_watched_expenses_save:
         form = ProfileForm(request.POST, instance=profile)
         if form.is_valid():
             form.save()
@@ -1822,14 +1923,44 @@ def settings_view(request):
         ),
         "watched_selected_values": watched_selected_values,
         "watched_button_label": watched_button_label,
-        "pin_form": pin_form,
-        "stash_name": request.session.get("stash", ""),
         "check_rates_form": CheckRatesForm(),
         "profile": profile,
         "known_rates": known_rates,
         "recent_backups": [
             {"name": p.name, "size_kb": p.stat().st_size // 1024} for p in recent_backups
         ],
+    })
+
+
+@login_required
+def change_pin_view(request):
+    """Its own page (L7), reached from Settings - current PIN, new PIN, confirm, same
+    `ChangePinForm` Settings itself used to hold."""
+    if request.method == "POST":
+        form = ChangePinForm(request.POST, user=request.user)
+        if form.is_valid():
+            request.user.set_password(form.cleaned_data["new_pin"])
+            request.user.save(update_fields=["password"])
+            update_session_auth_hash(request, request.user)
+            messages.success(request, "PIN changed.")
+            return redirect("finance:settings")
+    else:
+        form = ChangePinForm(user=request.user)
+    return render(request, "finance/change_pin.html", {"form": form})
+
+
+@login_required
+def recovery_code_view(request):
+    """Its own page (L8): a warning with Generate/Back first; Generate mints a new code,
+    stashes it in the session for exactly one reveal, and redirects back to this same URL -
+    a real page reload, so refreshing afterward can't regenerate a second code by resubmitting
+    a form, and doesn't leave the code sitting around anywhere it could be re-shown by accident."""
+    if request.method == "POST":
+        profile = Profile.for_user(request.user)
+        request.session["new_recovery_code"] = stashes.regenerate_recovery_code(profile)
+        return redirect("finance:recovery_code")
+    return render(request, "finance/recovery_code.html", {
+        "new_code": request.session.pop("new_recovery_code", None),
     })
 
 

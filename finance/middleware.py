@@ -40,7 +40,15 @@ class RequireStashMiddleware:
     """Multi-stash login (Phase 12): nothing in the app is reachable until a stash has been
     chosen for this session. Everything redirects to the picker until then, except the
     picker's own pages, static files, and the admin (useful for a from-scratch troubleshooting
-    session)."""
+    session).
+
+    Phase 15 (L3): before falling back to the picker, check the "last stash used" cookie -
+    logging out flushes the session (and with it session['stash']) but that cookie survives,
+    so Stashy opens straight on that stash's own PIN screen instead of the picker. Redirects
+    back to the same URL rather than just setting the session and carrying on, so the *next*
+    request is the one StashSelectionMiddleware (which runs before this one) sees with the
+    session already populated - otherwise this request's own queries would still be routed by
+    the stale, pre-fallback thread-local it already set."""
     EXEMPT_PREFIXES = ("/stashes/", "/static/", "/admin/")
 
     def __init__(self, get_response):
@@ -50,12 +58,39 @@ class RequireStashMiddleware:
         if settings.TESTING:
             return self.get_response(request)
         if not request.session.get("stash") and not request.path.startswith(self.EXEMPT_PREFIXES):
+            remembered = request.COOKIES.get(stashes.LAST_STASH_COOKIE)
+            if remembered and stashes.stash_exists(remembered):
+                request.session["stash"] = remembered
+                return redirect(request.get_full_path())
             return redirect("stash_picker")
         return self.get_response(request)
 
 
+class RequireSetupMiddleware:
+    """Phase 15 (L4): once logged in, an unfinished welcome wizard blocks everything else -
+    redirects to wherever it left off (Profile.welcome_step), so closing Stashy mid-setup
+    resumes there next time instead of dropping into a half-configured dashboard. Placed after
+    RegionalPreferencesMiddleware in settings.py so it can reuse the Profile already fetched
+    there (`request.stashy_profile`) instead of a second query."""
+    EXEMPT_PREFIXES = ("/welcome/", "/static/", "/admin/", "/accounts/logout/")
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        if settings.TESTING:
+            return self.get_response(request)
+        profile = getattr(request, "stashy_profile", None)
+        if profile is not None and not profile.setup_finished and not request.path.startswith(self.EXEMPT_PREFIXES):
+            return redirect("finance:welcome_step", step=profile.welcome_step + 1)
+        return self.get_response(request)
+
+
 class RegionalPreferencesMiddleware:
-    """Show every page in the logged-in person's own date, number and time zone preferences (D10)."""
+    """Show every page in the logged-in person's own date, number and time zone preferences
+    (D10). Stashes the fetched Profile on the request (`request.stashy_profile`) so nothing
+    else needs to query for it again this request - the owner-name context processor
+    (finance.context_processors.stash_owner) reuses it rather than fetching a second time."""
 
     def __init__(self, get_response):
         self.get_response = get_response
@@ -64,5 +99,6 @@ class RegionalPreferencesMiddleware:
         user = getattr(request, "user", None)
         if user is None or not user.is_authenticated:
             return self.get_response(request)
-        with regional.activate(Profile.for_user(user).preferences):
+        request.stashy_profile = Profile.for_user(user)
+        with regional.activate(request.stashy_profile.preferences):
             return self.get_response(request)

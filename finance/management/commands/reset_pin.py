@@ -14,7 +14,7 @@ class Command(BaseCommand):
     help = "Reset a stash's PIN directly - the last resort when both the PIN and its recovery code are lost."
 
     def add_arguments(self, parser):
-        parser.add_argument("name", help="The stash's name (its folder under stashes/).")
+        parser.add_argument("name", help="The stash's owner name, or its folder under stashes/ if you know it.")
         parser.add_argument("--pin", help="The new 4-digit PIN. Omit to be prompted (input is hidden).")
 
     def handle(self, *args, **options):
@@ -24,4 +24,4 @@ class Command(BaseCommand):
             stashes.reset_pin_directly(name, pin)
         except stashes.StashError as error:
             raise CommandError(str(error))
-        self.stdout.write(self.style.SUCCESS(f'PIN reset for stash "{name}".'))
+        self.stdout.write(self.style.SUCCESS(f'PIN reset for "{name}".'))

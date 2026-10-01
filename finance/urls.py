@@ -1,11 +1,14 @@
 from django.urls import path
 
-from . import views
+from . import views, welcome_views
 
 app_name = "finance"
 
 urlpatterns = [
     path("", views.dashboard, name="dashboard"),
+
+    # Welcome wizard (Phase 15 / L4) - runs once, right after a new stash's first login
+    path("welcome/<int:step>/", welcome_views.welcome_step, name="welcome_step"),
 
     # Accounts
     path("accounts/", views.AccountListView.as_view(), name="account_list"),
@@ -19,7 +22,6 @@ urlpatterns = [
     # Categories
     path("categories/", views.CategoryListView.as_view(), name="category_list"),
     path("categories/add/", views.CategoryCreateView.as_view(), name="category_add"),
-    path("categories/add-starter/", views.add_starter_categories_view, name="add_starter_categories"),
     path("categories/<int:pk>/edit/", views.CategoryUpdateView.as_view(), name="category_edit"),
     path("categories/<int:pk>/delete/", views.CategoryDeleteView.as_view(), name="category_delete"),
     path("categories/<int:pk>/usage/", views.category_usage, name="category_usage"),
@@ -35,6 +37,7 @@ urlpatterns = [
     path("transactions/", views.transaction_list, name="transaction_list"),
     path("transactions/add/", views.transaction_form_view, name="transaction_add"),
     path("transactions/<int:pk>/edit/", views.transaction_form_view, name="transaction_edit"),
+    path("transactions/<int:pk>/quick-edit/", views.transaction_quick_edit, name="transaction_quick_edit"),
     path("transactions/<int:pk>/delete/", views.TransactionDeleteView.as_view(), name="transaction_delete"),
 
     # Reminders
@@ -67,6 +70,8 @@ urlpatterns = [
     # Settings (currency + regional preferences)
     path("settings/", views.settings_view, name="settings"),
     path("settings/backups/restore/", views.backup_restore, name="backup_restore"),
+    path("settings/change-pin/", views.change_pin_view, name="change_pin"),
+    path("settings/recovery-code/", views.recovery_code_view, name="recovery_code"),
 
     # JSON APIs (used by the transaction form's autofill JS)
     path("api/payee-autofill/", views.api_payee_autofill, name="api_payee_autofill"),

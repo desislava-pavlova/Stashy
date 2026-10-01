@@ -34,6 +34,7 @@ urlpatterns = [
     # surface, deliberately outside finance/urls.py since they run before any stash's own
     # data (or even its database) is reachable.
     path('stashes/', stash_auth_views.stash_picker, name='stash_picker'),
+    path('stashes/create/', stash_auth_views.stash_create, name='stash_create'),
     path('stashes/switch/', stash_auth_views.switch_stash, name='switch_stash'),
     path('', include('finance.urls')),
 ]

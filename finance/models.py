@@ -21,6 +21,16 @@ class Profile(models.Model):
     """One login's preferences: main currency (D2) and regional formats (D10)."""
 
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="stashy_profile")
+
+    # Phase 15 (L1): who this stash belongs to - a person, a business or a family - shown
+    # everywhere instead of the stash's internal folder name. Set once at creation; there's no
+    # Settings field to change it (the user's own call, 16/09/2026).
+    owner_name = models.CharField(max_length=60, default="", blank=True)
+    # Phase 15 (L4): 0-3 while the welcome wizard is in progress (which step is next), 4 once
+    # finished. An existing stash counts as already finished - see the migration.
+    WELCOME_STEPS_DONE = 4
+    welcome_step = models.PositiveSmallIntegerField(default=WELCOME_STEPS_DONE)
+
     main_currency = models.CharField(
         max_length=3, choices=CURRENCY_CHOICES, default=DEFAULT_CURRENCY,
         help_text="Net worth is shown in this currency; new accounts start with it.",
@@ -48,6 +58,17 @@ class Profile(models.Model):
 
     def __str__(self):
         return f"Preferences for {self.user}"
+
+    @property
+    def owner_possessive(self):
+        """"Alex" -> "Alex's"; "The Smiths" -> "The Smiths'" (L1)."""
+        from . import stashes
+
+        return stashes.possessive(self.owner_name)
+
+    @property
+    def setup_finished(self):
+        return self.welcome_step >= self.WELCOME_STEPS_DONE
 
     @classmethod
     def for_user(cls, user):
@@ -231,6 +252,13 @@ class Category(models.Model):
         return f"{self.parent.name} > {self.name}" if self.parent_id else self.name
 
     @property
+    def indented_name(self):
+        """For dropdowns: a subcategory is indented under its main category (which is listed
+        first, un-indented) instead of repeating the parent's name - the same look as the tick-list
+        on the Transactions filter. Non-breaking spaces, since <option> text collapses normal ones."""
+        return f"    {self.name}" if self.parent_id else self.name
+
+    @property
     def is_system_managed(self):
         return self.account_id is not None
 
@@ -338,16 +366,6 @@ class Payee(models.Model):
         return history
 
 
-class Tag(models.Model):
-    name = models.CharField(max_length=60, unique=True)
-
-    class Meta:
-        ordering = ["name"]
-
-    def __str__(self):
-        return self.name
-
-
 class Transaction(models.Model):
     """Sign convention: positive amount = money in (income/deposit),
     negative amount = money out (expense/withdrawal)."""
@@ -365,9 +383,7 @@ class Transaction(models.Model):
     )
     memo = models.CharField(max_length=255, blank=True)
     amount = models.DecimalField(max_digits=12, decimal_places=2)
-    cleared = models.BooleanField(default=False)
     reconciled = models.BooleanField(default=False)
-    tags = models.ManyToManyField(Tag, blank=True, related_name="transactions")
     import_batch = models.ForeignKey(
         "ImportBatch", null=True, blank=True, on_delete=models.SET_NULL, related_name="transactions"
     )
@@ -502,18 +518,17 @@ class Reminder(models.Model):
 
         A one-time reminder (a real one-off, or an auto-generated future occurrence of a
         recurring one, 2026-09-14) has no next period to fall back into once it's been acted
-        on, so Paid/Skipped there is permanent - unlike a recurring reminder, where "paid"
-        fades back into "due soon"/"overdue" once its *next* real occurrence actually
-        approaches (checked first, below), since there's always something to advance to.
+        on, so Paid/Skipped there is permanent - unlike a recurring reminder, which just moves
+        on to its next period and so only ever shows overdue/due soon/pending.
         """
         if self.skipped:
             return "skipped"
         if self.frequency == self.Frequency.ONE_TIME:
             return "paid" if self.last_entered_transaction_id else self._date_status(today)
-        date_status = self._date_status(today)
-        if date_status:
-            return date_status
-        return "paid" if self.last_entered_transaction_id else ""
+        # A recurring reminder always stands for its next, not-yet-entered period (entering or
+        # skipping advances it), so it is never "paid" itself - even if an older row still
+        # carries a stale link from before that was cleared on advance.
+        return self._date_status(today)
 
     def _date_status(self, today=None):
         today = today or timezone.localdate()
@@ -592,6 +607,18 @@ class Reminder(models.Model):
         count = self.interval * (self._QUARTERLY_MONTH_MULTIPLIER if self.frequency == self.Frequency.QUARTERLY else 1)
         advanced = from_date + relativedelta(**{unit: count})
         return self._period_end(advanced) if self.end_of_period else advanced
+
+    def record_period(self, transaction=None, skipped=False):
+        """Leave a standing Paid/Skipped record of the period this recurring reminder is about
+        to move past. Entering or skipping advances the reminder itself to the next period, so
+        without this the period you just dealt with would vanish from the list."""
+        with system_action(f"Resolved period recorded for recurring reminder ({self})"):
+            return Reminder.objects.create(
+                series=self, frequency=self.Frequency.ONE_TIME, next_due_date=self.next_due_date,
+                account=self.account, payee=self.payee, category=self.category, amount=self.amount,
+                reminder_type=self.reminder_type, notes=self.notes,
+                last_entered_transaction=transaction, skipped=skipped,
+            )
 
     def advance_due_date(self):
         self.next_due_date = self._advance(self.next_due_date)

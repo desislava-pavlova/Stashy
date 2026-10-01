@@ -253,11 +253,10 @@ class TransactionForm(BootstrapFormMixin, forms.ModelForm):
         model = Transaction
         fields = [
             "account", "date", "transaction_number", "payee_name", "category", "memo", "amount",
-            "cleared", "reconciled", "tags",
+            "reconciled",
         ]
         widgets = {
             "date": DateInput(),
-            "tags": forms.SelectMultiple,
         }
         labels = {"transaction_number": "Number"}
 
@@ -271,6 +270,7 @@ class TransactionForm(BootstrapFormMixin, forms.ModelForm):
         self.fields["category"].queryset = categories_alphabetical(self.fields["category"].queryset.filter(
             Q(account__isnull=True) | Q(pk=self.instance.category_id)
         ))
+        self.fields["category"].label_from_instance = lambda category: category.indented_name
 
     def clean_payee_name(self):
         return (self.cleaned_data.get("payee_name") or "").strip()
@@ -338,6 +338,7 @@ class ReminderForm(BootstrapFormMixin, forms.ModelForm):
             attrs=category_field.widget.attrs, categories_by_id={c.pk: c for c in categories}
         )
         category_field.queryset = categories
+        category_field.label_from_instance = lambda category: category.indented_name
         self.fields["no_end_date"].initial = not self.instance.end_date if self.instance.pk else True
 
     def clean(self):
@@ -363,7 +364,9 @@ class ImportUploadForm(forms.Form):
         queryset=Account.objects.filter(is_active=True),
         help_text="Used for every row, unless the file has its own Account column (Phase 9) - that takes over per row.",
     )
-    file = forms.FileField(help_text="CSV (Date, Payee, Memo, Amount, optionally Account/Category) or OFX/QFX")
+    file = forms.FileField(
+        help_text="CSV or XLSX (Date, Payee, Memo, Amount, optionally Num/Account/Category/Reconciled) or OFX/QFX"
+    )
     date_format = forms.ChoiceField(
         choices=DATE_FORMAT_CHOICES, required=False, initial="auto",
         help_text="Stashy checks the file's own dates first - override only if it guesses wrong.",

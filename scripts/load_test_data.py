@@ -29,7 +29,7 @@ from django.db import transaction as db_transaction  # noqa: E402
 
 from audit.context import system_action  # noqa: E402
 from finance import db_router, stashes  # noqa: E402
-from finance.models import Account, Category, ImportBatch, Payee, Reminder, Tag, Transaction  # noqa: E402
+from finance.models import Account, Category, ImportBatch, Payee, Reminder, Transaction  # noqa: E402
 from finance.money import parse_amount  # noqa: E402
 
 SOURCE = ROOT / "test_data.TXT"
@@ -37,13 +37,13 @@ DATE_RE = re.compile(r"^\d{1,2}\.\d{1,2}\.\d{4}$")
 INCOME_TOP_LEVEL = {"Work Income", "Other Income"}
 # The report header says "(in Euro)" — every account in this file is EUR (D2's per-account currency).
 CURRENCY = "EUR"
-WIPED_MODELS = (Transaction, Reminder, ImportBatch, Payee, Category, Account, Tag)
+WIPED_MODELS = (Transaction, Reminder, ImportBatch, Payee, Category, Account)
 
 # Best-effort account type for each account name found in the report, using Phase 3's
 # liquidity taxonomy (Physical Liquid / Digital Liquid / Illiquid).
 ACCOUNT_TYPES = {
     "Debit Card": Account.AccountType.DEBIT_CARD,
-    "Revolut": Account.AccountType.DEBIT_CARD,
+    "Online Bank": Account.AccountType.DEBIT_CARD,
     "Cash": Account.AccountType.CASH,
     "Ozone Wallet": Account.AccountType.E_WALLET,
     "Gift Cards": Account.AccountType.GIFT_CARD,
@@ -166,7 +166,7 @@ def load(stash_name):
             account = get_account(row["account"])
             is_reconciled = row["clr"] == "R"
 
-            # A bracketed category, e.g. "[Revolut]", marks a transfer leg (D7) — both legs
+            # A bracketed category, e.g. "[Online Bank]", marks a transfer leg (D7) — both legs
             # already exist as separate rows in this report, each using its own account's
             # transfer category, so no pairing/synthesizing is needed here.
             if row["category"].startswith("[") and row["category"].endswith("]"):
@@ -186,7 +186,6 @@ def load(stash_name):
                 category=category,
                 memo=row["memo"],
                 amount=amount,
-                cleared=is_reconciled,
                 reconciled=is_reconciled,
             )
             created += 1
