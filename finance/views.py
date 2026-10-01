@@ -40,7 +40,7 @@ from .forms import (
 )
 from .models import (
     Account, Category, ImportBatch, Payee, Profile, Reconciliation, Reminder, Transaction,
-    categories_alphabetical, grouped_accounts, grouped_categories,
+    categories_alphabetical, grouped_accounts, grouped_categories, name_key,
 )
 from .auth_forms import ChangePinForm
 from .money import CENT, ZERO, parse_amount
@@ -603,7 +603,7 @@ def api_payee_autofill(request):
     name = request.GET.get("name", "").strip()
     if not name:
         return JsonResponse({"combos": []})
-    payee = Payee.objects.filter(name__iexact=name).first()
+    payee = Payee.objects.named(name).first()
     if not payee:
         return JsonResponse({"combos": []})
     combos = [
@@ -701,7 +701,7 @@ def _filtered_transactions(request):
         transactions = transactions.filter(reconciled=False)
     if search:
         transactions = transactions.filter(
-            Q(payee__name__icontains=search) | Q(payee_name__icontains=search) | Q(memo__icontains=search)
+            Q(payee__name__icontains=search) | Q(memo__icontains=search)
         )
 
     return transactions, {
@@ -1303,15 +1303,6 @@ def _fingerprint(account_id, txn_date, amount, payee):
     return hashlib.sha256(raw).hexdigest()
 
 
-def _get_or_create_payee(name):
-    """Case-insensitive match first, so an import never creates "Lidl" and "lidl" as separate
-    payees (matching the fix already applied to manual entry)."""
-    payee = Payee.objects.filter(name__iexact=name).first()
-    if payee is None:
-        payee, _ = Payee.objects.get_or_create(name=name)
-    return payee
-
-
 def _guessed_category(payee):
     """The category to pre-fill for an imported row with no Category column value: this
     payee's most recently used category, if any."""
@@ -1344,14 +1335,16 @@ def _resolve_category(raw, amount):
         return None
 
     category_type = Category.CategoryType.INCOME if amount > 0 else Category.CategoryType.EXPENSE
-    parent = Category.objects.filter(name__iexact=parent_name, parent__isnull=True, account__isnull=True).first()
+    parent = Category.objects.filter(
+        name_key=name_key(parent_name), parent__isnull=True, account__isnull=True
+    ).first()
     if parent is None:
         parent = Category.objects.create(name=parent_name, category_type=category_type, is_auto_generated=True)
 
     if not child_name:
         return parent
 
-    child = Category.objects.filter(name__iexact=child_name, parent=parent).first()
+    child = Category.objects.filter(name_key=name_key(child_name), parent=parent).first()
     if child is None:
         # A new subcategory always takes its parent's type - a mismatched pair (an "income"
         # category with an "expense" child) would only confuse reports for no real benefit.
@@ -1505,7 +1498,7 @@ def _import_rows(fieldnames, rows, account, batch, date_format="auto"):
             result.duplicates += 1
             continue
 
-        payee = _get_or_create_payee(payee_name) if payee_name else None
+        payee = Payee.objects.resolve(payee_name, reason=None) if payee_name else None
         category = _resolve_category(raw_category, amount) if raw_category else _guessed_category(payee)
 
         Transaction.objects.create(
@@ -1579,7 +1572,7 @@ def _import_ofx_rows(ofx_rows, account, batch):
         if Transaction.objects.filter(import_fingerprint=fp).exists():
             result.duplicates += 1
             continue
-        payee = _get_or_create_payee(payee_name) if payee_name else None
+        payee = Payee.objects.resolve(payee_name, reason=None) if payee_name else None
         Transaction.objects.create(
             account=account,
             date=txn_date,

@@ -124,15 +124,17 @@ every stash automatically).
   top-level categories, or Extended: those plus all their subcategories,
   read from `starter_categories.xlsx` — edit that file to change the
   list); after that, add, edit or delete them by hand from the Categories
-  page. Every category dropdown lists Income first, then Expense, then
+  page. Two main categories, or two subcategories of the same one, can't
+  share a name, even in a different case. Every category dropdown lists Income first, then Expense, then
   Transfer, each main category followed by its own subcategories.
 - **Transactions** — add them by hand (**Save and add another** keeps the
   account and date for the next one), or use **Import** for CSV, Excel
   (.xlsx), OFX or QFX files. When you type a payee, Stashy fills in the
   category, memo and amount you used with it before, worked out from your
   past transactions; if you've used it with several categories, it offers a
-  short pick list. Payee names are matched regardless of upper/lower case,
-  so an import reuses the payee you already have. The list can be filtered
+  short pick list. Payee names are matched regardless of upper/lower case
+  (in any alphabet, Cyrillic included), so typing or importing "lidl" reuses
+  the "Lidl" you already have, and two payees can never differ only in case. The list can be filtered
   by date, status, account, several categories at once and text, exported
   to CSV/Excel, and switched into **Edit mode**, where every row's fields
   can be changed in place and save themselves.

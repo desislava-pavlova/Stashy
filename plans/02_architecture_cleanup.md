@@ -6,7 +6,8 @@ by the review itself. Reviewed again on 27/09/2026 against the code: 18
 findings added (F41–F58), five items dropped or moved (see "Plan review,
 27/09/2026" below). Test baseline that day: 510 tests, all green, 243 s.
 Progress is tracked with the checkboxes below. **Status:** Phase 1 done
-(01/10/2026, 540 tests green); Phase 2 next.
+(01/10/2026, 540 tests green); Phase 2 done (01/10/2026, 572 tests green);
+Phase 3 next.
 
 Work through it phase by phase. Every phase leaves the app working and the
 full test suite green, so we can stop and resume anywhere. Line numbers in
@@ -468,41 +469,73 @@ and restore on a throwaway stash round-trips.
 
 **Needs:** a backup of every stash first; Q1 answered if duplicates exist.
 
-- [ ] **2.1** Write a read-only check script (scratchpad, not the repo) that
+- [x] **2.1** Write a read-only check script (scratchpad, not the repo) that
   lists, per stash: duplicate top-level category names (case-insensitive),
   case-duplicate payees, duplicate `(year, transaction_number)` pairs.
-- [ ] **2.2** Resolve anything found (per Q1) before migrating. None was
+  *Done 01/10/2026:* it compares names with Python's `casefold()` (see 2.3)
+  and also counts every row 2.6, 2.8 and 2.9 would reject. Both stashes:
+  nothing to fix. The only finding is 3 duplicate `(year, number)` pairs in
+  "test", which are allowed (2.5).
+- [x] **2.2** Resolve anything found (per Q1) before migrating. None was
   found on 27/09/2026. If some appear later: keep the oldest row's spelling,
   move its transactions, reminders and Watched-expenses links over, then
-  delete the rest.
-- [ ] **2.3** Migration: `UniqueConstraint(Lower("name"),
+  delete the rest. *01/10/2026:* nothing found again, so nothing to merge.
+- [x] **2.3** Migration: `UniqueConstraint(Lower("name"),
   condition=Q(parent__isnull=True), name="unique_top_level_category_name")`
   and change the existing per-parent one to be case-insensitive too.
-- [ ] **2.4** Migration: `UniqueConstraint(Lower("name"),
+  **Changed (Claude's call, 01/10/2026): a `name_key` column instead of
+  `Lower("name")`.** SQLite's `lower()` and `LIKE` only fold A-Z, so
+  `Lower()` would let "ЛИДЛ" and "лидл" both exist (and the old `iexact`
+  lookups didn't match them either). Payee and Category now keep a hidden
+  `name_key` = `name.strip().casefold()`, set by `save()`, and the unique
+  constraints sit on it: `unique_subcategory_name_ci` (parent, name_key) and
+  `unique_top_level_category_name_ci` (name_key, where parent and account are
+  NULL). An account's transfer category is left out of the top-level rule,
+  because account names may repeat. The migration fills the key for
+  existing rows. The audit log skips `name_key` (it only repeats `name`).
+- [x] **2.4** Migration: `UniqueConstraint(Lower("name"),
   name="unique_payee_name_ci")`; then replace the three hand-written
   `name__iexact` lookups with one `Payee.objects.resolve(name)` (see 4.2).
   Payee and Category Add/Edit forms show "A payee/category with this name
   already exists" (Django's ModelForm validates `UniqueConstraint`s, so this
   mostly comes for free - check the message reads well). Test: typing "lidl"
   on a transaction when "Lidl" exists saves the payee as "Lidl".
+  *Done 01/10/2026:* `unique_payee_name_ci` is on `name_key` (see 2.3).
+  `Payee.objects.named(name)` finds, `Payee.objects.resolve(name)` finds or
+  creates (audited), and the transaction form, the importer, autofill and
+  `Payee.system()` all use them; the category lookups in the importer and
+  the starter categories use `name_key` too. The friendly messages come
+  from `Payee.clean()`/`Category.clean()`, because a constraint on a column
+  the form doesn't show is skipped by form validation.
 - [x] ~~**2.5** Transaction numbers (F7): decide between a unique constraint
   on (year, number) with retry-on-conflict, or accepting duplicates as
   user-editable data and documenting it.~~ **Dropped 27/09/2026:**
   duplicates are legitimate (editable numbers, Quicken imports), and
   `BEGIN IMMEDIATE` already serialises `next_number()`. Replaced by one
-  comment on `next_number()` saying so.
-- [ ] **2.6** Move the one-level-subcategory rule into `Category.clean()`
+  comment on `next_number()` saying so (written 01/10/2026).
+- [x] **2.6** Move the one-level-subcategory rule into `Category.clean()`
   (F13); `CategoryForm` keeps its friendly messages by calling through.
-- [ ] **2.7** Stashy.bat migrates every stash on launch - verify on a
-  throwaway stash that the migration applies cleanly.
-- [ ] **2.8** Rules the admin can break (F54): `CheckConstraint`s for
+  *Done 01/10/2026:* `CategoryForm.clean_parent()` is gone; a ModelForm
+  runs the model's `clean()` itself, so the form and the admin show the same
+  messages. New ones the form could never trigger: a subcategory or a
+  transfer category as the parent.
+- [x] **2.7** Stashy.bat migrates every stash on launch - verify on a
+  throwaway stash that the migration applies cleanly. *Done 01/10/2026:*
+  migrated scratchpad copies of both stashes (integrity check ok, every key
+  filled, a case-duplicate payee and a negative reminder refused), then
+  deleted the copies. The real stashes are migrated by Stashy.bat on the
+  next launch; both were backed up first (`backup_before_plan02_phase2_*`).
+- [x] **2.8** Rules the admin can break (F54): `CheckConstraint`s for
   reminder amount ≥ 0 and interval ≥ 1, and "type is Transfer exactly when
   the category belongs to an account". `Account.clean()` refuses a currency
   change once transactions exist, and the admin form shows it read-only.
   Check the stashes for violating rows first (add these checks to 2.1).
-- [ ] **2.9** Drop the dead `Transaction.payee_name` column (F51), and remove
+  *Done 01/10/2026:* the reminder amount also has a field validator, so the
+  form shows the message under Amount.
+- [x] **2.9** Drop the dead `Transaction.payee_name` column (F51), and remove
   its uses in the Transactions search and the admin. Re-check that every
   stash has 0 non-empty values first (the real stash had 0 on 27/09/2026).
+  *Done 01/10/2026* (0 in both stashes). The admin searches `payee__name`.
 
 **Done when:** constraints exist in every stash; tests prove duplicates are
 rejected at the database level.
@@ -571,6 +604,8 @@ Stashy.bat.
   branch (F24).
 - [ ] **4.2** One payee resolver, audited, used by the form, the importer and
   anywhere else (F11) - e.g. a `PayeeQuerySet.resolve(name)` manager method.
+  *Mostly done in 2.4 (01/10/2026):* `Payee.objects.resolve()` exists and
+  every caller uses it. Left for here: the importer moves into the service.
 - [ ] **4.3** `finance/services/reconciliation.py`: `reconcile(account,
   statement_date, statement_balance, transaction_ids, accept_difference)`.
 - [ ] **4.4** `Reminder.mark_entered(transaction)` and `Reminder.skip()` on

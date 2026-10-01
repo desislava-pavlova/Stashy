@@ -230,18 +230,8 @@ class CategoryForm(BootstrapFormMixin, forms.ModelForm):
         )
         parent_field.queryset = parents
 
-    def clean_parent(self):
-        parent = self.cleaned_data.get("parent")
-        if not parent:
-            return parent
-        if self.instance.pk == parent.pk:
-            raise ValidationError("A category can't be placed under itself.")
-        if self.instance.pk and self.instance.subcategories.exists():
-            raise ValidationError(
-                "This category already has its own subcategories, so it can't become one itself "
-                "— move or remove them first."
-            )
-        return parent
+    # The one-level rule and duplicate names are checked by Category.clean(), which a ModelForm
+    # runs for you - so the admin and this form give the same messages.
 
     def clean(self):
         cleaned = super().clean()
@@ -293,8 +283,9 @@ class TransactionForm(BootstrapFormMixin, forms.ModelForm):
     def save(self, commit=True):
         # Payees are resolved here, not in clean(), so a form with errors never creates one.
         instance = super().save(commit=False)
-        instance.payee = self._resolve_payee(self.cleaned_data["payee_name"])
-        instance.payee_name = ""  # canonical name now lives on the Payee record
+        name = self.cleaned_data["payee_name"]
+        # Names that differ only in case are one payee, and the spelling already saved wins.
+        instance.payee = Payee.objects.resolve(name) if name else None
         if instance.transaction_number is None:
             # Transaction.save() only auto-assigns on create; clearing the field on an edit
             # (e.g. after moving a transaction to a different account) should renumber it too.
@@ -303,18 +294,6 @@ class TransactionForm(BootstrapFormMixin, forms.ModelForm):
             instance.save()
             self.save_m2m()
         return instance
-
-    @staticmethod
-    def _resolve_payee(name):
-        if not name:
-            return None
-        # Case-insensitive, so "Lidl" and "lidl" resolve to one payee instead of quietly
-        # becoming near-duplicates (a real problem in Quicken exports the user hit before).
-        payee = Payee.objects.filter(name__iexact=name).first()
-        if payee is None:
-            with system_action("Payee created automatically from a new payee name"):
-                payee = Payee.objects.create(name=name)
-        return payee
 
 
 class ReminderForm(BootstrapFormMixin, forms.ModelForm):

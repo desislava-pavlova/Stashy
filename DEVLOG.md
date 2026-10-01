@@ -3575,3 +3575,70 @@ button (fine; the donut had no refund-heavy category to show). You also put
 now, and the pros and cons are parked in the plan (3.6) to discuss later.
 The Transactions range "All time" will be called "All dates" when 8.13 is
 built.
+
+---
+
+## 01/10/2026 — Plan 02, Phase 2: database constraints
+
+**What changed** (details and ticks in `plans/02_architecture_cleanup.md`):
+- **One name, one payee, in any alphabet (2.3, 2.4).** Payees and
+  categories now keep a hidden `name_key` column: the name in "case-folded"
+  form. The database refuses a second row with the same key, so "Lidl" and
+  "LIDL" can't both exist, and neither can "ЛИДЛ" and "лидл". Two main
+  categories can't share a name, and neither can two subcategories of the
+  same main category (the same subcategory name under two different parents
+  is fine). The Add/Edit forms say "A payee with this name already exists"
+  (or the category version) instead of failing.
+- **One way to find a payee.** `Payee.objects.resolve(name)` finds the payee
+  in any case (the spelling already saved wins) or creates it. The
+  transaction form, the import, autofill and Stashy's own payees ("Opening
+  Balance") all go through it, replacing three hand-written lookups.
+- **Rules on the model, not only the form (2.6, 2.8).** The "one level of
+  subcategories" rule moved into `Category.clean()`, so the admin keeps it
+  too. The database also refuses a negative reminder amount, an interval
+  below 1, and a Transfer category that doesn't belong to an account (or an
+  account's category that isn't Transfer). An account's currency can't
+  change once it has transactions, and the admin shows it as plain text.
+- **Dead column dropped (2.9):** `Transaction.payee_name` was always blank.
+- Before the migration, both stashes were scanned (nothing to fix) and
+  backed up (`backup_before_plan02_phase2_*`). Stashy.bat migrates them on
+  the next launch.
+
+**Teaching note — SQLite's `lower()` only knows A to Z.** The plan said
+`UniqueConstraint(Lower("name"))`. A quick check showed SQLite's built-in
+`lower('ЛИДЛ')` returns `ЛИДЛ` unchanged, and `LIKE` (what Django's
+`iexact` becomes on SQLite) is case-blind for English letters only. So the
+old "case-insensitive" payee matching never worked for Cyrillic names, and
+a `Lower()` constraint wouldn't have either. Python's `str.casefold()` knows
+every alphabet. Computing the key in Python, storing it, and putting the
+unique rule on that column gives the database a rule it can check
+correctly. The cost: the key must stay in step with the name. `save()`
+recomputes it every time, and Stashy never changes these rows with
+`queryset.update()`, which would skip `save()`.
+
+**Teaching note — why the messages come from `clean()`.** Django's forms
+check database constraints before saving, but only those whose columns are
+on the form. `name_key` is hidden, so the form would skip the unique rule
+and the save would crash instead. `Payee.clean()` and `Category.clean()`
+check the same thing in Python first and give the friendly message. The
+database rule stays as the safety net for anything that doesn't go through
+a form.
+
+**Verification:** full suite green: 572 tests in 500 s (540 in 335 s
+before; this run shared the computer with a second test run). After a last
+message tweak, the 163 tests that touch reminders or this phase passed
+again. 32 new tests in
+`finance/test_cleanup_phase2.py` (Cyrillic case-duplicates refused by the
+database, "lidl" saved as "Lidl" from the transaction form and the import,
+the one-level rule's messages, the admin rules, the dropped column, and the
+audit log leaving `name_key` out). The migration was tried on throwaway
+copies of both stashes first: integrity check ok, every name got its key.
+The Add category, Add payee and Add reminder pages were rendered with a
+duplicate or a negative amount, and the admin pages were rendered too: the
+messages show, and no template code leaks. Not checked in a browser.
+
+**Files:** `finance/models.py`, `finance/forms.py`, `finance/views.py`,
+`finance/admin.py`, `finance/starter_categories.py`, `audit/signals.py`,
+`finance/migrations/0018_phase2_constraints.py` (local only, not in git);
+tests `finance/test_cleanup_phase2.py` (new); `README.md`, `CLAUDE.md`, the
+plan.

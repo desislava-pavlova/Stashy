@@ -41,7 +41,7 @@ terms.
 ## Commands
 
 ```
-.venv\Scripts\python.exe manage.py test                          # full suite, ~5.5 min (540 tests on 01/10/2026)
+.venv\Scripts\python.exe manage.py test                          # full suite, ~6-8 min (572 tests on 01/10/2026)
 .venv\Scripts\python.exe manage.py test finance.test_phase15     # one module
 .venv\Scripts\python.exe manage.py migrate --database <stash>    # one stash (Stashy.bat does all, with backups)
 .venv\Scripts\python.exe manage.py reset_pin <owner name>        # real, visible action - ask first
@@ -126,7 +126,13 @@ terms.
 - Transaction numbers are one sequence shared by every account and restart
   each year (D9). They are editable, and duplicates are allowed.
 - Payees and categories that differ only in upper/lower case are the same
-  one. The spelling already saved wins (decided 27/09/2026).
+  one. The spelling already saved wins (decided 27/09/2026). The database
+  enforces it through a hidden `name_key` column (`models.name_key()`, a
+  `casefold()`, set by `save()`). Look names up with
+  `Payee.objects.named()`/`.resolve()` or `name_key=name_key(x)`, never
+  `name__iexact` or `Lower()`: SQLite folds only A-Z, so Cyrillic slips past.
+- The one-level subcategory rule and the duplicate-name messages live in
+  `Category.clean()`/`Payee.clean()`, so forms and the admin share them.
 - Reports convert through `RateTable` (main currency, latest known rate).
   A category with no earlier activity has **no** average (never 0). The
   vs-average reports need at least two earlier periods.

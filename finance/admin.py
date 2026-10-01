@@ -40,6 +40,12 @@ class AccountAdmin(AuditHistoryAdminMixin, admin.ModelAdmin):
     list_filter = ("account_type", "currency", "is_active")
     search_fields = ("name", "institution")
 
+    def get_readonly_fields(self, request, obj=None):
+        # Account.clean() refuses a new currency once transactions exist; show it as text instead.
+        if obj is not None and obj.transactions.exists():
+            return (*super().get_readonly_fields(request, obj), "currency")
+        return super().get_readonly_fields(request, obj)
+
 
 @admin.register(ExchangeRate)
 class ExchangeRateAdmin(AuditHistoryAdminMixin, admin.ModelAdmin):
@@ -65,7 +71,7 @@ class PayeeAdmin(AuditHistoryAdminMixin, admin.ModelAdmin):
 class TransactionAdmin(AuditHistoryAdminMixin, admin.ModelAdmin):
     list_display = ("date", "transaction_number", "account", "display_payee", "category", "amount", "reconciled")
     list_filter = ("account", "category", "reconciled")
-    search_fields = ("payee_name", "memo")
+    search_fields = ("payee__name", "memo")
     date_hierarchy = "date"
     autocomplete_fields = ("payee", "category", "account")
 

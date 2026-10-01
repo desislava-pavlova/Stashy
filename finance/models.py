@@ -1,8 +1,10 @@
+import contextlib
 from datetime import date, timedelta
 from decimal import Decimal
 
 from dateutil.relativedelta import relativedelta
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
 from django.db import models
 from django.db.models import Case, Max, Q, Sum, Value, When
@@ -15,6 +17,20 @@ from audit.context import system_action
 from . import regional
 from .currency import CURRENCY_CHOICES, DEFAULT_CURRENCY
 from .money import CENT, ZERO
+
+
+def name_key(name):
+    """How Stashy compares payee and category names: names that differ only in upper/lower
+    case are the same one. Python's casefold() knows every alphabet. SQLite's own lower() and
+    LIKE only fold A-Z, so to the database "ЛИДЛ" and "лидл" would be two different names."""
+    return (name or "").strip().casefold()
+
+
+def _with_name_key(update_fields):
+    """save(update_fields=[..., "name"]) must write the name's key along with it."""
+    if update_fields is not None and "name" in update_fields and "name_key" not in update_fields:
+        return [*update_fields, "name_key"]
+    return update_fields
 
 
 class Profile(models.Model):
@@ -158,6 +174,16 @@ class Account(models.Model):
     def get_absolute_url(self):
         return reverse("finance:account_detail", args=[self.pk])
 
+    def clean(self):
+        super().clean()
+        if self.pk is None:
+            return
+        saved_currency = Account.objects.filter(pk=self.pk).values_list("currency", flat=True).first()
+        if saved_currency not in (None, self.currency) and self.transactions.exists():
+            # Conversion only ever uses the latest known rate, not per-transaction history, so a
+            # new currency would misstate every transaction already in the account.
+            raise ValidationError({"currency": "This account already has transactions, so its currency can't change."})
+
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
         self.ensure_transfer_category()
@@ -221,9 +247,9 @@ class Category(models.Model):
         TRANSFER = "transfer", "Transfer"
 
     name = models.CharField(max_length=120)
-    # One level of subcategories only (Phase 4) — a subcategory can't itself have children.
-    # Enforced by CategoryForm (only a top-level, non-transfer category is offered as a
-    # parent), not here, matching how this app's other business rules work.
+    # name_key(name), kept by save(): the database checks uniqueness on this column.
+    name_key = models.CharField(max_length=120, editable=False)
+    # One level of subcategories only: a subcategory can't itself have children (see clean()).
     parent = models.ForeignKey(
         "self", null=True, blank=True, related_name="subcategories", on_delete=models.CASCADE
     )
@@ -241,7 +267,21 @@ class Category(models.Model):
         verbose_name_plural = "categories"
         ordering = ["parent__name", "name"]
         constraints = [
-            models.UniqueConstraint(fields=["name", "parent"], name="unique_category_name_per_parent")
+            models.UniqueConstraint(fields=["parent", "name_key"], name="unique_subcategory_name_ci"),
+            # NULL parents never clash in SQL, so top-level names need their own rule. An account's
+            # transfer category is left out: it's named after its account, and two accounts may
+            # share a name.
+            models.UniqueConstraint(
+                fields=["name_key"], condition=Q(parent__isnull=True, account__isnull=True),
+                name="unique_top_level_category_name_ci",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    Q(category_type="transfer", account__isnull=False)
+                    | (~Q(category_type="transfer") & Q(account__isnull=True))
+                ),
+                name="category_transfer_iff_account",
+            ),
         ]
 
     def __str__(self):
@@ -250,6 +290,41 @@ class Category(models.Model):
     @property
     def full_name(self):
         return f"{self.parent.name} > {self.name}" if self.parent_id else self.name
+
+    def clean(self):
+        super().clean()
+        errors = {}
+        parent = self.parent if self.parent_id else None
+        if parent is not None:
+            if parent.pk == self.pk:
+                errors["parent"] = "A category can't be placed under itself."
+            elif parent.parent_id:
+                errors["parent"] = "A subcategory can't have its own subcategories - pick a main category."
+            elif parent.account_id:
+                errors["parent"] = "An account's transfer category can't have subcategories."
+            elif self.pk and self.subcategories.exists():
+                errors["parent"] = (
+                    "This category already has its own subcategories, so it can't become one itself "
+                    "— move or remove them first."
+                )
+        is_transfer = self.category_type == self.CategoryType.TRANSFER
+        if is_transfer and not self.account_id:
+            errors["category_type"] = "Transfer categories belong to an account and are created with it."
+        elif self.account_id and not is_transfer:
+            errors["category_type"] = "This category belongs to an account, so its type stays Transfer."
+        if "parent" not in errors and not self.account_id:
+            same_name = Category.objects.filter(name_key=name_key(self.name)).exclude(pk=self.pk)
+            if parent is not None and same_name.filter(parent=parent).exists():
+                errors["name"] = f"'{parent.name}' already has a subcategory with this name."
+            elif parent is None and same_name.filter(parent__isnull=True, account__isnull=True).exists():
+                errors["name"] = "A category with this name already exists."
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.name_key = name_key(self.name)
+        kwargs["update_fields"] = _with_name_key(kwargs.get("update_fields"))
+        super().save(*args, **kwargs)
 
     @property
     def indented_name(self):
@@ -324,6 +399,22 @@ def grouped_categories(categories):
     return groups
 
 
+class PayeeQuerySet(models.QuerySet):
+    def named(self, name):
+        """The payee called `name`, ignoring upper/lower case (at most one, by constraint)."""
+        return self.filter(name_key=name_key(name))
+
+    def resolve(self, name, reason="Payee created automatically from a new payee name"):
+        """The payee called `name` in any case - the spelling already saved wins - or a new one.
+        A new payee is logged as automatic with `reason`; reason=None keeps the caller's own
+        system_action (an import's "Imported from <file>")."""
+        payee = self.named(name).first()
+        if payee is None:
+            with system_action(reason) if reason else contextlib.nullcontext():
+                payee = self.create(name=name.strip())
+        return payee
+
+
 class Payee(models.Model):
     """A payee Stashy has seen on a transaction. Memorization (Phase 6) is computed live from
     transaction history — one category/memo/amount per (payee, category) pair, not a cached
@@ -335,22 +426,33 @@ class Payee(models.Model):
     RECONCILIATION_ADJUSTMENT = "Reconciliation Adjustment"
     SYSTEM_NAMES = (OPENING_BALANCE, TRANSFER_MONEY, RECONCILIATION_ADJUSTMENT)
 
-    name = models.CharField(max_length=150, unique=True)
+    name = models.CharField(max_length=150)
+    # name_key(name), kept by save(): the database checks uniqueness on this column.
+    name_key = models.CharField(max_length=150, editable=False)
     is_active = models.BooleanField(default=True)
+
+    objects = PayeeQuerySet.as_manager()
 
     class Meta:
         ordering = ["name"]
+        constraints = [models.UniqueConstraint(fields=["name_key"], name="unique_payee_name_ci")]
 
     def __str__(self):
         return self.name
 
+    def clean(self):
+        super().clean()
+        if Payee.objects.named(self.name).exclude(pk=self.pk).exists():
+            raise ValidationError({"name": "A payee with this name already exists."})
+
+    def save(self, *args, **kwargs):
+        self.name_key = name_key(self.name)
+        kwargs["update_fields"] = _with_name_key(kwargs.get("update_fields"))
+        super().save(*args, **kwargs)
+
     @classmethod
     def system(cls, name):
-        payee = cls.objects.filter(name=name).first()
-        if payee is None:
-            with system_action(f"Payee '{name}' created for transactions Stashy makes"):
-                payee = cls.objects.create(name=name)
-        return payee
+        return cls.objects.resolve(name, reason=f"Payee '{name}' created for transactions Stashy makes")
 
     def category_history(self):
         """One entry per category ever used with this payee (most recently used first): the
@@ -377,7 +479,6 @@ class Transaction(models.Model):
         help_text="Shared across all accounts, starting again at 1 every calendar year. You can change it.",
     )
     payee = models.ForeignKey(Payee, null=True, blank=True, on_delete=models.SET_NULL, related_name="transactions")
-    payee_name = models.CharField(max_length=150, blank=True, help_text="Free-text payee if not memorized")
     category = models.ForeignKey(
         Category, null=True, blank=True, on_delete=models.SET_NULL, related_name="transactions"
     )
@@ -406,13 +507,14 @@ class Transaction(models.Model):
 
     @property
     def display_payee(self):
-        return self.payee.name if self.payee_id else self.payee_name
+        return self.payee.name if self.payee_id else ""
 
     @staticmethod
     def next_number(on):
         """The next transaction number for `on`'s calendar year - shared across every account,
-        not scoped to one (D9, revised 13/09/2026: originally per-account, changed to a single
-        global-per-year sequence at the user's request)."""
+        not scoped to one (D9). Duplicates are allowed on purpose: numbers are editable and
+        imports reuse them. Two requests can't both read the same MAX() either, since every
+        write request holds the stash's write lock (BEGIN IMMEDIATE) from its start."""
         highest = Transaction.objects.filter(date__year=on.year).aggregate(highest=Max("transaction_number"))["highest"]
         return (highest or 0) + 1
 
@@ -437,6 +539,11 @@ class ImportBatch(models.Model):
 
     def __str__(self):
         return f"{self.source_filename} ({regional.format_datetime(self.imported_at)})"
+
+
+AMOUNT_NOT_NEGATIVE = (
+    "Enter the amount as a positive number - the type already says whether it's income or an expense."
+)
 
 
 class Reminder(models.Model):
@@ -471,6 +578,7 @@ class Reminder(models.Model):
     category = models.ForeignKey(Category, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
     amount = models.DecimalField(
         max_digits=12, decimal_places=2, null=True, blank=True,
+        validators=[MinValueValidator(0, message=AMOUNT_NOT_NEGATIVE)],
         help_text="Enter as a positive number, or leave blank for a variable-amount bill",
     )
     frequency = models.CharField(max_length=10, choices=Frequency.choices, default=Frequency.ONE_TIME)
@@ -500,6 +608,13 @@ class Reminder(models.Model):
 
     class Meta:
         ordering = ["next_due_date"]
+        constraints = [
+            # The reminder's type says income or expense, so the amount itself is never negative.
+            models.CheckConstraint(
+                condition=Q(amount__isnull=True) | Q(amount__gte=0), name="reminder_amount_not_negative",
+            ),
+            models.CheckConstraint(condition=Q(interval__gte=1), name="reminder_interval_at_least_one"),
+        ]
 
     def __str__(self):
         # No separate name (removed 13/09/2026) - identified like a pending transaction, by

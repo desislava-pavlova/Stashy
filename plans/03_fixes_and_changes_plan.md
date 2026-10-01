@@ -31,6 +31,6 @@ help but aren't required:
 
 | # | Added | Kind | Where | What | Status |
 |---|-------|------|-------|------|--------|
-| | | | | | |
+| R1 | 01/10/2026 | bug | Search boxes (Transactions, Categories; check the others too) | Searching ignores upper/lower case only for A-Z: "лидл" doesn't find "ЛИДЛ". The search uses `icontains`, which SQLite runs as `LIKE`, and `LIKE` only folds English letters. Expected: case is ignored in every alphabet, like payee and category names since plan 02 Phase 2 (`name_key`). Found by Claude during that phase. | open |
 
-<!-- Next number: R1 -->
+<!-- Next number: R2 -->

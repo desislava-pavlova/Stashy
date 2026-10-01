@@ -7,7 +7,7 @@ from pathlib import Path
 
 from django.conf import settings
 
-from .models import Category
+from .models import Category, name_key
 
 STARTER_CATEGORIES_FILENAME = "starter_categories.xlsx"
 SHEET_CHOICES = ["Basic", "Extended"]
@@ -62,21 +62,18 @@ def add_starter_categories(sheet_name):
     if sheet_name not in available_sheets():
         return None
 
-    top_level = {
-        category.name.lower(): category
-        for category in Category.objects.filter(parent__isnull=True)
-    }
+    top_level = {category.name_key: category for category in Category.objects.filter(parent__isnull=True)}
     created = []
     for type_name, category_name, subcategory_name in _read_rows(sheet_name):
         category_type = (
             Category.CategoryType.INCOME if type_name.lower() == "income" else Category.CategoryType.EXPENSE
         )
-        parent = top_level.get(category_name.lower())
+        parent = top_level.get(name_key(category_name))
         if parent is None:
             parent = Category.objects.create(name=category_name, category_type=category_type)
-            top_level[category_name.lower()] = parent
+            top_level[parent.name_key] = parent
             created.append(category_name)
-        if subcategory_name and not parent.subcategories.filter(name__iexact=subcategory_name).exists():
+        if subcategory_name and not parent.subcategories.filter(name_key=name_key(subcategory_name)).exists():
             Category.objects.create(name=subcategory_name, category_type=category_type, parent=parent)
             created.append(f"{category_name}: {subcategory_name}")
     return created

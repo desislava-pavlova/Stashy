@@ -23,6 +23,16 @@ Action = AuditLogEntry.Action
 
 # A6: secrets never appear in the log, not even their hash.
 HIDDEN_FIELDS = {("finance.profile", "recovery_code_hash")}
+# Copies of another column kept only for the database's own checks: logging them would just
+# repeat that column.
+SKIPPED_FIELDS = {("finance.payee", "name_key"), ("finance.category", "name_key")}
+
+
+def _logged_fields(sender):
+    return [
+        field for field in sender._meta.concrete_fields
+        if not field.primary_key and (sender._meta.label_lower, field.name) not in SKIPPED_FIELDS
+    ]
 
 
 def is_tracked(model):
@@ -60,9 +70,7 @@ def _raw(sender, field, raw, instance=None):
 
 def _snapshot(sender, instance):
     values = {}
-    for field in sender._meta.concrete_fields:
-        if field.primary_key:
-            continue
+    for field in _logged_fields(sender):
         shown = _raw(sender, field, field.value_from_object(instance), instance)
         if shown is not None:
             values[field.attname] = shown
@@ -130,9 +138,7 @@ def log_save(sender, instance, created, raw=False, update_fields=None, **kwargs)
         return
     now = timezone.now()
     context = _resolved_context()
-    for field in sender._meta.concrete_fields:
-        if field.primary_key:
-            continue
+    for field in _logged_fields(sender):
         if update_fields is not None and field.name not in update_fields and field.attname not in update_fields:
             continue
         before, after = old[field.attname], field.value_from_object(instance)
