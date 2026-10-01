@@ -13,8 +13,13 @@ class SaveAndAddAnotherTests(LoggedInTestCase):
 
     def _data(self, **extra):
         return {
-            "account": self.account.pk, "date": "01/03/2026", "payee_name": "Shop",
-            "category": "", "memo": "", "amount": "-10.00", **extra,
+            "account": self.account.pk,
+            "date": "01/03/2026",
+            "payee_name": "Shop",
+            "category": "",
+            "memo": "",
+            "amount": "-10.00",
+            **extra,
         }
 
     def test_new_form_shows_both_buttons(self):
@@ -29,7 +34,8 @@ class SaveAndAddAnotherTests(LoggedInTestCase):
     def test_save_and_add_another_returns_to_blank_form_on_same_account(self):
         response = self.client.post(reverse("finance:transaction_add"), self._data(save_and_add="1"))
         self.assertRedirects(
-            response, reverse("finance:transaction_add") + f"?account={self.account.pk}&date=2026-03-01",
+            response,
+            reverse("finance:transaction_add") + f"?account={self.account.pk}&date=2026-03-01",
         )
         self.assertEqual(Transaction.objects.count(), 1)
 

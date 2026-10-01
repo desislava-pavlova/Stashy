@@ -10,6 +10,7 @@ Every stash is registered as its own connection alias, named after the stash its
 finance.stashes.ensure_registered() - this router just says "route here" for whichever alias
 is current; it never registers anything itself.
 """
+
 import threading
 
 _local = threading.local()

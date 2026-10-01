@@ -1,6 +1,7 @@
 """Tests for Phase 14 (admin, tags, audit log) not already covered by audit/tests.py:
 tags are gone everywhere, and the audit log's own timestamp format (A3)."""
-from datetime import datetime, timezone as dt_timezone
+
+from datetime import UTC, datetime
 
 from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase
@@ -40,18 +41,18 @@ class TagsAreGoneTests(TestCase):
 
 class AuditTimestampFormatTests(SimpleTestCase):
     def test_iso_style_with_milliseconds_and_offset(self):
-        value = datetime(2026, 9, 15, 12, 6, 48, 930000, tzinfo=dt_timezone.utc)
+        value = datetime(2026, 9, 15, 12, 6, 48, 930000, tzinfo=UTC)
         with regional.activate(regional.Preferences(time_zone="Europe/Sofia")):
             self.assertEqual(regional.format_audit_timestamp(value), "2026-09-15 15:06:48.930 +03:00")
 
     def test_never_follows_the_date_format_preference(self):
-        value = datetime(2026, 9, 15, 12, 6, 48, tzinfo=dt_timezone.utc)
+        value = datetime(2026, 9, 15, 12, 6, 48, tzinfo=UTC)
         preferences = regional.Preferences(date_format="mdy", time_zone="Europe/Sofia")
         with regional.activate(preferences):
             self.assertTrue(regional.format_audit_timestamp(value).startswith("2026-09-15"))
 
     def test_negative_offset(self):
-        value = datetime(2026, 1, 15, 12, 0, 0, tzinfo=dt_timezone.utc)
+        value = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
         with regional.activate(regional.Preferences(time_zone="America/New_York")):
             formatted = regional.format_audit_timestamp(value)
         self.assertTrue(formatted.endswith("-05:00"), formatted)

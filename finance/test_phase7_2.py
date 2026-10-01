@@ -3,6 +3,7 @@ dropdowns ordered so subcategories sit next to their parent, the replacement of 
 a free "every N periods" interval, memo prefilled from payee+category history on Enter, signed
 reminder amounts, the reminder delete-confirmation warning, and the transaction list's new
 Delete button + renamed status filter."""
+
 from datetime import date
 from decimal import Decimal
 from unittest import mock
@@ -63,23 +64,35 @@ class OneTimeIntervalTests(LoggedInTestCase):
 
     def test_weekly_with_interval_2_behaves_like_the_old_biweekly(self):
         r = Reminder.objects.create(
-            account=self.account, amount=Decimal("1"), frequency="weekly", interval=2,
+            account=self.account,
+            amount=Decimal("1"),
+            frequency="weekly",
+            interval=2,
             next_due_date=date(2026, 9, 1),
         )
         self.assertEqual(r._advance(r.next_due_date), date(2026, 9, 15))
 
     def test_interval_defaults_to_1_and_is_not_required_on_the_form(self):
-        form = ReminderForm(data={
-            "reminder_type": "expense", "account": self.account.pk, "frequency": "monthly",
-            "next_due_date": "01/10/2026", "no_end_date": "on",
-        })
+        form = ReminderForm(
+            data={
+                "reminder_type": "expense",
+                "account": self.account.pk,
+                "frequency": "monthly",
+                "next_due_date": "01/10/2026",
+                "no_end_date": "on",
+            }
+        )
         self.assertTrue(form.is_valid(), form.errors)
         reminder = form.save()
         self.assertEqual(reminder.interval, 1)
 
     def test_every_3_months_still_resolves_last_day_of_the_landed_month(self):
         r = Reminder.objects.create(
-            account=self.account, amount=Decimal("1"), frequency="monthly", interval=3, end_of_period=True,
+            account=self.account,
+            amount=Decimal("1"),
+            frequency="monthly",
+            interval=3,
+            end_of_period=True,
             next_due_date=date(2026, 1, 31),
         )
         r.advance_due_date()
@@ -103,12 +116,21 @@ class EnterMemoFromHistoryTests(LoggedInTestCase):
         payee = Payee.objects.create(name="Landlord")
         rent = Category.objects.create(name="Rent", category_type=Category.CategoryType.EXPENSE)
         Transaction.objects.create(
-            account=self.account, date=date(2026, 8, 1), payee=payee, category=rent,
-            amount=Decimal("-500.00"), memo="August rent, paid early",
+            account=self.account,
+            date=date(2026, 8, 1),
+            payee=payee,
+            category=rent,
+            amount=Decimal("-500.00"),
+            memo="August rent, paid early",
         )
         reminder = Reminder.objects.create(
-            account=self.account, payee=payee, category=rent, amount=Decimal("500.00"),
-            reminder_type=Category.CategoryType.EXPENSE, next_due_date=date(2026, 9, 1), notes="Rent due",
+            account=self.account,
+            payee=payee,
+            category=rent,
+            amount=Decimal("500.00"),
+            reminder_type=Category.CategoryType.EXPENSE,
+            next_due_date=date(2026, 9, 1),
+            notes="Rent due",
         )
         response = self.client.get(reverse("finance:transaction_add"), {"reminder": reminder.pk})
         self.assertEqual(response.context["form"].initial["memo"], "August rent, paid early")
@@ -117,8 +139,13 @@ class EnterMemoFromHistoryTests(LoggedInTestCase):
         payee = Payee.objects.create(name="New Landlord")
         rent = Category.objects.create(name="Rent", category_type=Category.CategoryType.EXPENSE)
         reminder = Reminder.objects.create(
-            account=self.account, payee=payee, category=rent, amount=Decimal("500.00"),
-            reminder_type=Category.CategoryType.EXPENSE, next_due_date=date(2026, 9, 1), notes="Rent due",
+            account=self.account,
+            payee=payee,
+            category=rent,
+            amount=Decimal("500.00"),
+            reminder_type=Category.CategoryType.EXPENSE,
+            next_due_date=date(2026, 9, 1),
+            notes="Rent due",
         )
         response = self.client.get(reverse("finance:transaction_add"), {"reminder": reminder.pk})
         self.assertEqual(response.context["form"].initial["memo"], "Rent due")
@@ -132,7 +159,10 @@ class SignedReminderAmountDisplayTests(LoggedInTestCase):
 
     def test_income_stays_positive(self):
         Reminder.objects.create(
-            account=self.account, amount=Decimal("50.00"), reminder_type="income", next_due_date=date.today(),
+            account=self.account,
+            amount=Decimal("50.00"),
+            reminder_type="income",
+            next_due_date=date.today(),
         )
         response = self.client.get(reverse("finance:reminder_list"), {"window": "all"})
         self.assertNotContains(response, "-50")
@@ -142,16 +172,22 @@ class SignedReminderAmountDisplayTests(LoggedInTestCase):
 class ReminderDeleteWarningTests(LoggedInTestCase):
     def test_deleting_a_series_head_warns_how_many_occurrences_will_go(self):
         root = Reminder.objects.create(
-            account=self.account, amount=Decimal("10.00"), next_due_date=date(2026, 9, 20),
-            frequency="monthly", end_date=date(2026, 12, 20),
+            account=self.account,
+            amount=Decimal("10.00"),
+            next_due_date=date(2026, 9, 20),
+            frequency="monthly",
+            end_date=date(2026, 12, 20),
         )
         response = self.client.get(reverse("finance:reminder_delete", args=[root.pk]))
         self.assertContains(response, "3 upcoming occurrences")
 
     def test_a_resolved_occurrence_survives_deleting_the_series_head(self):
         root = Reminder.objects.create(
-            account=self.account, amount=Decimal("10.00"), next_due_date=date(2026, 9, 20),
-            frequency="monthly", end_date=date(2026, 12, 20),
+            account=self.account,
+            amount=Decimal("10.00"),
+            next_due_date=date(2026, 9, 20),
+            frequency="monthly",
+            end_date=date(2026, 12, 20),
         )
         october = root.occurrences.get(next_due_date=date(2026, 10, 20))
         october.skipped = True
@@ -162,8 +198,11 @@ class ReminderDeleteWarningTests(LoggedInTestCase):
 
     def test_unresolved_occurrences_are_gone_after_deleting_the_series_head(self):
         root = Reminder.objects.create(
-            account=self.account, amount=Decimal("10.00"), next_due_date=date(2026, 9, 20),
-            frequency="monthly", end_date=date(2026, 12, 20),
+            account=self.account,
+            amount=Decimal("10.00"),
+            next_due_date=date(2026, 9, 20),
+            frequency="monthly",
+            end_date=date(2026, 12, 20),
         )
         occurrence_ids = list(root.occurrences.values_list("pk", flat=True))
         root.delete()

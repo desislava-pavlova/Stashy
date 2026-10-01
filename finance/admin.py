@@ -19,8 +19,14 @@ class ProfileAdmin(AuditHistoryAdminMixin, admin.ModelAdmin):
 
     list_display = ("user", "main_currency", "date_format", "number_format", "time_zone", "first_day_of_week")
     fields = (
-        "user", "main_currency", "time_zone", "date_format", "number_format", "first_day_of_week",
-        "watched_expenses_title", "watched_expenses_categories",
+        "user",
+        "main_currency",
+        "time_zone",
+        "date_format",
+        "number_format",
+        "first_day_of_week",
+        "watched_expenses_title",
+        "watched_expenses_categories",
     )
     readonly_fields = fields
 
@@ -89,6 +95,13 @@ class ReminderAdmin(AuditHistoryAdminMixin, admin.ModelAdmin):
 
 @admin.register(Reconciliation)
 class ReconciliationAdmin(AuditHistoryAdminMixin, admin.ModelAdmin):
-    list_display = ("account", "statement_date", "statement_balance", "opening_balance", "adjustment_transaction", "created_at")
+    list_display = (
+        "account",
+        "statement_date",
+        "statement_balance",
+        "opening_balance",
+        "adjustment_transaction",
+        "created_at",
+    )
     list_filter = ("account",)
     date_hierarchy = "statement_date"

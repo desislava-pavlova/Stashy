@@ -1,4 +1,5 @@
 """Tests for: removing Reminder.name, and previewing the next transaction number on Add."""
+
 from datetime import date
 from decimal import Decimal
 
@@ -28,7 +29,10 @@ class ReminderNameRemovedTests(TestCase):
         account = Account.objects.create(name="Checking")
         payee = Payee.objects.create(name="Landlord")
         reminder = Reminder.objects.create(
-            account=account, payee=payee, amount=Decimal("500.00"), next_due_date=date(2026, 10, 1),
+            account=account,
+            payee=payee,
+            amount=Decimal("500.00"),
+            next_due_date=date(2026, 10, 1),
         )
         self.assertIn("Landlord", str(reminder))
 
@@ -36,7 +40,10 @@ class ReminderNameRemovedTests(TestCase):
         account = Account.objects.create(name="Checking")
         category = Category.objects.create(name="Rent", category_type=Category.CategoryType.EXPENSE)
         with_category = Reminder.objects.create(
-            account=account, category=category, amount=Decimal("500.00"), next_due_date=date(2026, 10, 1),
+            account=account,
+            category=category,
+            amount=Decimal("500.00"),
+            next_due_date=date(2026, 10, 1),
         )
         self.assertIn("Rent", str(with_category))
 
@@ -47,7 +54,9 @@ class ReminderNameRemovedTests(TestCase):
 class ReminderListShowsPayeeTests(LoggedInTestCase):
     def test_list_shows_payee_instead_of_a_name_column(self):
         payee = Payee.objects.create(name="Landlord")
-        Reminder.objects.create(account=self.account, payee=payee, amount=Decimal("500.00"), next_due_date=date(2026, 10, 1))
+        Reminder.objects.create(
+            account=self.account, payee=payee, amount=Decimal("500.00"), next_due_date=date(2026, 10, 1)
+        )
         response = self.client.get(reverse("finance:reminder_list"), {"window": "all"})
         self.assertContains(response, "Landlord")
         self.assertContains(response, "<th>Payee</th>", html=True)
@@ -56,13 +65,19 @@ class ReminderListShowsPayeeTests(LoggedInTestCase):
 
 class NewTransactionNumberPreviewTests(LoggedInTestCase):
     def test_add_form_prefills_the_next_available_number(self):
-        Transaction.objects.create(account=self.account, date=date.today(), transaction_number=41, amount=Decimal("-1.00"))
+        Transaction.objects.create(
+            account=self.account, date=date.today(), transaction_number=41, amount=Decimal("-1.00")
+        )
         response = self.client.get(reverse("finance:transaction_add"))
         self.assertEqual(response.context["form"].initial.get("transaction_number"), 42)
 
     def test_edit_form_shows_the_transactions_own_number_not_a_fresh_preview(self):
-        txn = Transaction.objects.create(account=self.account, date=date.today(), transaction_number=7, amount=Decimal("-1.00"))
-        Transaction.objects.create(account=self.account, date=date.today(), transaction_number=8, amount=Decimal("-1.00"))
+        txn = Transaction.objects.create(
+            account=self.account, date=date.today(), transaction_number=7, amount=Decimal("-1.00")
+        )
+        Transaction.objects.create(
+            account=self.account, date=date.today(), transaction_number=8, amount=Decimal("-1.00")
+        )
         response = self.client.get(reverse("finance:transaction_edit", args=[txn.pk]))
         # The highest number right now is 8, so a fresh "next available" preview would wrongly
         # show 9 here - editing must show this transaction's own number (7) untouched instead.

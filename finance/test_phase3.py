@@ -1,5 +1,6 @@
 """Tests for Phase 3: accounts (taxonomy, currency), transfer categories, transaction
 numbering, and regional preferences (D1, D2, D7, D9, D10)."""
+
 from datetime import date
 from decimal import Decimal
 
@@ -22,10 +23,17 @@ class LoggedInTestCase(TestCase):
 
 class OpeningBalanceTests(LoggedInTestCase):
     def test_creating_an_account_with_an_opening_balance_makes_a_real_transaction(self):
-        response = self.client.post(reverse("finance:account_add"), {
-            "name": "Savings", "account_type": "savings", "currency": "EUR", "is_active": "on",
-            "opening_balance": "500.00", "opening_balance_date": "01/01/2026",
-        })
+        response = self.client.post(
+            reverse("finance:account_add"),
+            {
+                "name": "Savings",
+                "account_type": "savings",
+                "currency": "EUR",
+                "is_active": "on",
+                "opening_balance": "500.00",
+                "opening_balance_date": "01/01/2026",
+            },
+        )
         self.assertEqual(response.status_code, 302)
         account = Account.objects.get(name="Savings")
         self.assertEqual(account.balance, Decimal("500.00"))
@@ -38,15 +46,29 @@ class OpeningBalanceTests(LoggedInTestCase):
         self.assertEqual(opening.memo, "Opening Balance")
 
     def test_an_opening_balance_is_a_regular_editable_transaction(self):
-        self.client.post(reverse("finance:account_add"), {
-            "name": "Cash", "account_type": "cash", "currency": "EUR", "is_active": "on",
-            "opening_balance": "20", "opening_balance_date": "01/01/2026",
-        })
+        self.client.post(
+            reverse("finance:account_add"),
+            {
+                "name": "Cash",
+                "account_type": "cash",
+                "currency": "EUR",
+                "is_active": "on",
+                "opening_balance": "20",
+                "opening_balance_date": "01/01/2026",
+            },
+        )
         opening = Transaction.objects.get(account__name="Cash")
-        response = self.client.post(reverse("finance:transaction_edit", args=[opening.pk]), {
-            "account": opening.account_id, "date": "02/01/2026", "payee_name": "Opening Balance",
-            "category": opening.category_id, "memo": "Fixed", "amount": "25.00",
-        })
+        response = self.client.post(
+            reverse("finance:transaction_edit", args=[opening.pk]),
+            {
+                "account": opening.account_id,
+                "date": "02/01/2026",
+                "payee_name": "Opening Balance",
+                "category": opening.category_id,
+                "memo": "Fixed",
+                "amount": "25.00",
+            },
+        )
         self.assertEqual(response.status_code, 302)
         opening.refresh_from_db()
         self.assertEqual(opening.amount, Decimal("25.00"))
@@ -54,9 +76,15 @@ class OpeningBalanceTests(LoggedInTestCase):
     def test_no_opening_balance_still_makes_a_zero_dated_today_transaction(self):
         """2026-09-15 follow-up: every new account always gets an opening balance transaction,
         even a zero one dated today when the fields are left blank."""
-        self.client.post(reverse("finance:account_add"), {
-            "name": "Wallet", "account_type": "cash", "currency": "EUR", "is_active": "on",
-        })
+        self.client.post(
+            reverse("finance:account_add"),
+            {
+                "name": "Wallet",
+                "account_type": "cash",
+                "currency": "EUR",
+                "is_active": "on",
+            },
+        )
         account = Account.objects.get(name="Wallet")
         self.assertEqual(account.balance, Decimal("0.00"))
         opening = Transaction.objects.get(account=account)
@@ -103,9 +131,14 @@ class TransferButtonTests(LoggedInTestCase):
         self.savings = Account.objects.create(name="Savings")
 
     def test_transfer_creates_two_paired_transactions(self):
-        response = self.client.post(reverse("finance:account_transfer", args=[self.checking.pk]), {
-            "to_account": self.savings.pk, "amount": "100.00", "date": "05/01/2026",
-        })
+        response = self.client.post(
+            reverse("finance:account_transfer", args=[self.checking.pk]),
+            {
+                "to_account": self.savings.pk,
+                "amount": "100.00",
+                "date": "05/01/2026",
+            },
+        )
         self.assertEqual(response.status_code, 302)
 
         out = Transaction.objects.get(account=self.checking)
@@ -148,7 +181,9 @@ class TransactionNumberingTests(TestCase):
         self.assertEqual(first_on_other.transaction_number, 2)
 
     def test_a_chosen_number_is_kept_as_is(self):
-        txn = Transaction.objects.create(account=self.account, date=date(2026, 1, 1), amount=Decimal("-1.00"), transaction_number=9999)
+        txn = Transaction.objects.create(
+            account=self.account, date=date(2026, 1, 1), amount=Decimal("-1.00"), transaction_number=9999
+        )
         self.assertEqual(txn.transaction_number, 9999)
         # Numbering isn't strictly unique/enforced (D9) — the next auto-assigned number just continues past it.
         following = Transaction.objects.create(account=self.account, date=date(2026, 1, 2), amount=Decimal("-1.00"))
@@ -162,27 +197,47 @@ class TransferExclusionTests(TestCase):
         self.groceries = Category.objects.create(name="Groceries")
 
     def test_transfers_are_excluded_from_income_and_spending(self):
-        Transaction.objects.create(account=self.account, date=date(2026, 1, 5), category=self.groceries, amount=Decimal("-20.00"))
-        Transaction.objects.create(account=self.account, date=date(2026, 1, 6), category=self.account.transfer_category, amount=Decimal("-100.00"))
+        Transaction.objects.create(
+            account=self.account, date=date(2026, 1, 5), category=self.groceries, amount=Decimal("-20.00")
+        )
+        Transaction.objects.create(
+            account=self.account,
+            date=date(2026, 1, 6),
+            category=self.account.transfer_category,
+            amount=Decimal("-100.00"),
+        )
         totals = income_and_spending(date(2026, 1, 1), date(2026, 1, 31))
         self.assertEqual(totals["spending"], Decimal("20.00"))
 
     def test_transfers_are_excluded_from_the_spending_donut(self):
-        Transaction.objects.create(account=self.account, date=date(2026, 1, 5), category=self.groceries, amount=Decimal("-20.00"))
-        Transaction.objects.create(account=self.account, date=date(2026, 1, 6), category=self.account.transfer_category, amount=Decimal("-100.00"))
+        Transaction.objects.create(
+            account=self.account, date=date(2026, 1, 5), category=self.groceries, amount=Decimal("-20.00")
+        )
+        Transaction.objects.create(
+            account=self.account,
+            date=date(2026, 1, 6),
+            category=self.account.transfer_category,
+            amount=Decimal("-100.00"),
+        )
         tree = spending_tree(date(2026, 1, 1), date(2026, 1, 31))
         self.assertEqual([g["name"] for g in tree], ["Groceries"])
 
 
 class CurrencyConversionTests(TestCase):
     def test_convert_uses_the_latest_rate(self):
-        ExchangeRate.objects.create(base_currency="USD", quote_currency="EUR", rate=Decimal("0.9"), date=date(2026, 1, 1))
-        ExchangeRate.objects.create(base_currency="USD", quote_currency="EUR", rate=Decimal("0.8"), date=date(2026, 2, 1))
+        ExchangeRate.objects.create(
+            base_currency="USD", quote_currency="EUR", rate=Decimal("0.9"), date=date(2026, 1, 1)
+        )
+        ExchangeRate.objects.create(
+            base_currency="USD", quote_currency="EUR", rate=Decimal("0.8"), date=date(2026, 2, 1)
+        )
         rates = RateTable("EUR")
         self.assertEqual(rates.convert(Decimal("100.00"), "USD"), Decimal("80.00"))
 
     def test_a_rate_stored_the_other_way_round_still_works(self):
-        ExchangeRate.objects.create(base_currency="EUR", quote_currency="USD", rate=Decimal("1.25"), date=date(2026, 1, 1))
+        ExchangeRate.objects.create(
+            base_currency="EUR", quote_currency="USD", rate=Decimal("1.25"), date=date(2026, 1, 1)
+        )
         rates = RateTable("EUR")
         self.assertEqual(rates.convert(Decimal("125.00"), "USD"), Decimal("100.00"))
 

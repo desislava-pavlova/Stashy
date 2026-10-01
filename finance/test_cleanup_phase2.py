@@ -2,6 +2,7 @@
 are one name - in every alphabet, enforced by the database itself - plus the one-level
 subcategory rule on the model, the rules the admin could break, and the dropped payee_name
 column."""
+
 from datetime import date
 from decimal import Decimal
 
@@ -80,17 +81,25 @@ class PayeeResolutionViewTests(TestCase):
         self.lidl = Payee.objects.create(name="Lidl")
 
     def test_typing_lidl_on_a_transaction_saves_it_as_lidl(self):
-        self.client.post(reverse("finance:transaction_add"), {
-            "account": self.account.pk, "date": "05/09/2026", "payee_name": "lidl", "amount": "-12.00",
-        })
+        self.client.post(
+            reverse("finance:transaction_add"),
+            {
+                "account": self.account.pk,
+                "date": "05/09/2026",
+                "payee_name": "lidl",
+                "amount": "-12.00",
+            },
+        )
         txn = Transaction.objects.get(amount=Decimal("-12.00"))
         self.assertEqual(txn.payee, self.lidl)
         self.assertEqual(txn.payee.name, "Lidl")
 
     def test_an_import_reuses_the_saved_payee_and_logs_the_new_one_as_imported(self):
-        content = "Date,Payee,Memo,Amount\n03/09/2026,LIDL,,-5.00\n04/09/2026,Rewe,,-6.00\n".encode()
-        self.client.post(reverse("finance:import_transactions"),
-                         {"account": self.account.pk, "file": SimpleUploadedFile("bank.csv", content)})
+        content = b"Date,Payee,Memo,Amount\n03/09/2026,LIDL,,-5.00\n04/09/2026,Rewe,,-6.00\n"
+        self.client.post(
+            reverse("finance:import_transactions"),
+            {"account": self.account.pk, "file": SimpleUploadedFile("bank.csv", content)},
+        )
         self.assertEqual(Transaction.objects.get(amount=Decimal("-5.00")).payee, self.lidl)
         self.assertEqual(Payee.objects.count(), 2)
         rewe_row = AuditLogEntry.objects.get(table="finance_payee", action="insert", row_label="Rewe")
@@ -207,10 +216,16 @@ class AdminRuleTests(TestCase):
         account = Account.objects.create(name="Checking")
         with self.assertRaises(IntegrityError), transaction.atomic():
             Reminder.objects.create(account=account, amount=Decimal("-5"), next_due_date=date(2026, 10, 1))
-        form = ReminderForm(data={
-            "reminder_type": EXPENSE, "account": account.pk, "amount": "-5", "frequency": "one_time",
-            "next_due_date": "01/10/2026", "no_end_date": True,
-        })
+        form = ReminderForm(
+            data={
+                "reminder_type": EXPENSE,
+                "account": account.pk,
+                "amount": "-5",
+                "frequency": "one_time",
+                "next_due_date": "01/10/2026",
+                "no_end_date": True,
+            }
+        )
         self.assertFalse(form.is_valid())
         self.assertIn("amount", form.errors)
 
@@ -251,8 +266,9 @@ class PayeeNameColumnTests(TestCase):
         user = get_user_model().objects.create_user("tester", password="not-a-real-password-123")
         self.client.force_login(user)
         account = Account.objects.create(name="Checking")
-        Transaction.objects.create(account=account, date=date.today(), payee=Payee.objects.create(name="Rewe"),
-                                   amount=Decimal("-4"))
+        Transaction.objects.create(
+            account=account, date=date.today(), payee=Payee.objects.create(name="Rewe"), amount=Decimal("-4")
+        )
         response = self.client.get(reverse("finance:transaction_list"), {"q": "rewe"})
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Rewe")

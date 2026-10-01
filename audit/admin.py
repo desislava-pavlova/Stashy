@@ -24,8 +24,19 @@ class AuditLogEntryAdmin(admin.ModelAdmin):
     list_per_page = 100
     list_select_related = ("user",)
     fields = (
-        "when", "op", "source", "user", "table", "row", "column_display", "old", "new",
-        "reason", "request", "same_operation", "values_table",
+        "when",
+        "op",
+        "source",
+        "user",
+        "table",
+        "row",
+        "column_display",
+        "old",
+        "new",
+        "reason",
+        "request",
+        "same_operation",
+        "values_table",
     )
     readonly_fields = fields
 
@@ -75,7 +86,8 @@ class AuditLogEntryAdmin(admin.ModelAdmin):
             return "—"
         header = format_html("<tr><th>{}</th><th>{}</th></tr>", "Column", "Value")
         rows = format_html_join(
-            "", "<tr><td>{}</td><td>{}</td></tr>",
+            "",
+            "<tr><td>{}</td><td>{}</td></tr>",
             ((column, _text(value)) for column, value in obj.values.items()),
         )
         return format_html("<table>{}{}</table>", header, rows)

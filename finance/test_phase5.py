@@ -1,4 +1,5 @@
 """Tests for Phase 5: transaction list filters/sorting, transaction numbers, inline add row."""
+
 from datetime import date
 from decimal import Decimal
 from unittest import mock
@@ -8,7 +9,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from .forms import TransactionForm
-from .models import Account, Category, Transaction
+from .models import Account, Transaction
 
 TODAY = date(2026, 9, 13)
 
@@ -58,10 +59,16 @@ class ReconciledFilterTests(LoggedInTestCase):
     def setUp(self):
         super().setUp()
         self.reconciled = Transaction.objects.create(
-            account=self.account, date=date(2026, 1, 1), amount=Decimal("-1.00"), reconciled=True,
+            account=self.account,
+            date=date(2026, 1, 1),
+            amount=Decimal("-1.00"),
+            reconciled=True,
         )
         self.unreconciled = Transaction.objects.create(
-            account=self.account, date=date(2026, 1, 2), amount=Decimal("-1.00"), reconciled=False,
+            account=self.account,
+            date=date(2026, 1, 2),
+            amount=Decimal("-1.00"),
+            reconciled=False,
         )
 
     def shown(self, **params):
@@ -122,10 +129,18 @@ class TransactionNumberFormTests(TestCase):
         txn = Transaction.objects.create(account=account, date=date(2026, 1, 2), amount=Decimal("-1.00"))
         self.assertEqual(txn.transaction_number, 2)
 
-        form = TransactionForm({
-            "account": account.pk, "date": "02/01/2026", "payee_name": "", "category": "",
-            "memo": "", "amount": "-1.00", "transaction_number": "",
-        }, instance=txn)
+        form = TransactionForm(
+            {
+                "account": account.pk,
+                "date": "02/01/2026",
+                "payee_name": "",
+                "category": "",
+                "memo": "",
+                "amount": "-1.00",
+                "transaction_number": "",
+            },
+            instance=txn,
+        )
         self.assertTrue(form.is_valid(), form.errors)
         saved = form.save()
         # "Next" is computed fresh from what's in the database, including this record's own
@@ -135,10 +150,18 @@ class TransactionNumberFormTests(TestCase):
     def test_a_chosen_number_is_kept(self):
         account = Account.objects.create(name="Checking")
         txn = Transaction.objects.create(account=account, date=date(2026, 1, 1), amount=Decimal("-1.00"))
-        form = TransactionForm({
-            "account": account.pk, "date": "01/01/2026", "payee_name": "", "category": "",
-            "memo": "", "amount": "-1.00", "transaction_number": "500",
-        }, instance=txn)
+        form = TransactionForm(
+            {
+                "account": account.pk,
+                "date": "01/01/2026",
+                "payee_name": "",
+                "category": "",
+                "memo": "",
+                "amount": "-1.00",
+                "transaction_number": "500",
+            },
+            instance=txn,
+        )
         self.assertTrue(form.is_valid(), form.errors)
         self.assertEqual(form.save().transaction_number, 500)
 

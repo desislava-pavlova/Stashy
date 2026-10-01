@@ -12,6 +12,7 @@ as every other stash-routing middleware, so a normal Client-driven test can log 
 real stash), so its own redirect logic is tested directly via RequestFactory, the same pattern
 test_phase12_stash_login.py's RequireStashMiddlewareTests already uses; the welcome_step view's
 own step-order logic (unaffected by that flag) is tested through the real Client instead."""
+
 import tempfile
 from pathlib import Path
 from unittest import mock
@@ -20,7 +21,7 @@ from django.contrib.auth import get_user_model
 from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 
-from . import stashes, starter_categories
+from . import starter_categories, stashes
 from .middleware import RequireSetupMiddleware, RequireStashMiddleware
 from .models import Account, Category, Profile
 
@@ -95,9 +96,14 @@ class ChangePinPageTests(LoggedInTestCase):
         self.user.set_password("1234")
         self.user.save()
         self.client.force_login(self.user)  # the old session's auth hash died with the password
-        response = self.client.post(reverse("finance:change_pin"), {
-            "current_pin": "1234", "new_pin": "5678", "new_pin_confirm": "5678",
-        })
+        response = self.client.post(
+            reverse("finance:change_pin"),
+            {
+                "current_pin": "1234",
+                "new_pin": "5678",
+                "new_pin_confirm": "5678",
+            },
+        )
         self.assertRedirects(response, reverse("finance:settings"))
         self.user.refresh_from_db()
         self.assertTrue(self.user.check_password("5678"))
@@ -106,9 +112,14 @@ class ChangePinPageTests(LoggedInTestCase):
         self.user.set_password("1234")
         self.user.save()
         self.client.force_login(self.user)  # the old session's auth hash died with the password
-        response = self.client.post(reverse("finance:change_pin"), {
-            "current_pin": "0000", "new_pin": "5678", "new_pin_confirm": "5678",
-        })
+        response = self.client.post(
+            reverse("finance:change_pin"),
+            {
+                "current_pin": "0000",
+                "new_pin": "5678",
+                "new_pin_confirm": "5678",
+            },
+        )
         self.assertEqual(response.status_code, 200)
         self.user.refresh_from_db()
         self.assertTrue(self.user.check_password("1234"))
@@ -188,9 +199,15 @@ class StarterCategoriesXlsxTests(TestCase):
         self.assertFalse(Category.objects.filter(parent__isnull=False).exists())
 
     def test_extended_creates_subcategories_under_a_shared_parent(self):
-        self._write({"Extended": [
-            ("Expense", "Auto", "Fuel"), ("Expense", "Auto", "Repairs"), ("Income", "Other Income", "Gifts"),
-        ]})
+        self._write(
+            {
+                "Extended": [
+                    ("Expense", "Auto", "Fuel"),
+                    ("Expense", "Auto", "Repairs"),
+                    ("Income", "Other Income", "Gifts"),
+                ]
+            }
+        )
         created = starter_categories.add_starter_categories("Extended")
         auto = Category.objects.get(name="Auto", parent__isnull=True)
         self.assertEqual(set(auto.subcategories.values_list("name", flat=True)), {"Fuel", "Repairs"})
@@ -357,10 +374,16 @@ class WelcomeStepOrderTests(WelcomeWizardTestCase):
 
 class WelcomeStepOneTests(WelcomeWizardTestCase):
     def test_saving_preferences_advances_to_step_two(self):
-        response = self.client.post(reverse("finance:welcome_step", args=[1]), {
-            "main_currency": "USD", "time_zone": "Europe/Sofia", "date_format": "dmy",
-            "number_format": "space_dot", "first_day_of_week": "1",
-        })
+        response = self.client.post(
+            reverse("finance:welcome_step", args=[1]),
+            {
+                "main_currency": "USD",
+                "time_zone": "Europe/Sofia",
+                "date_format": "dmy",
+                "number_format": "space_dot",
+                "first_day_of_week": "1",
+            },
+        )
         self.assertRedirects(response, reverse("finance:welcome_step", args=[2]))
         self.profile.refresh_from_db()
         self.assertEqual(self.profile.main_currency, "USD")
@@ -426,10 +449,13 @@ class WelcomeStepThreeTests(WelcomeWizardTestCase):
         self.assertFalse(self.profile.watched_expenses_categories.exists())
 
     def test_saving_watched_categories_advances(self):
-        response = self.client.post(reverse("finance:welcome_step", args=[3]), {
-            "watched_expenses_title": "Bills & Utilities",
-            "watched_expenses_categories": [str(self.category.pk)],
-        })
+        response = self.client.post(
+            reverse("finance:welcome_step", args=[3]),
+            {
+                "watched_expenses_title": "Bills & Utilities",
+                "watched_expenses_categories": [str(self.category.pk)],
+            },
+        )
         self.assertRedirects(response, reverse("finance:welcome_step", args=[4]))
         self.profile.refresh_from_db()
         self.assertEqual(self.profile.welcome_step, 3)
@@ -464,10 +490,17 @@ class WelcomeStepFourTests(WelcomeWizardTestCase):
         self.assertFalse(Account.objects.exists())
 
     def test_creating_an_account_finishes_setup(self):
-        response = self.client.post(reverse("finance:welcome_step", args=[4]), {
-            "name": "Checking", "account_type": "debit_card", "currency": "EUR", "is_active": "on",
-            "opening_balance": "50", "opening_balance_date": "01/01/2026",
-        })
+        response = self.client.post(
+            reverse("finance:welcome_step", args=[4]),
+            {
+                "name": "Checking",
+                "account_type": "debit_card",
+                "currency": "EUR",
+                "is_active": "on",
+                "opening_balance": "50",
+                "opening_balance_date": "01/01/2026",
+            },
+        )
         self.assertRedirects(response, reverse("finance:dashboard"))
         self.profile.refresh_from_db()
         self.assertTrue(self.profile.setup_finished)

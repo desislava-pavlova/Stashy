@@ -2,6 +2,7 @@
 SQLite-API backups and restore, the reconcile finish form, POST-only stash switching, currency
 conversion and refunds on the dashboard, import errors, safe exports, the admin login, the
 recovery code kept out of the cookie, and the open redirect."""
+
 import csv
 import io
 import sqlite3
@@ -132,8 +133,10 @@ class OnCommitUsesTheStashTests(LoggedInTestCase):
     def test_cleared_references_wait_for_the_routed_database(self):
         payee = Payee.objects.create(name="Corner shop")
         Transaction.objects.create(account=self.account, date=date(2026, 9, 1), payee=payee, amount=Decimal("-5"))
-        with mock.patch("audit.signals.router.db_for_write", return_value="default") as db_for_write, \
-                mock.patch("audit.signals.transaction.on_commit") as on_commit:
+        with (
+            mock.patch("audit.signals.router.db_for_write", return_value="default") as db_for_write,
+            mock.patch("audit.signals.transaction.on_commit") as on_commit,
+        ):
             payee.delete()
         db_for_write.assert_called()
         self.assertEqual(on_commit.call_args.kwargs["using"], "default")
@@ -153,9 +156,10 @@ class RestoreBringsBackTodaysSchemaTests(TemporaryStashesMixin, SimpleTestCase):
         stashes.restore_stash("restorecheck", old_backup)
 
         with connections["restorecheck"].cursor() as cursor:
-            columns = [c.name for c in connections["restorecheck"].introspection.get_table_description(
-                cursor, "finance_profile"
-            )]
+            columns = [
+                c.name
+                for c in connections["restorecheck"].introspection.get_table_description(cursor, "finance_profile")
+            ]
         self.assertIn("owner_name", columns)  # added by migration 0017, after the backup
 
 
@@ -171,9 +175,12 @@ class ReconcileFinishFormTests(LoggedInTestCase):
         return self.client.post(self.url, {"stage": "finish", **data})
 
     def test_missing_or_garbled_values_restart_with_a_message(self):
-        for data in ({}, {"statement_date": "yesterday", "statement_balance": "-20.00"},
-                     {"statement_date": "2026-09-30", "statement_balance": "lots"},
-                     {"statement_date": "2026-09-30", "statement_balance": "-20.00", "transaction": "abc"}):
+        for data in (
+            {},
+            {"statement_date": "yesterday", "statement_balance": "-20.00"},
+            {"statement_date": "2026-09-30", "statement_balance": "lots"},
+            {"statement_date": "2026-09-30", "statement_balance": "-20.00", "transaction": "abc"},
+        ):
             with self.subTest(data=data):
                 response = self.finish(**data)
                 self.assertEqual(response.status_code, 200)
@@ -195,7 +202,9 @@ class SwitchStashIsPostOnlyTests(TestCase):
         self.assertEqual(self.client.get(reverse("switch_stash")).status_code, 405)
 
     def test_post_returns_to_the_picker(self):
-        self.assertRedirects(self.client.post(reverse("switch_stash")), reverse("stash_picker"), fetch_redirect_response=False)
+        self.assertRedirects(
+            self.client.post(reverse("switch_stash")), reverse("stash_picker"), fetch_redirect_response=False
+        )
 
     def test_the_pin_screen_offers_it_as_a_form_button(self):
         response = self.client.get(reverse("login"))
@@ -233,7 +242,9 @@ class SpendingTreeRefundTests(TestCase):
         self.rent = Category.objects.create(name="Rent", category_type=expense)
 
     def add(self, amount, category):
-        Transaction.objects.create(account=self.account, date=date(2026, 9, 10), category=category, amount=Decimal(amount))
+        Transaction.objects.create(
+            account=self.account, date=date(2026, 9, 10), category=category, amount=Decimal(amount)
+        )
 
     def test_a_refund_bigger_than_the_spend_is_negative_and_nets_the_total(self):
         self.add("-40.00", self.groceries)
@@ -248,7 +259,9 @@ class SpendingTreeRefundTests(TestCase):
         self.assertEqual(Decimal(str(sum(g["total"] for g in tree))), spending)
 
     def test_a_subcategory_refund_nets_inside_its_parent(self):
-        organic = Category.objects.create(name="Organic", parent=self.groceries, category_type=Category.CategoryType.EXPENSE)
+        organic = Category.objects.create(
+            name="Organic", parent=self.groceries, category_type=Category.CategoryType.EXPENSE
+        )
         self.add("-30.00", self.groceries)
         self.add("10.00", organic)
         group = spending_tree(date(2026, 9, 1), date(2026, 9, 30))[0]
@@ -278,24 +291,30 @@ class ImportErrorTests(LoggedInTestCase):
         self.assertFalse(ImportBatch.objects.exists())
 
     def test_unreadable_rows_are_counted_and_blank_lines_are_not(self):
-        content = (
-            "Date,Payee,Memo,Amount\n"
-            "03/09/2026,Shop,,-5.00\n"
-            "someday,Shop,,-5.00\n"
-            "04/09/2026,Shop,,lots\n"
-            ",,,\n"
-        ).encode()
+        content = b"Date,Payee,Memo,Amount\n03/09/2026,Shop,,-5.00\nsomeday,Shop,,-5.00\n04/09/2026,Shop,,lots\n,,,\n"
         response = self.upload("bank.csv", content)
-        self.assertContains(response, "Imported 1 transaction (0 duplicates skipped). 2 rows skipped - unreadable date or amount.")
+        self.assertContains(
+            response, "Imported 1 transaction (0 duplicates skipped). 2 rows skipped - unreadable date or amount."
+        )
 
     def test_a_bad_num_becomes_no_number_instead_of_a_crash(self):
-        content = "Date,Num,Payee,Amount\n03/09/2026,-7,Shop,-1.00\n04/09/2026,inf,Shop,-2.00\n".encode()
+        content = b"Date,Num,Payee,Amount\n03/09/2026,-7,Shop,-1.00\n04/09/2026,inf,Shop,-2.00\n"
         self.upload("bank.csv", content)
         self.assertEqual(Transaction.objects.count(), 2)
 
     def test_parse_transaction_number(self):
-        cases = {"12": 12, "12.0": 12, " 7 ": 7, "": None, "-7": None, "inf": None, "nan": None,
-                 "12.5": None, "abc": None, "99999999999": None}
+        cases = {
+            "12": 12,
+            "12.0": 12,
+            " 7 ": 7,
+            "": None,
+            "-7": None,
+            "inf": None,
+            "nan": None,
+            "12.5": None,
+            "abc": None,
+            "99999999999": None,
+        }
         for raw, expected in cases.items():
             with self.subTest(raw=raw):
                 self.assertEqual(_parse_transaction_number(raw), expected)
@@ -308,8 +327,12 @@ class ExportTests(LoggedInTestCase):
         super().setUp()
         rent = Category.objects.create(name="Rent", category_type=Category.CategoryType.EXPENSE)
         Transaction.objects.create(
-            account=self.account, date=date(2026, 9, 1), category=rent, payee=Payee.objects.create(name="Магазин"),
-            memo='=HYPERLINK("http://evil.example")', amount=Decimal("-500.00"),
+            account=self.account,
+            date=date(2026, 9, 1),
+            category=rent,
+            payee=Payee.objects.create(name="Магазин"),
+            memo='=HYPERLINK("http://evil.example")',
+            amount=Decimal("-500.00"),
         )
 
     def export(self, fmt):

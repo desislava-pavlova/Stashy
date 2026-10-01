@@ -1,4 +1,5 @@
 """Tests for Phase 4: categories (parent/type filtering, search, usage, mass re-categorize)."""
+
 from datetime import date
 from decimal import Decimal
 
@@ -134,7 +135,9 @@ class CategoryUsageAndRecategorizeTests(LoggedInTestCase):
         self.groceries = Category.objects.create(name="Groceries", category_type=Type.EXPENSE)
         self.household = Category.objects.create(name="Household", category_type=Type.EXPENSE)
         self.txns = [
-            Transaction.objects.create(account=self.account, date=date(2026, 1, d), category=self.groceries, amount=Decimal("-10.00"))
+            Transaction.objects.create(
+                account=self.account, date=date(2026, 1, d), category=self.groceries, amount=Decimal("-10.00")
+            )
             for d in (1, 2, 3)
         ]
 
@@ -151,10 +154,13 @@ class CategoryUsageAndRecategorizeTests(LoggedInTestCase):
         self.assertEqual(len(response.context["transactions"]), 3)
 
     def test_moving_selected_transactions_updates_only_those_selected(self):
-        response = self.client.post(reverse("finance:category_usage", args=[self.groceries.pk]), {
-            "transaction_id": [self.txns[0].pk, self.txns[1].pk],
-            "move_to": self.household.pk,
-        })
+        response = self.client.post(
+            reverse("finance:category_usage", args=[self.groceries.pk]),
+            {
+                "transaction_id": [self.txns[0].pk, self.txns[1].pk],
+                "move_to": self.household.pk,
+            },
+        )
         self.assertEqual(response.status_code, 302)
         self.txns[0].refresh_from_db()
         self.txns[1].refresh_from_db()
@@ -164,10 +170,13 @@ class CategoryUsageAndRecategorizeTests(LoggedInTestCase):
         self.assertEqual(self.txns[2].category, self.groceries)
 
     def test_cannot_move_transactions_into_a_transfer_category(self):
-        self.client.post(reverse("finance:category_usage", args=[self.groceries.pk]), {
-            "transaction_id": [self.txns[0].pk],
-            "move_to": self.account.transfer_category.pk,
-        })
+        self.client.post(
+            reverse("finance:category_usage", args=[self.groceries.pk]),
+            {
+                "transaction_id": [self.txns[0].pk],
+                "move_to": self.account.transfer_category.pk,
+            },
+        )
         self.txns[0].refresh_from_db()
         self.assertEqual(self.txns[0].category, self.groceries)
 

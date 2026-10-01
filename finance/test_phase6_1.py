@@ -1,4 +1,5 @@
 """Tests for the Phase 6.1 fixes: edit-redirect, case-insensitive payees, small UI tweaks."""
+
 from datetime import date
 from decimal import Decimal
 
@@ -7,7 +8,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.urls import reverse
 
-from .forms import AccountForm, TransactionForm
+from .forms import AccountForm
 from .models import Account, Category, Payee, Transaction
 
 
@@ -26,8 +27,12 @@ class EditRedirectTests(LoggedInTestCase):
 
     def edit(self, **extra):
         data = {
-            "account": self.account.pk, "date": "01/01/2026", "payee_name": "", "category": "",
-            "memo": "", "amount": "-1.00",
+            "account": self.account.pk,
+            "date": "01/01/2026",
+            "payee_name": "",
+            "category": "",
+            "memo": "",
+            "amount": "-1.00",
         }
         data.update(extra)
         return self.client.post(reverse("finance:transaction_edit", args=[self.txn.pk]), data)
@@ -54,21 +59,27 @@ class EditRedirectTests(LoggedInTestCase):
         response = self.client.get(reverse("finance:account_detail", args=[self.account.pk]))
         edit_url = reverse("finance:transaction_edit", args=[self.txn.pk])
         account_url = reverse("finance:account_detail", args=[self.account.pk])
-        self.assertContains(response, f'{edit_url}?next={account_url}')
+        self.assertContains(response, f"{edit_url}?next={account_url}")
 
     def test_the_edit_link_on_the_transaction_list_carries_next_back_to_it(self):
         response = self.client.get(reverse("finance:transaction_list"), {"range": ""})
         edit_url = reverse("finance:transaction_edit", args=[self.txn.pk])
         list_url = reverse("finance:transaction_list")
-        self.assertContains(response, f'{edit_url}?next={list_url}%3Frange%3D')
+        self.assertContains(response, f"{edit_url}?next={list_url}%3Frange%3D")
 
 
 class CaseInsensitivePayeeTests(LoggedInTestCase):
     def test_manual_entry_reuses_an_existing_payee_regardless_of_case(self):
         Payee.objects.create(name="Lidl")
-        self.client.post(reverse("finance:transaction_add"), {
-            "account": self.account.pk, "date": "05/01/2026", "payee_name": "lidl", "amount": "-5.00",
-        })
+        self.client.post(
+            reverse("finance:transaction_add"),
+            {
+                "account": self.account.pk,
+                "date": "05/01/2026",
+                "payee_name": "lidl",
+                "amount": "-5.00",
+            },
+        )
         self.assertEqual(Payee.objects.filter(name__iexact="lidl").count(), 1)
         self.assertEqual(Transaction.objects.get().payee.name, "Lidl")
 
@@ -79,9 +90,15 @@ class CaseInsensitivePayeeTests(LoggedInTestCase):
         self.assertEqual(Payee.objects.filter(name__iexact="lidl").count(), 1)
 
     def test_a_genuinely_new_name_still_creates_a_payee(self):
-        self.client.post(reverse("finance:transaction_add"), {
-            "account": self.account.pk, "date": "05/01/2026", "payee_name": "Brand New Shop", "amount": "-5.00",
-        })
+        self.client.post(
+            reverse("finance:transaction_add"),
+            {
+                "account": self.account.pk,
+                "date": "05/01/2026",
+                "payee_name": "Brand New Shop",
+                "amount": "-5.00",
+            },
+        )
         self.assertTrue(Payee.objects.filter(name="Brand New Shop").exists())
 
 
@@ -114,7 +131,7 @@ class UsageEmptyStylingTests(LoggedInTestCase):
         # exist regardless - check the specific "Used" row's link isn't the pale class.
         content = response.content.decode()
         used_index = content.index("Used<")
-        nearby = content[used_index:used_index + 400]
+        nearby = content[used_index : used_index + 400]
         self.assertNotIn("usage-empty", nearby)
 
     def test_a_payee_with_no_transactions_is_styled_pale(self):

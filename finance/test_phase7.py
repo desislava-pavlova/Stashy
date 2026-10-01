@@ -2,6 +2,7 @@
 status (overdue/due soon/paid/pending) backed by a real transaction link, Enter opening a
 pre-filled transaction form instead of silently creating one, end-of-period due dates,
 "no end date", and the reminder_type -> category dropdown filter."""
+
 from datetime import date
 from decimal import Decimal
 from unittest import mock
@@ -30,10 +31,15 @@ class OptionalAmountTests(LoggedInTestCase):
         self.assertIsNone(reminder.signed_amount())
 
     def test_form_does_not_require_an_amount(self):
-        form = ReminderForm(data={
-            "reminder_type": "expense", "account": self.account.pk, "frequency": "monthly",
-            "next_due_date": "01/10/2026", "no_end_date": "on",
-        })
+        form = ReminderForm(
+            data={
+                "reminder_type": "expense",
+                "account": self.account.pk,
+                "frequency": "monthly",
+                "next_due_date": "01/10/2026",
+                "no_end_date": "on",
+            }
+        )
         self.assertTrue(form.is_valid(), form.errors)
 
 
@@ -50,7 +56,10 @@ class IsActiveRemovedAndSkipAddedTests(LoggedInTestCase):
 
     def test_skip_advances_the_due_date_without_creating_a_transaction(self):
         reminder = Reminder.objects.create(
-            account=self.account, amount=Decimal("20.00"), next_due_date=date(2026, 10, 1), frequency="monthly",
+            account=self.account,
+            amount=Decimal("20.00"),
+            next_due_date=date(2026, 10, 1),
+            frequency="monthly",
         )
         before = Transaction.objects.count()
         response = self.client.post(reverse("finance:reminder_skip", args=[reminder.pk]))
@@ -62,7 +71,10 @@ class IsActiveRemovedAndSkipAddedTests(LoggedInTestCase):
     def test_skip_clears_a_stale_paid_link(self):
         txn = Transaction.objects.create(account=self.account, date=date(2026, 9, 1), amount=Decimal("-1.00"))
         reminder = Reminder.objects.create(
-            account=self.account, amount=Decimal("20.00"), next_due_date=date(2026, 10, 1), frequency="monthly",
+            account=self.account,
+            amount=Decimal("20.00"),
+            next_due_date=date(2026, 10, 1),
+            frequency="monthly",
             last_entered_transaction=txn,
         )
         self.client.post(reverse("finance:reminder_skip", args=[reminder.pk]))
@@ -70,7 +82,9 @@ class IsActiveRemovedAndSkipAddedTests(LoggedInTestCase):
         self.assertIsNone(reminder.last_entered_transaction_id)
 
     def test_skip_requires_post(self):
-        reminder = Reminder.objects.create(account=self.account, amount=Decimal("20.00"), next_due_date=date(2026, 10, 1))
+        reminder = Reminder.objects.create(
+            account=self.account, amount=Decimal("20.00"), next_due_date=date(2026, 10, 1)
+        )
         self.client.get(reverse("finance:reminder_skip", args=[reminder.pk]))
         reminder.refresh_from_db()
         self.assertEqual(reminder.next_due_date, date(2026, 10, 1))
@@ -93,7 +107,9 @@ class StatusTests(LoggedInTestCase):
     def test_paid_when_far_out_and_linked_to_a_transaction(self, _):
         txn = Transaction.objects.create(account=self.account, date=date(2026, 9, 1), amount=Decimal("-1.00"))
         r = Reminder.objects.create(
-            account=self.account, amount=Decimal("1"), next_due_date=date(2026, 12, 1),
+            account=self.account,
+            amount=Decimal("1"),
+            next_due_date=date(2026, 12, 1),
             last_entered_transaction=txn,
         )
         self.assertEqual(r.status(), "paid")
@@ -101,7 +117,9 @@ class StatusTests(LoggedInTestCase):
     def test_deleting_the_linked_transaction_reverts_the_status(self, _):
         txn = Transaction.objects.create(account=self.account, date=date(2026, 9, 1), amount=Decimal("-1.00"))
         r = Reminder.objects.create(
-            account=self.account, amount=Decimal("1"), next_due_date=date(2026, 12, 1),
+            account=self.account,
+            amount=Decimal("1"),
+            next_due_date=date(2026, 12, 1),
             last_entered_transaction=txn,
         )
         txn.delete()
@@ -114,7 +132,10 @@ class StatusTests(LoggedInTestCase):
         # the old "paid" link from a prior cycle shouldn't keep masking that.
         txn = Transaction.objects.create(account=self.account, date=date(2026, 1, 1), amount=Decimal("-1.00"))
         r = Reminder.objects.create(
-            account=self.account, amount=Decimal("1"), next_due_date=date(2026, 9, 14), frequency="monthly",
+            account=self.account,
+            amount=Decimal("1"),
+            next_due_date=date(2026, 9, 14),
+            frequency="monthly",
             last_entered_transaction=txn,
         )
         self.assertEqual(r.status(), "due_soon")
@@ -122,7 +143,9 @@ class StatusTests(LoggedInTestCase):
     def test_deleting_the_reminder_does_not_touch_the_transaction(self, _):
         txn = Transaction.objects.create(account=self.account, date=date(2026, 9, 1), amount=Decimal("-1.00"))
         r = Reminder.objects.create(
-            account=self.account, amount=Decimal("1"), next_due_date=date(2026, 12, 1),
+            account=self.account,
+            amount=Decimal("1"),
+            next_due_date=date(2026, 12, 1),
             last_entered_transaction=txn,
         )
         r.delete()
@@ -135,8 +158,13 @@ class EnterOpensAPrefilledFormTests(LoggedInTestCase):
         self.payee = Payee.objects.create(name="Landlord")
         self.category = Category.objects.create(name="Rent", category_type=Category.CategoryType.EXPENSE)
         self.reminder = Reminder.objects.create(
-            account=self.account, payee=self.payee, category=self.category, amount=Decimal("500.00"),
-            reminder_type=Category.CategoryType.EXPENSE, next_due_date=date(2026, 10, 1), frequency="monthly",
+            account=self.account,
+            payee=self.payee,
+            category=self.category,
+            amount=Decimal("500.00"),
+            reminder_type=Category.CategoryType.EXPENSE,
+            next_due_date=date(2026, 10, 1),
+            frequency="monthly",
             notes="Rent",
         )
 
@@ -156,11 +184,19 @@ class EnterOpensAPrefilledFormTests(LoggedInTestCase):
         self.assertIsNone(response.context["form"].initial.get("amount"))
 
     def test_posting_creates_the_transaction_links_it_and_advances_the_due_date(self):
-        response = self.client.post(reverse("finance:transaction_add"), {
-            "reminder": self.reminder.pk,
-            "account": self.account.pk, "date": "01/10/2026", "transaction_number": "",
-            "payee_name": "Landlord", "category": self.category.pk, "memo": "Rent", "amount": "-500.00",
-        })
+        response = self.client.post(
+            reverse("finance:transaction_add"),
+            {
+                "reminder": self.reminder.pk,
+                "account": self.account.pk,
+                "date": "01/10/2026",
+                "transaction_number": "",
+                "payee_name": "Landlord",
+                "category": self.category.pk,
+                "memo": "Rent",
+                "amount": "-500.00",
+            },
+        )
         self.assertRedirects(response, reverse("finance:reminder_list"))
         self.assertEqual(Transaction.objects.count(), 1)
         txn = Transaction.objects.get()
@@ -179,7 +215,10 @@ class EnterOpensAPrefilledFormTests(LoggedInTestCase):
 class EndOfPeriodDueDateTests(LoggedInTestCase):
     def test_monthly_lands_on_the_last_day_of_next_month(self):
         r = Reminder.objects.create(
-            account=self.account, amount=Decimal("1"), frequency="monthly", end_of_period=True,
+            account=self.account,
+            amount=Decimal("1"),
+            frequency="monthly",
+            end_of_period=True,
             next_due_date=date(2026, 1, 31),
         )
         r.advance_due_date()
@@ -187,7 +226,10 @@ class EndOfPeriodDueDateTests(LoggedInTestCase):
 
     def test_quarterly_lands_on_a_quarter_end(self):
         r = Reminder.objects.create(
-            account=self.account, amount=Decimal("1"), frequency="quarterly", end_of_period=True,
+            account=self.account,
+            amount=Decimal("1"),
+            frequency="quarterly",
+            end_of_period=True,
             next_due_date=date(2026, 3, 31),
         )
         r.advance_due_date()
@@ -195,7 +237,10 @@ class EndOfPeriodDueDateTests(LoggedInTestCase):
 
     def test_yearly_lands_on_31_december(self):
         r = Reminder.objects.create(
-            account=self.account, amount=Decimal("1"), frequency="yearly", end_of_period=True,
+            account=self.account,
+            amount=Decimal("1"),
+            frequency="yearly",
+            end_of_period=True,
             next_due_date=date(2025, 12, 31),
         )
         r.advance_due_date()
@@ -203,7 +248,10 @@ class EndOfPeriodDueDateTests(LoggedInTestCase):
 
     def test_weekly_lands_on_a_sunday(self):
         r = Reminder.objects.create(
-            account=self.account, amount=Decimal("1"), frequency="weekly", end_of_period=True,
+            account=self.account,
+            amount=Decimal("1"),
+            frequency="weekly",
+            end_of_period=True,
             next_due_date=date(2026, 9, 6),  # a Sunday
         )
         r.advance_due_date()
@@ -211,7 +259,10 @@ class EndOfPeriodDueDateTests(LoggedInTestCase):
 
     def test_without_the_toggle_it_is_a_plain_fixed_interval(self):
         r = Reminder.objects.create(
-            account=self.account, amount=Decimal("1"), frequency="monthly", end_of_period=False,
+            account=self.account,
+            amount=Decimal("1"),
+            frequency="monthly",
+            end_of_period=False,
             next_due_date=date(2026, 1, 15),
         )
         r.advance_due_date()
@@ -220,19 +271,30 @@ class EndOfPeriodDueDateTests(LoggedInTestCase):
 
 class NoEndDateTests(LoggedInTestCase):
     def test_checking_no_end_date_clears_any_end_date(self):
-        form = ReminderForm(data={
-            "reminder_type": "expense", "account": self.account.pk, "frequency": "monthly",
-            "next_due_date": "01/10/2026", "end_date": "01/10/2027", "no_end_date": "on",
-        })
+        form = ReminderForm(
+            data={
+                "reminder_type": "expense",
+                "account": self.account.pk,
+                "frequency": "monthly",
+                "next_due_date": "01/10/2026",
+                "end_date": "01/10/2027",
+                "no_end_date": "on",
+            }
+        )
         self.assertTrue(form.is_valid(), form.errors)
         reminder = form.save()
         self.assertIsNone(reminder.end_date)
 
     def test_leaving_it_unchecked_keeps_an_end_date(self):
-        form = ReminderForm(data={
-            "reminder_type": "expense", "account": self.account.pk, "frequency": "monthly",
-            "next_due_date": "01/10/2026", "end_date": "01/10/2027",
-        })
+        form = ReminderForm(
+            data={
+                "reminder_type": "expense",
+                "account": self.account.pk,
+                "frequency": "monthly",
+                "next_due_date": "01/10/2026",
+                "end_date": "01/10/2027",
+            }
+        )
         self.assertTrue(form.is_valid(), form.errors)
         reminder = form.save()
         self.assertEqual(reminder.end_date, date(2027, 10, 1))
@@ -246,7 +308,10 @@ class NoEndDateTests(LoggedInTestCase):
 
     def test_editing_a_reminder_with_an_end_date_unchecks_the_box(self):
         reminder = Reminder.objects.create(
-            account=self.account, amount=Decimal("1"), next_due_date=date(2026, 10, 1), end_date=date(2027, 1, 1),
+            account=self.account,
+            amount=Decimal("1"),
+            next_due_date=date(2026, 10, 1),
+            end_date=date(2027, 1, 1),
         )
         self.assertFalse(ReminderForm(instance=reminder).fields["no_end_date"].initial)
 
@@ -264,10 +329,14 @@ class ReminderListFilterTests(LoggedInTestCase):
     def setUp(self):
         super().setUp()
         self.soon = Reminder.objects.create(account=self.account, amount=Decimal("1"), next_due_date=date(2026, 9, 15))
-        self.later = Reminder.objects.create(account=self.account, amount=Decimal("1"), next_due_date=date(2026, 12, 1))
+        self.later = Reminder.objects.create(
+            account=self.account, amount=Decimal("1"), next_due_date=date(2026, 12, 1)
+        )
         txn = Transaction.objects.create(account=self.account, date=date(2026, 9, 1), amount=Decimal("-1.00"))
         self.paid = Reminder.objects.create(
-            account=self.account, amount=Decimal("1"), next_due_date=date(2026, 12, 15),
+            account=self.account,
+            amount=Decimal("1"),
+            next_due_date=date(2026, 12, 15),
             last_entered_transaction=txn,
         )
 

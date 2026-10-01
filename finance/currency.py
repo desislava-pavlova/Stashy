@@ -5,6 +5,7 @@ from Frankfurter - a free service, no API key, that republishes the European Cen
 daily reference rates. Nothing is fetched in the background, so without internet Stashy
 simply keeps using the last rates it knows.
 """
+
 import json
 import urllib.request
 from dataclasses import dataclass
@@ -64,10 +65,17 @@ CURRENCY_CHOICES = [(code, f"{code} – {name}") for code, name in CURRENCIES.it
 # Symbol shown instead of the bare ISO code in an amount (the `moneyc` template filter).
 # A currency missing here just shows its code, e.g. "9.66 XYZ" - safe, if less pretty.
 CURRENCY_SYMBOLS = {
-    "USD": "$", "CAD": "$", "AUD": "$", "NZD": "$", "HKD": "$", "SGD": "$", "MXN": "$",
+    "USD": "$",
+    "CAD": "$",
+    "AUD": "$",
+    "NZD": "$",
+    "HKD": "$",
+    "SGD": "$",
+    "MXN": "$",
     "GBP": "£",
     "EUR": "€",
-    "JPY": "¥", "CNY": "¥",
+    "JPY": "¥",
+    "CNY": "¥",
     "INR": "₹",
     "ILS": "₪",
     "TRY": "₺",
@@ -79,7 +87,10 @@ CURRENCY_SYMBOLS = {
     "CHF": "CHF",
     "BGN": "лв.",
     "PLN": "zł",
-    "SEK": "kr", "NOK": "kr", "DKK": "kr", "ISK": "kr",
+    "SEK": "kr",
+    "NOK": "kr",
+    "DKK": "kr",
+    "ISK": "kr",
     "CZK": "Kč",
     "HUF": "Ft",
     "RON": "lei",
@@ -205,15 +216,21 @@ def fetch_latest_rates(main_currency, currencies):
     stored = []
     # Short and only for the writes, on the stash's own database (`atomic()` alone would open
     # it on `default`, the picker's empty placeholder).
-    with db_transaction.atomic(using=router.db_for_write(ExchangeRate)), system_action("Exchange rates fetched from Frankfurter (European Central Bank)"):
+    with (
+        db_transaction.atomic(using=router.db_for_write(ExchangeRate)),
+        system_action("Exchange rates fetched from Frankfurter (European Central Bank)"),
+    ):
         for code in wanted:
             rate = rates.get(code)
             if rate is None or rate <= 0:
                 unavailable.append(code)
                 continue
             row, _ = ExchangeRate.objects.update_or_create(
-                base_currency=main_currency, quote_currency=code, date=rates_date,
-                source=ExchangeRate.Source.FRANKFURTER, defaults={"rate": rate},
+                base_currency=main_currency,
+                quote_currency=code,
+                date=rates_date,
+                source=ExchangeRate.Source.FRANKFURTER,
+                defaults={"rate": rate},
             )
             stored.append(row)
     return stored, sorted(unavailable)

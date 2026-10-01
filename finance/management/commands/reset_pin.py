@@ -3,6 +3,7 @@ recovery code have both been lost (Phase 12). Running this already requires file
 to the stash's own folder, so it adds no exposure beyond what that access already grants -
 there's deliberately no confirmation prompt or extra check here.
 """
+
 import getpass
 
 from django.core.management.base import BaseCommand, CommandError

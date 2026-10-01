@@ -9,6 +9,7 @@ SQLite takes the locks it needs, so a backup is a consistent snapshot even if St
 writing at that moment, and a restore rewrites the live file page by page in a way every
 connection the running server still holds notices on its next query.
 """
+
 import re
 import sqlite3
 from datetime import date, datetime, timedelta
@@ -24,9 +25,7 @@ QUARTERLY_MIN_GAP_DAYS = 90
 _TIMESTAMP_FORMAT = "%Y-%m-%d_%H-%M-%S"
 # The tag may contain underscores itself (before_restore, before_update), so it's matched lazily
 # and the timestamp anchors the end.
-_STAMP_RE = re.compile(
-    r"^(?:backup|db)_\w+?_(?P<stamp>\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}|\d{8}_\d{6})$"
-)
+_STAMP_RE = re.compile(r"^(?:backup|db)_\w+?_(?P<stamp>\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}|\d{8}_\d{6})$")
 # How long a restore waits for other connections to finish writing before giving up.
 _LOCK_TIMEOUT_SECONDS = 20
 

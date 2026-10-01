@@ -105,8 +105,12 @@ class PayeeHistoryTests(TestCase):
 
     def test_one_transaction_gives_one_history_entry(self):
         Transaction.objects.create(
-            account=self.account, date=date(2026, 1, 5), payee=self.payee,
-            category=self.groceries, memo="weekly shop", amount=Decimal("-30.00"),
+            account=self.account,
+            date=date(2026, 1, 5),
+            payee=self.payee,
+            category=self.groceries,
+            memo="weekly shop",
+            amount=Decimal("-30.00"),
         )
         history = self.payee.category_history()
         self.assertEqual(len(history), 1)
@@ -114,12 +118,20 @@ class PayeeHistoryTests(TestCase):
 
     def test_two_categories_give_two_entries_newest_first(self):
         Transaction.objects.create(
-            account=self.account, date=date(2026, 1, 5), payee=self.payee,
-            category=self.groceries, memo="weekly shop", amount=Decimal("-30.00"),
+            account=self.account,
+            date=date(2026, 1, 5),
+            payee=self.payee,
+            category=self.groceries,
+            memo="weekly shop",
+            amount=Decimal("-30.00"),
         )
         Transaction.objects.create(
-            account=self.account, date=date(2026, 1, 10), payee=self.payee,
-            category=self.household, memo="cleaning supplies", amount=Decimal("-12.00"),
+            account=self.account,
+            date=date(2026, 1, 10),
+            payee=self.payee,
+            category=self.household,
+            memo="cleaning supplies",
+            amount=Decimal("-12.00"),
         )
         history = self.payee.category_history()
         self.assertEqual([h.category for h in history], [self.household, self.groceries])
@@ -127,12 +139,20 @@ class PayeeHistoryTests(TestCase):
     def test_history_reflects_the_latest_by_date_not_by_entry_order(self):
         # Entered second, but dated earlier - shouldn't override the later-dated one.
         Transaction.objects.create(
-            account=self.account, date=date(2026, 1, 20), payee=self.payee,
-            category=self.groceries, memo="second shop", amount=Decimal("-40.00"),
+            account=self.account,
+            date=date(2026, 1, 20),
+            payee=self.payee,
+            category=self.groceries,
+            memo="second shop",
+            amount=Decimal("-40.00"),
         )
         Transaction.objects.create(
-            account=self.account, date=date(2026, 1, 5), payee=self.payee,
-            category=self.groceries, memo="first shop", amount=Decimal("-30.00"),
+            account=self.account,
+            date=date(2026, 1, 5),
+            payee=self.payee,
+            category=self.groceries,
+            memo="first shop",
+            amount=Decimal("-30.00"),
         )
         history = self.payee.category_history()
         self.assertEqual(len(history), 1)
@@ -140,8 +160,12 @@ class PayeeHistoryTests(TestCase):
 
     def test_editing_an_unrelated_field_does_not_change_the_history(self):
         txn = Transaction.objects.create(
-            account=self.account, date=date(2026, 1, 5), payee=self.payee,
-            category=self.groceries, memo="weekly shop", amount=Decimal("-30.00"),
+            account=self.account,
+            date=date(2026, 1, 5),
+            payee=self.payee,
+            category=self.groceries,
+            memo="weekly shop",
+            amount=Decimal("-30.00"),
         )
         txn.reconciled = True
         txn.save()
@@ -149,7 +173,10 @@ class PayeeHistoryTests(TestCase):
 
     def test_uncategorized_transactions_form_their_own_entry(self):
         Transaction.objects.create(
-            account=self.account, date=date(2026, 1, 5), payee=self.payee, amount=Decimal("-10.00"),
+            account=self.account,
+            date=date(2026, 1, 5),
+            payee=self.payee,
+            amount=Decimal("-10.00"),
         )
         history = self.payee.category_history()
         self.assertEqual(len(history), 1)
@@ -203,7 +230,10 @@ class CategoryDeleteTests(LoggedInTestCase):
         self.groceries = Category.objects.create(name="Groceries", parent=self.food)
         self.organic = Category.objects.create(name="Organic", parent=self.groceries)
         self.txn = Transaction.objects.create(
-            account=self.account, date=date(2026, 1, 5), category=self.organic, amount=Decimal("-5.00"),
+            account=self.account,
+            date=date(2026, 1, 5),
+            category=self.organic,
+            amount=Decimal("-5.00"),
         )
 
     def test_confirmation_lists_every_subcategory_that_would_be_deleted(self):
@@ -231,8 +261,13 @@ class TransactionListTests(LoggedInTestCase):
         categories = [Category.objects.create(name=f"Sub {i}", parent=parent) for i in range(5)]
         payee = Payee.objects.create(name="Shop")
         Transaction.objects.bulk_create(
-            Transaction(account=self.account, date=date(2026, 1, 1), payee=payee,
-                        category=categories[i % 5], amount=Decimal("-1.00"))
+            Transaction(
+                account=self.account,
+                date=date(2026, 1, 1),
+                payee=payee,
+                category=categories[i % 5],
+                amount=Decimal("-1.00"),
+            )
             for i in range(600)
         )
         with CaptureQueriesContext(connection) as queries:

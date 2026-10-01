@@ -1,6 +1,5 @@
 import contextlib
 from datetime import date, timedelta
-from decimal import Decimal
 
 from dateutil.relativedelta import relativedelta
 from django.conf import settings
@@ -48,7 +47,9 @@ class Profile(models.Model):
     welcome_step = models.PositiveSmallIntegerField(default=WELCOME_STEPS_DONE)
 
     main_currency = models.CharField(
-        max_length=3, choices=CURRENCY_CHOICES, default=DEFAULT_CURRENCY,
+        max_length=3,
+        choices=CURRENCY_CHOICES,
+        default=DEFAULT_CURRENCY,
         help_text="Net worth is shown in this currency; new accounts start with it.",
     )
     time_zone = models.CharField(max_length=64, default=settings.TIME_ZONE)
@@ -68,7 +69,9 @@ class Profile(models.Model):
     # hardcoded "Bills & Utilities" report: any set of expense categories worth watching closely.
     watched_expenses_title = models.CharField(max_length=60, default="Bills & Utilities")
     watched_expenses_categories = models.ManyToManyField(
-        "Category", blank=True, related_name="+",
+        "Category",
+        blank=True,
+        related_name="+",
         help_text="Which expense categories the Watched expenses report tracks.",
     )
 
@@ -77,7 +80,7 @@ class Profile(models.Model):
 
     @property
     def owner_possessive(self):
-        """"Alex" -> "Alex's"; "The Smiths" -> "The Smiths'" (L1)."""
+        """ "Alex" -> "Alex's"; "The Smiths" -> "The Smiths'" (L1)."""
         from . import stashes
 
         return stashes.possessive(self.owner_name)
@@ -94,12 +97,15 @@ class Profile(models.Model):
             return profile
         detected = regional.detect_from_computer()
         with system_action("Preferences created from this computer's regional settings"):
-            profile, _ = cls.objects.get_or_create(user=user, defaults={
-                "time_zone": detected.time_zone,
-                "date_format": detected.date_format,
-                "number_format": detected.number_format,
-                "first_day_of_week": detected.first_day_of_week,
-            })
+            profile, _ = cls.objects.get_or_create(
+                user=user,
+                defaults={
+                    "time_zone": detected.time_zone,
+                    "date_format": detected.date_format,
+                    "number_format": detected.number_format,
+                    "first_day_of_week": detected.first_day_of_week,
+                },
+            )
         return profile
 
     @property
@@ -130,11 +136,25 @@ class AccountType(models.TextChoices):
 # (key, name, short explainer, account types), in the order accounts are listed.
 ACCOUNT_GROUPS = [
     ("physical", "Physical Liquid", "Cash in hand", [AccountType.CASH, AccountType.COUPONS]),
-    ("digital", "Digital Liquid", "Spendable, not physical",
-     [AccountType.DEBIT_CARD, AccountType.GIFT_CARD, AccountType.E_WALLET]),
-    ("illiquid", "Illiquid", "Not instantly spendable",
-     [AccountType.SAVINGS, AccountType.INVESTMENT, AccountType.RETIREMENT,
-      AccountType.LOAN, AccountType.CREDIT_CARD, AccountType.OTHER]),
+    (
+        "digital",
+        "Digital Liquid",
+        "Spendable, not physical",
+        [AccountType.DEBIT_CARD, AccountType.GIFT_CARD, AccountType.E_WALLET],
+    ),
+    (
+        "illiquid",
+        "Illiquid",
+        "Not instantly spendable",
+        [
+            AccountType.SAVINGS,
+            AccountType.INVESTMENT,
+            AccountType.RETIREMENT,
+            AccountType.LOAN,
+            AccountType.CREDIT_CARD,
+            AccountType.OTHER,
+        ],
+    ),
 ]
 # Inactive accounts always come last, whatever their type.
 INACTIVE_GROUP = ("inactive", "Inactive", "No longer used")
@@ -145,9 +165,13 @@ _GROUP_INDEX = {kind.value: index for index, group in enumerate(ACCOUNT_GROUPS) 
 class AccountQuerySet(models.QuerySet):
     def with_balances(self):
         """Compute every balance in the same query instead of one extra query per account."""
-        return self.annotate(balance_total=Coalesce(
-            Sum("transactions__amount"), Value(ZERO), output_field=models.DecimalField(max_digits=14, decimal_places=2)
-        ))
+        return self.annotate(
+            balance_total=Coalesce(
+                Sum("transactions__amount"),
+                Value(ZERO),
+                output_field=models.DecimalField(max_digits=14, decimal_places=2),
+            )
+        )
 
 
 class Account(models.Model):
@@ -157,7 +181,9 @@ class Account(models.Model):
     account_type = models.CharField(max_length=20, choices=ACCOUNT_TYPE_CHOICES, default=AccountType.CASH)
     currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, default=DEFAULT_CURRENCY)
     institution = models.CharField(
-        max_length=120, blank=True, help_text="Fill when a bank or company is behind this account.",
+        max_length=120,
+        blank=True,
+        help_text="Fill when a bank or company is behind this account.",
     )
     is_active = models.BooleanField(default=True)
     notes = models.TextField(blank=True)
@@ -213,7 +239,9 @@ class Account(models.Model):
 
     @property
     def group_order(self):
-        return len(ACCOUNT_GROUPS) if not self.is_active else _GROUP_INDEX.get(self.account_type, len(ACCOUNT_GROUPS) - 1)
+        return (
+            len(ACCOUNT_GROUPS) if not self.is_active else _GROUP_INDEX.get(self.account_type, len(ACCOUNT_GROUPS) - 1)
+        )
 
     def ensure_transfer_category(self):
         """Every account owns exactly one transfer category, named after it (D7). Returns it."""
@@ -221,7 +249,9 @@ class Account(models.Model):
         category = Category.objects.filter(account=self).first()
         if category is None:
             with system_action(f"Transfer category created for account '{self.name}'"):
-                category = Category.objects.create(name=name, category_type=Category.CategoryType.TRANSFER, account=self)
+                category = Category.objects.create(
+                    name=name, category_type=Category.CategoryType.TRANSFER, account=self
+                )
         elif category.name != name:
             category.name = name
             with system_action(f"Transfer category renamed to match account '{self.name}'"):
@@ -250,12 +280,15 @@ class Category(models.Model):
     # name_key(name), kept by save(): the database checks uniqueness on this column.
     name_key = models.CharField(max_length=120, editable=False)
     # One level of subcategories only: a subcategory can't itself have children (see clean()).
-    parent = models.ForeignKey(
-        "self", null=True, blank=True, related_name="subcategories", on_delete=models.CASCADE
-    )
+    parent = models.ForeignKey("self", null=True, blank=True, related_name="subcategories", on_delete=models.CASCADE)
     category_type = models.CharField(max_length=10, choices=CategoryType.choices, default=CategoryType.EXPENSE)
     account = models.OneToOneField(
-        Account, null=True, blank=True, editable=False, on_delete=models.CASCADE, related_name="transfer_category",
+        Account,
+        null=True,
+        blank=True,
+        editable=False,
+        on_delete=models.CASCADE,
+        related_name="transfer_category",
         help_text="Set only on an account's own transfer category, which Stashy creates and deletes with the account.",
     )
     # Set when an import (Phase 9) created this category itself because the file named one
@@ -272,7 +305,8 @@ class Category(models.Model):
             # transfer category is left out: it's named after its account, and two accounts may
             # share a name.
             models.UniqueConstraint(
-                fields=["name_key"], condition=Q(parent__isnull=True, account__isnull=True),
+                fields=["name_key"],
+                condition=Q(parent__isnull=True, account__isnull=True),
                 name="unique_top_level_category_name_ci",
             ),
             models.CheckConstraint(
@@ -342,7 +376,8 @@ class Category(models.Model):
         found, frontier, seen = [], [self], {self.pk}
         while frontier:
             children = [
-                child for child in Category.objects.filter(parent__in=frontier).select_related("parent")
+                child
+                for child in Category.objects.filter(parent__in=frontier).select_related("parent")
                 if child.pk not in seen  # a parent loop in the data must not hang the app
             ]
             seen.update(child.pk for child in children)
@@ -353,7 +388,9 @@ class Category(models.Model):
 
 # Income first, then Expense, then the system-managed Transfer categories last (Phase 4).
 _CATEGORY_TYPE_ORDER = {
-    Category.CategoryType.INCOME: 0, Category.CategoryType.EXPENSE: 1, Category.CategoryType.TRANSFER: 2,
+    Category.CategoryType.INCOME: 0,
+    Category.CategoryType.EXPENSE: 1,
+    Category.CategoryType.TRANSFER: 2,
 }
 
 
@@ -381,6 +418,7 @@ def categories_alphabetical(queryset):
 def grouped_categories(categories):
     """Categories split into Income -> Expense -> Transfer groups; within each group, ordered
     by (top-level) parent name, then by subcategory name under it."""
+
     def sort_key(category):
         parent_name = (category.parent.name if category.parent_id else category.name).lower()
         return (
@@ -475,7 +513,8 @@ class Transaction(models.Model):
     account = models.ForeignKey(Account, related_name="transactions", on_delete=models.CASCADE)
     date = models.DateField()
     transaction_number = models.PositiveIntegerField(
-        null=True, blank=True,
+        null=True,
+        blank=True,
         help_text="Shared across all accounts, starting again at 1 every calendar year. You can change it.",
     )
     payee = models.ForeignKey(Payee, null=True, blank=True, on_delete=models.SET_NULL, related_name="transactions")
@@ -489,8 +528,7 @@ class Transaction(models.Model):
         "ImportBatch", null=True, blank=True, on_delete=models.SET_NULL, related_name="transactions"
     )
     import_fingerprint = models.CharField(
-        max_length=64, blank=True, db_index=True,
-        help_text="Hash used to detect duplicate imports"
+        max_length=64, blank=True, db_index=True, help_text="Hash used to detect duplicate imports"
     )
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -515,7 +553,9 @@ class Transaction(models.Model):
         not scoped to one (D9). Duplicates are allowed on purpose: numbers are editable and
         imports reuse them. Two requests can't both read the same MAX() either, since every
         write request holds the stash's write lock (BEGIN IMMEDIATE) from its start."""
-        highest = Transaction.objects.filter(date__year=on.year).aggregate(highest=Max("transaction_number"))["highest"]
+        highest = Transaction.objects.filter(date__year=on.year).aggregate(highest=Max("transaction_number"))[
+            "highest"
+        ]
         return (highest or 0) + 1
 
     def save(self, *args, **kwargs):
@@ -560,7 +600,10 @@ class Reminder(models.Model):
     # (2026-09-14 follow-up, replacing the old fixed "Every 2 weeks" choice with a free
     # interval - "weekly" + interval=2 now means the same thing "biweekly" used to).
     FREQUENCY_UNIT_WORDS = {
-        "weekly": "week(s)", "monthly": "month(s)", "quarterly": "quarter(s)", "yearly": "year(s)",
+        "weekly": "week(s)",
+        "monthly": "month(s)",
+        "quarterly": "quarter(s)",
+        "yearly": "year(s)",
     }
 
     TYPE_CHOICES = [
@@ -577,7 +620,10 @@ class Reminder(models.Model):
     payee = models.ForeignKey(Payee, null=True, blank=True, on_delete=models.SET_NULL, related_name="reminders")
     category = models.ForeignKey(Category, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
     amount = models.DecimalField(
-        max_digits=12, decimal_places=2, null=True, blank=True,
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
         validators=[MinValueValidator(0, message=AMOUNT_NOT_NEGATIVE)],
         help_text="Enter as a positive number, or leave blank for a variable-amount bill",
     )
@@ -601,9 +647,7 @@ class Reminder(models.Model):
     # Set only on an auto-generated future occurrence of a recurring reminder (below), pointing
     # back at the recurring "series head" that generated it. Null on every reminder you create
     # by hand, recurring or not.
-    series = models.ForeignKey(
-        "self", null=True, blank=True, on_delete=models.CASCADE, related_name="occurrences"
-    )
+    series = models.ForeignKey("self", null=True, blank=True, on_delete=models.CASCADE, related_name="occurrences")
     notes = models.CharField(max_length=255, blank=True)
 
     class Meta:
@@ -611,7 +655,8 @@ class Reminder(models.Model):
         constraints = [
             # The reminder's type says income or expense, so the amount itself is never negative.
             models.CheckConstraint(
-                condition=Q(amount__isnull=True) | Q(amount__gte=0), name="reminder_amount_not_negative",
+                condition=Q(amount__isnull=True) | Q(amount__gte=0),
+                name="reminder_amount_not_negative",
             ),
             models.CheckConstraint(condition=Q(interval__gte=1), name="reminder_interval_at_least_one"),
         ]
@@ -729,10 +774,17 @@ class Reminder(models.Model):
         without this the period you just dealt with would vanish from the list."""
         with system_action(f"Resolved period recorded for recurring reminder ({self})"):
             return Reminder.objects.create(
-                series=self, frequency=self.Frequency.ONE_TIME, next_due_date=self.next_due_date,
-                account=self.account, payee=self.payee, category=self.category, amount=self.amount,
-                reminder_type=self.reminder_type, notes=self.notes,
-                last_entered_transaction=transaction, skipped=skipped,
+                series=self,
+                frequency=self.Frequency.ONE_TIME,
+                next_due_date=self.next_due_date,
+                account=self.account,
+                payee=self.payee,
+                category=self.category,
+                amount=self.amount,
+                reminder_type=self.reminder_type,
+                notes=self.notes,
+                last_entered_transaction=transaction,
+                skipped=skipped,
             )
 
     def advance_due_date(self):
@@ -771,9 +823,15 @@ class Reminder(models.Model):
             for occ_date in wanted_dates:
                 if occ_date not in existing:
                     Reminder.objects.create(
-                        series=self, frequency=self.Frequency.ONE_TIME, next_due_date=occ_date,
-                        account=self.account, payee=self.payee, category=self.category,
-                        amount=self.amount, reminder_type=self.reminder_type, notes=self.notes,
+                        series=self,
+                        frequency=self.Frequency.ONE_TIME,
+                        next_due_date=occ_date,
+                        account=self.account,
+                        payee=self.payee,
+                        category=self.category,
+                        amount=self.amount,
+                        reminder_type=self.reminder_type,
+                        notes=self.notes,
                     )
 
 
@@ -786,7 +844,9 @@ class ExchangeRate(models.Model):
 
     base_currency = models.CharField("from", max_length=3, choices=CURRENCY_CHOICES)
     quote_currency = models.CharField("to", max_length=3, choices=CURRENCY_CHOICES)
-    rate = models.DecimalField(max_digits=20, decimal_places=10, help_text="How much 1 unit of the first currency is worth in the second.")
+    rate = models.DecimalField(
+        max_digits=20, decimal_places=10, help_text="How much 1 unit of the first currency is worth in the second."
+    )
     date = models.DateField()
     source = models.CharField(max_length=12, choices=Source.choices, default=Source.MANUAL)
 

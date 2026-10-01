@@ -1,6 +1,7 @@
 """Tests for Phase 10 (Backup & Export): the backup helper (D8's quarterly check, and the
 Settings page's "Back up now" button), and CSV/XLSX export for transactions/accounts/
 categories/payees."""
+
 import csv
 import io
 import sqlite3
@@ -90,11 +91,14 @@ class BackupHelperTests(SimpleTestCase):
         (backups_dir / "backup_manual_2026-06-01_00-00-00.sqlite3").write_text("mid")
         (backups_dir / "backup_manual_2026-09-14_11-57-36.sqlite3").write_text("newest")
         names = [p.name for p in finance_backup.list_backups(self.root)]
-        self.assertEqual(names, [
-            "backup_manual_2026-09-14_11-57-36.sqlite3",
-            "backup_manual_2026-06-01_00-00-00.sqlite3",
-            "db_manual_20260101_000000.sqlite3",
-        ])
+        self.assertEqual(
+            names,
+            [
+                "backup_manual_2026-09-14_11-57-36.sqlite3",
+                "backup_manual_2026-06-01_00-00-00.sqlite3",
+                "db_manual_20260101_000000.sqlite3",
+            ],
+        )
 
     def test_restore_from_copies_the_backup_over_the_database_and_keeps_a_safety_copy(self):
         finance_backup.backup_now(self.db, self.root, tag="manual")
@@ -163,8 +167,13 @@ class ExportTransactionsTests(LoggedInTestCase):
         rent = Category.objects.create(name="Rent", category_type=Category.CategoryType.EXPENSE)
         payee = Payee.objects.create(name="Landlord")
         Transaction.objects.create(
-            account=self.account, date=date(2026, 1, 1), payee=payee, category=rent,
-            memo="January rent", amount=Decimal("-500.00"), reconciled=True,
+            account=self.account,
+            date=date(2026, 1, 1),
+            payee=payee,
+            category=rent,
+            memo="January rent",
+            amount=Decimal("-500.00"),
+            reconciled=True,
         )
         Account.objects.create(name="Savings")
 
@@ -172,20 +181,24 @@ class ExportTransactionsTests(LoggedInTestCase):
         response = self.client.get(reverse("finance:export_transactions"), {"format": "csv"})
         self.assertEqual(response["Content-Type"], "text/csv; charset=utf-8")
         rows = list(csv.reader(io.StringIO(response.content.decode("utf-8-sig"))))
-        self.assertEqual(rows[0], ["Date", "Number", "Account", "Payee", "Category", "Memo", "Amount", "Currency", "Reconciled"])
-        self.assertIn(["2026-01-01", rows[1][1], "Checking", "Landlord", "Rent", "January rent", "-500.00", "EUR", "Y"], rows)
+        self.assertEqual(
+            rows[0], ["Date", "Number", "Account", "Payee", "Category", "Memo", "Amount", "Currency", "Reconciled"]
+        )
+        self.assertIn(
+            ["2026-01-01", rows[1][1], "Checking", "Landlord", "Rent", "January rent", "-500.00", "EUR", "Y"], rows
+        )
 
     def test_xlsx_export_has_the_right_content_type(self):
         response = self.client.get(reverse("finance:export_transactions"), {"format": "xlsx"})
-        self.assertEqual(
-            response["Content-Type"], "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+        self.assertEqual(response["Content-Type"], "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         self.assertTrue(len(response.content) > 0)
 
     def test_export_respects_the_current_filters(self):
         savings = Account.objects.get(name="Savings")
         Transaction.objects.create(account=savings, date=date(2026, 1, 2), amount=Decimal("10.00"))
-        response = self.client.get(reverse("finance:export_transactions"), {"format": "csv", "account": self.account.pk})
+        response = self.client.get(
+            reverse("finance:export_transactions"), {"format": "csv", "account": self.account.pk}
+        )
         rows = list(csv.reader(io.StringIO(response.content.decode())))
         accounts_in_export = {row[2] for row in rows[1:]}
         self.assertEqual(accounts_in_export, {"Checking"})

@@ -1,6 +1,7 @@
 """Tests for Phase 13 (Reports redesign): the R1-R8 decisions not already covered by the
 updated Phase 11 tests - earliest-date range/trimming, the subtotal overflow notice, currency
 conversion, the uncategorized-transactions notice, and Settings-configurable Watched expenses."""
+
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -63,7 +64,9 @@ class TrimmedAveragePeriodsTests(LoggedInTestCase):
         start, end = date(2026, 3, 1), date(2026, 3, 31)
         # The first trailing period is 2026-01-29..2026-02-28; a transaction on 2026-02-15
         # means that period doesn't entirely precede the data, so it's kept.
-        Transaction.objects.create(account=self.account, date=date(2026, 2, 15), category=groceries, amount=Decimal("-5.00"))
+        Transaction.objects.create(
+            account=self.account, date=date(2026, 2, 15), category=groceries, amount=Decimal("-5.00")
+        )
         periods = reporting.trimmed_average_periods(start, end, 3, account=self.account)
         self.assertEqual(len(periods), 1)
 
@@ -93,8 +96,12 @@ class ReportCurrencyConversionTests(LoggedInTestCase):
     def test_converts_a_foreign_currency_account_using_the_latest_rate(self):
         usd_account = Account.objects.create(name="US Checking", currency="USD")
         groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
-        Transaction.objects.create(account=usd_account, date=date(2026, 1, 5), category=groceries, amount=Decimal("-100.00"))
-        ExchangeRate.objects.create(base_currency="USD", quote_currency="EUR", rate=Decimal("0.9"), date=date(2026, 1, 1))
+        Transaction.objects.create(
+            account=usd_account, date=date(2026, 1, 5), category=groceries, amount=Decimal("-100.00")
+        )
+        ExchangeRate.objects.create(
+            base_currency="USD", quote_currency="EUR", rate=Decimal("0.9"), date=date(2026, 1, 1)
+        )
 
         rates = RateTable("EUR")
         rows = reporting.category_totals(date(2026, 1, 1), date(2026, 1, 31), expense_only=True, rates=rates)
@@ -103,7 +110,9 @@ class ReportCurrencyConversionTests(LoggedInTestCase):
     def test_no_known_rate_excludes_it_rather_than_mixing_currencies(self):
         usd_account = Account.objects.create(name="US Checking", currency="USD")
         groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
-        Transaction.objects.create(account=usd_account, date=date(2026, 1, 5), category=groceries, amount=Decimal("-100.00"))
+        Transaction.objects.create(
+            account=usd_account, date=date(2026, 1, 5), category=groceries, amount=Decimal("-100.00")
+        )
         rates = RateTable("EUR")
         rows = reporting.category_totals(date(2026, 1, 1), date(2026, 1, 31), expense_only=True, rates=rates)
         self.assertEqual(rows, [{"category_id": groceries.pk, "name": "Groceries", "total": Decimal("0.00")}])
@@ -137,7 +146,9 @@ class ReportFixesAfterFirstLookTests(LoggedInTestCase):
     def setUp(self):
         super().setUp()
         self.bills = Category.objects.create(name="Bills", category_type=Category.CategoryType.EXPENSE)
-        self.water = Category.objects.create(name="Water", parent=self.bills, category_type=Category.CategoryType.EXPENSE)
+        self.water = Category.objects.create(
+            name="Water", parent=self.bills, category_type=Category.CategoryType.EXPENSE
+        )
 
     def test_show_hide_all_is_hidden_until_a_report_is_expanded(self):
         # Like Export: it acts on the table, which isn't on screen until the card is expanded.
@@ -169,9 +180,15 @@ class ReportFixesAfterFirstLookTests(LoggedInTestCase):
         self.assertEqual([(r["name"], r["current"]) for r in rows], [("Bills", Decimal("40.00"))])
 
     def test_watched_lines_follow_the_subtotal_granularity(self):
-        Transaction.objects.create(account=self.account, date=date(2026, 1, 5), category=self.water, amount=Decimal("-20.00"))
-        Transaction.objects.create(account=self.account, date=date(2026, 4, 5), category=self.water, amount=Decimal("-25.00"))
-        series = reporting.watched_expenses_series(date(2026, 1, 1), date(2026, 6, 30), [self.water.pk], granularity="quarter")
+        Transaction.objects.create(
+            account=self.account, date=date(2026, 1, 5), category=self.water, amount=Decimal("-20.00")
+        )
+        Transaction.objects.create(
+            account=self.account, date=date(2026, 4, 5), category=self.water, amount=Decimal("-25.00")
+        )
+        series = reporting.watched_expenses_series(
+            date(2026, 1, 1), date(2026, 6, 30), [self.water.pk], granularity="quarter"
+        )
         self.assertEqual([p["period"] for p in series[0]["points"]], ["Q1 2026", "Q2 2026"])
         self.assertEqual([p["total"] for p in series[0]["points"]], [Decimal("20.00"), Decimal("25.00")])
 
@@ -189,9 +206,14 @@ class CalendarAveragePeriodsTests(SimpleTestCase):
 
     def test_this_month_compares_with_previous_full_months(self):
         periods = reporting.vs_average_periods(date(2026, 9, 1), date(2026, 9, 15), 3, range_key="this_month")
-        self.assertEqual(periods, [
-            (date(2026, 8, 1), date(2026, 8, 31)), (date(2026, 7, 1), date(2026, 7, 31)), (date(2026, 6, 1), date(2026, 6, 30)),
-        ])
+        self.assertEqual(
+            periods,
+            [
+                (date(2026, 8, 1), date(2026, 8, 31)),
+                (date(2026, 7, 1), date(2026, 7, 31)),
+                (date(2026, 6, 1), date(2026, 6, 30)),
+            ],
+        )
 
     def test_last_month_compares_with_the_months_before_it(self):
         periods = reporting.vs_average_periods(date(2026, 8, 1), date(2026, 8, 31), 1, range_key="last_month")
@@ -214,7 +236,9 @@ class CalendarAveragePeriodsTests(SimpleTestCase):
         self.assertEqual(periods, [(date(2026, 2, 19), date(2026, 2, 28))])
 
     def test_earliest_to_date_has_nothing_before_it(self):
-        self.assertEqual(reporting.vs_average_periods(date(2021, 1, 1), date(2026, 9, 15), 3, range_key="earliest"), [])
+        self.assertEqual(
+            reporting.vs_average_periods(date(2021, 1, 1), date(2026, 9, 15), 3, range_key="earliest"), []
+        )
 
 
 class AverageDisplayTests(LoggedInTestCase):
@@ -224,7 +248,9 @@ class AverageDisplayTests(LoggedInTestCase):
 
     def test_nothing_earlier_shows_the_message_instead_of_the_report(self):
         groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
-        Transaction.objects.create(account=self.account, date=date.today(), category=groceries, amount=Decimal("-10.00"))
+        Transaction.objects.create(
+            account=self.account, date=date.today(), category=groceries, amount=Decimal("-10.00")
+        )
         response = self.client.get(reverse("finance:reports"), {"range": "earliest"})
         self.assertFalse(response.context["has_average"])
         self.assertContains(response, "No earlier data to compare with.")
@@ -234,8 +260,12 @@ class AverageDisplayTests(LoggedInTestCase):
         groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
         # Data starting inside last month leaves exactly one whole earlier month to compare with.
         last_month_end = date.today().replace(day=1) - timedelta(days=1)
-        Transaction.objects.create(account=self.account, date=last_month_end, category=groceries, amount=Decimal("-40.00"))
-        Transaction.objects.create(account=self.account, date=date.today(), category=groceries, amount=Decimal("-10.00"))
+        Transaction.objects.create(
+            account=self.account, date=last_month_end, category=groceries, amount=Decimal("-40.00")
+        )
+        Transaction.objects.create(
+            account=self.account, date=date.today(), category=groceries, amount=Decimal("-10.00")
+        )
         response = self.client.get(reverse("finance:reports"))
         self.assertEqual(response.context["average_periods"], 1)
         self.assertFalse(response.context["has_average"])
@@ -244,8 +274,12 @@ class AverageDisplayTests(LoggedInTestCase):
     def test_two_earlier_periods_do_make_an_average(self):
         groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
         two_months_back = (date.today().replace(day=1) - timedelta(days=1)).replace(day=1) - timedelta(days=1)
-        Transaction.objects.create(account=self.account, date=two_months_back, category=groceries, amount=Decimal("-40.00"))
-        Transaction.objects.create(account=self.account, date=date.today(), category=groceries, amount=Decimal("-10.00"))
+        Transaction.objects.create(
+            account=self.account, date=two_months_back, category=groceries, amount=Decimal("-40.00")
+        )
+        Transaction.objects.create(
+            account=self.account, date=date.today(), category=groceries, amount=Decimal("-10.00")
+        )
         response = self.client.get(reverse("finance:reports"))
         self.assertTrue(response.context["has_average"])
         self.assertContains(response, 'id="spendingVsAverageChart"')
@@ -254,7 +288,9 @@ class AverageDisplayTests(LoggedInTestCase):
         start, end = date(2026, 3, 1), date(2026, 3, 31)
         seen_before = Category.objects.create(name="Rent", category_type=Category.CategoryType.EXPENSE)
         brand_new = Category.objects.create(name="Gifts", category_type=Category.CategoryType.EXPENSE)
-        Transaction.objects.create(account=self.account, date=date(2026, 2, 10), category=seen_before, amount=Decimal("-60.00"))
+        Transaction.objects.create(
+            account=self.account, date=date(2026, 2, 10), category=seen_before, amount=Decimal("-60.00")
+        )
         Transaction.objects.create(account=self.account, date=start, category=seen_before, amount=Decimal("-50.00"))
         Transaction.objects.create(account=self.account, date=start, category=brand_new, amount=Decimal("-15.00"))
         periods = reporting.vs_average_periods(start, end, 2, range_key="this_month")
@@ -320,16 +356,22 @@ class WatchedExpensesSettingsTests(LoggedInTestCase):
         self.assertNotIn(income, offered)
 
     def test_saving_from_settings_updates_the_report(self):
-        response = self.client.post(reverse("finance:settings"), {
-            "save_watched_expenses": "1", "watched_expenses_title": "My bills",
-            "watched_expenses_categories": [self.electricity.pk],
-        })
+        response = self.client.post(
+            reverse("finance:settings"),
+            {
+                "save_watched_expenses": "1",
+                "watched_expenses_title": "My bills",
+                "watched_expenses_categories": [self.electricity.pk],
+            },
+        )
         self.assertRedirects(response, reverse("finance:settings"))
         self.profile.refresh_from_db()
         self.assertEqual(self.profile.watched_expenses_title, "My bills")
         self.assertEqual(list(self.profile.watched_expenses_categories.all()), [self.electricity])
 
-        Transaction.objects.create(account=self.account, date=date.today(), category=self.electricity, amount=Decimal("-40.00"))
+        Transaction.objects.create(
+            account=self.account, date=date.today(), category=self.electricity, amount=Decimal("-40.00")
+        )
         response = self.client.get(reverse("finance:reports"), {"range": "this_month"})
         self.assertContains(response, "My bills")
 

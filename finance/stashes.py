@@ -10,6 +10,7 @@ A stash's existence *is* its folder existing: the picker lists stashes by scanni
 directories, since choosing one is what puts a database in play for the session at all -
 before that, nothing can query a "list of stashes" the way it could query a normal table.
 """
+
 import re
 import secrets
 from contextlib import contextmanager
@@ -112,7 +113,7 @@ def restore_stash(name, backup_path):
 
 
 def possessive(name):
-    """"Alex" -> "Alex's"; "The Smiths" -> "The Smiths'" (L1: a name already ending in s
+    """ "Alex" -> "Alex's"; "The Smiths" -> "The Smiths'" (L1: a name already ending in s
     gets just the apostrophe). Shared with Profile.owner_possessive, for the views here that
     only have the plain owner name string (stash creation, before there's a Profile row)."""
     suffix = "'" if name.endswith(("s", "S")) else "'s"
@@ -200,7 +201,7 @@ def validate_owner_name(owner_name, exclude_folder=None):
 
 
 def _folder_name_from_owner(owner_name):
-    """"Alex" -> "alex"; "The Smiths" -> "the-smiths" (L1: generated once, never shown, and
+    """ "Alex" -> "alex"; "The Smiths" -> "the-smiths" (L1: generated once, never shown, and
     made unique below if another stash's owner name happens to slugify to the same thing)."""
     slug = re.sub(r"[^a-z0-9]+", "-", owner_name.strip().lower()).strip("-")
     base = slug or "stash"
@@ -237,8 +238,10 @@ def create_stash(owner_name, pin):
 
     recovery_code = _generate_recovery_code()
     with _audit_signals_suspended():
-        user = get_user_model().objects.db_manager(folder_name).create_superuser(
-            username=folder_name, email="", password=pin
+        user = (
+            get_user_model()
+            .objects.db_manager(folder_name)
+            .create_superuser(username=folder_name, email="", password=pin)
         )
         detected = regional.detect_from_computer()
         Profile.objects.using(folder_name).create(

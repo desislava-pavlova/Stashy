@@ -1,6 +1,7 @@
 """Tests for the 2026-09-14 second follow-up: an amountless reminder shows blank (not
 "Varies"), the reminder delete page reads as a real sentence and is centered, and the
 dashboard donut uses a currency symbol with correct prefix/suffix placement."""
+
 from datetime import date
 from decimal import Decimal
 
@@ -29,8 +30,11 @@ class ReminderDeleteTitleTests(LoggedInTestCase):
     def test_title_reads_as_a_sentence(self):
         payee = Payee.objects.create(name="Landlord")
         reminder = Reminder.objects.create(
-            account=self.account, payee=payee, amount=Decimal("500.00"),
-            reminder_type=Category.CategoryType.INCOME, next_due_date=date(2026, 9, 20),
+            account=self.account,
+            payee=payee,
+            amount=Decimal("500.00"),
+            reminder_type=Category.CategoryType.INCOME,
+            next_due_date=date(2026, 9, 20),
         )
         response = self.client.get(reverse("finance:reminder_delete", args=[reminder.pk]))
         self.assertContains(response, "Delete Income reminder for Landlord?")
@@ -38,7 +42,10 @@ class ReminderDeleteTitleTests(LoggedInTestCase):
     def test_falls_back_to_category_then_a_generic_label(self):
         rent = Category.objects.create(name="Rent", category_type=Category.CategoryType.EXPENSE)
         reminder = Reminder.objects.create(
-            account=self.account, category=rent, amount=Decimal("500.00"), next_due_date=date(2026, 9, 20),
+            account=self.account,
+            category=rent,
+            amount=Decimal("500.00"),
+            next_due_date=date(2026, 9, 20),
         )
         response = self.client.get(reverse("finance:reminder_delete", args=[reminder.pk]))
         self.assertContains(response, "Rent")

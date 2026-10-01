@@ -10,7 +10,6 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.1/ref/settings/
 """
 
-import os
 import sys
 from pathlib import Path
 
@@ -25,69 +24,69 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # of NAME below) and never goes through the stash picker, so RequireStashMiddleware
 # (finance/middleware.py) skips its gate entirely in this mode rather than requiring every
 # test to fake having picked a stash first.
-TESTING = len(sys.argv) > 1 and sys.argv[1] == 'test'
+TESTING = len(sys.argv) > 1 and sys.argv[1] == "test"
 
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = config('SECRET_KEY', default='django-insecure-fy_e1aj@$9=^uuc4am26rfy6vpdstq^*s2txu89743-vbjim%-')
+SECRET_KEY = config("SECRET_KEY", default="django-insecure-fy_e1aj@$9=^uuc4am26rfy6vpdstq^*s2txu89743-vbjim%-")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = config('DEBUG', default=True, cast=bool)
+DEBUG = config("DEBUG", default=True, cast=bool)
 
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1').split(',')
+ALLOWED_HOSTS = config("ALLOWED_HOSTS", default="localhost,127.0.0.1").split(",")
 
 
 # Application definition
 
 INSTALLED_APPS = [
-    'django.contrib.admin',
-    'django.contrib.auth',
-    'django.contrib.contenttypes',
-    'django.contrib.sessions',
-    'django.contrib.messages',
-    'django.contrib.staticfiles',
-    'audit',
-    'finance',
+    "django.contrib.admin",
+    "django.contrib.auth",
+    "django.contrib.contenttypes",
+    "django.contrib.sessions",
+    "django.contrib.messages",
+    "django.contrib.staticfiles",
+    "audit",
+    "finance",
 ]
 
 MIDDLEWARE = [
-    'django.middleware.security.SecurityMiddleware',
-    'whitenoise.middleware.WhiteNoiseMiddleware',
-    'django.contrib.sessions.middleware.SessionMiddleware',
-    'django.middleware.common.CommonMiddleware',
-    'django.middleware.csrf.CsrfViewMiddleware',
-    'finance.middleware.StashSelectionMiddleware',
-    'django.contrib.auth.middleware.AuthenticationMiddleware',
-    'finance.middleware.RequireStashMiddleware',
-    'audit.middleware.AuditContextMiddleware',
-    'finance.middleware.RegionalPreferencesMiddleware',
-    'finance.middleware.RequireSetupMiddleware',
-    'django.contrib.messages.middleware.MessageMiddleware',
-    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.middleware.common.CommonMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
+    "finance.middleware.StashSelectionMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "finance.middleware.RequireStashMiddleware",
+    "audit.middleware.AuditContextMiddleware",
+    "finance.middleware.RegionalPreferencesMiddleware",
+    "finance.middleware.RequireSetupMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
     # Last, so its process_view runs after every other one (CSRF included).
-    'finance.middleware.StashAtomicRequestMiddleware',
+    "finance.middleware.StashAtomicRequestMiddleware",
 ]
 
-ROOT_URLCONF = 'stashy.urls'
+ROOT_URLCONF = "stashy.urls"
 
 TEMPLATES = [
     {
-        'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
-        'APP_DIRS': True,
-        'OPTIONS': {
-            'context_processors': [
-                'django.template.context_processors.request',
-                'django.contrib.auth.context_processors.auth',
-                'django.contrib.messages.context_processors.messages',
-                'finance.context_processors.regional_preferences',
-                'finance.context_processors.stash_owner',
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "DIRS": [],
+        "APP_DIRS": True,
+        "OPTIONS": {
+            "context_processors": [
+                "django.template.context_processors.request",
+                "django.contrib.auth.context_processors.auth",
+                "django.contrib.messages.context_processors.messages",
+                "finance.context_processors.regional_preferences",
+                "finance.context_processors.stash_owner",
             ],
         },
     },
 ]
 
-WSGI_APPLICATION = 'stashy.wsgi.application'
+WSGI_APPLICATION = "stashy.wsgi.application"
 
 
 # Database
@@ -101,36 +100,36 @@ WSGI_APPLICATION = 'stashy.wsgi.application'
 # no longer needs restarting Stashy. `default` here is just the inert placeholder database
 # Django's own machinery falls back to before any stash is selected for a session (see
 # finance.middleware.RequireStashMiddleware) - no real app data is ever stored in it.
-STASHES_DIR = BASE_DIR / 'stashes'
+STASHES_DIR = BASE_DIR / "stashes"
 
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / '_picker.sqlite3',
+    "default": {
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": BASE_DIR / "_picker.sqlite3",
         # Every request is all-or-nothing: if anything fails part-way, nothing it changed is kept.
-        'ATOMIC_REQUESTS': True,
-        'OPTIONS': {
+        "ATOMIC_REQUESTS": True,
+        "OPTIONS": {
             # Take the write lock up front and wait for it, instead of failing with
             # "database is locked" when the multi-threaded server overlaps two requests.
-            'transaction_mode': 'IMMEDIATE',
-            'timeout': 20,
+            "transaction_mode": "IMMEDIATE",
+            "timeout": 20,
         },
     }
 }
-DATABASE_ROUTERS = ['finance.db_router.StashRouter']
+DATABASE_ROUTERS = ["finance.db_router.StashRouter"]
 
 # Signed-cookie sessions (not the default DB-backed ones): the session itself has to work
 # *before* a stash - the only place a DB-backed session could live - has even been chosen, to
 # hold the picker's own "which stash did you pick" state. Fine for a local, single-user app;
 # session data here is small (a user id, the stash name, an auth hash).
-SESSION_ENGINE = 'django.contrib.sessions.backends.signed_cookies'
+SESSION_ENGINE = "django.contrib.sessions.backends.signed_cookies"
 
 # Django's default, spelled out because Stashy relies on it: a signed cookie can be read by
 # anyone holding it, so a secret shown once (a new recovery code) waits here, in this one
 # server process's memory, and the session only carries a random key to it.
 CACHES = {
-    'default': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
     }
 }
 
@@ -140,16 +139,16 @@ CACHES = {
 
 AUTH_PASSWORD_VALIDATORS = [
     {
-        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
+        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator",
     },
     {
-        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+        "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
     },
     {
-        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
+        "NAME": "django.contrib.auth.password_validation.CommonPasswordValidator",
     },
     {
-        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
+        "NAME": "django.contrib.auth.password_validation.NumericPasswordValidator",
     },
 ]
 
@@ -157,40 +156,40 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/6.1/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
+LANGUAGE_CODE = "en-us"
 
-TIME_ZONE = 'Europe/Sofia'
+TIME_ZONE = "Europe/Sofia"
 
 USE_I18N = True
 
 USE_TZ = True
 
 # European date formats (DD/MM/YYYY, weeks start Monday) — see stashy/formats/en/formats.py
-FORMAT_MODULE_PATH = ['stashy.formats']
+FORMAT_MODULE_PATH = ["stashy.formats"]
 
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/6.1/howto/static-files/
 # Served by WhiteNoise from STATIC_ROOT, which Stashy.bat fills with `collectstatic` on each launch.
 
-STATIC_URL = 'static/'
-STATIC_ROOT = BASE_DIR / 'staticfiles'
-STATICFILES_DIRS = [BASE_DIR / 'static'] if (BASE_DIR / 'static').exists() else []
+STATIC_URL = "static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
+STATICFILES_DIRS = [BASE_DIR / "static"] if (BASE_DIR / "static").exists() else []
 
 STORAGES = {
-    'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
-    'staticfiles': {'BACKEND': 'whitenoise.storage.CompressedStaticFilesStorage'},
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedStaticFilesStorage"},
 }
 
 # Bootstrap's name for the red alert style is 'danger', not 'error'.
-MESSAGE_TAGS = {message_constants.ERROR: 'danger'}
+MESSAGE_TAGS = {message_constants.ERROR: "danger"}
 
-LOGIN_URL = 'login'
-LOGIN_REDIRECT_URL = 'finance:dashboard'
-LOGOUT_REDIRECT_URL = 'login'
+LOGIN_URL = "login"
+LOGIN_REDIRECT_URL = "finance:dashboard"
+LOGOUT_REDIRECT_URL = "login"
 
-DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 
 # Audit log: every create/update/delete of models in these apps is recorded (see the audit app).
-AUDIT_TRACKED_APPS = ['finance']
+AUDIT_TRACKED_APPS = ["finance"]

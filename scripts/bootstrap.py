@@ -3,8 +3,8 @@
 Every step is safe to repeat: anything already done is skipped, so the same
 double-click works for first-time setup and for everyday launching.
 """
+
 import hashlib
-import os
 import secrets
 import shutil
 import socket

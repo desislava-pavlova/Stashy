@@ -6,6 +6,7 @@ changes meaning just because a Windows setting did. RegionalPreferencesMiddlewar
 them for each request; code running outside a request (tests, scripts) gets DEFAULTS, which
 match stashy/formats/.
 """
+
 import functools
 import re
 import zoneinfo
@@ -108,6 +109,7 @@ def _zone(name):
 
 # --- formatting --------------------------------------------------------------
 
+
 def format_number(value, decimals=2, preferences=None):
     """10000.5 -> '10 000.50' (or 10,000.50 / 10.000,50 / 10 000,50, per the preferences)."""
     thousands, mark = _NUMBER_STYLES.get((preferences or current()).number_format, _NUMBER_STYLES["space_dot"])
@@ -155,6 +157,7 @@ def format_audit_timestamp(value):
 
 # --- reading this computer's settings -----------------------------------------
 
+
 def detect_from_computer():
     """This computer's regional settings as Preferences; anything that can't be read keeps its default."""
     found, country = {}, ""
@@ -172,6 +175,7 @@ def _read_windows_settings():
     import winreg
 
     with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Control Panel\International") as key:
+
         def read(name):
             try:
                 return str(winreg.QueryValueEx(key, name)[0])

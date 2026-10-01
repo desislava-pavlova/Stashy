@@ -1,0 +1,22 @@
+# Tool settings only: Stashy isn't a package that gets installed, so there's no
+# [project] table. Run the checks with:
+#   .venv\Scripts\ruff.exe check .
+#   .venv\Scripts\ruff.exe format .
+
+[tool.ruff]
+line-length = 119
+target-version = "py312"
+extend-exclude = ["migrations", "staticfiles", "stashes", "backups", "logs"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "N", "B", "UP", "DJ", "SIM", "C4", "RUF"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.coverage.run]
+source = ["finance", "audit", "stashy"]
+omit = ["*/migrations/*", "*/test_*.py", "*/tests.py"]
+
+[tool.coverage.report]
+skip_empty = true

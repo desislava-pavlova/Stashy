@@ -25,10 +25,17 @@ class AuditTestCase(TestCase):
 
 class ModelChangeLoggingTests(AuditTestCase):
     def test_create_through_the_app_is_logged_as_the_user(self):
-        response = self.client.post(reverse("finance:account_add"), {
-            "name": "Cash", "account_type": "cash", "currency": "EUR", "is_active": "on",
-            "opening_balance": "10.5", "opening_balance_date": "01/01/2026",
-        })
+        response = self.client.post(
+            reverse("finance:account_add"),
+            {
+                "name": "Cash",
+                "account_type": "cash",
+                "currency": "EUR",
+                "is_active": "on",
+                "opening_balance": "10.5",
+                "opening_balance_date": "01/01/2026",
+            },
+        )
         self.assertEqual(response.status_code, 302)
         entry = self.entries(Account).get()
         self.assertEqual(entry.action, Action.INSERT)
@@ -91,9 +98,16 @@ class ModelChangeLoggingTests(AuditTestCase):
         # Phase 6: memory is computed live from history, not a cached field, so a transaction
         # save no longer triggers a follow-up Payee update - only its one-time auto-creation.
         account = Account.objects.create(name="Checking")
-        response = self.client.post(reverse("finance:transaction_add"), {
-            "account": account.pk, "date": "05/01/2026", "payee_name": "Lidl", "memo": "weekly", "amount": "-30.00",
-        })
+        response = self.client.post(
+            reverse("finance:transaction_add"),
+            {
+                "account": account.pk,
+                "date": "05/01/2026",
+                "payee_name": "Lidl",
+                "memo": "weekly",
+                "amount": "-30.00",
+            },
+        )
         self.assertEqual(response.status_code, 302)
         transaction_entry = self.entries(Transaction).get()
         self.assertEqual(transaction_entry.source, "user")
@@ -119,7 +133,9 @@ class ModelChangeLoggingTests(AuditTestCase):
         )
 
         profile.watched_expenses_categories.remove(groceries)
-        removed = self.entries(Profile, action=Action.UPDATE, column="watched_expenses_categories", new_value=None).get()
+        removed = self.entries(
+            Profile, action=Action.UPDATE, column="watched_expenses_categories", new_value=None
+        ).get()
         self.assertEqual(removed.old_value, f"{groceries.pk} (Groceries)")
 
     def test_recovery_code_hash_is_never_logged(self):
@@ -147,7 +163,9 @@ class DeleteLoggingTests(AuditTestCase):
         account = Account.objects.create(name="Checking")
         batch = ImportBatch.objects.create(account=account, source_filename="bank.csv")
         for day in range(1, 4):
-            Transaction.objects.create(account=account, date=date(2026, 1, day), amount=Decimal("-1.00"), import_batch=batch)
+            Transaction.objects.create(
+                account=account, date=date(2026, 1, day), amount=Decimal("-1.00"), import_batch=batch
+            )
         AuditLogEntry.objects.all().delete()
 
         with self.captureOnCommitCallbacks(execute=True):
@@ -198,7 +216,9 @@ class AuditAdminTests(AuditTestCase):
         self.assertContains(self.client.get(reverse("admin:audit_auditlogentry_changelist")), "Cash")
         self.assertContains(self.client.get(reverse("admin:audit_auditlogentry_change", args=[entry.pk])), "Cash")
         self.assertEqual(self.client.get(reverse("admin:audit_auditlogentry_add")).status_code, 403)
-        self.assertEqual(self.client.post(reverse("admin:audit_auditlogentry_delete", args=[entry.pk])).status_code, 403)
+        self.assertEqual(
+            self.client.post(reverse("admin:audit_auditlogentry_delete", args=[entry.pk])).status_code, 403
+        )
 
     def test_history_button_opens_that_objects_audit_trail(self):
         account = Account.objects.create(name="Cash")

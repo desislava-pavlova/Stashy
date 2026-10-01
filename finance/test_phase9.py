@@ -1,6 +1,7 @@
 """Tests for Phase 9 (Import): resolving categories by name (auto-creating unknown ones),
 per-row Account column resolution against existing accounts only, and per-file date format
 detection/override."""
+
 from datetime import date
 from decimal import Decimal
 
@@ -68,7 +69,9 @@ class CategoryAutoCreateTests(LoggedInTestCase):
 
         groceries = Category.objects.create(name="Groceries")
         payee = Payee.objects.create(name="Lidl")
-        Transaction.objects.create(account=self.account, date=date(2026, 1, 1), payee=payee, category=groceries, amount=Decimal("-5.00"))
+        Transaction.objects.create(
+            account=self.account, date=date(2026, 1, 1), payee=payee, category=groceries, amount=Decimal("-5.00")
+        )
         self._import("Date,Payee,Memo,Amount\n02/01/2026,Lidl,,-10.00\n")
         self.assertEqual(Transaction.objects.get(date=date(2026, 1, 2)).category, groceries)
 
@@ -97,13 +100,19 @@ class AccountColumnTests(LoggedInTestCase):
         self.assertEqual(Transaction.objects.get().account, self.account)
 
     def test_an_unknown_account_name_skips_just_that_row(self):
-        upload = SimpleUploadedFile("bank.csv", (
-            "Date,Account,Payee,Memo,Amount\n"
-            "01/01/2026,Nonexistent Card,Employer,,100.00\n"
-            "02/01/2026,Savings,Employer,,50.00\n"
-        ).encode(), content_type="text/csv")
+        upload = SimpleUploadedFile(
+            "bank.csv",
+            (
+                b"Date,Account,Payee,Memo,Amount\n"
+                b"01/01/2026,Nonexistent Card,Employer,,100.00\n"
+                b"02/01/2026,Savings,Employer,,50.00\n"
+            ),
+            content_type="text/csv",
+        )
         response = self.client.post(
-            reverse("finance:import_transactions"), {"account": self.account.pk, "file": upload}, follow=True,
+            reverse("finance:import_transactions"),
+            {"account": self.account.pk, "file": upload},
+            follow=True,
         )
         self.assertEqual(Transaction.objects.count(), 1)
         self.assertEqual(Transaction.objects.get().account, self.other)
@@ -142,8 +151,12 @@ class DateFormatDetectionTests(LoggedInTestCase):
         self.assertEqual(Transaction.objects.count(), 0)
 
     def test_success_message_reports_the_format_used(self):
-        upload = SimpleUploadedFile("bank.csv", b"Date,Payee,Memo,Amount\n25/01/2026,Shop,,-10.00\n", content_type="text/csv")
+        upload = SimpleUploadedFile(
+            "bank.csv", b"Date,Payee,Memo,Amount\n25/01/2026,Shop,,-10.00\n", content_type="text/csv"
+        )
         response = self.client.post(
-            reverse("finance:import_transactions"), {"account": self.account.pk, "file": upload}, follow=True,
+            reverse("finance:import_transactions"),
+            {"account": self.account.pk, "file": upload},
+            follow=True,
         )
         self.assertContains(response, "DD/MM/YYYY")

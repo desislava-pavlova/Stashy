@@ -5,6 +5,7 @@ Stashy mid-setup resumes at the right step next time (RequireSetupMiddleware enf
 everywhere else in the app). Kept out of finance/views.py, same reasoning as auth_views.py:
 this is its own layer, not an ordinary in-app page.
 """
+
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import redirect, render
@@ -67,9 +68,15 @@ def _step_money_region(request, profile, step):
             return _to_step(step + 1)
     else:
         form = ProfileForm(instance=profile)
-    return render(request, "finance/welcome_money_region.html", {
-        "form": form, "step_number": step, "step_total": STEP_COUNT,
-    })
+    return render(
+        request,
+        "finance/welcome_money_region.html",
+        {
+            "form": form,
+            "step_number": step,
+            "step_total": STEP_COUNT,
+        },
+    )
 
 
 def _step_categories(request, profile, step):
@@ -82,12 +89,20 @@ def _step_categories(request, profile, step):
             if sheet in available:
                 created = starter_categories.add_starter_categories(sheet)
                 if created:
-                    messages.success(request, f"Added {len(created)} categor{'y' if len(created) == 1 else 'ies'} from {sheet}.")
+                    messages.success(
+                        request, f"Added {len(created)} categor{'y' if len(created) == 1 else 'ies'} from {sheet}."
+                    )
             _advance(profile, step)
             return _to_step(step + 1)
-    return render(request, "finance/welcome_categories.html", {
-        "available": available, "step_number": step, "step_total": STEP_COUNT,
-    })
+    return render(
+        request,
+        "finance/welcome_categories.html",
+        {
+            "available": available,
+            "step_number": step,
+            "step_total": STEP_COUNT,
+        },
+    )
 
 
 def _step_watched_expenses(request, profile, step):
@@ -105,10 +120,16 @@ def _step_watched_expenses(request, profile, step):
         # picked a title yet; coming Back to an already-completed step keeps what they saved.
         initial = {"watched_expenses_title": ""} if profile.welcome_step < step else {}
         form = WatchedExpensesForm(instance=profile, initial=initial)
-    return render(request, "finance/welcome_watched_expenses.html", {
-        "form": form, "step_number": step, "step_total": STEP_COUNT,
-        **_watched_expenses_context(profile),
-    })
+    return render(
+        request,
+        "finance/welcome_watched_expenses.html",
+        {
+            "form": form,
+            "step_number": step,
+            "step_total": STEP_COUNT,
+            **_watched_expenses_context(profile),
+        },
+    )
 
 
 def _step_first_account(request, profile, step):
@@ -123,9 +144,15 @@ def _step_first_account(request, profile, step):
             return redirect("finance:dashboard")
     else:
         form = AccountCreateForm()
-    return render(request, "finance/welcome_first_account.html", {
-        "form": form, "step_number": step, "step_total": STEP_COUNT,
-    })
+    return render(
+        request,
+        "finance/welcome_first_account.html",
+        {
+            "form": form,
+            "step_number": step,
+            "step_total": STEP_COUNT,
+        },
+    )
 
 
 _STEP_HANDLERS = {

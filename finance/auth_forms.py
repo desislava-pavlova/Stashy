@@ -1,5 +1,6 @@
 """Forms for the multi-stash login screens (Phase 12) - kept separate from finance/forms.py
 since these belong to the picker/login layer, not the finance app's own data forms."""
+
 from django import forms
 from django.contrib.auth.forms import AuthenticationForm
 from django.core.exceptions import ValidationError
@@ -8,17 +9,25 @@ from . import stashes
 
 
 def _pin_widget(autofocus=False):
-    return forms.PasswordInput(attrs={
-        "inputmode": "numeric", "pattern": "[0-9]*", "maxlength": 4,
-        "autocomplete": "off", "class": "form-control form-control-lg pin-input",
-        **({"autofocus": True} if autofocus else {}),
-    })
+    return forms.PasswordInput(
+        attrs={
+            "inputmode": "numeric",
+            "pattern": "[0-9]*",
+            "maxlength": 4,
+            "autocomplete": "off",
+            "class": "form-control form-control-lg pin-input",
+            **({"autofocus": True} if autofocus else {}),
+        }
+    )
 
 
 class StashCreateForm(forms.Form):
     owner_name = forms.CharField(
-        max_length=60, label="Whose stash?",
-        widget=forms.TextInput(attrs={"class": "form-control", "autofocus": True, "placeholder": "Alex, Acme Ltd, The Smiths…"}),
+        max_length=60,
+        label="Whose stash?",
+        widget=forms.TextInput(
+            attrs={"class": "form-control", "autofocus": True, "placeholder": "Alex, Acme Ltd, The Smiths…"}
+        ),
         help_text="A person, a business or a family - shown everywhere instead of an internal name.",
     )
     pin = forms.CharField(max_length=4, min_length=4, label="PIN", widget=_pin_widget())
@@ -67,7 +76,9 @@ class StashLoginForm(AuthenticationForm):
 class ForgotPinForm(forms.Form):
     recovery_code = forms.CharField(
         label="Recovery code",
-        widget=forms.TextInput(attrs={"class": "form-control form-control-lg", "autofocus": True, "autocomplete": "off"}),
+        widget=forms.TextInput(
+            attrs={"class": "form-control form-control-lg", "autofocus": True, "autocomplete": "off"}
+        ),
     )
     new_pin = forms.CharField(max_length=4, min_length=4, label="New PIN", widget=_pin_widget())
     new_pin_confirm = forms.CharField(max_length=4, min_length=4, label="Confirm new PIN", widget=_pin_widget())
@@ -83,7 +94,11 @@ class ForgotPinForm(forms.Form):
 
     def clean(self):
         cleaned = super().clean()
-        if cleaned.get("new_pin") and cleaned.get("new_pin_confirm") and cleaned["new_pin"] != cleaned["new_pin_confirm"]:
+        if (
+            cleaned.get("new_pin")
+            and cleaned.get("new_pin_confirm")
+            and cleaned["new_pin"] != cleaned["new_pin_confirm"]
+        ):
             self.add_error("new_pin_confirm", "PINs don't match.")
         return cleaned
 
@@ -91,6 +106,7 @@ class ForgotPinForm(forms.Form):
 class ChangePinForm(forms.Form):
     """Settings page: change the PIN while already logged in, without needing the recovery
     code - that's reserved for when the current PIN itself is what's been forgotten."""
+
     current_pin = forms.CharField(max_length=4, min_length=4, label="Current PIN", widget=_pin_widget())
     new_pin = forms.CharField(max_length=4, min_length=4, label="New PIN", widget=_pin_widget())
     new_pin_confirm = forms.CharField(max_length=4, min_length=4, label="Confirm new PIN", widget=_pin_widget())
@@ -113,6 +129,10 @@ class ChangePinForm(forms.Form):
 
     def clean(self):
         cleaned = super().clean()
-        if cleaned.get("new_pin") and cleaned.get("new_pin_confirm") and cleaned["new_pin"] != cleaned["new_pin_confirm"]:
+        if (
+            cleaned.get("new_pin")
+            and cleaned.get("new_pin_confirm")
+            and cleaned["new_pin"] != cleaned["new_pin_confirm"]
+        ):
             self.add_error("new_pin_confirm", "PINs don't match.")
         return cleaned

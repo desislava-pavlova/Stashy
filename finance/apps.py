@@ -4,7 +4,7 @@ from django.apps import AppConfig
 
 
 class FinanceConfig(AppConfig):
-    name = 'finance'
+    name = "finance"
 
     def ready(self):
         # Multi-stash login (Phase 12): every stash that already exists on disk needs to be a
@@ -20,7 +20,7 @@ class FinanceConfig(AppConfig):
         # whether any test actually queries it. TESTING is computed in stashy/settings.py the
         # same way; duplicated here rather than imported since AppConfig.ready() runs very
         # early in Django's own startup.
-        if len(sys.argv) > 1 and sys.argv[1] == 'test':
+        if len(sys.argv) > 1 and sys.argv[1] == "test":
             return
 
         from . import stashes

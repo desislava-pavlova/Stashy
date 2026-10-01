@@ -3,6 +3,7 @@ sheets - Basic and Extended - each with Type | Category | Subcategory columns. R
 the welcome wizard's Categories step; there's no button to run this again afterwards - delete
 what you don't want instead.
 """
+
 from pathlib import Path
 
 from django.conf import settings
@@ -44,11 +45,13 @@ def _read_rows(sheet_name):
         for category_type, category, subcategory in sheet.iter_rows(min_row=2, values_only=True):
             if not category_type or not category:
                 continue
-            rows.append((
-                str(category_type).strip(),
-                str(category).strip(),
-                str(subcategory).strip() if subcategory not in (None, "") else None,
-            ))
+            rows.append(
+                (
+                    str(category_type).strip(),
+                    str(category).strip(),
+                    str(subcategory).strip() if subcategory not in (None, "") else None,
+                )
+            )
         return rows
     finally:
         workbook.close()

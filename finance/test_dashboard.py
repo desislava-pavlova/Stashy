@@ -54,10 +54,13 @@ class SpendingTreeTests(TestCase):
         self.assertEqual(tree[0]["total"], 500.0)
         food = tree[1]
         self.assertEqual(food["total"], 50.0)
-        self.assertEqual(food["children"], [
-            {"id": self.groceries.pk, "name": "Groceries", "with_subcategories": True, "total": 42.5},
-            {"id": self.food.pk, "name": "Food (general)", "with_subcategories": False, "total": 7.5},
-        ])
+        self.assertEqual(
+            food["children"],
+            [
+                {"id": self.groceries.pk, "name": "Groceries", "with_subcategories": True, "total": 42.5},
+                {"id": self.food.pk, "name": "Food (general)", "with_subcategories": False, "total": 7.5},
+            ],
+        )
 
     def test_a_category_that_is_its_own_parent_does_not_hang(self):
         Category.objects.filter(pk=self.rent.pk).update(parent=self.rent)
@@ -101,7 +104,9 @@ class DashboardTests(LoggedInTestCase):
         salary = Category.objects.create(name="Salary", category_type=Category.CategoryType.INCOME)
         rent = Category.objects.create(name="Rent", category_type=Category.CategoryType.EXPENSE)
         for on, amount, category in [
-            (date(2026, 8, 1), "2000.00", salary), (date(2026, 8, 20), "-500.00", rent), (date(2026, 9, 3), "-40.00", rent),
+            (date(2026, 8, 1), "2000.00", salary),
+            (date(2026, 8, 20), "-500.00", rent),
+            (date(2026, 9, 3), "-40.00", rent),
         ]:
             Transaction.objects.create(account=self.account, date=on, amount=Decimal(amount), category=category)
         response = self.client.get(reverse("finance:dashboard"))
@@ -114,8 +119,10 @@ class DashboardTests(LoggedInTestCase):
     def test_lists_reminders_due_within_a_week_including_overdue(self, _):
         def reminder(label, due):
             payee = Payee.objects.create(name=label)
-            return Reminder.objects.create(account=self.account, payee=payee, amount=Decimal("10.00"),
-                                            next_due_date=due)
+            return Reminder.objects.create(
+                account=self.account, payee=payee, amount=Decimal("10.00"), next_due_date=due
+            )
+
         reminder("Overdue bill", date(2026, 9, 10))
         reminder("Due in a week", date(2026, 9, 19))
         reminder("Too far away", date(2026, 9, 20))
@@ -137,7 +144,9 @@ class TransactionListFilterTests(LoggedInTestCase):
         self.groceries = Category.objects.create(name="Groceries", parent=self.food)
 
         def add(on, category):
-            return Transaction.objects.create(account=self.account, date=on, category=category, amount=Decimal("-1.00"))
+            return Transaction.objects.create(
+                account=self.account, date=on, category=category, amount=Decimal("-1.00")
+            )
 
         self.september_groceries = add(date(2026, 9, 5), self.groceries)
         self.september_food = add(date(2026, 9, 6), self.food)
@@ -172,9 +181,15 @@ class OfflineAndThemeTests(LoggedInTestCase):
 
     def test_pages_load_nothing_from_the_internet(self):
         urls = [
-            reverse(name) for name in (
-                "finance:dashboard", "finance:transaction_list", "finance:account_add",
-                "finance:reports", "finance:settings", "finance:category_list", "finance:category_add",
+            reverse(name)
+            for name in (
+                "finance:dashboard",
+                "finance:transaction_list",
+                "finance:account_add",
+                "finance:reports",
+                "finance:settings",
+                "finance:category_list",
+                "finance:category_add",
                 "finance:payee_list",
             )
         ]

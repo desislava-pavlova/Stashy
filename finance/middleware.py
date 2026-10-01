@@ -84,6 +84,7 @@ class RequireStashMiddleware:
     request is the one StashSelectionMiddleware (which runs before this one) sees with the
     session already populated - otherwise this request's own queries would still be routed by
     the stale, pre-fallback thread-local it already set."""
+
     EXEMPT_PREFIXES = ("/stashes/", "/static/", "/admin/")
 
     def __init__(self, get_response):
@@ -107,6 +108,7 @@ class RequireSetupMiddleware:
     resumes there next time instead of dropping into a half-configured dashboard. Placed after
     RegionalPreferencesMiddleware in settings.py so it can reuse the Profile already fetched
     there (`request.stashy_profile`) instead of a second query."""
+
     EXEMPT_PREFIXES = ("/welcome/", "/static/", "/admin/", "/accounts/logout/")
 
     def __init__(self, get_response):

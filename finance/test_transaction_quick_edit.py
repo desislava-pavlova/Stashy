@@ -1,5 +1,6 @@
 """Tests for the transactions list's Edit mode (2026-09-22) - inline row editing that autosaves
 each field via transaction_quick_edit, without leaving the list page."""
+
 from datetime import date
 from decimal import Decimal
 
@@ -21,7 +22,11 @@ class TransactionListEditModeRenderTests(LoggedInTestCase):
         account = Account.objects.create(name="Checking")
         category = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
         Transaction.objects.create(
-            account=account, date=date(2026, 9, 20), category=category, memo="Lidl", amount=Decimal("-12.50"),
+            account=account,
+            date=date(2026, 9, 20),
+            category=category,
+            memo="Lidl",
+            amount=Decimal("-12.50"),
         )
         response = self.client.get(reverse("finance:transaction_list"))
         self.assertEqual(response.status_code, 200)
@@ -38,7 +43,10 @@ class TransactionListEditModeRenderTests(LoggedInTestCase):
         destination = Account.objects.create(name="Savings")
         transfer_category = destination.transfer_category
         Transaction.objects.create(
-            account=source, date=date(2026, 9, 20), category=transfer_category, amount=Decimal("-100"),
+            account=source,
+            date=date(2026, 9, 20),
+            category=transfer_category,
+            amount=Decimal("-100"),
         )
         response = self.client.get(reverse("finance:transaction_list"))
         self.assertContains(response, f'value="{transfer_category.pk}" selected')
@@ -50,14 +58,22 @@ class TransactionQuickEditTests(LoggedInTestCase):
         self.account = Account.objects.create(name="Checking")
         self.category = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
         self.txn = Transaction.objects.create(
-            account=self.account, date=date(2026, 9, 20), category=self.category, memo="Lidl",
+            account=self.account,
+            date=date(2026, 9, 20),
+            category=self.category,
+            memo="Lidl",
             amount=Decimal("-12.50"),
         )
 
     def _post(self, **overrides):
         data = {
-            "account": self.account.pk, "date": "20/09/2026", "transaction_number": self.txn.transaction_number,
-            "payee_name": "Lidl", "category": self.category.pk, "memo": "Lidl", "amount": "-12.50",
+            "account": self.account.pk,
+            "date": "20/09/2026",
+            "transaction_number": self.txn.transaction_number,
+            "payee_name": "Lidl",
+            "category": self.category.pk,
+            "memo": "Lidl",
+            "amount": "-12.50",
         }
         data.update(overrides)
         return self.client.post(reverse("finance:transaction_quick_edit", args=[self.txn.pk]), data)

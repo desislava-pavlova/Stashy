@@ -1,4 +1,5 @@
 """Tests for: payee list category dedup, dashboard account grouping, donut center currency."""
+
 from datetime import date
 from decimal import Decimal
 
@@ -25,7 +26,11 @@ class PayeeListDistinctCategoriesTests(LoggedInTestCase):
         payee = Payee.objects.create(name="City Water Co")
         for day in range(1, 9):
             Transaction.objects.create(
-                account=self.account, date=date(2026, day, 1), payee=payee, category=water, amount=Decimal("-5.00"),
+                account=self.account,
+                date=date(2026, day, 1),
+                payee=payee,
+                category=water,
+                amount=Decimal("-5.00"),
             )
         response = self.client.get(reverse("finance:payee_list"))
         row = next(r for r in response.context["rows"] if r["payee"] == payee)
@@ -35,8 +40,12 @@ class PayeeListDistinctCategoriesTests(LoggedInTestCase):
         food = Category.objects.create(name="Food", category_type=Category.CategoryType.EXPENSE)
         fuel = Category.objects.create(name="Fuel", category_type=Category.CategoryType.EXPENSE)
         payee = Payee.objects.create(name="Shop")
-        Transaction.objects.create(account=self.account, date=date(2026, 1, 1), payee=payee, category=food, amount=Decimal("-5.00"))
-        Transaction.objects.create(account=self.account, date=date(2026, 1, 2), payee=payee, category=fuel, amount=Decimal("-5.00"))
+        Transaction.objects.create(
+            account=self.account, date=date(2026, 1, 1), payee=payee, category=food, amount=Decimal("-5.00")
+        )
+        Transaction.objects.create(
+            account=self.account, date=date(2026, 1, 2), payee=payee, category=fuel, amount=Decimal("-5.00")
+        )
         response = self.client.get(reverse("finance:payee_list"))
         row = next(r for r in response.context["rows"] if r["payee"] == payee)
         self.assertEqual(row["categories"], ["Food", "Fuel"])

@@ -23,13 +23,30 @@ class DiffTintFilterTests(SimpleTestCase):
 class TableRenderTests(SimpleTestCase):
     def _html(self, rows, totals, **extra):
         table = {"groups": [{"key": "x", "name": "G", "rows": rows}], "totals": totals}
-        return render_to_string("finance/includes/report_vs_average_table.html", {
-            "table": table, "main_currency": "EUR", "prefix": "p", "signed": False, "lower_is_good": False, **extra,
-        })
+        return render_to_string(
+            "finance/includes/report_vs_average_table.html",
+            {
+                "table": table,
+                "main_currency": "EUR",
+                "prefix": "p",
+                "signed": False,
+                "lower_is_good": False,
+                **extra,
+            },
+        )
 
     def _row(self, name, diff, **extra):
-        return {"id": 1, "parent_id": None, "name": name, "is_child": False, "has_children": False,
-                "current": Decimal("10"), "average": Decimal("5"), "difference": diff, **extra}
+        return {
+            "id": 1,
+            "parent_id": None,
+            "name": name,
+            "is_child": False,
+            "has_children": False,
+            "current": Decimal("10"),
+            "average": Decimal("5"),
+            "difference": diff,
+            **extra,
+        }
 
     def test_spending_table_pink_when_up_green_when_down(self):
         html = self._html(

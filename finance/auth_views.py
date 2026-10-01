@@ -4,6 +4,7 @@ the last stash used). Kept out of finance/views.py since these run *before* a st
 is reachable at all - the picker in particular has to work when this session hasn't picked a
 stash yet and the app is pointed at the placeholder database rather than any real stash.
 """
+
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import logout
@@ -58,10 +59,15 @@ def stash_create(request):
             else:
                 request.session["stash"] = folder_name
                 owner_name = form.cleaned_data["owner_name"]
-                return render(request, "registration/stash_recovery_code.html", {
-                    "owner_name": owner_name, "owner_possessive": stashes.possessive(owner_name),
-                    "recovery_code": recovery_code,
-                })
+                return render(
+                    request,
+                    "registration/stash_recovery_code.html",
+                    {
+                        "owner_name": owner_name,
+                        "owner_possessive": stashes.possessive(owner_name),
+                        "recovery_code": recovery_code,
+                    },
+                )
 
     return render(request, "registration/stash_create.html", {"form": form})
 
@@ -90,6 +96,7 @@ class StashLoginView(LoginView):
     """The normal Django LoginView, aimed at the one user in whatever stash is current -
     username is fixed (the stash's own name) rather than typed, and adds the lockout this
     app's PIN needs that Django's stock login doesn't provide on its own."""
+
     form_class = StashLoginForm
     template_name = "registration/login.html"
     redirect_authenticated_user = True
@@ -128,9 +135,7 @@ class StashLoginView(LoginView):
         if self.profile:
             stashes.register_successful_login(self.profile)
         response = super().form_valid(form)
-        response.set_cookie(
-            LAST_STASH_COOKIE, self.stash_name, max_age=LAST_STASH_COOKIE_AGE, samesite="Lax"
-        )
+        response.set_cookie(LAST_STASH_COOKIE, self.stash_name, max_age=LAST_STASH_COOKIE_AGE, samesite="Lax")
         return response
 
     def form_invalid(self, form):
@@ -156,15 +161,27 @@ def forgot_pin(request):
                 profile, form.cleaned_data["recovery_code"], form.cleaned_data["new_pin"]
             )
             if ok:
-                return render(request, "registration/stash_recovery_code.html", {
-                    "owner_name": profile.owner_name, "owner_possessive": profile.owner_possessive,
-                    "recovery_code": new_recovery_code, "pin_was_reset": True,
-                })
+                return render(
+                    request,
+                    "registration/stash_recovery_code.html",
+                    {
+                        "owner_name": profile.owner_name,
+                        "owner_possessive": profile.owner_possessive,
+                        "recovery_code": new_recovery_code,
+                        "pin_was_reset": True,
+                    },
+                )
             form.add_error("recovery_code", "That recovery code isn't right.")
             locked_out = stashes.is_locked_out(profile)
 
-    return render(request, "registration/forgot_pin.html", {
-        "owner_name": profile.owner_name, "owner_possessive": profile.owner_possessive, "form": form,
-        "locked_out": locked_out,
-        "lockout_minutes": (stashes.lockout_seconds_remaining(profile) // 60 + 1) if locked_out else 0,
-    })
+    return render(
+        request,
+        "registration/forgot_pin.html",
+        {
+            "owner_name": profile.owner_name,
+            "owner_possessive": profile.owner_possessive,
+            "form": form,
+            "locked_out": locked_out,
+            "lockout_minutes": (stashes.lockout_seconds_remaining(profile) // 60 + 1) if locked_out else 0,
+        },
+    )

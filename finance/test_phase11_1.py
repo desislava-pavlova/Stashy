@@ -2,6 +2,7 @@
 table rows, and the transaction list total's position. The Bills & Utilities line-chart tests
 were retired in Phase 13 (replaced by Settings-configurable "Watched expenses", tested in
 test_phase13_reports.py)."""
+
 from datetime import date
 from decimal import Decimal
 
@@ -23,9 +24,15 @@ class LoggedInTestCase(TestCase):
 class CategoryTotalsTopLevelTests(LoggedInTestCase):
     def test_subcategory_amount_rolls_up_into_its_top_level_parent(self):
         groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
-        supermarket = Category.objects.create(name="Supermarket", parent=groceries, category_type=Category.CategoryType.EXPENSE)
-        Transaction.objects.create(account=self.account, date=date(2026, 1, 5), category=groceries, amount=Decimal("-20.00"))
-        Transaction.objects.create(account=self.account, date=date(2026, 1, 6), category=supermarket, amount=Decimal("-30.00"))
+        supermarket = Category.objects.create(
+            name="Supermarket", parent=groceries, category_type=Category.CategoryType.EXPENSE
+        )
+        Transaction.objects.create(
+            account=self.account, date=date(2026, 1, 5), category=groceries, amount=Decimal("-20.00")
+        )
+        Transaction.objects.create(
+            account=self.account, date=date(2026, 1, 6), category=supermarket, amount=Decimal("-30.00")
+        )
 
         rows = reporting.category_totals_top_level(date(2026, 1, 1), date(2026, 1, 31), expense_only=True)
         self.assertEqual(rows, [{"category_id": groceries.pk, "name": "Groceries", "total": Decimal("50.00")}])
@@ -33,8 +40,12 @@ class CategoryTotalsTopLevelTests(LoggedInTestCase):
     def test_signed_version_keeps_income_and_expense_separate_top_level_rows(self):
         groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
         salary = Category.objects.create(name="Salary", category_type=Category.CategoryType.INCOME)
-        Transaction.objects.create(account=self.account, date=date(2026, 1, 5), category=groceries, amount=Decimal("-20.00"))
-        Transaction.objects.create(account=self.account, date=date(2026, 1, 6), category=salary, amount=Decimal("2000.00"))
+        Transaction.objects.create(
+            account=self.account, date=date(2026, 1, 5), category=groceries, amount=Decimal("-20.00")
+        )
+        Transaction.objects.create(
+            account=self.account, date=date(2026, 1, 6), category=salary, amount=Decimal("2000.00")
+        )
         rows = reporting.category_totals_top_level(date(2026, 1, 1), date(2026, 1, 31))
         by_name = {r["name"]: r["total"] for r in rows}
         self.assertEqual(by_name["Groceries"], Decimal("-20.00"))
@@ -43,7 +54,9 @@ class CategoryTotalsTopLevelTests(LoggedInTestCase):
     def test_income_only_returns_positive_magnitudes_sorted_biggest_first(self):
         salary = Category.objects.create(name="Salary", category_type=Category.CategoryType.INCOME)
         gift = Category.objects.create(name="Gifts", category_type=Category.CategoryType.INCOME)
-        Transaction.objects.create(account=self.account, date=date(2026, 1, 5), category=salary, amount=Decimal("2000.00"))
+        Transaction.objects.create(
+            account=self.account, date=date(2026, 1, 5), category=salary, amount=Decimal("2000.00")
+        )
         Transaction.objects.create(account=self.account, date=date(2026, 1, 6), category=gift, amount=Decimal("50.00"))
         rows = reporting.category_totals_top_level(date(2026, 1, 1), date(2026, 1, 31), income_only=True)
         self.assertEqual([r["name"] for r in rows], ["Salary", "Gifts"])
@@ -54,7 +67,9 @@ class ReportsPageMarkupTests(LoggedInTestCase):
         super().setUp()
         groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
         Category.objects.create(name="Supermarket", parent=groceries, category_type=Category.CategoryType.EXPENSE)
-        Transaction.objects.create(account=self.account, date=date.today(), category=groceries, amount=Decimal("-10.00"))
+        Transaction.objects.create(
+            account=self.account, date=date.today(), category=groceries, amount=Decimal("-10.00")
+        )
         subcat = Category.objects.get(name="Supermarket")
         Transaction.objects.create(account=self.account, date=date.today(), category=subcat, amount=Decimal("-15.00"))
 

@@ -40,15 +40,27 @@ class ThisMonthTests(LoggedInTestCase):
 class EnteredPeriodStaysVisibleTests(LoggedInTestCase):
     def _recurring(self):
         return Reminder.objects.create(
-            account=self.account, amount=Decimal("5"), next_due_date=date(2026, 9, 25), frequency="monthly",
+            account=self.account,
+            amount=Decimal("5"),
+            next_due_date=date(2026, 9, 25),
+            frequency="monthly",
         )
 
     def test_entering_a_recurring_reminder_leaves_a_paid_row_for_that_month(self, _):
         root = self._recurring()
-        self.client.post(reverse("finance:transaction_add"), {
-            "reminder": root.pk, "account": self.account.pk, "date": "25/09/2026",
-            "transaction_number": "", "payee_name": "", "category": "", "memo": "", "amount": "-5.00",
-        })
+        self.client.post(
+            reverse("finance:transaction_add"),
+            {
+                "reminder": root.pk,
+                "account": self.account.pk,
+                "date": "25/09/2026",
+                "transaction_number": "",
+                "payee_name": "",
+                "category": "",
+                "memo": "",
+                "amount": "-5.00",
+            },
+        )
         response = self.client.get(reverse("finance:reminder_list"))
         paid = [r for r in response.context["reminders"] if r.status(TODAY) == "paid"]
         self.assertEqual([r.next_due_date for r in paid], [date(2026, 9, 25)])

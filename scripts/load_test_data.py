@@ -9,6 +9,7 @@ It WIPES every finance row in that stash first (see wipe_placeholder_data()), so
 what it's about to delete and asks you to type the stash's name before touching anything.
 --yes skips that question.
 """
+
 import argparse
 import os
 import re
@@ -58,7 +59,8 @@ _payee_cache = {}
 def get_account(name):
     if name not in _account_cache:
         _account_cache[name] = Account.objects.get_or_create(
-            name=name, defaults={"account_type": ACCOUNT_TYPES.get(name, Account.AccountType.DEBIT_CARD), "currency": CURRENCY}
+            name=name,
+            defaults={"account_type": ACCOUNT_TYPES.get(name, Account.AccountType.DEBIT_CARD), "currency": CURRENCY},
         )[0]
     return _account_cache[name]
 
@@ -154,7 +156,10 @@ def load(stash_name):
 
     # atomic() opens its transaction on `default` unless told otherwise - the router only picks
     # where each query goes, not which connection a transaction block wraps - so name the stash.
-    with db_transaction.atomic(using=stash_name), system_action(f"Loaded from {SOURCE.name} (Quicken register export) for visual testing"):
+    with (
+        db_transaction.atomic(using=stash_name),
+        system_action(f"Loaded from {SOURCE.name} (Quicken register export) for visual testing"),
+    ):
         wipe_placeholder_data()
         for row in rows:
             amount = parse_amount(row["amount"])
@@ -191,9 +196,13 @@ def load(stash_name):
             created += 1
 
     print(f'Loaded into the "{stash_name}" stash: {created} transactions ({skipped} rows skipped).')
-    print(f"Accounts: {Account.objects.count()}, Categories: {Category.objects.count()}, Payees: {Payee.objects.count()}")
+    print(
+        f"Accounts: {Account.objects.count()}, Categories: {Category.objects.count()}, Payees: {Payee.objects.count()}"
+    )
     for account in Account.objects.all():
-        print(f"  {account.name:14} {account.get_account_type_display():24} balance {account.balance:>12} {account.currency}")
+        print(
+            f"  {account.name:14} {account.get_account_type_display():24} balance {account.balance:>12} {account.currency}"
+        )
 
 
 def main():

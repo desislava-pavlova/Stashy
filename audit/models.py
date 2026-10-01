@@ -22,7 +22,8 @@ class AuditLogEntry(models.Model):
 
     timestamp = models.DateTimeField(default=timezone.now, db_index=True)
     operation = models.CharField(
-        max_length=32, db_index=True,
+        max_length=32,
+        db_index=True,
         help_text="Entries sharing this value were caused by the same click or automatic action.",
     )
     action = models.CharField(max_length=10, choices=Action.choices)
@@ -30,7 +31,9 @@ class AuditLogEntry(models.Model):
     table = models.CharField(max_length=100, db_index=True, help_text="Raw database table name.")
     row_id = models.CharField(max_length=64, db_index=True)
     row_label = models.CharField(max_length=255, blank=True, help_text="The row's own name at the time of the event.")
-    column = models.CharField(max_length=100, blank=True, db_index=True, help_text="Raw column name; blank for INSERT/DELETE.")
+    column = models.CharField(
+        max_length=100, blank=True, db_index=True, help_text="Raw column name; blank for INSERT/DELETE."
+    )
     old_value = models.TextField(null=True, blank=True)
     new_value = models.TextField(null=True, blank=True)
     values = models.JSONField(default=dict, blank=True, help_text="Full raw column values (INSERT/DELETE only, A4).")

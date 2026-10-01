@@ -8,6 +8,7 @@ Storage matches Phase 14 / A3: raw, database-style values (stored choice keys,
 ISO dates, exact decimals), one row per changed column on UPDATE, and one row
 naming the whole record on INSERT/DELETE (with its full values kept, A4).
 """
+
 from dataclasses import replace
 from functools import partial
 
@@ -30,7 +31,8 @@ SKIPPED_FIELDS = {("finance.payee", "name_key"), ("finance.category", "name_key"
 
 def _logged_fields(sender):
     return [
-        field for field in sender._meta.concrete_fields
+        field
+        for field in sender._meta.concrete_fields
         if not field.primary_key and (sender._meta.label_lower, field.name) not in SKIPPED_FIELDS
     ]
 
@@ -92,8 +94,19 @@ def _resolved_context():
     return context if context.operation else replace(context, operation=new_operation_id())
 
 
-def write_row(action, *, table, row_id, row_label, column="", old_value=None, new_value=None,
-               values=None, timestamp=None, context=None):
+def write_row(
+    action,
+    *,
+    table,
+    row_id,
+    row_label,
+    column="",
+    old_value=None,
+    new_value=None,
+    values=None,
+    timestamp=None,
+    context=None,
+):
     context = context or current_context()
     request = context.request
     user = getattr(request, "user", None)
@@ -116,6 +129,7 @@ def write_row(action, *, table, row_id, row_label, column="", old_value=None, ne
 
 
 # --- saves -----------------------------------------------------------------
+
 
 def remember_old_values(sender, instance, raw=False, **kwargs):
     if raw or not is_tracked(sender) or instance._state.adding:
@@ -145,13 +159,20 @@ def log_save(sender, instance, created, raw=False, update_fields=None, **kwargs)
         if _same(field, before, after):
             continue
         write_row(
-            Action.UPDATE, table=table, row_id=row_id, row_label=row_label, column=field.attname,
-            old_value=_raw(sender, field, before), new_value=_raw(sender, field, after, instance),
-            timestamp=now, context=context,
+            Action.UPDATE,
+            table=table,
+            row_id=row_id,
+            row_label=row_label,
+            column=field.attname,
+            old_value=_raw(sender, field, before),
+            new_value=_raw(sender, field, after, instance),
+            timestamp=now,
+            context=context,
         )
 
 
 # --- deletes ---------------------------------------------------------------
+
 
 def remember_deleted(sender, instance, **kwargs):
     if not is_tracked(sender):
@@ -164,7 +185,9 @@ def log_delete(sender, instance, **kwargs):
     if not is_tracked(sender) or "_audit_deleted" not in instance.__dict__:
         return
     row_label, snapshot = instance.__dict__.pop("_audit_deleted")
-    write_row(Action.DELETE, table=sender._meta.db_table, row_id=str(instance.pk), row_label=row_label, values=snapshot)
+    write_row(
+        Action.DELETE, table=sender._meta.db_table, row_id=str(instance.pk), row_label=row_label, values=snapshot
+    )
 
 
 def _log_cleared_references_after_commit(instance):
@@ -186,9 +209,7 @@ def _log_cleared_references_after_commit(instance):
         if relation.on_delete is not models.SET_NULL or not is_tracked(relation.related_model):
             continue
         field = relation.field
-        pks = list(
-            relation.related_model._base_manager.filter(**{field.name: instance}).values_list("pk", flat=True)
-        )
+        pks = list(relation.related_model._base_manager.filter(**{field.name: instance}).values_list("pk", flat=True))
         if pks:
             transaction.on_commit(
                 partial(_log_cleared_references, relation.related_model, field, pks, old_value, reason, context),
@@ -201,12 +222,19 @@ def _log_cleared_references(model, field, pks, old_value, reason, context):
     table = model._meta.db_table
     for obj in model._base_manager.filter(pk__in=pks, **{f"{field.attname}__isnull": True}):
         write_row(
-            Action.UPDATE, table=table, row_id=str(obj.pk), row_label=describe(obj), column=field.attname,
-            old_value=old_value, new_value=None, context=automatic,
+            Action.UPDATE,
+            table=table,
+            row_id=str(obj.pk),
+            row_label=describe(obj),
+            column=field.attname,
+            old_value=old_value,
+            new_value=None,
+            context=automatic,
         )
 
 
 # --- many-to-many (e.g. Watched expenses' categories) -----------------------
+
 
 def _m2m_field_name(through, instance):
     for field in instance._meta.get_fields(include_hidden=True):
@@ -237,7 +265,13 @@ def log_m2m(sender, instance, action, model, pk_set, **kwargs):
     for obj in model._base_manager.filter(pk__in=pk_set).order_by("pk"):
         item = f"{obj.pk} ({describe(obj)})"
         write_row(
-            Action.UPDATE, table=table, row_id=row_id, row_label=row_label, column=name,
-            old_value=None if adding else item, new_value=item if adding else None,
-            timestamp=now, context=context,
+            Action.UPDATE,
+            table=table,
+            row_id=row_id,
+            row_label=row_label,
+            column=name,
+            old_value=None if adding else item,
+            new_value=item if adding else None,
+            timestamp=now,
+            context=context,
         )

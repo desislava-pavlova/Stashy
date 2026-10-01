@@ -4,8 +4,8 @@ import io
 import json
 import re
 import secrets
-from datetime import date, datetime, timedelta
 from dataclasses import dataclass
+from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from urllib.parse import urlencode
@@ -18,37 +18,71 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.cache import cache
 from django.db import router, transaction
-from django.db.models import Count, Sum, Q
+from django.db.models import Count, Q, Sum
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
-from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 from django.views.generic import CreateView, DeleteView, ListView, UpdateView
 
 from audit.context import system_action
 
 from . import backup as finance_backup
-from . import regional
-from . import stashes
-from .currency import RateFetchError, RateTable, SUFFIX_CURRENCIES, convert_balances, fetch_latest_rates, format_money
+from . import regional, stashes
+from .auth_forms import ChangePinForm
+from .currency import SUFFIX_CURRENCIES, RateFetchError, RateTable, convert_balances, fetch_latest_rates, format_money
 from .forms import (
-    AccountCreateForm, AccountForm, CategoryForm, CheckRatesForm, DateRangeFilterForm, ImportUploadForm,
-    PayeeForm, ProfileForm, ReconcileFinishForm, ReconcileStartForm, ReminderForm, TransactionForm, TransferForm, WatchedExpensesForm,
+    AccountCreateForm,
+    AccountForm,
+    CategoryForm,
+    CheckRatesForm,
+    DateRangeFilterForm,
+    ImportUploadForm,
+    PayeeForm,
+    ProfileForm,
+    ReconcileFinishForm,
+    ReconcileStartForm,
+    ReminderForm,
+    TransactionForm,
+    TransferForm,
+    WatchedExpensesForm,
     convertible_currencies,
 )
 from .models import (
-    Account, Category, ImportBatch, Payee, Profile, Reconciliation, Reminder, Transaction,
-    categories_alphabetical, grouped_accounts, grouped_categories, name_key,
+    Account,
+    Category,
+    ImportBatch,
+    Payee,
+    Profile,
+    Reconciliation,
+    Reminder,
+    Transaction,
+    categories_alphabetical,
+    grouped_accounts,
+    grouped_categories,
+    name_key,
 )
-from .auth_forms import ChangePinForm
 from .money import CENT, ZERO, parse_amount
 from .reporting import (
-    DEFAULT_LOOKBACK_PERIODS, DEFAULT_RANGE_KEY, category_report_rows, category_totals_top_level,
-    category_totals_vs_average, category_vs_average_report_rows, income_and_spending,
-    income_and_spending_vs_average, net_worth_by_account, resolve_range, savings_rate, spending_tree,
-    subtotal_overflow_message, trimmed_average_periods, uncategorized_count, watched_expenses_category_ids, watched_expenses_series,
+    DEFAULT_LOOKBACK_PERIODS,
+    DEFAULT_RANGE_KEY,
+    category_report_rows,
+    category_totals_top_level,
+    category_totals_vs_average,
+    category_vs_average_report_rows,
+    income_and_spending,
+    income_and_spending_vs_average,
+    net_worth_by_account,
+    resolve_range,
+    savings_rate,
+    spending_tree,
+    subtotal_overflow_message,
+    trimmed_average_periods,
+    uncategorized_count,
+    watched_expenses_category_ids,
+    watched_expenses_series,
     watched_expenses_totals,
 )
 
@@ -189,6 +223,7 @@ def dashboard(request):
 # Accounts
 # ---------------------------------------------------------------------------
 
+
 class AccountListView(LoginRequiredMixin, ListView):
     model = Account
     template_name = "finance/account_list.html"
@@ -223,9 +258,16 @@ def account_detail(request, pk):
     account = get_object_or_404(Account, pk=pk)
     transactions = account.transactions.select_related("category__parent", "payee")
     transactions, sort, sort_next = _sorted(request, transactions, ACCOUNT_REGISTER_SORT_FIELDS)
-    return render(request, "finance/account_detail.html", {
-        "account": account, "transactions": transactions, "sort": sort, "sort_next": sort_next,
-    })
+    return render(
+        request,
+        "finance/account_detail.html",
+        {
+            "account": account,
+            "transactions": transactions,
+            "sort": sort,
+            "sort_next": sort_next,
+        },
+    )
 
 
 class AccountCreateView(LoginRequiredMixin, CreateView):
@@ -289,10 +331,13 @@ def _reconcile_review_context(account, statement_date, statement_balance, checke
     deposits = [t for t in candidates if t.amount > 0]
     payments = [t for t in candidates if t.amount < 0]
     return {
-        "account": account, "statement_date": statement_date, "statement_balance": statement_balance,
+        "account": account,
+        "statement_date": statement_date,
+        "statement_balance": statement_balance,
         "opening_balance": opening_balance,
         "currency_is_suffix": account.currency in SUFFIX_CURRENCIES,
-        "deposits": deposits, "payments": payments,
+        "deposits": deposits,
+        "payments": payments,
         "deposits_total": sum((t.amount for t in deposits), ZERO),
         "payments_total": sum((t.amount for t in payments), ZERO),
     }
@@ -310,10 +355,15 @@ def account_reconcile(request, pk):
             # Only a tampered or half-sent page gets here (the fields are hidden), or one whose
             # transactions were reconciled elsewhere meanwhile - start over from step 1.
             messages.error(request, "Something in that reconciliation didn't come through. Please start it again.")
-            return render(request, "finance/account_reconcile_start.html", {
-                "account": account, "form": ReconcileStartForm(initial={"statement_date": date.today()}),
-                "opening_balance": account.reconciled_balance(),
-            })
+            return render(
+                request,
+                "finance/account_reconcile_start.html",
+                {
+                    "account": account,
+                    "form": ReconcileStartForm(initial={"statement_date": date.today()}),
+                    "opening_balance": account.reconciled_balance(),
+                },
+            )
         statement_date = finish_form.cleaned_data["statement_date"]
         statement_balance = finish_form.cleaned_data["statement_balance"]
         checked = list(finish_form.cleaned_data["transaction"])
@@ -329,9 +379,11 @@ def account_reconcile(request, pk):
                 f"That leaves a difference of {format_money(difference, account.currency)} — "
                 "check the box to accept it and create an adjustment, or fix your selections.",
             )
-            return render(request, "finance/account_reconcile_review.html", _reconcile_review_context(
-                account, statement_date, statement_balance, checked_ids
-            ))
+            return render(
+                request,
+                "finance/account_reconcile_review.html",
+                _reconcile_review_context(account, statement_date, statement_balance, checked_ids),
+            )
 
         adjustment = None
         with system_action(f"Account '{account.name}' reconciled to {regional.format_date(statement_date)}"):
@@ -342,13 +394,20 @@ def account_reconcile(request, pk):
                 # Not real income/spending - excluded from reports the same way a transfer or
                 # opening balance is (D1/D7), since it's a bookkeeping correction, not a purchase.
                 adjustment = Transaction.objects.create(
-                    account=account, date=statement_date, payee=Payee.system(Payee.RECONCILIATION_ADJUSTMENT),
-                    category=account.ensure_transfer_category(), memo="Reconciliation adjustment",
-                    amount=difference, reconciled=True,
+                    account=account,
+                    date=statement_date,
+                    payee=Payee.system(Payee.RECONCILIATION_ADJUSTMENT),
+                    category=account.ensure_transfer_category(),
+                    memo="Reconciliation adjustment",
+                    amount=difference,
+                    reconciled=True,
                 )
             Reconciliation.objects.create(
-                account=account, statement_date=statement_date, statement_balance=statement_balance,
-                opening_balance=opening_balance, adjustment_transaction=adjustment,
+                account=account,
+                statement_date=statement_date,
+                statement_balance=statement_balance,
+                opening_balance=opening_balance,
+                adjustment_transaction=adjustment,
             )
         messages.success(request, f"{account.name} reconciled to {regional.format_date(statement_date)}.")
         return redirect("finance:account_detail", pk=account.pk)
@@ -356,20 +415,31 @@ def account_reconcile(request, pk):
     if request.method == "POST":
         start_form = ReconcileStartForm(request.POST)
         if start_form.is_valid():
-            return render(request, "finance/account_reconcile_review.html", _reconcile_review_context(
-                account, start_form.cleaned_data["statement_date"], start_form.cleaned_data["statement_balance"]
-            ))
+            return render(
+                request,
+                "finance/account_reconcile_review.html",
+                _reconcile_review_context(
+                    account, start_form.cleaned_data["statement_date"], start_form.cleaned_data["statement_balance"]
+                ),
+            )
     else:
         start_form = ReconcileStartForm(initial={"statement_date": date.today()})
 
-    return render(request, "finance/account_reconcile_start.html", {
-        "account": account, "form": start_form, "opening_balance": account.reconciled_balance(),
-    })
+    return render(
+        request,
+        "finance/account_reconcile_start.html",
+        {
+            "account": account,
+            "form": start_form,
+            "opening_balance": account.reconciled_balance(),
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
 # Categories
 # ---------------------------------------------------------------------------
+
 
 class CategoryListView(LoginRequiredMixin, ListView):
     model = Category
@@ -398,8 +468,6 @@ class CategoryCreateView(LoginRequiredMixin, CreateView):
     extra_context = {"title": "Add category", "tips": CATEGORY_TIPS, "category_type_filter": True}
 
 
-
-
 class SystemManagedCategoryGuard:
     """Blocks edit/delete of an account's own transfer category — it's managed automatically (D7)."""
 
@@ -407,7 +475,10 @@ class SystemManagedCategoryGuard:
         self.request, self.args, self.kwargs = request, args, kwargs
         self.object = self.get_object()
         if self.object.is_system_managed:
-            messages.error(request, f"'{self.object.full_name}' belongs to the {self.object.account.name} account and is managed automatically.")
+            messages.error(
+                request,
+                f"'{self.object.full_name}' belongs to the {self.object.account.name} account and is managed automatically.",
+            )
             return redirect("finance:category_list")
         return super().dispatch(request, *args, **kwargs)
 
@@ -443,9 +514,11 @@ def category_usage(request, pk):
 
     if request.method == "POST":
         selected_ids = request.POST.getlist("transaction_id")
-        target = Category.objects.filter(pk=request.POST.get("move_to")).exclude(
-            Q(pk=category.pk) | Q(account__isnull=False)
-        ).first()
+        target = (
+            Category.objects.filter(pk=request.POST.get("move_to"))
+            .exclude(Q(pk=category.pk) | Q(account__isnull=False))
+            .first()
+        )
         if not selected_ids:
             messages.error(request, "Select at least one transaction to move.")
         elif not target:
@@ -464,9 +537,15 @@ def category_usage(request, pk):
         Category.objects.exclude(Q(pk=category.pk) | Q(account__isnull=False)).select_related("parent"),
         key=lambda c: c.full_name.lower(),
     )
-    return render(request, "finance/category_usage.html", {
-        "category": category, "transactions": transactions, "other_categories": other_categories,
-    })
+    return render(
+        request,
+        "finance/category_usage.html",
+        {
+            "category": category,
+            "transactions": transactions,
+            "other_categories": other_categories,
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -515,9 +594,14 @@ def payee_list(request):
         .distinct()
     )
     for row in category_rows:
-        label = "Uncategorized" if row["category_id"] is None else (
-            f"{row['category__parent__name']} > {row['category__name']}" if row["category__parent__name"]
-            else row["category__name"]
+        label = (
+            "Uncategorized"
+            if row["category_id"] is None
+            else (
+                f"{row['category__parent__name']} > {row['category__name']}"
+                if row["category__parent__name"]
+                else row["category__name"]
+            )
         )
         categories_by_payee.setdefault(row["payee_id"], []).append(label)
 
@@ -538,32 +622,40 @@ def payee_list(request):
     for payee in payees:
         labels = sorted(categories_by_payee.get(payee.pk, []))
         totals = sorted(totals_by_payee.get(payee.pk, []))
-        rows.append({
-            "payee": payee,
-            "categories": labels,
-            "categories_label": ", ".join(labels),  # sort key only - the template shows one per row
-            "category_count": len(labels),
-            "totals": totals,
-            # A rough, currency-blind number for sort order only (display always shows each
-            # currency separately) - fine for ordering rows, never shown as an actual amount.
-            "total_sort_value": sum((amount for _, amount in totals), ZERO),
-            "usage_count": usage_by_payee.get(payee.pk, 0),
-        })
+        rows.append(
+            {
+                "payee": payee,
+                "categories": labels,
+                "categories_label": ", ".join(labels),  # sort key only - the template shows one per row
+                "category_count": len(labels),
+                "totals": totals,
+                # A rough, currency-blind number for sort order only (display always shows each
+                # currency separately) - fine for ordering rows, never shown as an actual amount.
+                "total_sort_value": sum((amount for _, amount in totals), ZERO),
+                "usage_count": usage_by_payee.get(payee.pk, 0),
+            }
+        )
 
     sort = request.GET.get("sort", "name")
     column = sort.removeprefix("-")
     rows.sort(key=PAYEE_SORT_KEYS.get(column, PAYEE_SORT_KEYS["name"]), reverse=sort.startswith("-"))
     sort_next = {name: (f"-{name}" if sort == name else name) for name in PAYEE_SORT_KEYS}
 
-    return render(request, "finance/payee_list.html", {
-        "rows": rows,
-        "search": search,
-        "selected_category": category_id,
-        "memo_filter": memo_filter,
-        "categories": categories_alphabetical(Category.objects.select_related("parent").exclude(account__isnull=False)),
-        "sort": sort,
-        "sort_next": sort_next,
-    })
+    return render(
+        request,
+        "finance/payee_list.html",
+        {
+            "rows": rows,
+            "search": search,
+            "selected_category": category_id,
+            "memo_filter": memo_filter,
+            "categories": categories_alphabetical(
+                Category.objects.select_related("parent").exclude(account__isnull=False)
+            ),
+            "sort": sort,
+            "sort_next": sort_next,
+        },
+    )
 
 
 @login_required
@@ -632,6 +724,7 @@ def api_payee_list(request):
 # Transactions
 # ---------------------------------------------------------------------------
 
+
 def _iso_date(value):
     try:
         return date.fromisoformat(value) if value else None
@@ -663,9 +756,9 @@ def _filtered_transactions(request):
     search = request.GET.get("q", "").strip()
     with_subcategories = request.GET.get("with_subcategories") == "1"
     include_uncategorized = "none" in category_values
-    selected_categories = list(Category.objects.filter(
-        pk__in=[v for v in category_values if v.isdigit()]
-    ).select_related("parent"))
+    selected_categories = list(
+        Category.objects.filter(pk__in=[v for v in category_values if v.isdigit()]).select_related("parent")
+    )
 
     range_key = request.GET.get("range", "")
     start = _iso_date(request.GET.get("start"))
@@ -700,15 +793,19 @@ def _filtered_transactions(request):
     elif status == "unreconciled":
         transactions = transactions.filter(reconciled=False)
     if search:
-        transactions = transactions.filter(
-            Q(payee__name__icontains=search) | Q(memo__icontains=search)
-        )
+        transactions = transactions.filter(Q(payee__name__icontains=search) | Q(memo__icontains=search))
 
     return transactions, {
-        "account_id": account_id, "category_values": category_values,
-        "selected_categories": selected_categories, "include_uncategorized": include_uncategorized,
-        "with_subcategories": with_subcategories, "status": status, "range_key": range_key,
-        "start": start, "end": end, "search": search,
+        "account_id": account_id,
+        "category_values": category_values,
+        "selected_categories": selected_categories,
+        "include_uncategorized": include_uncategorized,
+        "with_subcategories": with_subcategories,
+        "status": status,
+        "range_key": range_key,
+        "start": start,
+        "end": end,
+        "search": search,
     }
 
 
@@ -728,7 +825,9 @@ def transaction_list(request):
     if picked_count == 0:
         category_filter_label = "All categories"
     elif picked_count == 1:
-        category_filter_label = "Uncategorized" if include_uncategorized and not selected_categories else selected_categories[0].full_name
+        category_filter_label = (
+            "Uncategorized" if include_uncategorized and not selected_categories else selected_categories[0].full_name
+        )
     else:
         category_filter_label = f"{picked_count} categories selected"
 
@@ -833,9 +932,7 @@ def _xlsx_response(filename, headers, rows):
                 cell.number_format = date_format
             elif isinstance(value, str):
                 cell.data_type = TYPE_STRING
-    response = HttpResponse(
-        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+    response = HttpResponse(content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     response["Content-Disposition"] = f'attachment; filename="{filename}.xlsx"'
     workbook.save(response)
     return response
@@ -856,8 +953,14 @@ def export_transactions(request):
     headers = ["Date", "Number", "Account", "Payee", "Category", "Memo", "Amount", "Currency", "Reconciled"]
     rows = [
         [
-            t.date, t.transaction_number, t.account.name, t.display_payee,
-            t.category.full_name if t.category_id else "", t.memo, t.amount, t.account.currency,
+            t.date,
+            t.transaction_number,
+            t.account.name,
+            t.display_payee,
+            t.category.full_name if t.category_id else "",
+            t.memo,
+            t.amount,
+            t.account.currency,
             "Y" if t.reconciled else "N",
         ]
         for t in transactions
@@ -885,8 +988,11 @@ def export_categories(request):
     headers = ["Name", "Parent", "Type", "Auto-generated", "System-managed"]
     rows = [
         [
-            c.name, c.parent.name if c.parent_id else "", c.get_category_type_display(),
-            "Y" if c.is_auto_generated else "N", "Y" if c.account_id else "N",
+            c.name,
+            c.parent.name if c.parent_id else "",
+            c.get_category_type_display(),
+            "Y" if c.is_auto_generated else "N",
+            "Y" if c.account_id else "N",
         ]
         for c in categories
     ]
@@ -968,10 +1074,18 @@ def transaction_form_view(request, pk=None):
             if not account.is_active and request.POST.get("confirm_inactive_account") != "1":
                 # Don't silently reactivate, or silently block, an inactive account someone
                 # is trying to use - ask, and only act once they say yes (2026-09-15 follow-up).
-                return render(request, "finance/transaction_form.html", {
-                    "form": form, "instance": instance, "tips": TRANSACTION_TIPS, "next": next_url,
-                    "reminder": reminder, "inactive_account_confirm": account,
-                })
+                return render(
+                    request,
+                    "finance/transaction_form.html",
+                    {
+                        "form": form,
+                        "instance": instance,
+                        "tips": TRANSACTION_TIPS,
+                        "next": next_url,
+                        "reminder": reminder,
+                        "inactive_account_confirm": account,
+                    },
+                )
             if not account.is_active:
                 with system_action(f"Account '{account.name}' made active again by entering a transaction on it"):
                     account.is_active = True
@@ -990,9 +1104,7 @@ def transaction_form_view(request, pk=None):
                     reminder.last_entered_transaction = None
                     reminder.save(update_fields=["last_entered_transaction"])
                     reminder.advance_due_date()
-                    messages.success(
-                        request, f"Entered {reminder} and moved it to {reminder.next_due_date:%d/%m/%Y}."
-                    )
+                    messages.success(request, f"Entered {reminder} and moved it to {reminder.next_due_date:%d/%m/%Y}.")
                 return redirect("finance:reminder_list")
             messages.success(request, "Transaction saved.")
             if not instance:
@@ -1009,9 +1121,17 @@ def transaction_form_view(request, pk=None):
     else:
         form = TransactionForm(instance=instance, initial=initial)
 
-    return render(request, "finance/transaction_form.html", {
-        "form": form, "instance": instance, "tips": TRANSACTION_TIPS, "next": next_url, "reminder": reminder,
-    })
+    return render(
+        request,
+        "finance/transaction_form.html",
+        {
+            "form": form,
+            "instance": instance,
+            "tips": TRANSACTION_TIPS,
+            "next": next_url,
+            "reminder": reminder,
+        },
+    )
 
 
 def _quick_edit_row(txn):
@@ -1048,7 +1168,10 @@ def transaction_quick_edit(request, pk):
         # per-row autosave has no room for a confirmation step, so it points you there instead
         # of silently reactivating an account nobody asked to reactivate.
         return JsonResponse(
-            {"ok": False, "errors": {"account": ["This account is inactive - use the full edit page to reactivate it."]}},
+            {
+                "ok": False,
+                "errors": {"account": ["This account is inactive - use the full edit page to reactivate it."]},
+            },
             status=400,
         )
     txn = form.save()
@@ -1074,6 +1197,7 @@ class TransactionDeleteView(LoginRequiredMixin, DeleteView):
 # ---------------------------------------------------------------------------
 # Reminders
 # ---------------------------------------------------------------------------
+
 
 def _reminder_window_cutoff(window, today):
     """Same "yearly = through 31 December" meaning as Reminder.default_generation_horizon.
@@ -1110,13 +1234,21 @@ def reminder_list(request):
     reminders = list(reminders)
     if not show_done:
         reminders = [r for r in reminders if r.status(today) not in ("paid", "skipped")]
-    return render(request, "finance/reminder_list.html", {
-        "reminders": reminders, "window": window, "show_done": show_done, "today": today,
-    })
+    return render(
+        request,
+        "finance/reminder_list.html",
+        {
+            "reminders": reminders,
+            "window": window,
+            "show_done": show_done,
+            "today": today,
+        },
+    )
 
 
 REMINDER_FORM_EXTRA_CONTEXT = {
-    "tips": REMINDER_TIPS, "reminder_type_filter": True,
+    "tips": REMINDER_TIPS,
+    "reminder_type_filter": True,
     "unit_words_json": json.dumps(Reminder.FREQUENCY_UNIT_WORDS),
 }
 
@@ -1172,10 +1304,16 @@ def reminder_edit(request, pk):
     else:
         form = ReminderForm(instance=reminder)
 
-    return render(request, "finance/generic_form.html", {
-        "form": form, "title": "Edit reminder", "scope": scope if has_connection else None,
-        **REMINDER_FORM_EXTRA_CONTEXT,
-    })
+    return render(
+        request,
+        "finance/generic_form.html",
+        {
+            "form": form,
+            "title": "Edit reminder",
+            "scope": scope if has_connection else None,
+            **REMINDER_FORM_EXTRA_CONTEXT,
+        },
+    )
 
 
 class ReminderDeleteView(LoginRequiredMixin, DeleteView):
@@ -1219,6 +1357,7 @@ def reminder_skip(request, pk):
 # ---------------------------------------------------------------------------
 # Import (CSV / OFX / QFX)
 # ---------------------------------------------------------------------------
+
 
 @login_required
 def import_transactions(request):
@@ -1264,7 +1403,9 @@ def import_transactions(request):
         form = ImportUploadForm()
 
     recent_batches = ImportBatch.objects.select_related("account")[:15]
-    return render(request, "finance/import_form.html", {"form": form, "recent_batches": recent_batches, "tips": IMPORT_TIPS})
+    return render(
+        request, "finance/import_form.html", {"form": form, "recent_batches": recent_batches, "tips": IMPORT_TIPS}
+    )
 
 
 class ImportFileError(Exception):
@@ -1335,9 +1476,7 @@ def _resolve_category(raw, amount):
         return None
 
     category_type = Category.CategoryType.INCOME if amount > 0 else Category.CategoryType.EXPENSE
-    parent = Category.objects.filter(
-        name_key=name_key(parent_name), parent__isnull=True, account__isnull=True
-    ).first()
+    parent = Category.objects.filter(name_key=name_key(parent_name), parent__isnull=True, account__isnull=True).first()
     if parent is None:
         parent = Category.objects.create(name=parent_name, category_type=category_type, is_auto_generated=True)
 
@@ -1390,7 +1529,7 @@ def _read_csv(upload):
             text = raw.decode("cp1251")
         except UnicodeDecodeError:
             raise ImportFileError(
-                'Stashy couldn\'t read this file\'s text. Save it as "CSV UTF-8" and try again.'
+                "Stashy couldn't read this file's text. Save it as \"CSV UTF-8\" and try again."
             ) from None
         note = (
             "The file wasn't UTF-8, so it was read as Windows-1251 (Cyrillic) - if names look wrong, "
@@ -1555,7 +1694,7 @@ def _read_ofx(upload):
             for ofx_account in ofx.accounts
             for txn in ofx_account.statement.transactions
         ]
-    except Exception:  # noqa: BLE001 - ofxparse raises many unrelated exception types on a bad file
+    except Exception:
         raise ImportFileError(
             "Stashy couldn't read this OFX/QFX file - it may be damaged or in a different format."
         ) from None
@@ -1592,6 +1731,7 @@ def _import_ofx_rows(ofx_rows, account, batch):
 # Reports
 # ---------------------------------------------------------------------------
 
+
 def _report_filters(request):
     """Shared by the reports page and every per-report export view, so both read the exact
     same filters off the querystring - what you export always matches what's on screen.
@@ -1615,8 +1755,11 @@ def _report_filters(request):
     return {
         "form": DateRangeFilterForm() if invalid else submitted,
         "form_errors": submitted.errors if invalid else None,
-        "start": start, "end": end, "lookback": lookback,
-        "periods": periods, "average_periods": len(periods),
+        "start": start,
+        "end": end,
+        "lookback": lookback,
+        "periods": periods,
+        "average_periods": len(periods),
         # One earlier period isn't an average, and none at all is nothing to compare with -
         # the vs-average reports say so instead of drawing one (user, 16/09/2026).
         "has_average": len(periods) >= 2,
@@ -1636,7 +1779,8 @@ def _stacked_series(periods, rows):
             "period": labels[i],
             "categories": [
                 {"name": r["name"], "value": abs(float(r["values"][i]))}
-                for r in rows if not r["is_child"] and abs(r["values"][i]) > 0
+                for r in rows
+                if not r["is_child"] and abs(r["values"][i]) > 0
             ],
         }
         for i in range(len(labels))
@@ -1652,7 +1796,11 @@ def _vs_average_chart_rows(rows):
     """Like _float_rows(), but "average" may legitimately be None (R4: no earlier data) - Chart.js
     reads a JSON null as a gap in the marker line rather than crashing on it."""
     return [
-        {"name": r["name"], "current": float(r["current"]), "average": None if r["average"] is None else float(r["average"])}
+        {
+            "name": r["name"],
+            "current": float(r["current"]),
+            "average": None if r["average"] is None else float(r["average"]),
+        }
         for r in rows
     ]
 
@@ -1663,15 +1811,30 @@ def _vs_average_stat(label, current, average, higher_is_better, formatter):
     "green means good, so spending less is green" - a falling Expense is good, a falling
     Income isn't)."""
     if current is None or average is None:
-        return {"label": label, "current": formatter(current) if current is not None else "—", "average": "—", "diff_text": "", "good": None}
+        return {
+            "label": label,
+            "current": formatter(current) if current is not None else "—",
+            "average": "—",
+            "diff_text": "",
+            "good": None,
+        }
     diff = current - average
     if diff == 0:
-        return {"label": label, "current": formatter(current), "average": formatter(average), "diff_text": formatter(diff), "good": None}
+        return {
+            "label": label,
+            "current": formatter(current),
+            "average": formatter(average),
+            "diff_text": formatter(diff),
+            "good": None,
+        }
     arrow = "▲" if diff > 0 else "▼"
     good = (diff > 0) == higher_is_better
     return {
-        "label": label, "current": formatter(current), "average": formatter(average),
-        "diff_text": f"{arrow} {formatter(abs(diff))}", "good": good,
+        "label": label,
+        "current": formatter(current),
+        "average": formatter(average),
+        "diff_text": f"{arrow} {formatter(abs(diff))}",
+        "good": good,
     }
 
 
@@ -1685,15 +1848,17 @@ def reports_view(request):
     rates = RateTable(main_currency)
     # A once-per-page-load warning (R7) - not per report, since the same missing rate would
     # otherwise repeat itself on every card that happens to touch that currency.
-    missing_currencies = sorted({
-        a.currency for a in Account.objects.exclude(currency=main_currency) if rates.known(a.currency) is None
-    })
+    missing_currencies = sorted(
+        {a.currency for a in Account.objects.exclude(currency=main_currency) if rates.known(a.currency) is None}
+    )
 
     uncategorized = uncategorized_count(start, end, account=account)
 
     # --- 1. Spending by category (chart: main categories only, R2) ---
     spending_by_category = category_totals_top_level(start, end, expense_only=True, account=account, rates=rates)
-    spending_table = category_report_rows(start, end, subtotal=subtotal, expense_only=True, account=account, rates=rates)
+    spending_table = category_report_rows(
+        start, end, subtotal=subtotal, expense_only=True, account=account, rates=rates
+    )
 
     # --- 2. Income by category (new, mirrors Spending) ---
     income_by_category = category_totals_top_level(start, end, income_only=True, account=account, rates=rates)
@@ -1701,10 +1866,18 @@ def reports_view(request):
 
     # --- 3. Spending vs. average / 4. Income vs. average (new) - charts show main categories
     # only (R2), tables keep subcategories ---
-    spending_vs_average = category_totals_vs_average(start, end, periods, expense_only=True, account=account, rates=rates, top_level=True)
-    spending_vs_average_table = category_vs_average_report_rows(start, end, periods, expense_only=True, account=account, rates=rates)
-    income_vs_average = category_totals_vs_average(start, end, periods, income_only=True, account=account, rates=rates, top_level=True)
-    income_vs_average_table = category_vs_average_report_rows(start, end, periods, income_only=True, account=account, rates=rates)
+    spending_vs_average = category_totals_vs_average(
+        start, end, periods, expense_only=True, account=account, rates=rates, top_level=True
+    )
+    spending_vs_average_table = category_vs_average_report_rows(
+        start, end, periods, expense_only=True, account=account, rates=rates
+    )
+    income_vs_average = category_totals_vs_average(
+        start, end, periods, income_only=True, account=account, rates=rates, top_level=True
+    )
+    income_vs_average_table = category_vs_average_report_rows(
+        start, end, periods, income_only=True, account=account, rates=rates
+    )
 
     # --- 5. Income & expense by category - combined signed table (unchanged shape); the chart
     # is a stacked column per Subtotal period, split by category (R6) ---
@@ -1712,8 +1885,12 @@ def reports_view(request):
     totals = income_and_spending(start, end, account=account, rates=rates)
     savings_rate_value = savings_rate(totals["income"], totals["spending"])
     net_total = totals["income"] - totals["spending"]
-    income_expense_income_series = _stacked_series(income_expense_table["periods"], _top_level_rows(income_expense_table, "income"))
-    income_expense_expense_series = _stacked_series(income_expense_table["periods"], _top_level_rows(income_expense_table, "expense"))
+    income_expense_income_series = _stacked_series(
+        income_expense_table["periods"], _top_level_rows(income_expense_table, "income")
+    )
+    income_expense_expense_series = _stacked_series(
+        income_expense_table["periods"], _top_level_rows(income_expense_table, "expense")
+    )
 
     # --- 6. Income & expense vs. average: Income/Expense (split by category, current period
     # only) + Net, each with an average marker ---
@@ -1721,29 +1898,55 @@ def reports_view(request):
     money_fmt = lambda v: format_money(v, main_currency)  # noqa: E731
     percent_fmt = lambda v: f"{v}%"  # noqa: E731
     vs_average_stats = [
-        _vs_average_stat("Income", vs_average_totals["current_income"], vs_average_totals["average_income"], True, money_fmt),
-        _vs_average_stat("Expense", vs_average_totals["current_spending"], vs_average_totals["average_spending"], False, money_fmt),
+        _vs_average_stat(
+            "Income", vs_average_totals["current_income"], vs_average_totals["average_income"], True, money_fmt
+        ),
+        _vs_average_stat(
+            "Expense", vs_average_totals["current_spending"], vs_average_totals["average_spending"], False, money_fmt
+        ),
         _vs_average_stat("Net", vs_average_totals["current_net"], vs_average_totals["average_net"], True, money_fmt),
-        _vs_average_stat("Savings rate", vs_average_totals["current_rate"], vs_average_totals["average_rate"], True, percent_fmt),
+        _vs_average_stat(
+            "Savings rate", vs_average_totals["current_rate"], vs_average_totals["average_rate"], True, percent_fmt
+        ),
     ]
     # The table keeps the same per-category breakdown as report 5's, plus Income total/Expense
     # total/Net summary rows (already computed above) so the whole picture is in one table.
-    income_expense_vs_average_table = category_vs_average_report_rows(start, end, periods, account=account, rates=rates)
-    income_expense_vs_average_table["groups"] = income_expense_vs_average_table["groups"] + [{
-        "key": "summary", "name": "Summary", "rows": [
-            {
-                "id": "summary_income", "parent_id": None, "name": "Income total", "is_child": False, "has_children": False,
-                "current": vs_average_totals["current_income"], "average": vs_average_totals["average_income"],
-                "difference": None if vs_average_totals["average_income"] is None else vs_average_totals["current_income"] - vs_average_totals["average_income"],
-            },
-            {
-                "id": "summary_expense", "parent_id": None, "name": "Expense total", "is_child": False, "has_children": False,
-                "lower_is_good": True,
-                "current": vs_average_totals["current_spending"], "average": vs_average_totals["average_spending"],
-                "difference": None if vs_average_totals["average_spending"] is None else vs_average_totals["current_spending"] - vs_average_totals["average_spending"],
-            },
-        ],
-    }]
+    income_expense_vs_average_table = category_vs_average_report_rows(
+        start, end, periods, account=account, rates=rates
+    )
+    income_expense_vs_average_table["groups"] = income_expense_vs_average_table["groups"] + [
+        {
+            "key": "summary",
+            "name": "Summary",
+            "rows": [
+                {
+                    "id": "summary_income",
+                    "parent_id": None,
+                    "name": "Income total",
+                    "is_child": False,
+                    "has_children": False,
+                    "current": vs_average_totals["current_income"],
+                    "average": vs_average_totals["average_income"],
+                    "difference": None
+                    if vs_average_totals["average_income"] is None
+                    else vs_average_totals["current_income"] - vs_average_totals["average_income"],
+                },
+                {
+                    "id": "summary_expense",
+                    "parent_id": None,
+                    "name": "Expense total",
+                    "is_child": False,
+                    "has_children": False,
+                    "lower_is_good": True,
+                    "current": vs_average_totals["current_spending"],
+                    "average": vs_average_totals["average_spending"],
+                    "difference": None
+                    if vs_average_totals["average_spending"] is None
+                    else vs_average_totals["current_spending"] - vs_average_totals["average_spending"],
+                },
+            ],
+        }
+    ]
 
     # --- 7. Net worth over time - the chart plots the table's own Total row, so both follow
     # the Subtotal filter (month when none is chosen) ---
@@ -1757,12 +1960,23 @@ def reports_view(request):
     watched_chart_overflow = None
     if watched_category_ids:
         watched_table = category_report_rows(
-            start, end, subtotal=subtotal, expense_only=True, account=account, rates=rates, category_ids=watched_category_ids,
+            start,
+            end,
+            subtotal=subtotal,
+            expense_only=True,
+            account=account,
+            rates=rates,
+            category_ids=watched_category_ids,
         )
         watched_chart_overflow = subtotal_overflow_message(start, end, subtotal or "month")
         if not watched_chart_overflow:
             watched_series = watched_expenses_series(
-                start, end, watched_category_ids, granularity=subtotal or "month", account=account, rates=rates,
+                start,
+                end,
+                watched_category_ids,
+                granularity=subtotal or "month",
+                account=account,
+                rates=rates,
             )
 
     context = {
@@ -1776,25 +1990,24 @@ def reports_view(request):
         "uncategorized_count": uncategorized,
         "average_periods": f["average_periods"],
         "has_average": f["has_average"],
-
         "spending_by_category": spending_by_category,
         "spending_chart": _float_rows(spending_by_category, "total"),
-        "spending_stacked_chart": _stacked_series(spending_table["periods"], [r for g in spending_table["groups"] for r in g["rows"]]),
+        "spending_stacked_chart": _stacked_series(
+            spending_table["periods"], [r for g in spending_table["groups"] for r in g["rows"]]
+        ),
         "spending_table": spending_table,
-
         "income_by_category": income_by_category,
         "income_chart": _float_rows(income_by_category, "total"),
-        "income_stacked_chart": _stacked_series(income_table["periods"], [r for g in income_table["groups"] for r in g["rows"]]),
+        "income_stacked_chart": _stacked_series(
+            income_table["periods"], [r for g in income_table["groups"] for r in g["rows"]]
+        ),
         "income_table": income_table,
-
         "spending_vs_average": spending_vs_average,
         "spending_vs_average_chart": _vs_average_chart_rows(spending_vs_average),
         "spending_vs_average_table": spending_vs_average_table,
-
         "income_vs_average": income_vs_average,
         "income_vs_average_chart": _vs_average_chart_rows(income_vs_average),
         "income_vs_average_table": income_vs_average_table,
-
         "income_expense_table": income_expense_table,
         "income_expense_chart": {
             "periods": income_expense_table["periods"] or ["Total"],
@@ -1805,7 +2018,6 @@ def reports_view(request):
         "expense_total": totals["spending"],
         "net_total": net_total,
         "savings_rate": savings_rate_value,
-
         "vs_average_totals": vs_average_totals,
         "vs_average_stats": vs_average_stats,
         "income_expense_vs_average_table": income_expense_vs_average_table,
@@ -1815,17 +2027,21 @@ def reports_view(request):
             "current_income": float(vs_average_totals["current_income"]),
             "current_expense": float(vs_average_totals["current_spending"]),
             "current_net": float(vs_average_totals["current_net"]),
-            "average_income": None if vs_average_totals["average_income"] is None else float(vs_average_totals["average_income"]),
-            "average_expense": None if vs_average_totals["average_spending"] is None else float(vs_average_totals["average_spending"]),
-            "average_net": None if vs_average_totals["average_net"] is None else float(vs_average_totals["average_net"]),
+            "average_income": None
+            if vs_average_totals["average_income"] is None
+            else float(vs_average_totals["average_income"]),
+            "average_expense": None
+            if vs_average_totals["average_spending"] is None
+            else float(vs_average_totals["average_spending"]),
+            "average_net": None
+            if vs_average_totals["average_net"] is None
+            else float(vs_average_totals["average_net"]),
         },
-
         "net_worth_chart": [
             {"label": label, "total": float(total)}
             for label, total in zip(net_worth_table["periods"], net_worth_table["totals"])
         ],
         "net_worth_table": net_worth_table,
-
         "watched_expenses_title": profile.watched_expenses_title,
         # Whether categories are *chosen* - not whether any were spent in this range, which is a
         # different question (an empty range still shows the chart and table, just at zero).
@@ -1835,7 +2051,8 @@ def reports_view(request):
         "watched_chart_overflow": watched_chart_overflow,
         "watched_chart": [
             {
-                "category_id": series["category_id"], "name": series["name"],
+                "category_id": series["category_id"],
+                "name": series["name"],
                 "points": [{"period": p["period"], "total": float(p["total"])} for p in series["points"]],
             }
             for series in watched_series
@@ -1863,7 +2080,8 @@ def _export_vs_average_table(request, table, filename):
     headers = ["Category", "Current", "Average", "Difference"]
     rows = [
         [("  " if row["is_child"] else "") + row["name"], row["current"], row["average"], row["difference"]]
-        for group in table["groups"] for row in group["rows"]
+        for group in table["groups"]
+        for row in group["rows"]
     ]
     if table["totals"]:
         totals = table["totals"]
@@ -1881,42 +2099,64 @@ def _export_rates(request):
 @login_required
 def export_report_spending(request):
     f = _report_filters(request)
-    table = category_report_rows(f["start"], f["end"], subtotal=f["subtotal"], expense_only=True, account=f["account"], rates=_export_rates(request))
+    table = category_report_rows(
+        f["start"],
+        f["end"],
+        subtotal=f["subtotal"],
+        expense_only=True,
+        account=f["account"],
+        rates=_export_rates(request),
+    )
     return _export_category_table(request, table, f"stashy-spending-by-category-{date.today():%Y%m%d}", "Spending")
 
 
 @login_required
 def export_report_spending_vs_average(request):
     f = _report_filters(request)
-    table = category_vs_average_report_rows(f["start"], f["end"], f["periods"], expense_only=True, account=f["account"], rates=_export_rates(request))
+    table = category_vs_average_report_rows(
+        f["start"], f["end"], f["periods"], expense_only=True, account=f["account"], rates=_export_rates(request)
+    )
     return _export_vs_average_table(request, table, f"stashy-spending-vs-average-{date.today():%Y%m%d}")
 
 
 @login_required
 def export_report_income(request):
     f = _report_filters(request)
-    table = category_report_rows(f["start"], f["end"], subtotal=f["subtotal"], income_only=True, account=f["account"], rates=_export_rates(request))
+    table = category_report_rows(
+        f["start"],
+        f["end"],
+        subtotal=f["subtotal"],
+        income_only=True,
+        account=f["account"],
+        rates=_export_rates(request),
+    )
     return _export_category_table(request, table, f"stashy-income-by-category-{date.today():%Y%m%d}", "Income")
 
 
 @login_required
 def export_report_income_vs_average(request):
     f = _report_filters(request)
-    table = category_vs_average_report_rows(f["start"], f["end"], f["periods"], income_only=True, account=f["account"], rates=_export_rates(request))
+    table = category_vs_average_report_rows(
+        f["start"], f["end"], f["periods"], income_only=True, account=f["account"], rates=_export_rates(request)
+    )
     return _export_vs_average_table(request, table, f"stashy-income-vs-average-{date.today():%Y%m%d}")
 
 
 @login_required
 def export_report_income_expense(request):
     f = _report_filters(request)
-    table = category_report_rows(f["start"], f["end"], subtotal=f["subtotal"], account=f["account"], rates=_export_rates(request))
+    table = category_report_rows(
+        f["start"], f["end"], subtotal=f["subtotal"], account=f["account"], rates=_export_rates(request)
+    )
     return _export_category_table(request, table, f"stashy-income-expense-by-category-{date.today():%Y%m%d}", "Amount")
 
 
 @login_required
 def export_report_income_expense_vs_average(request):
     f = _report_filters(request)
-    table = category_vs_average_report_rows(f["start"], f["end"], f["periods"], account=f["account"], rates=_export_rates(request))
+    table = category_vs_average_report_rows(
+        f["start"], f["end"], f["periods"], account=f["account"], rates=_export_rates(request)
+    )
     return _export_vs_average_table(request, table, f"stashy-income-expense-vs-average-{date.today():%Y%m%d}")
 
 
@@ -1928,7 +2168,12 @@ def export_report_watched_expenses(request):
     if not category_ids:
         return HttpResponse("No Watched expenses categories are chosen yet - add some in Settings.", status=404)
     table = category_report_rows(
-        f["start"], f["end"], subtotal=f["subtotal"], expense_only=True, account=f["account"], category_ids=category_ids,
+        f["start"],
+        f["end"],
+        subtotal=f["subtotal"],
+        expense_only=True,
+        account=f["account"],
+        category_ids=category_ids,
         rates=RateTable(profile.main_currency),
     )
     return _export_category_table(request, table, f"stashy-watched-expenses-{date.today():%Y%m%d}", "Spending")
@@ -1945,9 +2190,7 @@ def export_report_net_worth(request):
         for row in group["rows"]:
             rows.append(["  " + row["name"]] + list(row["values"]))
     rows.append(["Total"] + list(table["totals"]))
-    return _export_response(
-        request.GET.get("format", "csv"), f"stashy-net-worth-{date.today():%Y%m%d}", headers, rows
-    )
+    return _export_response(request.GET.get("format", "csv"), f"stashy-net-worth-{date.today():%Y%m%d}", headers, rows)
 
 
 def _float_rows(rows, *decimal_keys):
@@ -1960,6 +2203,7 @@ def _float_rows(rows, *decimal_keys):
 # ---------------------------------------------------------------------------
 # Settings (D2 main currency, D10 regional preferences)
 # ---------------------------------------------------------------------------
+
 
 def _stash_backup_root(request):
     """Each stash keeps its own backups/ folder next to its own db.sqlite3 (Phase 12) -
@@ -1999,7 +2243,10 @@ def settings_view(request):
             if stored:
                 messages.success(request, f"Updated {len(stored)} exchange rate{'s' if len(stored) != 1 else ''}.")
             if unavailable:
-                messages.warning(request, f"No rate available for: {', '.join(unavailable)}. Enter it by hand in the admin if you need one.")
+                messages.warning(
+                    request,
+                    f"No rate available for: {', '.join(unavailable)}. Enter it by hand in the admin if you need one.",
+                )
         return redirect("finance:settings")
 
     backup_root = _stash_backup_root(request)
@@ -2043,25 +2290,25 @@ def settings_view(request):
         watched_button_label = f"{watched_count} categories selected"
 
     rates = RateTable(profile.main_currency)
-    known_rates = [
-        (code, rates.known(code)) for code in currencies if code != profile.main_currency
-    ]
+    known_rates = [(code, rates.known(code)) for code in currencies if code != profile.main_currency]
     recent_backups = finance_backup.list_backups(backup_root, limit=5)
-    return render(request, "finance/settings.html", {
-        "form": form,
-        "watched_form": watched_form,
-        "watched_category_groups": grouped_categories(
-            Category.objects.filter(category_type=Category.CategoryType.EXPENSE, account__isnull=True)
-        ),
-        "watched_selected_values": watched_selected_values,
-        "watched_button_label": watched_button_label,
-        "check_rates_form": CheckRatesForm(),
-        "profile": profile,
-        "known_rates": known_rates,
-        "recent_backups": [
-            {"name": p.name, "size_kb": p.stat().st_size // 1024} for p in recent_backups
-        ],
-    })
+    return render(
+        request,
+        "finance/settings.html",
+        {
+            "form": form,
+            "watched_form": watched_form,
+            "watched_category_groups": grouped_categories(
+                Category.objects.filter(category_type=Category.CategoryType.EXPENSE, account__isnull=True)
+            ),
+            "watched_selected_values": watched_selected_values,
+            "watched_button_label": watched_button_label,
+            "check_rates_form": CheckRatesForm(),
+            "profile": profile,
+            "known_rates": known_rates,
+            "recent_backups": [{"name": p.name, "size_kb": p.stat().st_size // 1024} for p in recent_backups],
+        },
+    )
 
 
 @login_required

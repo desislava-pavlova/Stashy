@@ -83,7 +83,16 @@ class AccountCreateForm(AccountForm):
     opening_balance = forms.DecimalField(max_digits=12, decimal_places=2, required=False, initial=0)
     opening_balance_date = forms.DateField(required=False, widget=DateInput(), initial=date.today)
 
-    field_order = ["name", "account_type", "currency", "institution", "opening_balance", "opening_balance_date", "is_active", "notes"]
+    field_order = [
+        "name",
+        "account_type",
+        "currency",
+        "institution",
+        "opening_balance",
+        "opening_balance_date",
+        "is_active",
+        "notes",
+    ]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -133,9 +142,9 @@ class TransferForm(forms.Form):
             is_active=True, currency=from_account.currency
         ).exclude(pk=from_account.pk)
         if not self.fields["to_account"].queryset.exists():
-            self.fields["to_account"].help_text = (
-                f"No other active {from_account.currency} account to transfer to yet."
-            )
+            self.fields[
+                "to_account"
+            ].help_text = f"No other active {from_account.currency} account to transfer to yet."
         for field in self.fields.values():
             if not isinstance(field.widget, forms.DateInput):
                 field.widget.attrs.setdefault("class", "form-control")
@@ -150,14 +159,20 @@ class TransferForm(forms.Form):
         payee = Payee.system(Payee.TRANSFER_MONEY)
         with system_action(f"Transfer from '{self.from_account.name}' to '{to_account.name}'"):
             out = Transaction.objects.create(
-                account=self.from_account, date=on, payee=payee,
+                account=self.from_account,
+                date=on,
+                payee=payee,
                 category=self.from_account.ensure_transfer_category(),
-                memo=f"Transfer to {to_account.name}", amount=-amount,
+                memo=f"Transfer to {to_account.name}",
+                amount=-amount,
             )
             into = Transaction.objects.create(
-                account=to_account, date=on, payee=payee,
+                account=to_account,
+                date=on,
+                payee=payee,
                 category=to_account.ensure_transfer_category(),
-                memo=f"Transfer from {self.from_account.name}", amount=amount,
+                memo=f"Transfer from {self.from_account.name}",
+                amount=amount,
             )
         return out, into
 
@@ -167,7 +182,8 @@ class ReconcileStartForm(forms.Form):
 
     statement_date = forms.DateField(widget=DateInput(), initial=date.today)
     statement_balance = forms.DecimalField(
-        max_digits=12, decimal_places=2,
+        max_digits=12,
+        decimal_places=2,
         help_text="The ending balance shown on your bank or card statement.",
     )
 
@@ -257,7 +273,13 @@ class TransactionForm(BootstrapFormMixin, forms.ModelForm):
     class Meta:
         model = Transaction
         fields = [
-            "account", "date", "transaction_number", "payee_name", "category", "memo", "amount",
+            "account",
+            "date",
+            "transaction_number",
+            "payee_name",
+            "category",
+            "memo",
+            "amount",
             "reconciled",
         ]
         widgets = {
@@ -268,13 +290,15 @@ class TransactionForm(BootstrapFormMixin, forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if "transaction_number" in self.fields:
-            self.fields["transaction_number"].help_text = "Prefilled with the next available number (shared across accounts, starting over each year, D9) — change it, or clear it to have Stashy pick again."
+            self.fields[
+                "transaction_number"
+            ].help_text = "Prefilled with the next available number (shared across accounts, starting over each year, D9) — change it, or clear it to have Stashy pick again."
         # Transfer categories are created automatically by the Transfer button, not picked by hand
         # here — except editing a transaction that already has one (an opening balance or transfer
         # leg) must still offer its own category, or saving the form would reject it as invalid.
-        self.fields["category"].queryset = categories_alphabetical(self.fields["category"].queryset.filter(
-            Q(account__isnull=True) | Q(pk=self.instance.category_id)
-        ))
+        self.fields["category"].queryset = categories_alphabetical(
+            self.fields["category"].queryset.filter(Q(account__isnull=True) | Q(pk=self.instance.category_id))
+        )
         self.fields["category"].label_from_instance = lambda category: category.indented_name
 
     def clean_payee_name(self):
@@ -304,8 +328,18 @@ class ReminderForm(BootstrapFormMixin, forms.ModelForm):
     class Meta:
         model = Reminder
         fields = [
-            "reminder_type", "account", "payee", "category", "amount", "frequency", "interval",
-            "next_due_date", "end_of_period", "end_date", "no_end_date", "notes",
+            "reminder_type",
+            "account",
+            "payee",
+            "category",
+            "amount",
+            "frequency",
+            "interval",
+            "next_due_date",
+            "end_of_period",
+            "end_date",
+            "no_end_date",
+            "notes",
         ]
         widgets = {
             "next_due_date": DateInput(),
@@ -323,9 +357,9 @@ class ReminderForm(BootstrapFormMixin, forms.ModelForm):
         self.fields["amount"].required = False
         self.fields["interval"].required = False
         category_field = self.fields["category"]
-        categories = categories_alphabetical(Category.objects.filter(
-            Q(account__isnull=True) | Q(pk=self.instance.category_id)
-        ))
+        categories = categories_alphabetical(
+            Category.objects.filter(Q(account__isnull=True) | Q(pk=self.instance.category_id))
+        )
         # Picking Income/Expense narrows the Category list to that type only (same
         # type-tagged-option pattern CategoryForm already uses for its own Parent field).
         category_field.widget = CategoryParentSelect(
@@ -362,7 +396,9 @@ class ImportUploadForm(forms.Form):
         help_text="CSV or XLSX (Date, Payee, Memo, Amount, optionally Num/Account/Category/Reconciled) or OFX/QFX"
     )
     date_format = forms.ChoiceField(
-        choices=DATE_FORMAT_CHOICES, required=False, initial="auto",
+        choices=DATE_FORMAT_CHOICES,
+        required=False,
+        initial="auto",
         help_text="Stashy checks the file's own dates first - override only if it guesses wrong.",
     )
 

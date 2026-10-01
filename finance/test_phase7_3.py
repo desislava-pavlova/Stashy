@@ -1,6 +1,7 @@
 """Tests for the three questions asked and answered on 2026-09-14: reminder Edit's
 "this occurrence / whole series" scope prompt, the redesigned delete-confirmation page, and
 faded reconciled rows on the all-accounts transaction list."""
+
 from datetime import date
 from decimal import Decimal
 
@@ -22,8 +23,11 @@ class ReminderEditScopeTests(LoggedInTestCase):
     def setUp(self):
         super().setUp()
         self.root = Reminder.objects.create(
-            account=self.account, amount=Decimal("10.00"), next_due_date=date(2026, 9, 20),
-            frequency="monthly", end_date=date(2026, 12, 20),
+            account=self.account,
+            amount=Decimal("10.00"),
+            next_due_date=date(2026, 9, 20),
+            frequency="monthly",
+            end_date=date(2026, 12, 20),
         )
         self.november = self.root.occurrences.get(next_due_date=date(2026, 11, 20))
 
@@ -44,22 +48,40 @@ class ReminderEditScopeTests(LoggedInTestCase):
 
     def test_this_occurrence_only_changes_that_one_row(self):
         payee = Payee.objects.create(name="New Payee")
-        response = self.client.post(reverse("finance:reminder_edit", args=[self.root.pk]) + "?scope=this", {
-            "scope": "this", "reminder_type": "expense", "account": self.account.pk, "payee": payee.pk,
-            "frequency": "monthly", "interval": "1", "next_due_date": "20/09/2026",
-            "end_date": "20/12/2026", "amount": "10.00",
-        })
+        response = self.client.post(
+            reverse("finance:reminder_edit", args=[self.root.pk]) + "?scope=this",
+            {
+                "scope": "this",
+                "reminder_type": "expense",
+                "account": self.account.pk,
+                "payee": payee.pk,
+                "frequency": "monthly",
+                "interval": "1",
+                "next_due_date": "20/09/2026",
+                "end_date": "20/12/2026",
+                "amount": "10.00",
+            },
+        )
         self.assertRedirects(response, reverse("finance:reminder_list"))
         self.november.refresh_from_db()
         self.assertIsNone(self.november.payee_id)
 
     def test_whole_series_propagates_shared_fields_to_open_occurrences(self):
         payee = Payee.objects.create(name="New Payee")
-        response = self.client.post(reverse("finance:reminder_edit", args=[self.root.pk]) + "?scope=series", {
-            "scope": "series", "reminder_type": "expense", "account": self.account.pk, "payee": payee.pk,
-            "frequency": "monthly", "interval": "1", "next_due_date": "20/09/2026",
-            "end_date": "20/12/2026", "amount": "12.00",
-        })
+        response = self.client.post(
+            reverse("finance:reminder_edit", args=[self.root.pk]) + "?scope=series",
+            {
+                "scope": "series",
+                "reminder_type": "expense",
+                "account": self.account.pk,
+                "payee": payee.pk,
+                "frequency": "monthly",
+                "interval": "1",
+                "next_due_date": "20/09/2026",
+                "end_date": "20/12/2026",
+                "amount": "12.00",
+            },
+        )
         self.assertRedirects(response, reverse("finance:reminder_list"))
         self.november.refresh_from_db()
         self.assertEqual(self.november.payee_id, payee.pk)
@@ -68,10 +90,19 @@ class ReminderEditScopeTests(LoggedInTestCase):
     def test_whole_series_from_an_occurrence_updates_the_root_and_siblings(self):
         payee = Payee.objects.create(name="New Payee")
         october = self.root.occurrences.get(next_due_date=date(2026, 10, 20))
-        response = self.client.post(reverse("finance:reminder_edit", args=[self.november.pk]) + "?scope=series", {
-            "scope": "series", "reminder_type": "expense", "account": self.account.pk, "payee": payee.pk,
-            "frequency": "one_time", "interval": "1", "next_due_date": "20/11/2026", "amount": "20.00",
-        })
+        response = self.client.post(
+            reverse("finance:reminder_edit", args=[self.november.pk]) + "?scope=series",
+            {
+                "scope": "series",
+                "reminder_type": "expense",
+                "account": self.account.pk,
+                "payee": payee.pk,
+                "frequency": "one_time",
+                "interval": "1",
+                "next_due_date": "20/11/2026",
+                "amount": "20.00",
+            },
+        )
         self.assertRedirects(response, reverse("finance:reminder_list"))
         self.root.refresh_from_db()
         october.refresh_from_db()
@@ -84,11 +115,20 @@ class ReminderEditScopeTests(LoggedInTestCase):
         october.skipped = True
         october.save(update_fields=["skipped"])
         payee = Payee.objects.create(name="New Payee")
-        self.client.post(reverse("finance:reminder_edit", args=[self.root.pk]) + "?scope=series", {
-            "scope": "series", "reminder_type": "expense", "account": self.account.pk, "payee": payee.pk,
-            "frequency": "monthly", "interval": "1", "next_due_date": "20/09/2026",
-            "end_date": "20/12/2026", "amount": "12.00",
-        })
+        self.client.post(
+            reverse("finance:reminder_edit", args=[self.root.pk]) + "?scope=series",
+            {
+                "scope": "series",
+                "reminder_type": "expense",
+                "account": self.account.pk,
+                "payee": payee.pk,
+                "frequency": "monthly",
+                "interval": "1",
+                "next_due_date": "20/09/2026",
+                "end_date": "20/12/2026",
+                "amount": "12.00",
+            },
+        )
         october.refresh_from_db()
         self.assertIsNone(october.payee_id)
 
