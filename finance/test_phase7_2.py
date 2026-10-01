@@ -1,4 +1,4 @@
-"""Tests for the 2026-09-14 follow-up batch: default 15-day reminder window, category
+"""Tests for the 2026-09-14 follow-up batch: default reminder window (this month since 2026-09-19, was 15 days), category
 dropdowns ordered so subcategories sit next to their parent, the replacement of BIWEEKLY with
 a free "every N periods" interval, memo prefilled from payee+category history on Enter, signed
 reminder amounts, the reminder delete-confirmation warning, and the transaction list's new
@@ -31,11 +31,11 @@ class ReminderListDefaultWindowTests(LoggedInTestCase):
         self.soon = Reminder.objects.create(account=self.account, amount=Decimal("1"), next_due_date=date(2026, 9, 20))
         self.far = Reminder.objects.create(account=self.account, amount=Decimal("1"), next_due_date=date(2026, 12, 1))
 
-    def test_a_fresh_visit_defaults_to_15_days(self, _):
+    def test_a_fresh_visit_defaults_to_this_month(self, _):
         response = self.client.get(reverse("finance:reminder_list"))
         ids = {r.pk for r in response.context["reminders"]}
         self.assertEqual(ids, {self.soon.pk})
-        self.assertEqual(response.context["window"], "15")
+        self.assertEqual(response.context["window"], "month")
 
     def test_explicitly_choosing_all_shows_everything(self, _):
         response = self.client.get(reverse("finance:reminder_list"), {"window": "all"})

@@ -55,15 +55,15 @@ class ReconcileChecklistSplitTests(LoggedInTestCase):
         self.assertEqual(deposit_amounts, [Decimal("100.00")])
         self.assertEqual(payment_amounts, [Decimal("-40.00")])
 
-    def test_already_cleared_transactions_are_pre_checked(self):
-        cleared = Transaction.objects.create(account=self.account, date=date(2026, 1, 1), amount=Decimal("10.00"), cleared=True)
-        uncleared = Transaction.objects.create(account=self.account, date=date(2026, 1, 2), amount=Decimal("5.00"))
+    def test_checklist_starts_with_nothing_checked(self):
+        t1 = Transaction.objects.create(account=self.account, date=date(2026, 1, 1), amount=Decimal("10.00"))
+        t2 = Transaction.objects.create(account=self.account, date=date(2026, 1, 2), amount=Decimal("5.00"))
         response = self.client.post(reverse("finance:account_reconcile", args=[self.account.pk]), {
             "statement_date": "31/01/2026", "statement_balance": "15.00",
         })
         by_pk = {t.pk: t.was_checked for t in response.context["deposits"]}
-        self.assertTrue(by_pk[cleared.pk])
-        self.assertFalse(by_pk[uncleared.pk])
+        self.assertFalse(by_pk[t1.pk])
+        self.assertFalse(by_pk[t2.pk])
 
 
 class ReconcileFinishTests(LoggedInTestCase):
@@ -76,15 +76,15 @@ class ReconcileFinishTests(LoggedInTestCase):
             data["accept_difference"] = "1"
         return self.client.post(reverse("finance:account_reconcile", args=[self.account.pk]), data)
 
-    def test_exact_match_marks_checked_transactions_reconciled_and_cleared(self):
+    def test_exact_match_marks_checked_transactions_reconciled(self):
         t1 = Transaction.objects.create(account=self.account, date=date(2026, 1, 1), amount=Decimal("100.00"))
         t2 = Transaction.objects.create(account=self.account, date=date(2026, 1, 2), amount=Decimal("-40.00"))
         response = self._finish("2026-01-31", "60.00", [t1, t2])
         self.assertRedirects(response, reverse("finance:account_detail", args=[self.account.pk]))
         t1.refresh_from_db()
         t2.refresh_from_db()
-        self.assertTrue(t1.reconciled and t1.cleared)
-        self.assertTrue(t2.reconciled and t2.cleared)
+        self.assertTrue(t1.reconciled)
+        self.assertTrue(t2.reconciled)
         self.assertEqual(Reconciliation.objects.count(), 1)
         rec = Reconciliation.objects.get()
         self.assertEqual(rec.statement_balance, Decimal("60.00"))
@@ -118,7 +118,7 @@ class ReconcileFinishTests(LoggedInTestCase):
         adjustment = rec.adjustment_transaction
         self.assertEqual(adjustment.amount, Decimal("-10.00"))
         self.assertEqual(adjustment.payee.name, Payee.RECONCILIATION_ADJUSTMENT)
-        self.assertTrue(adjustment.reconciled and adjustment.cleared)
+        self.assertTrue(adjustment.reconciled)
         self.assertEqual(adjustment.category, self.account.ensure_transfer_category())
         # The account now balances exactly to the statement.
         self.assertEqual(self.account.balance, Decimal("90.00"))

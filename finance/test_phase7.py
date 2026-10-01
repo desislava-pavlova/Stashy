@@ -165,7 +165,9 @@ class EnterOpensAPrefilledFormTests(LoggedInTestCase):
         self.assertEqual(Transaction.objects.count(), 1)
         txn = Transaction.objects.get()
         self.reminder.refresh_from_db()
-        self.assertEqual(self.reminder.last_entered_transaction_id, txn.pk)
+        # The recurring reminder now stands for the next, unpaid period - no stale "paid" link.
+        self.assertIsNone(self.reminder.last_entered_transaction_id)
+        self.assertNotEqual(self.reminder.status(), "paid")
         self.assertEqual(self.reminder.next_due_date, date(2026, 11, 1))
 
     def test_editing_an_existing_transaction_ignores_a_reminder_param(self):

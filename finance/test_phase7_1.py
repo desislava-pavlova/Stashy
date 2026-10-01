@@ -129,9 +129,10 @@ class AutoGenerateOccurrencesTests(LoggedInTestCase):
         self.assertEqual(root.next_due_date, date(2026, 10, 20))
         # October's preview is now redundant with the root itself and is dropped; November
         # and December are still within the (unchanged) end date, so both stay untouched.
+        # (plus a standing "Paid" record of September itself, which was just entered).
         self.assertEqual(
             list(root.occurrences.values_list("next_due_date", flat=True)),
-            [date(2026, 11, 20), date(2026, 12, 20)],
+            [date(2026, 9, 20), date(2026, 11, 20), date(2026, 12, 20)],
         )
 
     def test_an_already_paid_occurrence_survives_the_end_date_moving_earlier(self, _):

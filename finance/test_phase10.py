@@ -121,7 +121,7 @@ class ExportTransactionsTests(LoggedInTestCase):
         payee = Payee.objects.create(name="Landlord")
         Transaction.objects.create(
             account=self.account, date=date(2026, 1, 1), payee=payee, category=rent,
-            memo="January rent", amount=Decimal("-500.00"), cleared=True, reconciled=True,
+            memo="January rent", amount=Decimal("-500.00"), reconciled=True,
         )
         Account.objects.create(name="Savings")
 
@@ -129,8 +129,8 @@ class ExportTransactionsTests(LoggedInTestCase):
         response = self.client.get(reverse("finance:export_transactions"), {"format": "csv"})
         self.assertEqual(response["Content-Type"], "text/csv")
         rows = list(csv.reader(io.StringIO(response.content.decode())))
-        self.assertEqual(rows[0], ["Date", "Number", "Account", "Payee", "Category", "Memo", "Amount", "Currency", "Cleared", "Reconciled"])
-        self.assertIn(["2026-01-01", rows[1][1], "Checking", "Landlord", "Rent", "January rent", "-500.00", "EUR", "Y", "Y"], rows)
+        self.assertEqual(rows[0], ["Date", "Number", "Account", "Payee", "Category", "Memo", "Amount", "Currency", "Reconciled"])
+        self.assertIn(["2026-01-01", rows[1][1], "Checking", "Landlord", "Rent", "January rent", "-500.00", "EUR", "Y"], rows)
 
     def test_xlsx_export_has_the_right_content_type(self):
         response = self.client.get(reverse("finance:export_transactions"), {"format": "xlsx"})

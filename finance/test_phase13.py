@@ -116,11 +116,11 @@ class PayeeListCategoryOrderTests(LoggedInTestCase):
         Category.objects.create(name="Supermarket", parent=groceries, category_type=Category.CategoryType.EXPENSE)
         Category.objects.create(name="Bakery", category_type=Category.CategoryType.EXPENSE)
         response = self.client.get(reverse("finance:payee_list"))
-        # "Bakery" sorts before "Groceries", and "Groceries > Supermarket" sits right after
+        # "Bakery" sorts before "Groceries", and "Supermarket" (indented) sits right after
         # "Groceries" rather than in a separate block of subcategories.
-        body = response.content.decode()
+        body = response.content.decode().replace("&nbsp;", " ")
         self.assertLess(body.index("Bakery"), body.index(">Groceries<"))
-        self.assertLess(body.index(">Groceries<"), body.index("Groceries &gt; Supermarket"))
+        self.assertLess(body.index(">Groceries<"), body.index(">    Supermarket<"))
 
 
 class TransactionListTotalCurrencySymbolTests(LoggedInTestCase):

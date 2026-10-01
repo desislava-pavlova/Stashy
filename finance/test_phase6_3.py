@@ -22,7 +22,7 @@ class PayeeListDistinctCategoriesTests(LoggedInTestCase):
         # along into a values().distinct() query, so every date a category was used counted as
         # "different" - the exact category showed up once per transaction, not once overall.
         water = Category.objects.create(name="Water", category_type=Category.CategoryType.EXPENSE)
-        payee = Payee.objects.create(name="ViK Pernik")
+        payee = Payee.objects.create(name="City Water Co")
         for day in range(1, 9):
             Transaction.objects.create(
                 account=self.account, date=date(2026, day, 1), payee=payee, category=water, amount=Decimal("-5.00"),

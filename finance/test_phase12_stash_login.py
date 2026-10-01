@@ -1,6 +1,8 @@
 """Tests for the multi-stash login (Phase 12): PIN lockout math, the recovery-code reset
-flow, path/name/PIN validation, and the require-a-stash middleware. All of these run against
-the normal test database and need nothing special.
+flow, PIN validation, and the require-a-stash middleware. All of these run against the normal
+test database and need nothing special. (Phase 15 renamed the old validate_stash_name/NAME_RE
+- typed folder names - out of existence: a stash's folder name is generated from its owner
+name now, never typed by anyone.)
 
 create_stash() and reset_pin_directly() are deliberately NOT covered here: both register a
 real, dynamically-created extra database alias to build/edit a stash's schema outside of
@@ -8,7 +10,8 @@ real, dynamically-created extra database alias to build/edit a stash's schema ou
 settings.DATABASES up front - even `databases = "__all__"` only covers aliases Django already
 knows about, not ones added at runtime. There's no supported way around that from inside
 TestCase, so these two were instead verified directly (not under the test runner) against a
-real temporary directory - see UPGRADE_PLAN.md's Phase 12 notes for what was checked."""
+real temporary directory - see plans/01_upgrade_plan.md's Phase 12 notes (and Phase 15's, for the
+owner-name-aware versions) for what was checked."""
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
@@ -22,13 +25,6 @@ from .models import Profile
 
 
 class StashPathHelperTests(SimpleTestCase):
-    def test_validate_stash_name_rejects_bad_characters(self):
-        with self.assertRaises(stashes.StashError):
-            stashes.validate_stash_name("pavlo!")
-
-    def test_validate_stash_name_accepts_letters_numbers_dash_underscore(self):
-        stashes.validate_stash_name("pavlo-2")  # does not raise
-
     def test_validate_pin_requires_exactly_four_digits(self):
         for bad in ("123", "12345", "abcd", "", None):
             with self.assertRaises(stashes.StashError):
