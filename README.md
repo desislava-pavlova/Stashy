@@ -2,7 +2,7 @@
 
 A personal finance web app built with Django — accounts, transactions with
 memorized-payee autofill, categories/subcategories, bill & income reminders,
-reconciliation, CSV/OFX import, CSV/Excel export, backups and reports.
+reconciliation, CSV/Excel/OFX import, CSV/Excel export, backups and reports.
 
 Runs locally on your own computer, backed by SQLite — no separate database
 server to install or configure. Each person (or each set of books) gets their
@@ -16,13 +16,23 @@ own **stash**: a completely separate database with its own PIN.
 
 The first run sets everything up (private Python environment, components,
 settings file with a random secret key) and opens Stashy in your browser.
-There you **create your first stash**: pick a name and a 4-digit PIN. Stashy
-then shows a one-time **recovery code** — write it down, it's the only way to
-reset a forgotten PIN from inside the app and it won't be shown again.
+There you **create your first stash**: say whose it is (a person, a
+business, a family — this is what Stashy calls it everywhere, e.g. "Good
+evening, Alex") and set a 4-digit PIN. Stashy then shows a one-time
+**recovery code** — write it down, it's the only way to reset a forgotten
+PIN from inside the app and it won't be shown again.
 
-After that, double-clicking `Stashy.bat` just starts Stashy: pick your stash
-and enter its PIN. Keep the black window open while you use Stashy; closing
-it stops Stashy.
+Logging in for the first time walks you through a short setup: your money
+& region preferences (guessed from this computer, change anything that
+doesn't match), a starting list of categories, which expenses to watch
+closely, and your first account — each optional except the categories,
+and each with a **Back** button if you want to revise an earlier answer.
+Closing Stashy partway through picks up right where you left off next
+time you log in.
+
+After that, double-clicking `Stashy.bat` opens straight on your last-used
+stash's PIN screen. Keep the black window open while you use Stashy;
+closing it stops Stashy.
 
 Stashy runs on Waitress, a production web server, rather than Django's
 development server - so start it with `Stashy.bat`, not
@@ -44,18 +54,28 @@ toggle switches it (your choice is remembered).
 
 ## Stashes and PINs
 
-- **Switching stashes** needs no restart: use **Switch stash** to log out and
-  go back to the stash list, then pick another one and enter its PIN.
+- **Each stash belongs to someone** — a person, a business or a family —
+  and that name is what Stashy shows everywhere (the dashboard greeting,
+  "Log out (Alex)", the picker, Settings) instead of an internal name you
+  never see. It's set once, when the stash is created, and can't be
+  changed afterwards.
+- **No switching while logged in.** To use a different stash, log out
+  first ("Choose a different stash" on the PIN screen, or Log out from the
+  sidebar) — Stashy remembers which stash you used last and opens straight
+  on its PIN screen next time, so this is rarely more than one click.
 - **Wrong PINs**: after 5 wrong tries in a row, that stash locks for 5 minutes.
 - **Forgot your PIN?** Use "Forgot PIN?" on the login screen with your
   recovery code. Setting a new PIN gives you a **new** recovery code (the old
   one stops working). You can also change your PIN any time in **Settings**.
+- **Lost the recovery code, but not your PIN?** **Settings** has "Get a new
+  recovery code" — confirms once, then shows a fresh code (the old one stops
+  working, same as using "Forgot PIN?" does).
 - **Lost the recovery code too?** From the Stashy folder run
-  `python manage.py reset_pin <stash name>` (optionally `--pin 1234`).
+  `python manage.py reset_pin <owner name>` (optionally `--pin 1234`).
 - The PIN locks the **app**, not the data: each stash is a plain SQLite file
-  (`stashes/<name>/db.sqlite3`) that anyone with access to your Windows account
-  could open with another tool. Protect the computer itself (your own Windows
-  login, BitLocker) if that matters to you.
+  (`stashes/<internal name>/db.sqlite3`) that anyone with access to your
+  Windows account could open with another tool. Protect the computer itself
+  (your own Windows login, BitLocker) if that matters to you.
 
 ## Manual setup (macOS/Linux, or if you prefer the command line)
 
@@ -77,8 +97,9 @@ python manage.py migrate
 python manage.py runserver
 ```
 
-Visit http://127.0.0.1:8000/ and create your first stash (name + PIN). There's
-no public signup — each stash belongs to one person.
+Visit http://127.0.0.1:8000/ and create your first stash (whose it is + PIN).
+There's no public signup — each stash belongs to one person, business or
+family.
 
 `migrate` above only prepares Stashy's small placeholder database; a new stash
 is fully set up when you create it. After a code update that changes the
@@ -99,20 +120,26 @@ every stash automatically).
   a paired transaction, and **Reconcile** checks it off against a bank
   statement.
 - **Categories** — income/expense categories, with one level of
-  subcategories. **Add starter categories** creates any missing names listed in
-  `basic_categories.txt` (edit that file to change the list). Every category
-  dropdown lists Income first, then Expense, then Transfer, each main category
-  followed by its own subcategories.
-- **Transactions** — add manually, or use **Import** for CSV/OFX/QFX bank
-  exports. When you type a payee name, Stashy looks up that payee's last
-  category/memo/amount and autofills the form (memorized payees) — this
-  updates automatically every time you save a transaction against a payee.
-  Payee names are matched regardless of upper/lower case, so an import reuses
-  the payee you already have. The list can be filtered by date, status,
-  account, several categories at once and text, and exported to CSV/Excel.
-- **Reminders** — recurring or one-time bills and income. **Enter** opens a
-  pre-filled transaction; **Skip** moves a reminder to its next date without
-  creating one.
+  subcategories. A new stash's setup offers a starting list (Basic: 26
+  top-level categories, or Extended: those plus all their subcategories,
+  read from `starter_categories.xlsx` — edit that file to change the
+  list); after that, add, edit or delete them by hand from the Categories
+  page. Every category dropdown lists Income first, then Expense, then
+  Transfer, each main category followed by its own subcategories.
+- **Transactions** — add them by hand (**Save and add another** keeps the
+  account and date for the next one), or use **Import** for CSV, Excel
+  (.xlsx), OFX or QFX files. When you type a payee, Stashy fills in the
+  category, memo and amount you used with it before, worked out from your
+  past transactions; if you've used it with several categories, it offers a
+  short pick list. Payee names are matched regardless of upper/lower case,
+  so an import reuses the payee you already have. The list can be filtered
+  by date, status, account, several categories at once and text, exported
+  to CSV/Excel, and switched into **Edit mode**, where every row's fields
+  can be changed in place and save themselves.
+- **Reminders** — recurring or one-time bills and income. A recurring
+  reminder creates its upcoming dates ahead of time. **Enter** opens a
+  pre-filled transaction; **Skip** moves on without creating one; either way
+  that date stays listed as Paid or Skipped. The list opens on this month.
 - **Reports** — Spending by category, Income by category, two vs.-average
   reports (current vs. earlier full periods of the same kind — e.g. this
   month vs. earlier months), Income & expense and its own vs.-average
@@ -135,21 +162,32 @@ every stash automatically).
   starts.
 - **Admin** — the full Django admin is available at `/admin/` (while logged in
   to a stash) for bulk edits, data cleanup, or anything the UI doesn't cover
-  yet.
+  yet. Users and Groups are hidden (there's one shared login per stash, no
+  group permissions to manage) and Profile (your regional preferences) is
+  view-only there — change it from **Settings** instead.
 - **Audit log** — every change to your data, including automatic ones
   (imports, memorized-payee updates, reminder dates moving forward), is
-  recorded with before/after values, the reason, and everything else the same
-  click changed. See it in the admin under *Audit log*, or press **History** on
-  any record in the admin. Changes made by editing a stash's database file
-  directly with another tool can't be seen by the log.
+  recorded like a database audit log: one row naming a new or deleted record,
+  or one row per changed column with its raw old and new value (stored
+  choice keys, exact decimals, ISO dates — not reformatted for display), plus
+  who/why/when and the request that caused it. See it in the admin under
+  *Audit log*, or press **History** on any record in the admin, to jump to
+  every row for that one record. A deleted or newly created record keeps its
+  full set of values in that one row so nothing is lost. Your stash's PIN
+  recovery code is never logged, even hashed — wrong-PIN attempts still are.
+  Changes made by editing a stash's database file directly with another tool
+  can't be seen by the log.
 
-## CSV import format
+## Import format
 
-Any CSV with columns roughly matching `Date, Payee/Description, Memo, Amount`
-should work — column names are matched case-insensitively and a few common
-bank export variants are recognized. Optional `Account` and `Category`
-columns are matched by name (`Parent:Child` for a subcategory); a category
-Stashy doesn't have yet is created for you and marked as auto-generated.
+CSV and Excel (.xlsx) files use the same columns: `Date, Payee/Description,
+Memo, Amount`, plus optional `Num`, `Account`, `Category` and `Reconciled`
+(the column set of a Quicken transaction report). Column names are matched
+case-insensitively and a few common bank export variants are recognized.
+Only `Date` and `Amount` need a value. `Account` and `Category` are matched
+by name (`Parent:Child` for a subcategory); a category Stashy doesn't have
+yet is created for you and marked as auto-generated. `Num` becomes the
+transaction number, and a `Reconciled` value marks the row reconciled.
 Stashy detects each file's date format from its own dates (day-first formats
 like `DD/MM/YYYY`, `DD.MM.YYYY`, `DD-MM-YYYY`, or ISO `YYYY-MM-DD`), and you can
 override it on the import page. Amounts are read exactly (never as floating
@@ -165,7 +203,12 @@ OFX/QFX files exported directly from your bank are also supported.
 Stashy/
 ├── Stashy.bat            # one-click setup + launch (Windows)
 ├── scripts/bootstrap.py  # what Stashy.bat runs: install, migrate + back up every stash, start Waitress
-├── basic_categories.txt  # names used by "Add starter categories"
+├── requirements.txt
+├── .env.example          # copied to .env (secret key, DEBUG, PORT) on first run
+├── starter_categories.xlsx  # Basic/Extended starting category lists, read by the welcome wizard
+├── plans/                # numbered development plans (index in plans/README.md)
+├── DEVLOG.md             # what changed and why, entry by entry
+├── CLAUDE.md             # working notes for the AI assistant used on this project
 ├── stashy/               # project settings, urls
 ├── audit/                # the audit log (records every data change)
 ├── finance/              # the app
@@ -173,21 +216,34 @@ Stashy/
 │   ├── views.py          # dashboard, CRUD views, import/export, reports, backups
 │   ├── forms.py
 │   ├── reporting.py      # report calculations
-│   ├── stashes.py        # creating stashes, PINs, lockout, recovery codes
-│   ├── auth_views.py     # stash picker, PIN login, forgot PIN
+│   ├── stashes.py        # creating stashes, owner names, PINs, lockout, recovery codes
+│   ├── auth_views.py     # stash picker, create stash, PIN login, forgot PIN
+│   ├── welcome_views.py  # the four-step wizard after a new stash's first login
 │   ├── db_router.py      # sends each request's queries to its session's stash
 │   ├── middleware.py
 │   ├── backup.py
+│   ├── migrations/
 │   └── templates/, static/
-└── stashes/<name>/       # one folder per stash: db.sqlite3 + backups/
+└── stashes/<name>/       # one folder per stash: db.sqlite3 + backups/ (not in git)
 ```
+
+## Development
+
+- Run the tests with `python manage.py test` (on Windows:
+  `.venv\Scripts\python.exe manage.py test`). They use a throwaway
+  in-memory database and never touch a stash.
+- After changing a model, run `python manage.py makemigrations` and commit
+  the new migration with the change. `Stashy.bat` applies it to every stash
+  (after a backup) on its next launch.
+- Planned work lives in `plans/`, and the reasoning behind past changes in
+  `DEVLOG.md`.
 
 ## Notes / next steps you might want
 
 - **Split transactions** (one purchase across multiple categories) aren't in
   yet — the model would need a `TransactionSplit` child model if you want this.
-- **Budgets** (monthly targets vs. actuals) weren't in your initial feature
-  list but would slot in cleanly next to Reminders if you want them later.
+- **Budgets** (monthly targets vs. actuals) aren't built; they would slot in
+  next to Reminders.
 - This is configured for local/single-user use (`DEBUG=True` by default).
   If you ever want to access it from your phone too, you'd want to deploy it
   properly (real `SECRET_KEY`, `DEBUG=False`, HTTPS, a real `ALLOWED_HOSTS`)

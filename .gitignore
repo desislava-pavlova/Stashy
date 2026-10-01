@@ -65,7 +65,6 @@ db.sqlite3-journal
 # picker's placeholder database - none of this is code, and it can contain real financial data.
 /stashes/
 /_picker.sqlite3
-/backups/
 
 # Flask stuff:
 instance/
@@ -229,6 +228,8 @@ __marimo__/
 /media/
 /migrations/
 
+# Claude files (CLAUDE.md is committed; CLAUDE.local.md holds this computer's own facts)
+/.claude
+CLAUDE.local.md
+
 /images/
-DEVLOG.md
-UPGRADE_PLAN.md
