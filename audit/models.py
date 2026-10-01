@@ -6,29 +6,36 @@ from .context import SYSTEM, USER
 
 
 class AuditLogEntry(models.Model):
+    """One row per database-level event (Phase 14 / A3): an INSERT or DELETE names the whole
+    row, an UPDATE gets one row per changed column. Values are stored raw - stored keys,
+    ISO dates, exact decimals - never formatted for a viewer, so the log reads like a real
+    database audit log rather than a friendly summary."""
+
     class Action(models.TextChoices):
-        CREATE = "create", "Created"
-        UPDATE = "update", "Changed"
-        DELETE = "delete", "Deleted"
+        INSERT = "insert", "INSERT"
+        UPDATE = "update", "UPDATE"
+        DELETE = "delete", "DELETE"
 
     class Source(models.TextChoices):
         USER_ACTION = USER, "You"
         AUTOMATIC = SYSTEM, "Automatic"
 
     timestamp = models.DateTimeField(default=timezone.now, db_index=True)
-    action = models.CharField(max_length=10, choices=Action.choices)
-    source = models.CharField(max_length=10, choices=Source.choices)
-    model = models.CharField(max_length=100, db_index=True, help_text="app_label.modelname")
-    model_name = models.CharField(max_length=100)
-    object_id = models.CharField(max_length=64, db_index=True)
-    object_repr = models.CharField("object", max_length=255)
-    changes = models.JSONField(default=dict, blank=True)
-    reason = models.CharField(max_length=255, blank=True)
-    request = models.CharField(max_length=255, blank=True)
     operation = models.CharField(
         max_length=32, db_index=True,
         help_text="Entries sharing this value were caused by the same click or automatic action.",
     )
+    action = models.CharField(max_length=10, choices=Action.choices)
+    source = models.CharField(max_length=10, choices=Source.choices)
+    table = models.CharField(max_length=100, db_index=True, help_text="Raw database table name.")
+    row_id = models.CharField(max_length=64, db_index=True)
+    row_label = models.CharField(max_length=255, blank=True, help_text="The row's own name at the time of the event.")
+    column = models.CharField(max_length=100, blank=True, db_index=True, help_text="Raw column name; blank for INSERT/DELETE.")
+    old_value = models.TextField(null=True, blank=True)
+    new_value = models.TextField(null=True, blank=True)
+    values = models.JSONField(default=dict, blank=True, help_text="Full raw column values (INSERT/DELETE only, A4).")
+    reason = models.CharField(max_length=255, blank=True)
+    request = models.CharField(max_length=255, blank=True)
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
     )
@@ -39,4 +46,7 @@ class AuditLogEntry(models.Model):
         verbose_name_plural = "audit log"
 
     def __str__(self):
-        return f"{self.get_action_display()} {self.model_name} '{self.object_repr}'"
+        row = f"{self.table} {self.row_id}"
+        if self.action == self.Action.UPDATE:
+            return f"UPDATE {row} {self.column}: {self.old_value} -> {self.new_value}"
+        return f"{self.get_action_display()} {row}"

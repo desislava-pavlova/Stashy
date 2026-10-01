@@ -3,9 +3,12 @@
 Django sends signals around every save() and delete(), including ones made by
 automatic code, cascaded deletes and the admin. Queryset .update() and
 bulk_create() skip signals, so code that must be audited avoids them.
+
+Storage matches Phase 14 / A3: raw, database-style values (stored choice keys,
+ISO dates, exact decimals), one row per changed column on UPDATE, and one row
+naming the whole record on INSERT/DELETE (with its full values kept, A4).
 """
 from dataclasses import replace
-from datetime import datetime
 from functools import partial
 
 from django.conf import settings
@@ -17,6 +20,9 @@ from .context import SYSTEM, current_context, new_operation_id
 from .models import AuditLogEntry
 
 Action = AuditLogEntry.Action
+
+# A6: secrets never appear in the log, not even their hash.
+HIDDEN_FIELDS = {("finance.profile", "recovery_code_hash")}
 
 
 def is_tracked(model):
@@ -30,36 +36,36 @@ def describe(obj):
         return f"{obj._meta.verbose_name} #{obj.pk}"
 
 
-def _display(field, raw, instance=None):
-    """Turn a stored value into the human-readable text kept in the log."""
+def _raw(sender, field, raw, instance=None):
+    """Turn a stored value into the raw text kept in the log - the stored value itself,
+    not a formatted-for-a-viewer version of it."""
+    if (sender._meta.label_lower, field.name) in HIDDEN_FIELDS:
+        return None if raw in (None, "") else "(hidden)"
     if raw is None or raw == "":
         return None
     if field.is_relation:
         related = field.get_cached_value(instance, None) if instance is not None else None
         if related is None or related.pk != field.to_python(raw):
             related = field.related_model._base_manager.filter(pk=raw).first()
-        return f"{describe(related)} (#{raw})" if related is not None else f"#{raw} (no longer exists)"
-    if field.flatchoices:
-        return str(dict(field.flatchoices).get(raw, raw))
+        name = describe(related) if related is not None else "no longer exists"
+        return f"{raw} ({name})"
     if isinstance(field, models.DecimalField):
-        return f"{field.to_python(raw):.{field.decimal_places}f}"
-    if isinstance(raw, datetime):
-        return timezone.localtime(raw).strftime("%d/%m/%Y %H:%M:%S") if timezone.is_aware(raw) else raw.strftime("%d/%m/%Y %H:%M:%S")
-    if hasattr(raw, "strftime"):
-        return raw.strftime("%d/%m/%Y")
-    if isinstance(raw, (bool, int, float, str)):
-        return raw
+        return str(field.to_python(raw))
+    if isinstance(raw, bool):
+        return "true" if raw else "false"
+    if hasattr(raw, "isoformat"):
+        return raw.isoformat()
     return str(raw)
 
 
-def _snapshot(instance):
+def _snapshot(sender, instance):
     values = {}
-    for field in instance._meta.concrete_fields:
+    for field in sender._meta.concrete_fields:
         if field.primary_key:
             continue
-        shown = _display(field, field.value_from_object(instance), instance)
+        shown = _raw(sender, field, field.value_from_object(instance), instance)
         if shown is not None:
-            values[field.name] = shown
+            values[field.attname] = shown
     return values
 
 
@@ -70,21 +76,33 @@ def _same(field, before, after):
         return before == after
 
 
-def write_entry(action, instance, changes, description=None, context=None):
+def _resolved_context():
+    """An operation id, generated once and reused, so every row from the same save()/m2m
+    change/cascade shares it - even outside a request, where current_context() otherwise
+    starts with an empty one and write_row would mint a fresh id for every single row."""
+    context = current_context()
+    return context if context.operation else replace(context, operation=new_operation_id())
+
+
+def write_row(action, *, table, row_id, row_label, column="", old_value=None, new_value=None,
+               values=None, timestamp=None, context=None):
     context = context or current_context()
     request = context.request
     user = getattr(request, "user", None)
     AuditLogEntry.objects.create(
+        timestamp=timestamp or timezone.now(),
+        operation=context.operation or new_operation_id(),
         action=action,
         source=context.source,
-        model=instance._meta.label_lower,
-        model_name=instance._meta.verbose_name,
-        object_id=str(instance.pk),
-        object_repr=description or describe(instance),
-        changes=changes,
+        table=table,
+        row_id=row_id,
+        row_label=row_label[:255],
+        column=column,
+        old_value=old_value,
+        new_value=new_value,
+        values=values or {},
         reason=context.reason[:255],
         request=f"{request.method} {request.get_full_path()}"[:255] if request is not None else "",
-        operation=context.operation or new_operation_id(),
         user_id=user.pk if user is not None and user.is_authenticated else None,
     )
 
@@ -101,21 +119,30 @@ def remember_old_values(sender, instance, raw=False, **kwargs):
 def log_save(sender, instance, created, raw=False, update_fields=None, **kwargs):
     if raw or not is_tracked(sender):
         return
+    table = sender._meta.db_table
+    row_id = str(instance.pk)
+    row_label = describe(instance)
     if created:
-        write_entry(Action.CREATE, instance, _snapshot(instance))
+        write_row(Action.INSERT, table=table, row_id=row_id, row_label=row_label, values=_snapshot(sender, instance))
         return
     old = instance.__dict__.pop("_audit_old", None)
     if old is None:
         return
-    changes = {}
+    now = timezone.now()
+    context = _resolved_context()
     for field in sender._meta.concrete_fields:
+        if field.primary_key:
+            continue
         if update_fields is not None and field.name not in update_fields and field.attname not in update_fields:
             continue
         before, after = old[field.attname], field.value_from_object(instance)
-        if not _same(field, before, after):
-            changes[field.name] = [_display(field, before), _display(field, after, instance)]
-    if changes:
-        write_entry(Action.UPDATE, instance, changes)
+        if _same(field, before, after):
+            continue
+        write_row(
+            Action.UPDATE, table=table, row_id=row_id, row_label=row_label, column=field.attname,
+            old_value=_raw(sender, field, before), new_value=_raw(sender, field, after, instance),
+            timestamp=now, context=context,
+        )
 
 
 # --- deletes ---------------------------------------------------------------
@@ -123,15 +150,15 @@ def log_save(sender, instance, created, raw=False, update_fields=None, **kwargs)
 def remember_deleted(sender, instance, **kwargs):
     if not is_tracked(sender):
         return
-    instance._audit_deleted = (describe(instance), _snapshot(instance))
+    instance._audit_deleted = (describe(instance), _snapshot(sender, instance))
     _log_cleared_references_after_commit(instance)
 
 
 def log_delete(sender, instance, **kwargs):
     if not is_tracked(sender) or "_audit_deleted" not in instance.__dict__:
         return
-    description, snapshot = instance.__dict__.pop("_audit_deleted")
-    write_entry(Action.DELETE, instance, snapshot, description=description)
+    row_label, snapshot = instance.__dict__.pop("_audit_deleted")
+    write_row(Action.DELETE, table=sender._meta.db_table, row_id=str(instance.pk), row_label=row_label, values=snapshot)
 
 
 def _log_cleared_references_after_commit(instance):
@@ -141,9 +168,9 @@ def _log_cleared_references_after_commit(instance):
     themselves deleted in the same action are gone and don't get a misleading
     "changed" entry.
     """
-    context = current_context()
-    description = f"{describe(instance)} (#{instance.pk})"
-    reason = f"Cleared because {instance._meta.verbose_name} '{describe(instance)}' was deleted"
+    context = _resolved_context()
+    old_value = f"{instance.pk} ({describe(instance)})"
+    reason = f"Cleared because {instance._meta.verbose_name} '{describe(instance)}' (#{instance.pk}) was deleted"
     for relation in instance._meta.get_fields(include_hidden=True):
         if not (relation.auto_created and not relation.concrete and (relation.one_to_many or relation.one_to_one)):
             continue
@@ -155,17 +182,21 @@ def _log_cleared_references_after_commit(instance):
         )
         if pks:
             transaction.on_commit(
-                partial(_log_cleared_references, relation.related_model, field, pks, description, reason, context)
+                partial(_log_cleared_references, relation.related_model, field, pks, old_value, reason, context)
             )
 
 
-def _log_cleared_references(model, field, pks, description, reason, context):
+def _log_cleared_references(model, field, pks, old_value, reason, context):
     automatic = replace(context, source=SYSTEM, reason=reason)
+    table = model._meta.db_table
     for obj in model._base_manager.filter(pk__in=pks, **{f"{field.attname}__isnull": True}):
-        write_entry(Action.UPDATE, obj, {field.name: [description, None]}, context=automatic)
+        write_row(
+            Action.UPDATE, table=table, row_id=str(obj.pk), row_label=describe(obj), column=field.attname,
+            old_value=old_value, new_value=None, context=automatic,
+        )
 
 
-# --- many-to-many (e.g. transaction tags) ------------------------------------
+# --- many-to-many (e.g. Watched expenses' categories) -----------------------
 
 def _m2m_field_name(through, instance):
     for field in instance._meta.get_fields(include_hidden=True):
@@ -187,5 +218,16 @@ def log_m2m(sender, instance, action, model, pk_set, **kwargs):
         pk_set = set(getattr(instance, name).values_list("pk", flat=True))
     if not pk_set:
         return
-    items = sorted(describe(obj) for obj in model._base_manager.filter(pk__in=pk_set))
-    write_entry(Action.UPDATE, instance, {name: {"added" if action == "post_add" else "removed": items}})
+    table = type(instance)._meta.db_table
+    row_id = str(instance.pk)
+    row_label = describe(instance)
+    now = timezone.now()
+    context = _resolved_context()
+    adding = action == "post_add"
+    for obj in model._base_manager.filter(pk__in=pk_set).order_by("pk"):
+        item = f"{obj.pk} ({describe(obj)})"
+        write_row(
+            Action.UPDATE, table=table, row_id=row_id, row_label=row_label, column=name,
+            old_value=None if adding else item, new_value=item if adding else None,
+            timestamp=now, context=context,
+        )
