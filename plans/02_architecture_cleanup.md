@@ -7,7 +7,8 @@ findings added (F41–F58), five items dropped or moved (see "Plan review,
 27/09/2026" below). Test baseline that day: 510 tests, all green, 243 s.
 Progress is tracked with the checkboxes below. **Status:** Phase 1 done
 (01/10/2026, 540 tests green); Phase 2 done (01/10/2026, 572 tests green);
-Phase 3 next.
+Phase 3 done (02/10/2026, 580 tests green in 15 s) except the migrations
+question in 3.6, which waits until the cleanup is done; Phase 4 next.
 
 Work through it phase by phase. Every phase leaves the app working and the
 full test suite green, so we can stop and resume anywhere. Line numbers in
@@ -542,20 +543,29 @@ rejected at the database level.
 
 ## Phase 3 — Tooling and settings  (F21, F22, F25, F26, F27, F37, F52, F57, F58)
 
-- [ ] **3.1** Add `pyproject.toml` with ruff config: line length 119 (C1),
+- [x] **3.1** Add `pyproject.toml` with ruff config: line length 119 (C1),
   rules `E, W, F, I, N, B, UP, DJ, SIM, C4, RUF`; exclude migrations.
-- [ ] **3.2** Add ruff and `coverage` to `requirements-dev.txt` (both free,
+  *Claude's call:* double quotes (the formatter's default); RUF012 (Django's
+  class-level lists) and SIM108 (commented if/else beats a long ternary)
+  ignored; the no-break space, en dash and Cyrillic "г" allowed as intended
+  characters.
+- [x] **3.2** Add ruff and `coverage` to `requirements-dev.txt` (both free,
   both run locally). Record the coverage baseline in DEVLOG.md before
   Phase 4, so the refactors can show they didn't lose any tested lines.
   Run `ruff check --fix` and `ruff format` as a **separate, formatting-only
   step** so behaviour changes never hide inside a reformat diff.
-- [ ] **3.3** Fix what ruff can't: E731 lambdas → small `def`s, identical
+  *Done 02/10/2026: the reformat was committed on its own; baseline 89%
+  (3,696 statements, 425 missed).*
+- [x] **3.3** Fix what ruff can't: E731 lambdas → small `def`s, identical
   if/else in `TransferForm`, single-letter names in large scopes (F22).
-- [ ] **3.4** Requirements: `requirements.txt` = what the app imports;
+- [x] **3.4** Requirements: `requirements.txt` = what the app imports;
   `requirements-dev.txt` = ruff + test-only packages (bs4/lxml if tests use
   them, otherwise uninstall). Remove `psycopg2-binary`/`dj-database-url` from
   the venv if nothing uses them (F26).
-- [ ] **3.5** Settings package: `stashy/settings/base.py` and `test.py`
+  *Correction found while doing it: `beautifulsoup4` and `lxml` are
+  `ofxparse`'s own dependencies, so they stay (pip installs them with it).
+  Only the two Postgres packages were removed.*
+- [x] **3.5** Settings package: `stashy/settings/base.py` and `test.py`
   (changed 27/09/2026: no `dev.py`, since `.env` already carries the dev
   values). No insecure `SECRET_KEY` fallback; `DEBUG` defaults to False.
   `manage.py`/`bootstrap.py` use `base`; the test runner uses `test.py`
@@ -563,28 +573,38 @@ rejected at the database level.
   `PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]`
   (F52), which is safe because it's test-only. Record the new suite time.
   Delete `AUTH_PASSWORD_VALIDATORS` (F51, never applies to PINs).
-- [ ] **3.6** Repo hygiene (F27): add `staticfiles/` to `.gitignore`
+  *Done: `manage.py` picks `test.py` for the `test` command. The suite went
+  from 298 s to 15 s. Folder locations (`STASHES_DIR`, `STATIC_ROOT`,
+  `LOG_DIR`) sit together at the top of `base.py` for plan 04.*
+- [ ] **3.6** Repo hygiene (F27): *(`staticfiles/` and `logs/` ignored on
+  02/10/2026; the `git rm` and the migrations question below still open)* add `staticfiles/` to `.gitignore`
   (`_picker.sqlite3` and `backups/` are already there; `all_data.xlsx` and
   `test_data.TXT` are gone). Untracking needs
   `git rm -r --cached staticfiles .idea`. **The user runs that** (Claude
   doesn't run git).
-  **To discuss with the user (parked 01/10/2026, their choice):** migrations
+  **To discuss with the user once plan 02 is finished (their choice,
+  01/10 and 02/10/2026):** migrations
   are kept out of git (`**/migrations/*.py` in `.gitignore`), so git only has
   `finance/migrations/0001_initial.py`. A fresh clone gets models that no
   committed migration builds. Options: commit them all, or keep them local
   and accept that the repo alone can't set up a new copy.
-- [ ] **3.7** `bootstrap.py` writes `DEBUG=False` into new `.env` files
+- [x] **3.7** `bootstrap.py` writes `DEBUG=False` into new `.env` files
   (F37). Existing `.env` files are the user's to change - tell them, don't
   edit them. Check that WhiteNoise still serves static files with
   `DEBUG=False` (it does from `STATIC_ROOT`, which Stashy.bat fills).
   **Must land together with 3.9 (F58)**, or errors stop being visible
   anywhere.
-- [ ] **3.8** `CompressedManifestStaticFilesStorage` (F57): file names carry
+- [x] **3.8** `CompressedManifestStaticFilesStorage` (F57): file names carry
   a content hash, so the browser can cache CSS/JS for good and never runs an
   outdated script after an update. `test.py` keeps the plain storage, so
   tests don't need `collectstatic`. Render-check that every page still loads
   its CSS/JS.
-- [ ] **3.9** Errors when `DEBUG=False` (F58): a `LOGGING` config writing
+  *Found while render-checking: Bootstrap and Chart.js end with a
+  `sourceMappingURL` comment naming a `.map` file Stashy doesn't ship, and
+  the plain storage made `collectstatic` (so every launch) fail on it.
+  `stashy/storage.py` subclasses it to skip those comments; a test runs the
+  real `collectstatic`.*
+- [x] **3.9** Errors when `DEBUG=False` (F58): a `LOGGING` config writing
   errors with full tracebacks to `logs/stashy.log` (rotating, a few MB; add
   `logs/` to `.gitignore`), plus friendly `404.html` and `500.html` templates
   in Stashy's style. The 500 page says what happened and where the log is.
@@ -710,7 +730,9 @@ side effect; suite green.
   old → new file mapping in DEVLOG.md.
 - [ ] **7.4** While moving (F52): classes whose tests only read shared data
   switch their fixtures from `setUp` to `setUpTestData`. Record the suite
-  time before and after.
+  time before and after. *(02/10/2026: the fast test hasher in 3.5 already
+  took the suite from 298 s to 15 s, so this is now about tidiness more
+  than speed.)*
 
 **Done when:** `grep -r "TESTING" finance audit stashy` finds only the test
 settings; test count is the same or higher than before.

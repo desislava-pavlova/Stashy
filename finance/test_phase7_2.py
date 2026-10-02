@@ -1,5 +1,5 @@
-"""Tests for the 2026-09-14 follow-up batch: default reminder window (this month since 2026-09-19, was 15 days), category
-dropdowns ordered so subcategories sit next to their parent, the replacement of BIWEEKLY with
+"""Tests for the 2026-09-14 follow-up batch: default reminder window (this month since 2026-09-19,
+was 15 days), category dropdowns ordered so subcategories sit next to their parent, the replacement of BIWEEKLY with
 a free "every N periods" interval, memo prefilled from payee+category history on Enter, signed
 reminder amounts, the reminder delete-confirmation warning, and the transaction list's new
 Delete button + renamed status filter."""

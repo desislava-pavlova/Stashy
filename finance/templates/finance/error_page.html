@@ -1,0 +1,30 @@
+{% load static %}<!DOCTYPE html>
+{% comment %}
+Shared layout for 404.html and 500.html. Django renders the 500 page without the request
+or any context, so this uses nothing but static files and plain links - no user, stash
+or regional settings.
+{% endcomment %}
+<html lang="en" data-bs-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}{% endblock %} · Stashy</title>
+    {% include "finance/includes/head_assets.html" %}
+</head>
+<body>
+<div class="login-page">
+    <section class="login-art">
+        <div class="mascot-frame">
+            <img src="{% static 'finance/img/mascot-full-720.webp' %}" alt="Stashy the squirrel holding an acorn coin" width="720" height="720">
+        </div>
+    </section>
+    <section class="login-form-side">
+        <div class="login-card">
+            <span class="stashy-wordmark d-block mb-4">Stashy</span>
+            {% block message %}{% endblock %}
+            <a href="/" class="btn btn-primary btn-lg w-100 mt-2">Back to Stashy</a>
+        </div>
+    </section>
+</div>
+</body>
+</html>

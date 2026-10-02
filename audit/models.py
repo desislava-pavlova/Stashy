@@ -34,8 +34,9 @@ class AuditLogEntry(models.Model):
     column = models.CharField(
         max_length=100, blank=True, db_index=True, help_text="Raw column name; blank for INSERT/DELETE."
     )
-    old_value = models.TextField(null=True, blank=True)
-    new_value = models.TextField(null=True, blank=True)
+    # NULL ("no value": the row didn't exist yet, or no longer does) is a different fact from "".
+    old_value = models.TextField(null=True, blank=True)  # noqa: DJ001
+    new_value = models.TextField(null=True, blank=True)  # noqa: DJ001
     values = models.JSONField(default=dict, blank=True, help_text="Full raw column values (INSERT/DELETE only, A4).")
     reason = models.CharField(max_length=255, blank=True)
     request = models.CharField(max_length=255, blank=True)

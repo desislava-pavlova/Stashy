@@ -31,7 +31,7 @@ class EarliestToDateRangeTests(LoggedInTestCase):
         self.assertEqual(end, date.today())
 
     def test_falls_back_to_today_with_no_transactions_at_all(self):
-        start, end, _ = reporting.resolve_range({"range": "earliest"})
+        start, _end, _ = reporting.resolve_range({"range": "earliest"})
         self.assertEqual(start, date.today())
 
     def test_respects_the_account_filter(self):

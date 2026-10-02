@@ -484,7 +484,7 @@ def category_report_rows(
                 }
             )
             if not category.parent_id:
-                grand_totals = [g + v for g, v in zip(grand_totals, values)]
+                grand_totals = [g + v for g, v in zip(grand_totals, values, strict=True)]
         if rows:
             result_groups.append({"key": group["key"], "name": group["name"], "rows": rows})
 
@@ -641,9 +641,9 @@ def net_worth_by_account(start, end, granularity, rates=None):
         ]
         group_totals = [ZERO] * width
         for row in rows:
-            group_totals = [g + v for g, v in zip(group_totals, row["values"])]
+            group_totals = [g + v for g, v in zip(group_totals, row["values"], strict=True)]
         result_groups.append({"key": group["key"], "name": group["name"], "rows": rows, "totals": group_totals})
-        grand_totals = [g + v for g, v in zip(grand_totals, group_totals)]
+        grand_totals = [g + v for g, v in zip(grand_totals, group_totals, strict=True)]
 
     return {
         "periods": [p["label"] for p in periods],

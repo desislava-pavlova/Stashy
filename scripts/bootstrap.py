@@ -4,6 +4,7 @@ Every step is safe to repeat: anything already done is skipped, so the same
 double-click works for first-time setup and for everyday launching.
 """
 
+import contextlib
 import hashlib
 import secrets
 import shutil
@@ -36,6 +37,10 @@ def _configured_port():
 
 HOST, PORT = "127.0.0.1", _configured_port()
 URL = f"http://{HOST}:{PORT}/"
+# What the browser opens. Browsers send any name ending in .localhost to this computer by
+# themselves, with no hosts-file entry. Windows doesn't, so Python code here (the "already
+# running?" check) keeps using URL.
+BROWSER_URL = f"http://stashy.localhost:{PORT}/"
 
 
 def _stash_dirs():
@@ -105,8 +110,9 @@ def ensure_env_file():
     env_file.write_text(
         "# Created automatically by Stashy.bat. Keep this file private.\n\n"
         f"SECRET_KEY={secrets.token_urlsafe(50)}\n"
-        "DEBUG=True\n"
-        "ALLOWED_HOSTS=localhost,127.0.0.1,stashy.app\n"
+        "# True shows Django's detailed error pages - only for working on Stashy itself.\n"
+        "DEBUG=False\n"
+        "ALLOWED_HOSTS=localhost,127.0.0.1\n"
         f"PORT={PORT}\n"
         "# Change PORT above (then run Stashy.bat again) if you want Stashy to run\n"
         "# alongside something else already using port 8000 on this computer.\n",
@@ -165,7 +171,7 @@ def run_quarterly_backup():
 def open_browser_when_ready():
     for _ in range(60):
         if port_in_use():
-            webbrowser.open(URL)
+            webbrowser.open(BROWSER_URL)
             return
         time.sleep(0.5)
 
@@ -173,8 +179,8 @@ def open_browser_when_ready():
 def main():
     try:
         if stashy_already_running():
-            print(f"Stashy is already running - opening {URL}")
-            webbrowser.open(URL)
+            print(f"Stashy is already running - opening {BROWSER_URL}")
+            webbrowser.open(BROWSER_URL)
             return 0
         install_requirements()
         ensure_env_file()
@@ -189,14 +195,12 @@ def main():
 
     from stashy.wsgi import application
 
-    step(f"Starting Stashy at {URL}")
+    step(f"Starting Stashy at {BROWSER_URL}")
     print("   Your browser will open automatically.")
     print("   Keep this window open while you use Stashy - close it to stop Stashy.\n")
     threading.Thread(target=open_browser_when_ready, daemon=True).start()
-    try:
+    with contextlib.suppress(KeyboardInterrupt):
         serve(application, host=HOST, port=PORT, threads=8, ident="Stashy")
-    except KeyboardInterrupt:
-        pass
     return 0
 
 

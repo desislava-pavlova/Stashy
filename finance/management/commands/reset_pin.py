@@ -24,5 +24,5 @@ class Command(BaseCommand):
         try:
             stashes.reset_pin_directly(name, pin)
         except stashes.StashError as error:
-            raise CommandError(str(error))
+            raise CommandError(str(error)) from error
         self.stdout.write(self.style.SUCCESS(f'PIN reset for "{name}".'))

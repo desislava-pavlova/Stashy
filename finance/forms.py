@@ -146,10 +146,7 @@ class TransferForm(forms.Form):
                 "to_account"
             ].help_text = f"No other active {from_account.currency} account to transfer to yet."
         for field in self.fields.values():
-            if not isinstance(field.widget, forms.DateInput):
-                field.widget.attrs.setdefault("class", "form-control")
-            else:
-                field.widget.attrs.setdefault("class", "form-control")
+            field.widget.attrs.setdefault("class", "form-control")
         self.fields["to_account"].widget.attrs["class"] = "form-select"
         _use_regional_dates(self)
 
@@ -290,9 +287,10 @@ class TransactionForm(BootstrapFormMixin, forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if "transaction_number" in self.fields:
-            self.fields[
-                "transaction_number"
-            ].help_text = "Prefilled with the next available number (shared across accounts, starting over each year, D9) — change it, or clear it to have Stashy pick again."
+            self.fields["transaction_number"].help_text = (
+                "Prefilled with the next available number (shared across accounts, starting over each year, D9)"
+                " — change it, or clear it to have Stashy pick again."
+            )
         # Transfer categories are created automatically by the Transfer button, not picked by hand
         # here — except editing a transaction that already has one (an opening balance or transfer
         # leg) must still offer its own category, or saving the form would reject it as invalid.
@@ -386,11 +384,11 @@ class ReminderForm(BootstrapFormMixin, forms.ModelForm):
 
 
 class ImportUploadForm(forms.Form):
-    DATE_FORMAT_CHOICES = [("auto", "Detect automatically (recommended)")] + regional.DATE_FORMAT_CHOICES
+    DATE_FORMAT_CHOICES = [("auto", "Detect automatically (recommended)"), *regional.DATE_FORMAT_CHOICES]
 
     account = forms.ModelChoiceField(
         queryset=Account.objects.filter(is_active=True),
-        help_text="Used for every row, unless the file has its own Account column (Phase 9) - that takes over per row.",
+        help_text="Used for every row, unless the file has its own Account column - that takes over per row.",
     )
     file = forms.FileField(
         help_text="CSV or XLSX (Date, Payee, Memo, Amount, optionally Num/Account/Category/Reconciled) or OFX/QFX"

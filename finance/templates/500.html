@@ -1,0 +1,7 @@
+{% extends "finance/error_page.html" %}
+{% block title %}Something went wrong{% endblock %}
+{% block message %}
+<h1 class="h3 mb-1">Something went wrong</h1>
+<p class="text-body-secondary mb-3">Stashy ran into an error and couldn't finish this page. If you were saving something, check whether it went through before you try again.</p>
+<p class="text-body-secondary mb-4">The details were written to <code>logs\stashy.log</code> in your Stashy folder. That file shows what went wrong, so keep it if you want the problem fixed.</p>
+{% endblock %}

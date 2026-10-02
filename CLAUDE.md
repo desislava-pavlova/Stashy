@@ -41,15 +41,20 @@ terms.
 ## Commands
 
 ```
-.venv\Scripts\python.exe manage.py test                          # full suite, ~6-8 min (572 tests on 01/10/2026)
+.venv\Scripts\python.exe manage.py test                          # full suite, ~15 s (582 tests on 02/10/2026)
 .venv\Scripts\python.exe manage.py test finance.test_phase15     # one module
 .venv\Scripts\python.exe manage.py migrate --database <stash>    # one stash (Stashy.bat does all, with backups)
 .venv\Scripts\python.exe manage.py reset_pin <owner name>        # real, visible action - ask first
+.venv\Scripts\ruff.exe check .  /  ruff.exe format .      # must stay clean (pyproject.toml)
+.venv\Scripts\coverage.exe run manage.py test; .venv\Scripts\coverage.exe report
 ```
 
 - `Stashy.bat` → `scripts/bootstrap.py`: install requirements, create
   `.env`, back up and migrate every stash, run `collectstatic`, take the
-  quarterly backup, then serve with Waitress.
+  quarterly backup, then serve with Waitress. It opens the browser at
+  `http://stashy.localhost:<PORT>/` (browsers resolve `*.localhost` themselves,
+  and `base.py` always allows that name). Python can't resolve it, so code
+  that calls the server itself uses `127.0.0.1`.
 - Waitress doesn't auto-reload, so remind the user to restart Stashy.bat
   after code changes.
 - A plain `manage.py shell` sees the empty placeholder database. To reach a
@@ -60,8 +65,15 @@ terms.
 
 ## Architecture map
 
-- `stashy/`: settings (a single file for now; plan 02 phase 3 splits it),
-  URLs, and `formats/en` (European formats).
+- `stashy/`: `settings/base.py` (the app; every folder path is named once
+  at its top: `STASHES_DIR`, `STATIC_ROOT`, `LOG_DIR`) and `settings/test.py`
+  (picked by `manage.py test` itself: MD5 hasher, plain static storage, no
+  log file). Also URLs, `storage.py` (fingerprinted static names that skip
+  the vendored `.map` references) and `formats/en` (European formats).
+- `DEBUG` defaults to off. Errors go to the console and to `logs/stashy.log`
+  (rotating). `finance/templates/404.html` and `500.html` are the friendly
+  pages; the 500 page gets no context, so it uses only static files and
+  plain links.
 - `finance/`: the whole app.
   - `models.py`: Profile, Account, Category, Payee, Transaction,
     ImportBatch, Reminder, ExchangeRate, Reconciliation.
@@ -106,8 +118,10 @@ terms.
   lockout covers every login. Secrets shown once (a new recovery code) go in
   the local-memory cache, never the signed-cookie session.
 - Tests: `finance/test_phase*.py`, `finance/test_*.py`, `audit/tests.py`.
-  `settings.TESTING` (set from `sys.argv`) currently bypasses the stash and
-  setup middleware and stash registration. Plan 02 phase 7 removes that.
+  `settings.TESTING` (True only in `settings/test.py`) currently bypasses
+  the stash and setup middleware. `finance/apps.py` still checks `sys.argv`
+  itself, so a test run never registers the real stashes. Plan 02 phase 7
+  removes both.
   `test_phase13.py` belongs to Phase 12.1; Phase 13's tests are in
   `test_phase13_reports.py`. Plan 02's tests are `test_cleanup_phase<N>.py`.
   `TemporaryStashesMixin` (in `test_cleanup_phase1.py`) gives a test real
@@ -177,6 +191,9 @@ terms.
   - **03, fixes and changes plan:** collects the user's bugs and changes
     while 02 runs. "Add to 03: …" means file it and don't start it, unless
     the user says "fix R<n> now".
+  - **04, Windows .exe packaging:** idea stage, starts after 02. Don't
+    start it, but keep new folder paths (data, logs) defined in one place
+    in the settings, so moving them out of the program folder stays easy.
 - **Big requests:** fold them into the plan first, and ask genuine forks
   as a short numbered list. Implement only once the user names the phase.
   When the user hands a technical choice back ("your call"), decide it, mark
@@ -196,7 +213,11 @@ terms.
 
 ## Verification (there is no browser here)
 
-- Run the full suite and report its real result.
+- Run the full suite and report its real result, and keep `ruff check .`
+  and `ruff format --check .` clean.
+- A change to static files or `STORAGES` needs the real `collectstatic`
+  (Stashy.bat runs it at every launch; if it fails, Stashy doesn't start).
+  Never into the live `staticfiles/`: use a scratch `STATIC_ROOT`.
 - For front-end work, fetch the rendered HTML with the test client and read
   it. Look for leaked `{#`, `#}`, `{%` or `%}` (Django's `{# #}` comments
   are single-line only; a multi-line one renders as visible text). Never

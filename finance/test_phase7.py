@@ -199,7 +199,6 @@ class EnterOpensAPrefilledFormTests(LoggedInTestCase):
         )
         self.assertRedirects(response, reverse("finance:reminder_list"))
         self.assertEqual(Transaction.objects.count(), 1)
-        txn = Transaction.objects.get()
         self.reminder.refresh_from_db()
         # The recurring reminder now stands for the next, unpaid period - no stale "paid" link.
         self.assertIsNone(self.reminder.last_entered_transaction_id)

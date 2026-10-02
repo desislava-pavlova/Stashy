@@ -22,7 +22,8 @@ class AuditContext:
     request: object = None
 
 
-_current = ContextVar("audit_context", default=AuditContext())
+# AuditContext is frozen, so sharing one default instance is safe.
+_current = ContextVar("audit_context", default=AuditContext())  # noqa: B039
 
 
 def current_context():

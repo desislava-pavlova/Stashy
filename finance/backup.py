@@ -87,9 +87,8 @@ def quarterly_backup_if_due(db_path, project_root):
     most recent quarterly backup is missing or more than ~90 days old. Returns the new Path,
     or None if a backup wasn't due (or there's no database yet)."""
     existing = [p for p in list_backups(project_root) if p.stem.startswith(("backup_quarterly_", "db_quarterly_"))]
-    if existing:
-        if date.today() - _parse_stamp(existing[0]).date() < timedelta(days=QUARTERLY_MIN_GAP_DAYS):
-            return None
+    if existing and date.today() - _parse_stamp(existing[0]).date() < timedelta(days=QUARTERLY_MIN_GAP_DAYS):
+        return None
     return backup_now(db_path, project_root, tag="quarterly")
 
 

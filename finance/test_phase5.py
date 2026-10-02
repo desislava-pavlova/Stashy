@@ -46,7 +46,7 @@ class DefaultViewTests(LoggedInTestCase):
         self.assertEqual(response.context["range"], "")
 
     def test_a_named_preset_is_respected(self, mock_date):
-        shown, response = self.shown(mock_date, range="last_year")
+        shown, _response = self.shown(mock_date, range="last_year")
         self.assertEqual(len(shown), 1)
 
     def test_explicit_custom_dates_are_marked_as_custom(self, mock_date):

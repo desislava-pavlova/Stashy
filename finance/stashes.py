@@ -26,7 +26,6 @@ from django.utils import timezone
 
 from . import backup, regional
 
-STASHES_DIR_NAME = "stashes"
 BACKUPS_DIR_NAME = "backups"
 
 PIN_RE = re.compile(r"^\d{4}$")
@@ -50,7 +49,7 @@ class StashError(Exception):
 
 
 def stashes_dir():
-    return Path(settings.BASE_DIR) / STASHES_DIR_NAME
+    return Path(settings.STASHES_DIR)
 
 
 def stash_path(name):

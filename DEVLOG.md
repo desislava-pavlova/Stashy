@@ -3642,3 +3642,150 @@ messages show, and no template code leaks. Not checked in a browser.
 `finance/migrations/0018_phase2_constraints.py` (local only, not in git);
 tests `finance/test_cleanup_phase2.py` (new); `README.md`, `CLAUDE.md`, the
 plan.
+
+---
+
+## 02/10/2026 — Plan 02, Phase 3: tooling and settings
+
+**What changed** (details and ticks in `plans/02_architecture_cleanup.md`):
+- **A linter and formatter (3.1–3.3).** `pyproject.toml` configures ruff,
+  and `requirements-dev.txt` lists it with `coverage` (tools for working on
+  Stashy; Stashy.bat never installs them). The reformat went in as its own
+  commit, so it couldn't hide any real change. Afterwards the ~100 findings
+  ruff can't fix itself were fixed by hand: two lambdas became small
+  functions, an if/else whose branches were identical became one line,
+  `f`/`t` became `filters`/`txn` where they lived across long functions,
+  `save()` moved next to `__str__()` in five models (Django's style
+  guide), and `raise ... from error` now keeps the original error attached.
+  `ruff check` is clean.
+- **Requirements (3.4).** The two leftover Postgres packages were removed
+  from `.venv`. `beautifulsoup4` and `lxml` looked unused but turned out to
+  be the OFX importer's own dependencies, so they stay.
+- **Settings package (3.5).** `stashy/settings.py` became
+  `stashy/settings/base.py` (the app) and `test.py` (the test suite, picked
+  by `manage.py test` by itself). There's no built-in fallback `SECRET_KEY`
+  any more, `DEBUG` is off unless `.env` turns it on, and the unused password
+  rules are gone (a stash's login is its PIN). Every folder Stashy uses is
+  named once, at the top of `base.py`.
+- **DEBUG off, with somewhere for errors to go (3.7, 3.9).** New `.env` files
+  get `DEBUG=False`. A crash now shows a friendly "Something went wrong"
+  page, and its full traceback goes to `logs\stashy.log` (and the console
+  window). The log rotates at 2 MB and keeps 3 older files. A missing page
+  shows "Nothing stashed here". Both pages use the login page's layout.
+- **Fingerprinted static files (3.8).** `collectstatic` now also saves each
+  CSS/JS/image file under a name containing a fingerprint of its content
+  (`stashy.d4f3e63f4df4.css`), and pages link to that name.
+- `.gitignore` now covers `staticfiles/` and `logs/`.
+
+**Teaching note — why the test suite went from 5 minutes to 15 seconds.**
+Django stores passwords (here, PINs) with a hash that is slow *on purpose*:
+it repeats its work over a million times, so someone who steals the database
+can only try a few guesses per second. Every test that creates a user paid
+that cost, hundreds of times per run. `test.py` swaps in MD5, which is
+instant and would be unsafe for real logins, but test users live only in a
+throwaway in-memory database. One line of test-only settings cut the suite
+from 298 s to 15 s.
+
+**Teaching note — what the fingerprint in a file name buys.** A browser
+keeps a copy of each CSS and JS file so it doesn't download it on every
+page. The trouble comes after an update: it can keep running the old
+`stashy.js` against new pages. With the content's fingerprint in the name,
+a changed file gets a new name. The browser has never seen that name, so it
+fetches it, and an unchanged file keeps its name and stays cached. That's
+why WhiteNoise can now tell the browser to keep these files "for good"
+(`Cache-Control: immutable`).
+
+**Teaching note — the check that stopped a broken launch.** While making
+those names, Django also rewrites every file one CSS file points to, and
+stops if one is missing. Bootstrap and Chart.js end with a comment naming a
+`.map` file (a debugging aid for the library's own developers) that Stashy
+never shipped. With the plain fingerprinting storage, `collectstatic`
+failed, and Stashy.bat runs it on every launch, so Stashy wouldn't have
+started. Running the real command before calling the work done caught it.
+`stashy/storage.py` now leaves those comments alone, and a test runs the
+real `collectstatic`, so this can't come back unnoticed.
+
+**Coverage baseline (for Phase 4):** 89% overall: 3,696 statements, 425
+never run by a test. The lowest are `stashes.py` (52%), `auth_views.py`
+(40%) and `auth_forms.py` (62%). The tests skip the stash middleware for now;
+plan 02 Phase 7 changes that. Measure again with
+`.venv\Scripts\coverage.exe run manage.py test` and
+`.venv\Scripts\coverage.exe report`.
+
+**Verification:** full suite green: 580 tests in 15.4 s. That's 8 new tests
+in `finance/test_cleanup_phase3.py`: the 404 and 500 pages with `DEBUG` off
+and no template code leaking, the traceback reaching the log file, the real
+`collectstatic`, and every `{% static %}` a template names existing. The
+tests never write to the real `logs\stashy.log`.
+
+Separately, a throwaway Waitress server on port 8765 ran the app's real
+settings with `DEBUG` off. The stash picker rendered, and the fingerprinted
+stylesheet was served with the long-lived cache header. All main pages were
+rendered against a fingerprinted `collectstatic` copy: every CSS/JS/image
+link carried its fingerprint, and the icon and text fonts inside the CSS
+were rewritten too. Not checked in a browser.
+
+**Files:** `pyproject.toml`, `requirements-dev.txt`,
+`stashy/settings/__init__.py`, `stashy/settings/base.py` (was
+`stashy/settings.py`), `stashy/settings/test.py`, `stashy/storage.py`,
+`finance/templates/404.html`, `finance/templates/500.html`,
+`finance/templates/finance/error_page.html`,
+`finance/test_cleanup_phase3.py` (all new), `manage.py`, `stashy/wsgi.py`,
+`stashy/asgi.py`, `scripts/bootstrap.py`, `.env.example`, `.gitignore`,
+`finance/apps.py`, `finance/stashes.py`, `finance/views.py`,
+`finance/forms.py`, `finance/models.py` and a few small ruff fixes
+elsewhere; `README.md`, `CLAUDE.md`, the plans.
+
+---
+
+## 02/10/2026 — Plan 04 (Stashy as an .exe) started; why the migration history stays
+
+**What changed:** `plans/04_exe_packaging.md` holds the idea of shipping
+Stashy as a Windows program that needs no Python. It's in the idea stage,
+with its questions open, and starts after plan 02.
+
+**Teaching note — why not start the migrations over with one clean file
+each?** Twenty migration files look like clutter, and a fresh
+`0001_initial` per app would describe the same tables. But each stash
+remembers, by name, which migrations it has run, and restoring a backup runs
+`migrate` to bring an older backup up to date. A fresh file would carry the
+*same name* as the old first migration. Django would read an older backup's
+records as "0001_initial: done, nothing else to do" and never add the
+columns that came later, so pages would crash after a restore. Keeping the
+history costs about a second when a brand-new stash is created, and it
+keeps every backup restorable, including from inside a future `.exe`.
+
+---
+
+## 02/10/2026 — Stashy's address: stashy.localhost
+
+**What changed:** Stashy.bat now opens `http://stashy.localhost:<port>/`
+instead of `http://127.0.0.1:<port>/`. `stashy.localhost` is always allowed
+in `base.py`, whatever `.env` lists, and the old address still works. The
+`stashy.app` name and its hosts-file instructions are gone from
+`.env.example` and from the `.env` that Stashy.bat creates.
+
+**Why:** a name instead of numbers, with no setup on the computer.
+
+**Teaching note — why `stashy.app` couldn't work.** Browsers ship with a
+list of names that may only be opened over HTTPS (the encrypted kind of
+connection), and the *whole* `.app` ending is on it. So the browser turns
+`http://stashy.app` into `https://stashy.app` before connecting. Stashy
+speaks plain HTTP and has no certificate, so the page fails, and for these
+names there's no "continue anyway" button. A hosts-file entry only answers
+"which computer?", not "is it HTTPS?".
+
+**Teaching note — why `.localhost` needs no setup.** Names ending in
+`.localhost` are reserved for "this computer" (RFC 6761), so Chrome, Edge
+and Firefox send them to 127.0.0.1 by themselves, without asking Windows.
+Windows itself doesn't know these names, which is why Stashy.bat's own
+"is Stashy already running?" check still uses `127.0.0.1`. One side effect:
+browsers keep the login cookie and the light/dark choice per address, so the
+first visit at the new address asks for the PIN again.
+
+**Verification:** full suite green, 582 tests. Two new tests: a request
+for `stashy.localhost:8001` is accepted, and one for `stashy.app` is still
+refused. Not checked in a browser.
+
+**Files:** `stashy/settings/base.py`, `scripts/bootstrap.py`,
+`.env.example`, `README.md`, `finance/test_cleanup_phase3.py`.

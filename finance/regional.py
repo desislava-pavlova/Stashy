@@ -10,7 +10,7 @@ match stashy/formats/.
 import functools
 import re
 import zoneinfo
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from contextvars import ContextVar
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
@@ -161,10 +161,8 @@ def format_audit_timestamp(value):
 def detect_from_computer():
     """This computer's regional settings as Preferences; anything that can't be read keeps its default."""
     found, country = {}, ""
-    try:
+    with suppress(ImportError, OSError):  # not Windows, or the settings aren't in the registry
         found, country = _read_windows_settings()
-    except (ImportError, OSError):
-        pass  # not Windows, or the settings aren't in the registry
     zone = _local_time_zone(country)
     if zone:
         found["time_zone"] = zone

@@ -73,11 +73,11 @@ class OneLevelOfSubcategoriesTests(TestCase):
 
 class GroupedCategoriesTests(TestCase):
     def test_income_then_expense_then_transfer_each_sorted_by_parent_then_name(self):
-        salary = Category.objects.create(name="Salary", category_type=Type.INCOME)
-        bonus = Category.objects.create(name="Bonus", category_type=Type.INCOME)
+        Category.objects.create(name="Salary", category_type=Type.INCOME)
+        Category.objects.create(name="Bonus", category_type=Type.INCOME)
         food = Category.objects.create(name="Food", category_type=Type.EXPENSE)
-        groceries = Category.objects.create(name="Groceries", parent=food, category_type=Type.EXPENSE)
-        rent = Category.objects.create(name="Rent", category_type=Type.EXPENSE)
+        Category.objects.create(name="Groceries", parent=food, category_type=Type.EXPENSE)
+        Category.objects.create(name="Rent", category_type=Type.EXPENSE)
         account = Account.objects.create(name="Checking")  # brings its own Transfer category
 
         groups = grouped_categories(Category.objects.select_related("parent").all())

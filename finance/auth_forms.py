@@ -38,7 +38,7 @@ class StashCreateForm(forms.Form):
         try:
             return stashes.validate_owner_name(owner_name)
         except stashes.StashError as error:
-            raise ValidationError(str(error))
+            raise ValidationError(str(error)) from error
 
     def clean_pin(self):
         pin = self.cleaned_data.get("pin", "")

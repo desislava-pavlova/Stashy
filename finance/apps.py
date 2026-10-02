@@ -17,9 +17,9 @@ class FinanceConfig(AppConfig):
         # (which alias a given TestCase may touch) off the *live* connections.databases
         # registry, not just settings.DATABASES - registering a real stash here would make it
         # a third, unmanaged alias the test isolation machinery trips over, regardless of
-        # whether any test actually queries it. TESTING is computed in stashy/settings.py the
-        # same way; duplicated here rather than imported since AppConfig.ready() runs very
-        # early in Django's own startup.
+        # whether any test actually queries it. This reads the command line rather than
+        # settings.TESTING on purpose: a test run must never register the real stashes, even
+        # one started with the app's own settings by mistake.
         if len(sys.argv) > 1 and sys.argv[1] == "test":
             return
 

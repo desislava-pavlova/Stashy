@@ -10,6 +10,15 @@ extend-exclude = ["migrations", "staticfiles", "stashes", "backups", "logs"]
 
 [tool.ruff.lint]
 select = ["E", "W", "F", "I", "N", "B", "UP", "DJ", "SIM", "C4", "RUF"]
+ignore = [
+    # Django declares fields, choices and Meta options as plain class-level lists by design.
+    "RUF012",
+    # An if/else with a comment on each branch reads better than a long one-line ternary.
+    "SIM108",
+]
+# Intentional characters: the no-break space (thousands separator), the en dash used in
+# user-facing text, and Cyrillic text in date patterns and tests.
+allowed-confusables = [" ", "–", "г"]
 
 [tool.ruff.format]
 quote-style = "double"

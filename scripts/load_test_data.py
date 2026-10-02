@@ -20,7 +20,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "stashy.settings")
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "stashy.settings.base")
 
 import django  # noqa: E402
 
@@ -200,9 +200,8 @@ def load(stash_name):
         f"Accounts: {Account.objects.count()}, Categories: {Category.objects.count()}, Payees: {Payee.objects.count()}"
     )
     for account in Account.objects.all():
-        print(
-            f"  {account.name:14} {account.get_account_type_display():24} balance {account.balance:>12} {account.currency}"
-        )
+        kind = account.get_account_type_display()
+        print(f"  {account.name:14} {kind:24} balance {account.balance:>12} {account.currency}")
 
 
 def main():

@@ -87,7 +87,8 @@ from .reporting import (
 )
 
 ACCOUNT_TIPS = [
-    "Opening balance is what the account held on the day you start tracking it in Stashy — Stashy turns it into a real transaction.",
+    "Opening balance is what the account held on the day you start tracking it in Stashy"
+    " — Stashy turns it into a real transaction.",
     "Institution is optional — fill it in only when a bank is behind the account.",
     "Stopped using an account? Untick Is active instead of deleting it, so its history stays.",
 ]
@@ -124,7 +125,7 @@ IMPORT_TIPS = [
 
 # The transaction list adds "All time" to Reports' own date-range presets (Phase 5) — a
 # register naturally wants an unbounded view sometimes, unlike a chart that needs a range.
-TRANSACTION_RANGE_CHOICES = [("", "All time")] + DateRangeFilterForm.RANGE_CHOICES
+TRANSACTION_RANGE_CHOICES = [("", "All time"), *DateRangeFilterForm.RANGE_CHOICES]
 
 
 def _sorted(request, queryset, sortable_columns):
@@ -326,8 +327,8 @@ def _reconcile_review_context(account, statement_date, statement_balance, checke
         # statement covers everything. A retry after an unaccepted-difference error always
         # passes the exact set actually submitted instead, even if that's empty.
         checked_ids = set()
-    for t in candidates:
-        t.was_checked = str(t.pk) in checked_ids
+    for txn in candidates:
+        txn.was_checked = str(txn.pk) in checked_ids
     deposits = [t for t in candidates if t.amount > 0]
     payments = [t for t in candidates if t.amount < 0]
     return {
@@ -387,9 +388,9 @@ def account_reconcile(request, pk):
 
         adjustment = None
         with system_action(f"Account '{account.name}' reconciled to {regional.format_date(statement_date)}"):
-            for t in checked:
-                t.reconciled = True
-                t.save(update_fields=["reconciled"])
+            for txn in checked:
+                txn.reconciled = True
+                txn.save(update_fields=["reconciled"])
             if difference != ZERO:
                 # Not real income/spending - excluded from reports the same way a transfer or
                 # opening balance is (D1/D7), since it's a bookkeeping correction, not a purchase.
@@ -477,7 +478,8 @@ class SystemManagedCategoryGuard:
         if self.object.is_system_managed:
             messages.error(
                 request,
-                f"'{self.object.full_name}' belongs to the {self.object.account.name} account and is managed automatically.",
+                f"'{self.object.full_name}' belongs to the {self.object.account.name} account"
+                " and is managed automatically.",
             )
             return redirect("finance:category_list")
         return super().dispatch(request, *args, **kwargs)
@@ -1565,7 +1567,7 @@ def _read_xlsx(upload):
     rows = []
     for values in all_rows[1:]:
         row = {}
-        for name, value in zip(fieldnames, values):
+        for name, value in zip(fieldnames, values, strict=False):
             if not name:
                 continue
             if isinstance(value, datetime):
@@ -1840,8 +1842,14 @@ def _vs_average_stat(label, current, average, higher_is_better, formatter):
 
 @login_required
 def reports_view(request):
-    f = _report_filters(request)
-    start, end, periods, subtotal, account = f["start"], f["end"], f["periods"], f["subtotal"], f["account"]
+    filters = _report_filters(request)
+    start, end, periods, subtotal, account = (
+        filters["start"],
+        filters["end"],
+        filters["periods"],
+        filters["subtotal"],
+        filters["account"],
+    )
 
     profile = Profile.for_user(request.user)
     main_currency = profile.main_currency
@@ -1895,8 +1903,13 @@ def reports_view(request):
     # --- 6. Income & expense vs. average: Income/Expense (split by category, current period
     # only) + Net, each with an average marker ---
     vs_average_totals = income_and_spending_vs_average(start, end, periods, account=account, rates=rates)
-    money_fmt = lambda v: format_money(v, main_currency)  # noqa: E731
-    percent_fmt = lambda v: f"{v}%"  # noqa: E731
+
+    def money_fmt(value):
+        return format_money(value, main_currency)
+
+    def percent_fmt(value):
+        return f"{value}%"
+
     vs_average_stats = [
         _vs_average_stat(
             "Income", vs_average_totals["current_income"], vs_average_totals["average_income"], True, money_fmt
@@ -1980,16 +1993,16 @@ def reports_view(request):
             )
 
     context = {
-        "form": f["form"],
-        "form_errors": f["form_errors"],
+        "form": filters["form"],
+        "form_errors": filters["form_errors"],
         "start": start,
         "end": end,
         "subtotal": subtotal,
         "main_currency": main_currency,
         "missing_currencies": missing_currencies,
         "uncategorized_count": uncategorized,
-        "average_periods": f["average_periods"],
-        "has_average": f["has_average"],
+        "average_periods": filters["average_periods"],
+        "has_average": filters["has_average"],
         "spending_by_category": spending_by_category,
         "spending_chart": _float_rows(spending_by_category, "total"),
         "spending_stacked_chart": _stacked_series(
@@ -2039,7 +2052,7 @@ def reports_view(request):
         },
         "net_worth_chart": [
             {"label": label, "total": float(total)}
-            for label, total in zip(net_worth_table["periods"], net_worth_table["totals"])
+            for label, total in zip(net_worth_table["periods"], net_worth_table["totals"], strict=True)
         ],
         "net_worth_table": net_worth_table,
         "watched_expenses_title": profile.watched_expenses_title,
@@ -2065,7 +2078,7 @@ def _export_category_table(request, table, filename, amount_label):
     """Shared by every "category rows" report export (Spending, Income, Income & expense,
     Watched expenses) - same table shape category_report_rows() already builds for the page."""
     periods = table["periods"]
-    headers = ["Category"] + (periods + ["Total"] if periods else [amount_label])
+    headers = ["Category", *([*periods, "Total"] if periods else [amount_label])]
     rows = []
     for group in table["groups"]:
         for row in group["rows"]:
@@ -2098,13 +2111,13 @@ def _export_rates(request):
 
 @login_required
 def export_report_spending(request):
-    f = _report_filters(request)
+    filters = _report_filters(request)
     table = category_report_rows(
-        f["start"],
-        f["end"],
-        subtotal=f["subtotal"],
+        filters["start"],
+        filters["end"],
+        subtotal=filters["subtotal"],
         expense_only=True,
-        account=f["account"],
+        account=filters["account"],
         rates=_export_rates(request),
     )
     return _export_category_table(request, table, f"stashy-spending-by-category-{date.today():%Y%m%d}", "Spending")
@@ -2112,22 +2125,27 @@ def export_report_spending(request):
 
 @login_required
 def export_report_spending_vs_average(request):
-    f = _report_filters(request)
+    filters = _report_filters(request)
     table = category_vs_average_report_rows(
-        f["start"], f["end"], f["periods"], expense_only=True, account=f["account"], rates=_export_rates(request)
+        filters["start"],
+        filters["end"],
+        filters["periods"],
+        expense_only=True,
+        account=filters["account"],
+        rates=_export_rates(request),
     )
     return _export_vs_average_table(request, table, f"stashy-spending-vs-average-{date.today():%Y%m%d}")
 
 
 @login_required
 def export_report_income(request):
-    f = _report_filters(request)
+    filters = _report_filters(request)
     table = category_report_rows(
-        f["start"],
-        f["end"],
-        subtotal=f["subtotal"],
+        filters["start"],
+        filters["end"],
+        subtotal=filters["subtotal"],
         income_only=True,
-        account=f["account"],
+        account=filters["account"],
         rates=_export_rates(request),
     )
     return _export_category_table(request, table, f"stashy-income-by-category-{date.today():%Y%m%d}", "Income")
@@ -2135,44 +2153,53 @@ def export_report_income(request):
 
 @login_required
 def export_report_income_vs_average(request):
-    f = _report_filters(request)
+    filters = _report_filters(request)
     table = category_vs_average_report_rows(
-        f["start"], f["end"], f["periods"], income_only=True, account=f["account"], rates=_export_rates(request)
+        filters["start"],
+        filters["end"],
+        filters["periods"],
+        income_only=True,
+        account=filters["account"],
+        rates=_export_rates(request),
     )
     return _export_vs_average_table(request, table, f"stashy-income-vs-average-{date.today():%Y%m%d}")
 
 
 @login_required
 def export_report_income_expense(request):
-    f = _report_filters(request)
+    filters = _report_filters(request)
     table = category_report_rows(
-        f["start"], f["end"], subtotal=f["subtotal"], account=f["account"], rates=_export_rates(request)
+        filters["start"],
+        filters["end"],
+        subtotal=filters["subtotal"],
+        account=filters["account"],
+        rates=_export_rates(request),
     )
     return _export_category_table(request, table, f"stashy-income-expense-by-category-{date.today():%Y%m%d}", "Amount")
 
 
 @login_required
 def export_report_income_expense_vs_average(request):
-    f = _report_filters(request)
+    filters = _report_filters(request)
     table = category_vs_average_report_rows(
-        f["start"], f["end"], f["periods"], account=f["account"], rates=_export_rates(request)
+        filters["start"], filters["end"], filters["periods"], account=filters["account"], rates=_export_rates(request)
     )
     return _export_vs_average_table(request, table, f"stashy-income-expense-vs-average-{date.today():%Y%m%d}")
 
 
 @login_required
 def export_report_watched_expenses(request):
-    f = _report_filters(request)
+    filters = _report_filters(request)
     profile = Profile.for_user(request.user)
     category_ids = watched_expenses_category_ids(profile)
     if not category_ids:
         return HttpResponse("No Watched expenses categories are chosen yet - add some in Settings.", status=404)
     table = category_report_rows(
-        f["start"],
-        f["end"],
-        subtotal=f["subtotal"],
+        filters["start"],
+        filters["end"],
+        subtotal=filters["subtotal"],
         expense_only=True,
-        account=f["account"],
+        account=filters["account"],
         category_ids=category_ids,
         rates=RateTable(profile.main_currency),
     )
@@ -2181,15 +2208,17 @@ def export_report_watched_expenses(request):
 
 @login_required
 def export_report_net_worth(request):
-    f = _report_filters(request)
-    table = net_worth_by_account(f["start"], f["end"], f["subtotal"] or "month", rates=_export_rates(request))
+    filters = _report_filters(request)
+    table = net_worth_by_account(
+        filters["start"], filters["end"], filters["subtotal"] or "month", rates=_export_rates(request)
+    )
     headers = ["Account"] + table["periods"]
     rows = []
     for group in table["groups"]:
-        rows.append([group["name"]] + list(group["totals"]))
+        rows.append([group["name"], *group["totals"]])
         for row in group["rows"]:
-            rows.append(["  " + row["name"]] + list(row["values"]))
-    rows.append(["Total"] + list(table["totals"]))
+            rows.append(["  " + row["name"], *row["values"]])
+    rows.append(["Total", *table["totals"]])
     return _export_response(request.GET.get("format", "csv"), f"stashy-net-worth-{date.today():%Y%m%d}", headers, rows)
 
 
@@ -2215,7 +2244,7 @@ def _stash_backup_root(request):
     all assume BASE_DIR."""
     stash_name = request.session.get("stash") if not settings.TESTING else None
     if stash_name:
-        return settings.STASHES_DIR / stash_name
+        return stashes.stash_path(stash_name)
     return Path(settings.BASE_DIR)
 
 

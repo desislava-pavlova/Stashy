@@ -197,6 +197,10 @@ class Account(models.Model):
     def __str__(self):
         return self.name
 
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        self.ensure_transfer_category()
+
     def get_absolute_url(self):
         return reverse("finance:account_detail", args=[self.pk])
 
@@ -209,10 +213,6 @@ class Account(models.Model):
             # Conversion only ever uses the latest known rate, not per-transaction history, so a
             # new currency would misstate every transaction already in the account.
             raise ValidationError({"currency": "This account already has transactions, so its currency can't change."})
-
-    def save(self, *args, **kwargs):
-        super().save(*args, **kwargs)
-        self.ensure_transfer_category()
 
     @property
     def balance(self):
@@ -321,6 +321,11 @@ class Category(models.Model):
     def __str__(self):
         return self.full_name
 
+    def save(self, *args, **kwargs):
+        self.name_key = name_key(self.name)
+        kwargs["update_fields"] = _with_name_key(kwargs.get("update_fields"))
+        super().save(*args, **kwargs)
+
     @property
     def full_name(self):
         return f"{self.parent.name} > {self.name}" if self.parent_id else self.name
@@ -354,11 +359,6 @@ class Category(models.Model):
                 errors["name"] = "A category with this name already exists."
         if errors:
             raise ValidationError(errors)
-
-    def save(self, *args, **kwargs):
-        self.name_key = name_key(self.name)
-        kwargs["update_fields"] = _with_name_key(kwargs.get("update_fields"))
-        super().save(*args, **kwargs)
 
     @property
     def indented_name(self):
@@ -478,15 +478,15 @@ class Payee(models.Model):
     def __str__(self):
         return self.name
 
-    def clean(self):
-        super().clean()
-        if Payee.objects.named(self.name).exclude(pk=self.pk).exists():
-            raise ValidationError({"name": "A payee with this name already exists."})
-
     def save(self, *args, **kwargs):
         self.name_key = name_key(self.name)
         kwargs["update_fields"] = _with_name_key(kwargs.get("update_fields"))
         super().save(*args, **kwargs)
+
+    def clean(self):
+        super().clean()
+        if Payee.objects.named(self.name).exclude(pk=self.pk).exists():
+            raise ValidationError({"name": "A payee with this name already exists."})
 
     @classmethod
     def system(cls, name):
@@ -543,6 +543,11 @@ class Transaction(models.Model):
     def __str__(self):
         return f"{regional.format_date(self.date)} | {self.display_payee} | {self.amount}"
 
+    def save(self, *args, **kwargs):
+        if self._state.adding and self.transaction_number is None:
+            self.transaction_number = self.next_number(self.date)
+        super().save(*args, **kwargs)
+
     @property
     def display_payee(self):
         return self.payee.name if self.payee_id else ""
@@ -557,11 +562,6 @@ class Transaction(models.Model):
             "highest"
         ]
         return (highest or 0) + 1
-
-    def save(self, *args, **kwargs):
-        if self._state.adding and self.transaction_number is None:
-            self.transaction_number = self.next_number(self.date)
-        super().save(*args, **kwargs)
 
 
 class ImportBatch(models.Model):
@@ -668,6 +668,28 @@ class Reminder(models.Model):
         amount = self.signed_amount()
         return f"{regional.format_date(self.next_due_date)} | {who} | {amount if amount is not None else 'varies'}"
 
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        # Same pattern as Account.save() -> ensure_transfer_category(): a recurring reminder
+        # keeps its own future occurrences in sync on every save, not just through the form,
+        # so direct ORM use (admin, scripts, shell) gets the same auto-generation for free.
+        if self.frequency != self.Frequency.ONE_TIME:
+            self.regenerate_occurrences()
+
+    def delete(self, *args, **kwargs):
+        # Deleting a whole series takes its still-open occurrences with it (series is
+        # on_delete=CASCADE) - but an occurrence you've already paid or skipped is a real
+        # historical record now, not just a preview, so it's detached (series -> null) and
+        # kept standing on its own instead of disappearing with the series (2026-09-14
+        # follow-up).
+        if self.frequency != self.Frequency.ONE_TIME:
+            resolved = self.occurrences.filter(Q(last_entered_transaction__isnull=False) | Q(skipped=True))
+            with system_action(f"Occurrence detached from deleted recurring reminder ({self})"):
+                for occurrence in resolved:
+                    occurrence.series = None
+                    occurrence.save(update_fields=["series"])
+        return super().delete(*args, **kwargs)
+
     def signed_amount(self):
         if self.amount is None:
             return None
@@ -707,28 +729,6 @@ class Reminder(models.Model):
         further out, matching what the "Yearly" filter button on the reminder list shows."""
         today = today or timezone.localdate()
         return max(today + timedelta(days=90), date(today.year, 12, 31))
-
-    def save(self, *args, **kwargs):
-        super().save(*args, **kwargs)
-        # Same pattern as Account.save() -> ensure_transfer_category(): a recurring reminder
-        # keeps its own future occurrences in sync on every save, not just through the form,
-        # so direct ORM use (admin, scripts, shell) gets the same auto-generation for free.
-        if self.frequency != self.Frequency.ONE_TIME:
-            self.regenerate_occurrences()
-
-    def delete(self, *args, **kwargs):
-        # Deleting a whole series takes its still-open occurrences with it (series is
-        # on_delete=CASCADE) - but an occurrence you've already paid or skipped is a real
-        # historical record now, not just a preview, so it's detached (series -> null) and
-        # kept standing on its own instead of disappearing with the series (2026-09-14
-        # follow-up).
-        if self.frequency != self.Frequency.ONE_TIME:
-            resolved = self.occurrences.filter(Q(last_entered_transaction__isnull=False) | Q(skipped=True))
-            with system_action(f"Occurrence detached from deleted recurring reminder ({self})"):
-                for occurrence in resolved:
-                    occurrence.series = None
-                    occurrence.save(update_fields=["series"])
-        return super().delete(*args, **kwargs)
 
     def _period_end(self, on):
         """Last day of `on`'s period for this reminder's frequency, for end-of-period mode (D5).
@@ -860,7 +860,8 @@ class ExchangeRate(models.Model):
         ]
 
     def __str__(self):
-        return f"1 {self.base_currency} = {self.rate.normalize():f} {self.quote_currency} ({regional.format_date(self.date)})"
+        rate = f"{self.rate.normalize():f}"
+        return f"1 {self.base_currency} = {rate} {self.quote_currency} ({regional.format_date(self.date)})"
 
 
 class Reconciliation(models.Model):

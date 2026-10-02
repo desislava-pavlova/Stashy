@@ -34,6 +34,11 @@ After that, double-clicking `Stashy.bat` opens straight on your last-used
 stash's PIN screen. Keep the black window open while you use Stashy;
 closing it stops Stashy.
 
+Stashy's address is **http://stashy.localhost:8000** (with your own port if
+you changed it), which you can bookmark. It needs no setup: every browser
+sends names ending in `.localhost` to your own computer.
+`http://127.0.0.1:8000` still works too.
+
 Stashy runs on Waitress, a production web server, rather than Django's
 development server - so start it with `Stashy.bat`, not
 `python manage.py runserver`. After updating Stashy's code, close the window
@@ -88,16 +93,22 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Edit `.env` and set `SECRET_KEY` to any long random string.
+Edit `.env` and set `SECRET_KEY` to any long random string. Stashy won't
+start without one.
 
 ### 2. Prepare the database and run it
 
 ```bash
 python manage.py migrate
+python manage.py collectstatic --noinput
 python manage.py runserver
 ```
 
-Visit http://127.0.0.1:8000/ and create your first stash (whose it is + PIN).
+`collectstatic` prepares the CSS, JavaScript and images; run it again after
+an update. (With `DEBUG=True` in `.env`, `runserver` serves them straight
+from the code instead.)
+
+Visit http://stashy.localhost:8000/ (or http://127.0.0.1:8000/) and create your first stash (whose it is + PIN).
 There's no public signup — each stash belongs to one person, business or
 family.
 
@@ -212,13 +223,15 @@ OFX/QFX files exported directly from your bank are also supported.
 Stashy/
 ├── Stashy.bat            # one-click setup + launch (Windows)
 ├── scripts/bootstrap.py  # what Stashy.bat runs: install, migrate + back up every stash, start Waitress
-├── requirements.txt
+├── requirements.txt      # what Stashy needs to run
+├── requirements-dev.txt  # extra tools for working on Stashy (ruff, coverage)
+├── pyproject.toml        # settings for those tools
 ├── .env.example          # copied to .env (secret key, DEBUG, PORT) on first run
 ├── starter_categories.xlsx  # Basic/Extended starting category lists, read by the welcome wizard
 ├── plans/                # numbered development plans (index in plans/README.md)
 ├── DEVLOG.md             # what changed and why, entry by entry
 ├── CLAUDE.md             # working notes for the AI assistant used on this project
-├── stashy/               # project settings, urls
+├── stashy/               # urls, and settings/ (base.py for the app, test.py for tests)
 ├── audit/                # the audit log (records every data change)
 ├── finance/              # the app
 │   ├── models.py         # Account, Category, Payee, Transaction, Reminder, etc.
@@ -233,14 +246,19 @@ Stashy/
 │   ├── backup.py
 │   ├── migrations/
 │   └── templates/, static/
-└── stashes/<name>/       # one folder per stash: db.sqlite3 + backups/ (not in git)
+├── stashes/<name>/       # one folder per stash: db.sqlite3 + backups/ (not in git)
+└── logs/stashy.log       # errors with their details, if anything goes wrong (not in git)
 ```
 
 ## Development
 
 - Run the tests with `python manage.py test` (on Windows:
   `.venv\Scripts\python.exe manage.py test`). They use a throwaway
-  in-memory database and never touch a stash.
+  in-memory database and never touch a stash, and take about 15 seconds.
+- Install the tools with `pip install -r requirements-dev.txt`. Check the
+  code with `ruff check .`, tidy its layout with `ruff format .`, and see
+  how much of it the tests run with `coverage run manage.py test` followed
+  by `coverage report`.
 - After changing a model, run `python manage.py makemigrations`.
   `Stashy.bat` applies the new migration to every stash (after a backup) on
   its next launch. Migration files aren't in git for now (see plan 02, item
@@ -254,7 +272,14 @@ Stashy/
   yet — the model would need a `TransactionSplit` child model if you want this.
 - **Budgets** (monthly targets vs. actuals) aren't built; they would slot in
   next to Reminders.
-- This is configured for local/single-user use (`DEBUG=True` by default).
-  If you ever want to access it from your phone too, you'd want to deploy it
-  properly (real `SECRET_KEY`, `DEBUG=False`, HTTPS, a real `ALLOWED_HOSTS`)
-  rather than just opening a port on your home network.
+- This is configured for local/single-user use. If you ever want to access
+  it from your phone too, you'd want to deploy it properly (HTTPS, a real
+  `ALLOWED_HOSTS`) rather than just opening a port on your home network.
+
+## If something goes wrong
+
+A page that crashes shows "Something went wrong". The details (what failed,
+and where in the code) are saved in `logs\stashy.log` in the Stashy folder,
+so keep that file if you want the problem fixed. Setting `DEBUG=True` in
+`.env` (then restarting Stashy) shows the details in the browser instead.
+That's meant only for working on Stashy itself.
