@@ -4,14 +4,8 @@ test database and need nothing special. (Phase 15 renamed the old validate_stash
 - typed folder names - out of existence: a stash's folder name is generated from its owner
 name now, never typed by anyone.)
 
-create_stash() and reset_pin_directly() are deliberately NOT covered here: both register a
-real, dynamically-created extra database alias to build/edit a stash's schema outside of
-`default`, and Django's test framework blocks connections to any alias that isn't declared in
-settings.DATABASES up front - even `databases = "__all__"` only covers aliases Django already
-knows about, not ones added at runtime. There's no supported way around that from inside
-TestCase, so these two were instead verified directly (not under the test runner) against a
-real temporary directory - see plans/01_upgrade_plan.md's Phase 12 notes (and Phase 15's, for the
-owner-name-aware versions) for what was checked."""
+create_stash() and reset_pin_directly() need a real extra database alias, so they're covered
+in test_cleanup_phase6.py, which builds one in a temporary folder (TemporaryStashesMixin)."""
 
 from datetime import timedelta
 
@@ -20,20 +14,21 @@ from django.test import RequestFactory, SimpleTestCase, TestCase, override_setti
 from django.urls import reverse
 from django.utils import timezone
 
-from . import db_router, stashes
+from . import db_router
 from .middleware import RequireStashMiddleware, StashSelectionMiddleware
 from .models import Profile
+from .stashes import StashError, security
 
 
 class StashPathHelperTests(SimpleTestCase):
     def test_validate_pin_requires_exactly_four_digits(self):
         for bad in ("123", "12345", "abcd", "", None):
-            with self.assertRaises(stashes.StashError):
-                stashes.validate_pin(bad)
-        stashes.validate_pin("0000")  # does not raise
+            with self.assertRaises(StashError):
+                security.validate_pin(bad)
+        security.validate_pin("0000")  # does not raise
 
     def test_recovery_code_format(self):
-        code = stashes._generate_recovery_code()
+        code = security._generate_recovery_code()
         parts = code.split("-")
         self.assertEqual(len(parts), 3)
         self.assertTrue(all(len(p) == 4 for p in parts))
@@ -50,28 +45,28 @@ class LockoutTests(TestCase):
         self.profile = Profile.objects.create(user=self.user)
 
     def test_not_locked_out_initially(self):
-        self.assertFalse(stashes.is_locked_out(self.profile))
+        self.assertFalse(security.is_locked_out(self.profile))
 
     def test_locks_out_after_the_threshold(self):
-        for _ in range(stashes.LOCKOUT_THRESHOLD):
-            stashes.register_failed_attempt(self.profile)
+        for _ in range(security.LOCKOUT_THRESHOLD):
+            security.register_failed_attempt(self.profile)
         self.profile.refresh_from_db()
-        self.assertTrue(stashes.is_locked_out(self.profile))
+        self.assertTrue(security.is_locked_out(self.profile))
         self.assertEqual(self.profile.failed_pin_attempts, 0)  # reset when the lock kicks in
 
     def test_a_failed_attempt_while_already_locked_does_not_extend_it(self):
         self.profile.locked_until = timezone.now() + timedelta(minutes=5)
         self.profile.save()
         original = self.profile.locked_until
-        stashes.register_failed_attempt(self.profile)
+        security.register_failed_attempt(self.profile)
         self.profile.refresh_from_db()
         self.assertEqual(self.profile.locked_until, original)
 
     def test_successful_login_clears_a_partial_failure_count(self):
-        stashes.register_failed_attempt(self.profile)
+        security.register_failed_attempt(self.profile)
         self.profile.refresh_from_db()
         self.assertEqual(self.profile.failed_pin_attempts, 1)
-        stashes.register_successful_login(self.profile)
+        security.register_successful_login(self.profile)
         self.profile.refresh_from_db()
         self.assertEqual(self.profile.failed_pin_attempts, 0)
 
@@ -80,23 +75,23 @@ class RecoveryCodeResetTests(TestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_user("tester", password="1234")
         self.recovery_code = "ABCD-EFGH-JKLM"
-        self.profile = Profile.objects.create(user=self.user, recovery_code_hash=stashes._hash(self.recovery_code))
+        self.profile = Profile.objects.create(user=self.user, recovery_code_hash=security._hash(self.recovery_code))
 
     def test_correct_code_resets_the_pin_and_issues_a_new_code(self):
-        ok, new_code = stashes.reset_pin_with_recovery_code(self.profile, self.recovery_code, "9999")
+        ok, new_code = security.reset_pin_with_recovery_code(self.profile, self.recovery_code, "9999")
         self.assertTrue(ok)
         self.assertNotEqual(new_code, self.recovery_code)
         self.user.refresh_from_db()
         self.assertTrue(self.user.check_password("9999"))
 
     def test_old_recovery_code_stops_working_after_a_reset(self):
-        stashes.reset_pin_with_recovery_code(self.profile, self.recovery_code, "9999")
+        security.reset_pin_with_recovery_code(self.profile, self.recovery_code, "9999")
         self.profile.refresh_from_db()
-        ok, _ = stashes.reset_pin_with_recovery_code(self.profile, self.recovery_code, "1111")
+        ok, _ = security.reset_pin_with_recovery_code(self.profile, self.recovery_code, "1111")
         self.assertFalse(ok)
 
     def test_wrong_code_counts_as_a_failed_attempt(self):
-        ok, new_code = stashes.reset_pin_with_recovery_code(self.profile, "WRONG-CODE-HERE", "9999")
+        ok, new_code = security.reset_pin_with_recovery_code(self.profile, "WRONG-CODE-HERE", "9999")
         self.assertFalse(ok)
         self.assertIsNone(new_code)
         self.profile.refresh_from_db()

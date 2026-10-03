@@ -132,6 +132,7 @@ class RateTable:
         self._known = None
 
     def _load(self):
+        # Imported here: models imports this module (for CURRENCY_CHOICES) while it loads.
         from .models import ExchangeRate
 
         known = {}
@@ -190,6 +191,7 @@ def fetch_latest_rates(main_currency, currencies):
     The internet request finishes before anything is written, so the database is never
     locked while waiting on the network.
     """
+    # Imported here: models imports this module (for CURRENCY_CHOICES) while it loads.
     from .models import ExchangeRate
 
     wanted = sorted(set(currencies) - {main_currency})

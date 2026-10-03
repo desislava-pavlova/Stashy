@@ -16,6 +16,7 @@ from audit.context import system_action
 from . import regional
 from .currency import CURRENCY_CHOICES, DEFAULT_CURRENCY
 from .money import CENT, ZERO
+from .text import possessive
 
 
 def name_key(name):
@@ -81,9 +82,7 @@ class Profile(models.Model):
     @property
     def owner_possessive(self):
         """ "Alex" -> "Alex's"; "The Smiths" -> "The Smiths'" (L1)."""
-        from . import stashes
-
-        return stashes.possessive(self.owner_name)
+        return possessive(self.owner_name)
 
     @property
     def setup_finished(self):
@@ -198,11 +197,27 @@ class Account(models.Model):
         return self.name
 
     def save(self, *args, **kwargs):
+        update_fields = kwargs.get("update_fields")
+        name_saved = update_fields is None or "name" in update_fields
+        sync = self._state.adding or (name_saved and self.name != getattr(self, "_saved_name", None))
         super().save(*args, **kwargs)
-        self.ensure_transfer_category()
+        if name_saved:
+            self._saved_name = self.name
+        # Only a new account or a new name touches the transfer category (D7); any other save,
+        # like ticking "inactive", leaves it alone.
+        if sync:
+            self.ensure_transfer_category()
 
     def get_absolute_url(self):
         return reverse("finance:account_detail", args=[self.pk])
+
+    @classmethod
+    def from_db(cls, db, field_names, values, **kwargs):
+        account = super().from_db(db, field_names, values, **kwargs)
+        # The name as saved, so save() can tell whether a rename needs the transfer category
+        # renamed too.
+        account._saved_name = dict(zip(field_names, values, strict=True)).get("name")
+        return account
 
     def clean(self):
         super().clean()
@@ -270,6 +285,13 @@ def grouped_accounts(accounts):
     return groups
 
 
+class CategoryQuerySet(models.QuerySet):
+    def main_categories(self):
+        """Top-level categories, the ones a subcategory can go under - never an account's
+        transfer category."""
+        return self.filter(parent__isnull=True, account__isnull=True)
+
+
 class Category(models.Model):
     class CategoryType(models.TextChoices):
         INCOME = "income", "Income"
@@ -295,6 +317,8 @@ class Category(models.Model):
     # Stashy didn't already have - flagged for visibility/later cleanup rather than baked into
     # the name forever, same idea as system-managed categories getting a badge, not a label.
     is_auto_generated = models.BooleanField(default=False)
+
+    objects = CategoryQuerySet.as_manager()
 
     class Meta:
         verbose_name_plural = "categories"
@@ -330,6 +354,11 @@ class Category(models.Model):
     def full_name(self):
         return f"{self.parent.name} > {self.name}" if self.parent_id else self.name
 
+    def create_subcategory(self, name, **fields):
+        """A new subcategory under this one. It always takes this category's type: an "Income"
+        category with an "Expense" child would only confuse the reports."""
+        return Category.objects.create(name=name, category_type=self.category_type, parent=self, **fields)
+
     def clean(self):
         super().clean()
         errors = {}
@@ -355,7 +384,7 @@ class Category(models.Model):
             same_name = Category.objects.filter(name_key=name_key(self.name)).exclude(pk=self.pk)
             if parent is not None and same_name.filter(parent=parent).exists():
                 errors["name"] = f"'{parent.name}' already has a subcategory with this name."
-            elif parent is None and same_name.filter(parent__isnull=True, account__isnull=True).exists():
+            elif parent is None and same_name.main_categories().exists():
                 errors["name"] = "A category with this name already exists."
         if errors:
             raise ValidationError(errors)
@@ -644,6 +673,9 @@ class Reminder(models.Model):
     # (frequency, interval, dates) stays per row, since an occurrence's own date is what makes it
     # that occurrence.
     SERIES_FIELDS = ["account", "payee", "category", "amount", "reminder_type", "notes"]
+    # What decides a recurring reminder's future dates: saving any of them regenerates its
+    # occurrences (see save()).
+    SCHEDULE_FIELDS = frozenset({"frequency", "interval", "next_due_date", "end_date", "end_of_period"})
 
     # "Due soon" is treated as urgent enough to need action; anything further out than this
     # many days (and not already overdue) is either "paid" (see status()) or plain pending.
@@ -704,10 +736,14 @@ class Reminder(models.Model):
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
-        # Same pattern as Account.save() -> ensure_transfer_category(): a recurring reminder
-        # keeps its own future occurrences in sync on every save, not just through the form,
-        # so direct ORM use (admin, scripts, shell) gets the same auto-generation for free.
-        if self.frequency != self.Frequency.ONE_TIME:
+        # A recurring reminder keeps its future occurrences in sync in save() itself, not just in
+        # the form, so the admin, scripts and the shell get the same occurrences. A full save
+        # (every form and admin edit) always regenerates: that's also what moves the
+        # generation horizon forward as time passes. A save of chosen fields regenerates only
+        # if one of them is part of the schedule - marking a period paid doesn't move any date.
+        update_fields = kwargs.get("update_fields")
+        schedule_saved = update_fields is None or not self.SCHEDULE_FIELDS.isdisjoint(update_fields)
+        if self.frequency != self.Frequency.ONE_TIME and schedule_saved:
             self.regenerate_occurrences()
 
     def delete(self, *args, **kwargs):

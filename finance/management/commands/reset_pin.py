@@ -8,7 +8,7 @@ import getpass
 
 from django.core.management.base import BaseCommand, CommandError
 
-from finance import stashes
+from finance.stashes import StashError, registry
 
 
 class Command(BaseCommand):
@@ -22,7 +22,7 @@ class Command(BaseCommand):
         name = options["name"]
         pin = options["pin"] or getpass.getpass("New 4-digit PIN: ")
         try:
-            stashes.reset_pin_directly(name, pin)
-        except stashes.StashError as error:
+            registry.reset_pin_directly(name, pin)
+        except StashError as error:
             raise CommandError(str(error)) from error
         self.stdout.write(self.style.SUCCESS(f'PIN reset for "{name}".'))

@@ -7,6 +7,8 @@ class AuditConfig(AppConfig):
     verbose_name = "Audit log"
 
     def ready(self):
+        # Imported here: signals imports the models, which don't exist yet when Django
+        # imports this module.
         from . import signals
 
         model_signals.pre_save.connect(signals.remember_old_values, dispatch_uid="audit.pre_save")

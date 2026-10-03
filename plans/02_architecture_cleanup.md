@@ -10,7 +10,8 @@ Progress is tracked with the checkboxes below. **Status:** Phase 1 done
 Phase 3 done (02/10/2026, 580 tests green in 15 s) except the migrations
 question in 3.6, which waits until the cleanup is done; Phase 4 done
 (02/10/2026, 610 tests green in 17 s, coverage 89% → 90%); Phase 5 done
-(03/10/2026, 633 tests green in 22 s, coverage 90% → 91%); Phase 6 next.
+(03/10/2026, 633 tests green in 22 s, coverage 90% → 91%); Phase 6 done
+(03/10/2026, 675 tests green in 23 s, coverage 94%); Phase 7 next.
 
 Work through it phase by phase. Every phase leaves the app working and the
 full test suite green, so we can stop and resume anywhere. Line numbers in
@@ -742,40 +743,69 @@ clean.
 
 ## Phase 6 — Side effects and boundaries  (F12, F14, F17, F18, F35, F36, F38, F50)
 
-- [ ] **6.1** Make `Account.save()`'s transfer-category sync explicit: only
+Done 03/10/2026. Tests: `finance/test_cleanup_phase6.py` (27).
+
+- [x] **6.1** Make `Account.save()`'s transfer-category sync explicit: only
   when created or when `name` changed (skip on `update_fields` that don't
   include `name`), or move it to the account-creation/rename service.
-- [ ] **6.2** `Reminder.save()`: regenerate occurrences only when a schedule
+  *Done in `save()` itself: `from_db()` remembers the saved name, and the
+  sync runs only for a new account or a changed name that is being saved.*
+- [x] **6.2** `Reminder.save()`: regenerate occurrences only when a schedule
   field changed (frequency, interval, next_due_date, end_date,
   end_of_period), not on every save (F12).
-- [ ] **6.3** Audit app exports `audit.suspended()` (context manager owning
+  *Claude's call: a save with `update_fields` regenerates only if one of
+  them is in `Reminder.SCHEDULE_FIELDS`; a full save (every form and admin
+  edit) still always regenerates, because that's also what moves the
+  "90 days or year-end" horizon forward as time passes. Skipping it would
+  have been a visible change.*
+- [x] **6.3** Audit app exports `audit.suspended()` (context manager owning
   its own dispatch_uids); `stashes.create_stash()` uses it (F17).
-- [ ] **6.4** `db_router`: `threading.local` → `ContextVar`, same as
+  *Claude's call: `audit.context.audit_suspended()` sets a flag on the
+  audit context (a ContextVar) that the handlers check, instead of
+  disconnecting them. Disconnecting is process-wide: while one request
+  built a new stash, every other request's changes went unlogged too.*
+- [x] **6.4** `db_router`: `threading.local` → `ContextVar`, same as
   `audit.context` (F18). Low priority: waitress is a threaded, synchronous
   server, so `threading.local` is correct today. This only makes the two
   mechanisms consistent.
-- [ ] **6.5** Split `stashes.py` into `stashes/registry.py` (folders, aliases,
+- [x] **6.5** Split `stashes.py` into `stashes/registry.py` (folders, aliases,
   create) and `stashes/security.py` (PIN, lockout, recovery codes) (F14).
+  *`StashError` lives in `stashes/__init__.py`. `registry` uses `security`,
+  never the other way round. `create_stash()` and `reset_pin_directly()`
+  are now tested on a real temporary stash.*
 - [x] ~~**6.6** Q2: optionally move lockout/recovery fields to a
   `StashSecurity` model (needs a migration + backup).~~ Dropped 27/09/2026,
   see Q2.
-- [ ] **6.7** `PinField` (4-digit validation) and a `PinConfirmMixin` in
+- [x] **6.7** `PinField` (4-digit validation) and a `PinConfirmMixin` in
   `auth_forms.py`; `stashes.validate_pin()` reuses the same validator (F35).
-- [ ] **6.8** Break the audit → finance import (F36): the audit admin formats
+  *Claude's call (polish): every bad PIN now gets the one message "PIN must
+  be exactly 4 digits.", where a too-short one used to get Django's "Ensure
+  this value has at least 4 characters". The rule also rejects a trailing
+  line break and non-ASCII digits.*
+- [x] **6.8** Break the audit → finance import (F36): the audit admin formats
   timestamps with its own helper or a setting-provided callable, not
   `finance.regional`.
-- [ ] **6.9** One rule for a new subcategory's type (parent's type, as the
+  *Its own helper, `audit.admin.format_timestamp()`; it never used a
+  finance preference, only the active time zone.*
+- [x] **6.9** One rule for a new subcategory's type (parent's type, as the
   importer does) shared by `starter_categories.py` and the import service;
   exclude transfer categories from the starter lookup (F38).
-- [ ] **6.10** Remove the import cycles instead of hiding them (F50):
+  *`Category.create_subcategory()` and `Category.objects.main_categories()`.
+  The shipped `starter_categories.xlsx` has no row whose type differs from
+  its main category, so new stashes get the same categories as before.*
+- [x] **6.10** Remove the import cycles instead of hiding them (F50):
   `possessive()` moves to a small `finance/text.py` that both `models` and
   `stashes` import. After 6.5, `stashes/security.py` imports models,
   `get_user_model` and the hashers at the top. Any function-level import that
   remains gets a one-line comment saying why it has to stay (for example,
   `backup.py` must stay standard-library only).
+  *openpyxl, ofxparse and tzlocal moved to the top too. Four stay inside
+  functions, each with a "# Imported here: ..." comment (the two `apps.py`
+  `ready()` imports, `winreg`, and `currency.py`'s `ExchangeRate`, since
+  `models` imports `currency`). A test checks the comment is there.*
 
 **Done when:** a test proves a plain `update_fields` save doesn't run the
-side effect; suite green.
+side effect; suite green. ✔ (`AccountSaveTests`, `ReminderSaveTests`)
 
 ## Phase 7 — Tests restructure  (F19, F20, F52)
 

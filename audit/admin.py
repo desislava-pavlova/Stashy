@@ -1,17 +1,31 @@
+from datetime import timedelta
 from urllib.parse import urlencode
 
 from django.contrib import admin
 from django.shortcuts import redirect
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.html import format_html, format_html_join
-
-from finance import regional
 
 from .models import AuditLogEntry
 
 
 def _text(value):
     return "—" if value in (None, "") else str(value)
+
+
+def format_timestamp(value):
+    """The audit log's own timestamp column: always ISO-style, with milliseconds and the
+    offset, in the active time zone (the viewer's own) - unlike every other date/time in the
+    app, it never follows a date-format preference, since it reads like a database log."""
+    if value is None or value == "":
+        return ""
+    local = timezone.localtime(value) if timezone.is_aware(value) else value
+    offset = local.utcoffset() if timezone.is_aware(local) else None
+    minutes = int((offset or timedelta()).total_seconds() // 60)
+    sign = "+" if minutes >= 0 else "-"
+    hours, minutes = divmod(abs(minutes), 60)
+    return f"{local:%Y-%m-%d %H:%M:%S}.{local.microsecond // 1000:03d} {sign}{hours:02d}:{minutes:02d}"
 
 
 @admin.register(AuditLogEntry)
@@ -51,7 +65,7 @@ class AuditLogEntryAdmin(admin.ModelAdmin):
 
     @admin.display(description="Time", ordering="timestamp")
     def when(self, obj):
-        return regional.format_audit_timestamp(obj.timestamp)
+        return format_timestamp(obj.timestamp)
 
     @admin.display(description="Op", ordering="action")
     def op(self, obj):

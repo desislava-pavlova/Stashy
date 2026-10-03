@@ -7,6 +7,8 @@ from decimal import Decimal
 
 from django.http import HttpResponse
 from django.utils.http import url_has_allowed_host_and_scheme
+from openpyxl import Workbook
+from openpyxl.cell.cell import TYPE_STRING
 
 from .. import regional
 
@@ -82,9 +84,6 @@ def _xlsx_response(filename, headers, rows):
     """Amounts go in as real numbers and dates as real dates, so Excel can add them up and sort
     them. Text is always stored as text - openpyxl would otherwise write a string starting with
     "=" as a formula."""
-    from openpyxl import Workbook
-    from openpyxl.cell.cell import TYPE_STRING
-
     date_format = regional.current().date_placeholder
     workbook = Workbook()
     sheet = workbook.active

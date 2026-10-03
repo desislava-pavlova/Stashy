@@ -12,8 +12,12 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
+from zipfile import BadZipFile
 
 from django.db import router, transaction
+from ofxparse import OfxParser
+from openpyxl import load_workbook
+from openpyxl.utils.exceptions import InvalidFileException
 
 from audit.context import system_action
 
@@ -108,11 +112,6 @@ def _read_csv(upload):
 
 def _read_xlsx(upload):
     """(fieldnames, rows) from the first sheet of an uploaded Excel file."""
-    from zipfile import BadZipFile
-
-    from openpyxl import load_workbook
-    from openpyxl.utils.exceptions import InvalidFileException
-
     try:
         workbook = load_workbook(upload, data_only=True, read_only=True)
         all_rows = list(workbook.active.iter_rows(values_only=True))
@@ -145,8 +144,6 @@ def _read_xlsx(upload):
 
 def _read_ofx(upload):
     """Every transaction in an OFX/QFX file as (date, raw amount, payee name, memo)."""
-    from ofxparse import OfxParser
-
     try:
         ofx = OfxParser.parse(upload)
         return [
@@ -307,7 +304,7 @@ def _resolve_category(raw, amount):
         return None
 
     category_type = Category.CategoryType.INCOME if amount > 0 else Category.CategoryType.EXPENSE
-    parent = Category.objects.filter(name_key=name_key(parent_name), parent__isnull=True, account__isnull=True).first()
+    parent = Category.objects.main_categories().filter(name_key=name_key(parent_name)).first()
     if parent is None:
         parent = Category.objects.create(name=parent_name, category_type=category_type, is_auto_generated=True)
 
@@ -316,11 +313,7 @@ def _resolve_category(raw, amount):
 
     child = Category.objects.filter(name_key=name_key(child_name), parent=parent).first()
     if child is None:
-        # A new subcategory always takes its parent's type - a mismatched pair (an "income"
-        # category with an "expense" child) would only confuse reports for no real benefit.
-        child = Category.objects.create(
-            name=child_name, category_type=parent.category_type, parent=parent, is_auto_generated=True
-        )
+        child = parent.create_subcategory(child_name, is_auto_generated=True)
     return child
 
 

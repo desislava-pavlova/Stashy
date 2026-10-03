@@ -1,38 +1,38 @@
-"""Multi-stash login (Phase 12, rewritten 2026-09-15): which stash's SQLite file a request's
-ORM queries land in is decided per-request, from a thread-local set by
-finance.middleware.StashSelectionMiddleware off the session - not once at process start off a
-file, as the original restart-based design worked. This is what lets someone switch stashes
-without closing and reopening Stashy.bat, at the cost of logging in again each time (by
-design: each stash is a fully separate login, so there's no "switch without re-authenticating"
-to offer).
+"""Which stash's SQLite file a request's ORM queries land in is decided per request, from the
+"current stash" set by finance.middleware.StashSelectionMiddleware off the session. That's what
+lets someone switch stashes without restarting Stashy.bat, at the cost of logging in again each
+time (by design: each stash is a fully separate login).
 
 Every stash is registered as its own connection alias, named after the stash itself, in
-finance.stashes.ensure_registered() - this router just says "route here" for whichever alias
-is current; it never registers anything itself.
+finance.stashes.registry.ensure_registered() - this router just says "route here" for whichever
+alias is current; it never registers anything itself.
+
+The current stash is kept in a ContextVar, the same mechanism audit.context uses: a value
+private to the current request's thread (and to its async task, if Django ever runs one).
 """
 
-import threading
+from contextvars import ContextVar
 
-_local = threading.local()
+_current_alias = ContextVar("stash_alias", default=None)
 
 
 def set_current_stash_alias(alias):
-    _local.alias = alias or None
+    _current_alias.set(alias or None)
 
 
 def clear_current_stash_alias():
-    _local.alias = None
+    _current_alias.set(None)
 
 
 def current_stash_alias():
-    return getattr(_local, "alias", None)
+    return _current_alias.get()
 
 
 class StashRouter:
     """Returning None (no opinion) for anything means Django falls back to `default` - the
     picker's own inert placeholder database, used only before a stash has been chosen for this
     request's session. Sessions themselves are signed-cookie based (see SESSION_ENGINE in
-    settings.py) specifically so they never need routing here at all - the very session lookup
+    settings/base.py) specifically so they never need routing here at all - the very session lookup
     that would tell us "which stash" can't itself live inside a stash's own database."""
 
     def db_for_read(self, model, **hints):
@@ -47,6 +47,6 @@ class StashRouter:
     def allow_migrate(self, db, app_label, model_name=None, **hints):
         # No opinion - Django's own default applies: a bare `migrate` only touches `default`,
         # while `migrate --database=<alias>` (how every stash gets its schema, in
-        # finance.stashes.create_stash() and scripts/bootstrap.py) still fully applies to that
+        # finance.stashes.registry.create_stash() and scripts/bootstrap.py) still fully applies to that
         # alias. Restricting this would break the second case.
         return None

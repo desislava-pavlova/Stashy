@@ -20,6 +20,7 @@ class AuditContext:
     reason: str = ""
     operation: str = ""
     request: object = None
+    suspended: bool = False
 
 
 # AuditContext is frozen, so sharing one default instance is safe.
@@ -53,4 +54,13 @@ def system_action(reason):
     parent = _current.get()
     context = replace(parent, source=SYSTEM, reason=reason, operation=parent.operation or new_operation_id())
     with _activate(context):
+        yield
+
+
+@contextmanager
+def audit_suspended():
+    """Write no audit entries for changes made inside this block - for building a brand new
+    stash, where there's nothing to audit yet. Only this request (or thread) is affected: the
+    signal handlers stay connected, so every other request is still logged as usual."""
+    with _activate(replace(_current.get(), suspended=True)):
         yield

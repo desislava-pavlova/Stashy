@@ -7,6 +7,8 @@ from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 
+from audit.admin import format_timestamp
+
 from . import regional
 from .forms import TransactionForm
 from .models import Account, Transaction
@@ -43,19 +45,19 @@ class AuditTimestampFormatTests(SimpleTestCase):
     def test_iso_style_with_milliseconds_and_offset(self):
         value = datetime(2026, 9, 15, 12, 6, 48, 930000, tzinfo=UTC)
         with regional.activate(regional.Preferences(time_zone="Europe/Sofia")):
-            self.assertEqual(regional.format_audit_timestamp(value), "2026-09-15 15:06:48.930 +03:00")
+            self.assertEqual(format_timestamp(value), "2026-09-15 15:06:48.930 +03:00")
 
     def test_never_follows_the_date_format_preference(self):
         value = datetime(2026, 9, 15, 12, 6, 48, tzinfo=UTC)
         preferences = regional.Preferences(date_format="mdy", time_zone="Europe/Sofia")
         with regional.activate(preferences):
-            self.assertTrue(regional.format_audit_timestamp(value).startswith("2026-09-15"))
+            self.assertTrue(format_timestamp(value).startswith("2026-09-15"))
 
     def test_negative_offset(self):
         value = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
         with regional.activate(regional.Preferences(time_zone="America/New_York")):
-            formatted = regional.format_audit_timestamp(value)
+            formatted = format_timestamp(value)
         self.assertTrue(formatted.endswith("-05:00"), formatted)
 
     def test_blank_for_missing_value(self):
-        self.assertEqual(regional.format_audit_timestamp(None), "")
+        self.assertEqual(format_timestamp(None), "")

@@ -23,11 +23,12 @@ from django.urls import reverse
 from openpyxl import load_workbook
 
 from . import backup as finance_backup
-from . import db_router, stashes
+from . import db_router
 from .middleware import StashAtomicRequestMiddleware
 from .models import Account, Category, ExchangeRate, ImportBatch, Payee, Profile, Transaction
 from .reporting import income_and_spending, spending_tree
 from .services.importing import _parse_transaction_number
+from .stashes import registry, security
 from .views._helpers import _safe_next
 
 
@@ -38,13 +39,13 @@ class TemporaryStashesMixin:
     def make_stashes(self, *names):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
-        patcher = mock.patch.object(stashes, "stashes_dir", return_value=Path(tmp.name))
+        patcher = mock.patch.object(registry, "stashes_dir", return_value=Path(tmp.name))
         patcher.start()
         self.addCleanup(patcher.stop)
         for name in names:
-            stashes.stash_path(name).mkdir(parents=True)
-            sqlite3.connect(stashes.stash_db_path(name)).close()
-            stashes.ensure_registered(name)
+            registry.stash_path(name).mkdir(parents=True)
+            sqlite3.connect(registry.stash_db_path(name)).close()
+            registry.ensure_registered(name)
             self.addCleanup(self._unregister, name)
         self.addCleanup(db_router.clear_current_stash_alias)
         # Django's test runner only lets a test touch the databases it lists. These aliases
@@ -150,11 +151,11 @@ class RestoreBringsBackTodaysSchemaTests(TemporaryStashesMixin, SimpleTestCase):
         self.make_stashes("restorecheck")
         call_command("migrate", "finance", "0016", database="restorecheck", verbosity=0)
         old_backup = finance_backup.backup_now(
-            stashes.stash_db_path("restorecheck"), stashes.stash_path("restorecheck"), tag="before_update"
+            registry.stash_db_path("restorecheck"), registry.stash_path("restorecheck"), tag="before_update"
         )
         call_command("migrate", database="restorecheck", verbosity=0)
 
-        stashes.restore_stash("restorecheck", old_backup)
+        registry.restore_stash("restorecheck", old_backup)
 
         with connections["restorecheck"].cursor() as cursor:
             columns = [
@@ -381,7 +382,7 @@ class RecoveryCodeNotInCookieTests(LoggedInTestCase):
 
     def test_the_code_is_shown_once_and_never_stored_in_the_session(self):
         Profile.for_user(self.user)
-        with mock.patch.object(stashes, "regenerate_recovery_code", return_value="ABCD-EFGH-JKLM"):
+        with mock.patch.object(security, "regenerate_recovery_code", return_value="ABCD-EFGH-JKLM"):
             self.client.post(reverse("finance:recovery_code"))
         self.assertNotIn("ABCD-EFGH-JKLM", str(dict(self.client.session)))
 

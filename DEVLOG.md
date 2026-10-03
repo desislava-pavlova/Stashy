@@ -4036,3 +4036,105 @@ a browser.
 `finance/test_phase11_follow_up.py`, `finance/test_phase13_reports.py`;
 `README.md`, `CLAUDE.md`, `plans/02_architecture_cleanup.md`,
 `plans/03_fixes_and_changes_plan.md`.
+
+---
+
+## 03/10/2026 — Plan 02, Phase 6: side effects and boundaries
+
+**What changed** (details and ticks in `plans/02_architecture_cleanup.md`):
+- **Saves do their extra work only when it matters (6.1, 6.2).** Saving an
+  account used to look up (and maybe rename) its `[Account]` transfer
+  category every time, even when you only ticked "inactive". Now that runs
+  only for a new account or a new name. A recurring reminder used to rebuild
+  its future occurrences on every save, including "mark this period paid".
+  Now a save of chosen fields rebuilds them only if one of those fields can
+  move a date (frequency, interval, due date, end date, last day of period).
+  Saving the whole reminder from the form still rebuilds them, because
+  that's also what moves the "90 days or year-end" horizon forward.
+- **The audit log has its own off switch (6.3).** Creating a stash needs the
+  audit log off for a moment (the new database has nothing to log yet). The
+  stash code used to reach into the audit app and unplug its five signal
+  handlers by name. That had a hidden flaw: unplugging is for the whole
+  program, so while one person created a stash, changes made by any other
+  request at that moment weren't logged either. Now the audit app offers
+  `audit_suspended()`, which marks only the current request as "don't log".
+- **The router remembers the current stash in a ContextVar (6.4),** the same
+  tool the audit log already used, instead of `threading.local`.
+- **`stashes.py` became a `stashes/` package (6.5):** `registry.py` (where
+  the stashes are: folders, connections, creating, restoring, owner names)
+  and `security.py` (the PIN, the lockout, recovery codes). Creating a stash
+  and the `reset_pin` command now have tests on a real temporary stash; they
+  had none before.
+- **One PIN rule (6.7).** The "exactly 4 digits" check was written out five
+  times and "PINs don't match" three times. Now there's one `PinField` and
+  one `PinConfirmMixin`. Every wrong PIN gets the same message, "PIN must
+  be exactly 4 digits." (a too-short one used to get Django's "Ensure this
+  value has at least 4 characters").
+- **The audit app stands on its own (6.8).** It formats its timestamps
+  itself instead of borrowing `finance.regional`, so it no longer imports
+  anything from the finance app.
+- **One rule for a new subcategory's type (6.9):** it always takes its main
+  category's type, whether the importer or the starter-categories sheet
+  creates it (`Category.create_subcategory()`). The starter sheet also can't
+  put a subcategory under an account's `[Transfer]` category any more. The
+  sheet that ships with Stashy never disagreed with this rule, so new stashes
+  get the same categories as before.
+- **No hidden import cycles (6.10).** `possessive()` ("Alex's") moved to a
+  tiny `finance/text.py`. Imports went to the top of their modules. The four
+  that must stay inside a function each say why in a `# Imported here: ...`
+  comment, and a test checks that.
+- New tests: `finance/test_cleanup_phase6.py` (27).
+- Found along the way and filed as plan 03 **R9**: `manage.py reset_pin
+  Alex` crashes when the stash's folder is `alex`, because Windows ignores
+  upper/lower case in folder names. It was already like that; this phase
+  only moved the code.
+
+**Teaching note — side effects in `save()`.** Putting "also do X" inside
+`save()` is handy: the admin, the shell and scripts all get X for free. The
+price is that *every* save pays for X, including saves that can't possibly
+need it. Django's `save(update_fields=[...])` says exactly which columns are
+being written, so `save()` can ask "could this change matter to X?" and skip
+the work when the answer is no. To spot a renamed account, Django's
+`from_db()` hook (called whenever a row is loaded) remembers the name as it
+was in the database, so `save()` can compare.
+
+**Teaching note — global switch vs. a per-request flag.** Django's signals
+belong to the whole running program, and Waitress serves several requests at
+once on different threads. Disconnecting a signal handler to silence it
+"here" silences it *everywhere* until it's reconnected. A ContextVar is a
+value private to the current request, so setting a "suspended" flag in it
+silences only the code running inside the `with audit_suspended():` block.
+A test runs a second thread during the block and checks it still logs.
+
+**Teaching note — import cycles.** `models.py` used to import `stashes`
+inside a function, and `stashes` imported `models` inside functions. Each
+hid the other's import to dodge an "import cycle" (two modules that each
+need the other while loading). The fix is to move the shared piece somewhere
+both can use: `possessive()` needs nothing from either, so it lives alone in
+`text.py`. Imports at the top of a file are a table of contents: they tell
+you what the module depends on before you read a line of it.
+
+**Coverage:** 94% (3,776 statements, 233 not run by any test), up from 91%
+at Phase 5. `stashes/registry.py` is at 88%, `stashes/security.py` at 93%.
+
+**Verification:** full suite green: 675 tests in 23 s (648 before).
+`ruff check .` and `ruff format --check .` are clean. `makemigrations
+--check` finds nothing: this phase has no database changes. The real
+middleware chain was tried on a throwaway server on port 8765 against the
+`test` stash, GET requests and the picker form only: with no stash chosen
+every page goes to the picker; once `test` is chosen, the PIN screen and
+Forgot PIN open and show their PIN boxes. Not checked in a browser.
+
+**Files:** `finance/stashes/` (new: `__init__.py`, `registry.py`,
+`security.py`), `finance/text.py`, `finance/test_cleanup_phase6.py` (new);
+`finance/stashes.py` (removed); `finance/models.py`, `finance/auth_forms.py`,
+`finance/db_router.py`, `finance/middleware.py`, `finance/apps.py`,
+`finance/regional.py`, `finance/currency.py`, `finance/forms.py`,
+`finance/starter_categories.py`, `finance/services/importing.py`,
+`finance/views/auth.py`, `finance/views/settings.py`,
+`finance/views/_helpers.py`, `finance/management/commands/reset_pin.py`,
+`audit/admin.py`, `audit/apps.py`, `audit/context.py`, `audit/signals.py`,
+`scripts/load_test_data.py` (import only), `finance/test_cleanup_phase1.py`,
+`finance/test_phase12_stash_login.py`, `finance/test_phase14.py`,
+`finance/test_phase15.py`; `README.md`, `CLAUDE.md`,
+`plans/02_architecture_cleanup.md`, `plans/03_fixes_and_changes_plan.md`.

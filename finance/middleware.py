@@ -3,8 +3,9 @@ from django.db import DEFAULT_DB_ALIAS, transaction
 from django.shortcuts import redirect
 from django.urls import reverse
 
-from . import db_router, regional, stashes
+from . import db_router, regional
 from .models import Profile
+from .stashes import registry
 
 
 def _folder_of(url):
@@ -17,7 +18,7 @@ class StashAtomicRequestMiddleware:
 
     Django's own ATOMIC_REQUESTS wraps the view in atomic() for every database that has the
     flag. Stashes are registered at runtime and any of them could be the active one, so the
-    flag is off for them (stashes.ensure_registered) and this wraps the view for the active
+    flag is off for them (registry.ensure_registered) and this wraps the view for the active
     stash only - every change the view makes is kept or rolled back together, and the other
     stashes' files are never locked. Before a stash is chosen there's no active alias, and
     Django's normal handling of `default` applies.
@@ -63,8 +64,8 @@ class StashSelectionMiddleware:
             return self.get_response(request)
         alias = request.session.get("stash") or None
         if alias:
-            if stashes.stash_exists(alias):
-                stashes.ensure_registered(alias)
+            if registry.stash_exists(alias):
+                registry.ensure_registered(alias)
             else:
                 # Named a stash whose folder no longer exists (deleted by hand) - treat it the
                 # same as none chosen rather than routing queries at a dead alias.
@@ -104,8 +105,8 @@ class RequireStashMiddleware:
         if settings.TESTING:
             return self.get_response(request)
         if not request.session.get("stash") and not request.path.startswith(self.exempt_prefixes()):
-            remembered = request.COOKIES.get(stashes.LAST_STASH_COOKIE)
-            if remembered and stashes.stash_exists(remembered):
+            remembered = request.COOKIES.get(registry.LAST_STASH_COOKIE)
+            if remembered and registry.stash_exists(remembered):
                 request.session["stash"] = remembered
                 return redirect(request.get_full_path())
             return redirect("stash_picker")

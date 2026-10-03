@@ -21,9 +21,10 @@ from django.contrib.auth import get_user_model
 from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 
-from . import starter_categories, stashes
+from . import starter_categories
 from .middleware import RequireSetupMiddleware, RequireStashMiddleware
 from .models import Account, Category, Profile
+from .stashes import registry, security
 
 
 class OwnerPossessiveTests(SimpleTestCase):
@@ -153,12 +154,10 @@ class RecoveryCodePageTests(LoggedInTestCase):
         self.assertContains(second, "This replaces your recovery code")
 
     def test_old_code_stops_working_after_generating_a_new_one(self):
-        from . import stashes
-
-        known_code = stashes.regenerate_recovery_code(self.profile)
+        known_code = security.regenerate_recovery_code(self.profile)
         self.client.post(reverse("finance:recovery_code"))
         self.profile.refresh_from_db()
-        ok, _ = stashes.reset_pin_with_recovery_code(self.profile, known_code, "1234")
+        ok, _ = security.reset_pin_with_recovery_code(self.profile, known_code, "1234")
         self.assertFalse(ok)
 
 
@@ -248,11 +247,11 @@ class RememberedStashCookieTests(SimpleTestCase):
 
     @override_settings(TESTING=False)
     def test_a_remembered_stash_that_still_exists_is_selected_and_the_request_redirected(self):
-        with mock.patch.object(stashes, "stash_exists", return_value=True):
+        with mock.patch.object(registry, "stash_exists", return_value=True):
             middleware = RequireStashMiddleware(get_response=lambda r: "should not be reached")
             request = self.factory.get("/accounts/login/")
             request.session = {}
-            request.COOKIES = {stashes.LAST_STASH_COOKIE: "alex"}
+            request.COOKIES = {registry.LAST_STASH_COOKIE: "alex"}
             response = middleware(request)
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.url, "/accounts/login/")
@@ -260,11 +259,11 @@ class RememberedStashCookieTests(SimpleTestCase):
 
     @override_settings(TESTING=False)
     def test_a_remembered_stash_that_no_longer_exists_falls_back_to_the_picker(self):
-        with mock.patch.object(stashes, "stash_exists", return_value=False):
+        with mock.patch.object(registry, "stash_exists", return_value=False):
             middleware = RequireStashMiddleware(get_response=lambda r: "should not be reached")
             request = self.factory.get("/accounts/login/")
             request.session = {}
-            request.COOKIES = {stashes.LAST_STASH_COOKIE: "gone"}
+            request.COOKIES = {registry.LAST_STASH_COOKIE: "gone"}
             response = middleware(request)
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.url, reverse("stash_picker"))
@@ -285,11 +284,11 @@ class RememberedStashCookieTests(SimpleTestCase):
         # A cookie doesn't force-select a stash on the picker's own pages - picking one there
         # is still an explicit action, per stash_picker()'s "already selected -> redirect to
         # login" guard, not something this middleware should short-circuit.
-        with mock.patch.object(stashes, "stash_exists", return_value=True):
+        with mock.patch.object(registry, "stash_exists", return_value=True):
             middleware = RequireStashMiddleware(get_response=lambda r: "ok")
             request = self.factory.get("/stashes/")
             request.session = {}
-            request.COOKIES = {stashes.LAST_STASH_COOKIE: "alex"}
+            request.COOKIES = {registry.LAST_STASH_COOKIE: "alex"}
             response = middleware(request)
         self.assertEqual(response, "ok")
         self.assertNotIn("stash", request.session)

@@ -29,9 +29,10 @@ django.setup()
 from django.db import transaction as db_transaction  # noqa: E402
 
 from audit.context import system_action  # noqa: E402
-from finance import db_router, stashes  # noqa: E402
+from finance import db_router  # noqa: E402
 from finance.models import Account, Category, ImportBatch, Payee, Reminder, Transaction  # noqa: E402
 from finance.money import parse_amount  # noqa: E402
+from finance.stashes import registry as stashes  # noqa: E402
 
 SOURCE = ROOT / "test_data.TXT"
 DATE_RE = re.compile(r"^\d{1,2}\.\d{1,2}\.\d{4}$")

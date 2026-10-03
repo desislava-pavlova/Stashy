@@ -23,7 +23,9 @@ class FinanceConfig(AppConfig):
         if len(sys.argv) > 1 and sys.argv[1] == "test":
             return
 
-        from . import stashes
+        # Imported here, not at the top: the registry imports the models, which don't exist
+        # yet when Django imports this module.
+        from .stashes import registry
 
-        for name in stashes.list_stashes():
-            stashes.ensure_registered(name)
+        for name in registry.list_stashes():
+            registry.ensure_registered(name)

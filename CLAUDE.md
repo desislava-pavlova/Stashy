@@ -47,7 +47,7 @@ terms.
 ## Commands
 
 ```
-.venv\Scripts\python.exe manage.py test                          # full suite, ~20 s (633 tests on 03/10/2026)
+.venv\Scripts\python.exe manage.py test                          # full suite, ~23 s (675 tests on 03/10/2026)
 .venv\Scripts\python.exe manage.py test finance.test_phase15     # one module
 .venv\Scripts\python.exe manage.py migrate --database <stash>    # one stash (Stashy.bat does all, with backups)
 .venv\Scripts\python.exe manage.py reset_pin <owner name>        # real, visible action - ask first
@@ -64,8 +64,9 @@ terms.
 - Waitress doesn't auto-reload, so remind the user to restart Stashy.bat
   after code changes.
 - A plain `manage.py shell` sees the empty placeholder database. To reach a
-  stash, run first: `from finance import stashes, db_router;
-  stashes.ensure_registered('test'); db_router.set_current_stash_alias('test')`.
+  stash, run first: `from finance import db_router; from finance.stashes import
+  registry; registry.ensure_registered('test');
+  db_router.set_current_stash_alias('test')`.
 - To read real data safely, open SQLite read-only:
   `sqlite3.connect('file:stashes/<stash>/db.sqlite3?mode=ro', uri=True)`.
 
@@ -102,21 +103,32 @@ terms.
   - Settings: the page saves preferences; `check_rates`, `create_backup`
     and `save_watched_expenses` are their own POST URLs.
   - `content.py`: the help-card tips (`*_TIPS`).
-  - `forms.py`, `auth_forms.py`.
+  - `forms.py`, `auth_forms.py` (`PinField` and `PinConfirmMixin`: every
+    PIN box uses `stashes.security.pin_validator`).
   - `reporting.py`: all report maths. `currency.py`: RateTable,
     Frankfurter. `money.py`: Decimal helpers, `parse_amount`.
     `regional.py`: date and number formats per user.
-  - `stashes.py`: stash folders, aliases, PIN and lockout, and
-    `restore_stash()` (restore + migrate). `db_router.py`, `middleware.py`,
+  - `stashes/` package: `registry.py` (stash folders, aliases,
+    `create_stash()`, `restore_stash()` = restore + migrate, owner names,
+    `reset_pin_directly()`) and `security.py` (PIN rule, lockout, recovery
+    codes). `StashError` is in `stashes/__init__.py`. `registry` imports
+    `security`, never the reverse. `text.py`: `possessive()`.
+    `db_router.py`, `middleware.py`,
     `backup.py` (standard library only, since bootstrap imports it before
     Django; copies go through SQLite's backup API, never a file copy).
-  - `starter_categories.py` reads `starter_categories.xlsx`.
+  - `starter_categories.py` reads `starter_categories.xlsx`. A new
+    subcategory always takes its main category's type: create it with
+    `Category.create_subcategory()`. `Category.objects.main_categories()`
+    = top-level, never a transfer category.
   - `templatetags/stashy_format.py`: the `money`, `moneyc`, `sdate` and
     `diff_tint` filters.
 - `audit/`: signal-based audit log (every save and delete of finance
-  models). `audit.context.system_action(reason)` marks automatic changes.
+  models). `audit.context.system_action(reason)` marks automatic changes;
+  `audit.context.audit_suspended()` writes nothing for this request only
+  (never disconnect the signals: that is process-wide). The audit app
+  imports nothing from `finance` (a test checks).
 - **Multi-stash routing:** the session's `stash` → `StashSelectionMiddleware`
-  → thread-local → `StashRouter`.
+  → a ContextVar in `db_router` → `StashRouter`.
   - `default` is `_picker.sqlite3`, an empty placeholder.
   - Every stash is its own connection alias named after its folder.
   - Sessions are signed cookies, because they must work before a stash is
@@ -182,6 +194,12 @@ terms.
   carry `no_earlier_activity`: the page shows "—" for that average but
   fills in the difference and draws the dot at 0, and the export writes
   0.00. For a main category, its subcategories' earlier activity counts.
+- `save()` side effects run only when they matter: `Account.save()` syncs
+  its transfer category for a new account or a changed name;
+  `Reminder.save()` regenerates occurrences on a full save or when
+  `update_fields` includes a `SCHEDULE_FIELDS` name.
+- Imports go at the top of the module. One that must stay inside a
+  function gets a `# Imported here: <why>` comment (a test checks).
 - Code that changes audited data goes through model `save()`/`delete()`,
   never `queryset.update()`/`bulk_create()`, and automatic logic runs inside
   `system_action("reason")`.

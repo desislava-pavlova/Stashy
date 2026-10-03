@@ -246,7 +246,7 @@ class CategoryForm(BootstrapFormMixin, forms.ModelForm):
         parent_field = self.fields["parent"]
         # Only a top-level category can be a parent (one level of subcategories, no tree) —
         # this alone also rules out a category ever being its own ancestor.
-        parents = Category.objects.filter(parent__isnull=True, account__isnull=True)
+        parents = Category.objects.main_categories()
         # Build the type-aware widget before assigning the queryset, so the queryset setter's
         # own "widget.choices = ..." (Django's ModelChoiceField internals) lands on this widget.
         parent_field.widget = CategoryParentSelect(

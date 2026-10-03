@@ -16,9 +16,10 @@ from django.urls import reverse
 from django.utils.decorators import method_decorator
 from django.views.decorators.http import require_POST
 
-from .. import stashes
 from ..auth_forms import ForgotPinForm, StashCreateForm, StashLoginForm
-from ..stashes import LAST_STASH_COOKIE, LAST_STASH_COOKIE_AGE
+from ..stashes import StashError, registry, security
+from ..stashes.registry import LAST_STASH_COOKIE, LAST_STASH_COOKIE_AGE
+from ..text import possessive
 
 
 @login_not_required
@@ -30,7 +31,7 @@ def stash_picker(request):
     if request.session.get("stash"):
         return redirect("login")
 
-    choices = stashes.stash_choices()
+    choices = registry.stash_choices()
     if not choices:
         return redirect("stash_create")
 
@@ -56,10 +57,10 @@ def stash_create(request):
         form = StashCreateForm(request.POST)
         if form.is_valid():
             try:
-                folder_name, recovery_code = stashes.create_stash(
+                folder_name, recovery_code = registry.create_stash(
                     form.cleaned_data["owner_name"], form.cleaned_data["pin"]
                 )
-            except stashes.StashError as error:
+            except StashError as error:
                 form.add_error(None, str(error))
             else:
                 request.session["stash"] = folder_name
@@ -69,7 +70,7 @@ def stash_create(request):
                     "registration/stash_recovery_code.html",
                     {
                         "owner_name": owner_name,
-                        "owner_possessive": stashes.possessive(owner_name),
+                        "owner_possessive": possessive(owner_name),
                         "recovery_code": recovery_code,
                     },
                 )
@@ -122,7 +123,7 @@ class StashLoginView(LoginView):
         self.stash_name = request.session.get("stash", "")
         if not self.stash_name:
             return redirect("stash_picker")
-        self.profile = stashes.profile_for_current_stash()
+        self.profile = security.profile_for_current_stash()
         return super().dispatch(request, *args, **kwargs)
 
     def get_initial(self):
@@ -132,25 +133,27 @@ class StashLoginView(LoginView):
         context = super().get_context_data(**kwargs)
         context["stash_name"] = self.stash_name
         context["owner_name"] = self.profile.owner_name if self.profile else self.stash_name
-        context["locked_out"] = bool(self.profile) and stashes.is_locked_out(self.profile)
-        context["lockout_minutes"] = (stashes.lockout_seconds_remaining(self.profile) // 60 + 1) if self.profile else 0
+        context["locked_out"] = bool(self.profile) and security.is_locked_out(self.profile)
+        context["lockout_minutes"] = (
+            (security.lockout_seconds_remaining(self.profile) // 60 + 1) if self.profile else 0
+        )
         return context
 
     def post(self, request, *args, **kwargs):
-        if self.profile and stashes.is_locked_out(self.profile):
+        if self.profile and security.is_locked_out(self.profile):
             return self.render_to_response(self.get_context_data())
         return super().post(request, *args, **kwargs)
 
     def form_valid(self, form):
         if self.profile:
-            stashes.register_successful_login(self.profile)
+            security.register_successful_login(self.profile)
         response = super().form_valid(form)
         response.set_cookie(LAST_STASH_COOKIE, self.stash_name, max_age=LAST_STASH_COOKIE_AGE, samesite="Lax")
         return response
 
     def form_invalid(self, form):
-        if self.profile and not stashes.is_locked_out(self.profile):
-            stashes.register_failed_attempt(self.profile)
+        if self.profile and not security.is_locked_out(self.profile):
+            security.register_failed_attempt(self.profile)
         return super().form_invalid(form)
 
 
@@ -159,16 +162,16 @@ def forgot_pin(request):
     stash_name = request.session.get("stash", "")
     if not stash_name:
         return redirect("stash_picker")
-    profile = stashes.profile_for_current_stash()
+    profile = security.profile_for_current_stash()
     if profile is None:
         return redirect("login")
 
-    locked_out = stashes.is_locked_out(profile)
+    locked_out = security.is_locked_out(profile)
     form = ForgotPinForm()
     if request.method == "POST" and not locked_out:
         form = ForgotPinForm(request.POST)
         if form.is_valid():
-            ok, new_recovery_code = stashes.reset_pin_with_recovery_code(
+            ok, new_recovery_code = security.reset_pin_with_recovery_code(
                 profile, form.cleaned_data["recovery_code"], form.cleaned_data["new_pin"]
             )
             if ok:
@@ -183,7 +186,7 @@ def forgot_pin(request):
                     },
                 )
             form.add_error("recovery_code", "That recovery code isn't right.")
-            locked_out = stashes.is_locked_out(profile)
+            locked_out = security.is_locked_out(profile)
 
     return render(
         request,
@@ -193,6 +196,6 @@ def forgot_pin(request):
             "owner_possessive": profile.owner_possessive,
             "form": form,
             "locked_out": locked_out,
-            "lockout_minutes": (stashes.lockout_seconds_remaining(profile) // 60 + 1) if locked_out else 0,
+            "lockout_minutes": (security.lockout_seconds_remaining(profile) // 60 + 1) if locked_out else 0,
         },
     )

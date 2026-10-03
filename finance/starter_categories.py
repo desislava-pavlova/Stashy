@@ -7,6 +7,7 @@ what you don't want instead.
 from pathlib import Path
 
 from django.conf import settings
+from openpyxl import load_workbook
 
 from .models import Category, name_key
 
@@ -24,8 +25,6 @@ def available_sheets():
     path = starter_categories_path()
     if not path.exists():
         return []
-    from openpyxl import load_workbook
-
     workbook = load_workbook(path, read_only=True)
     try:
         names = set(workbook.sheetnames)
@@ -36,8 +35,6 @@ def available_sheets():
 
 def _read_rows(sheet_name):
     """(type, category, subcategory_or_None) for every non-blank row, in file order."""
-    from openpyxl import load_workbook
-
     workbook = load_workbook(starter_categories_path(), read_only=True, data_only=True)
     try:
         sheet = workbook[sheet_name]
@@ -59,13 +56,14 @@ def _read_rows(sheet_name):
 
 def add_starter_categories(sheet_name):
     """Creates every category (and subcategory) from the given sheet that doesn't already
-    exist (matched by name, case-insensitive, among top-level categories for a parent, or
-    among that parent's own children for a subcategory) - safe to run more than once. Returns
-    the list of names actually created, or None if the sheet isn't available."""
+    exist (matched by name, case-insensitive, among main categories for a parent, or among
+    that parent's own children for a subcategory) - safe to run more than once. A subcategory
+    takes its main category's type, the same rule as the importer, whatever its own row says.
+    Returns the list of names actually created, or None if the sheet isn't available."""
     if sheet_name not in available_sheets():
         return None
 
-    top_level = {category.name_key: category for category in Category.objects.filter(parent__isnull=True)}
+    top_level = {category.name_key: category for category in Category.objects.main_categories()}
     created = []
     for type_name, category_name, subcategory_name in _read_rows(sheet_name):
         category_type = (
@@ -77,6 +75,6 @@ def add_starter_categories(sheet_name):
             top_level[parent.name_key] = parent
             created.append(category_name)
         if subcategory_name and not parent.subcategories.filter(name_key=name_key(subcategory_name)).exists():
-            Category.objects.create(name=subcategory_name, category_type=category_type, parent=parent)
+            parent.create_subcategory(subcategory_name)
             created.append(f"{category_name}: {subcategory_name}")
     return created

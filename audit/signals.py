@@ -41,6 +41,11 @@ def is_tracked(model):
     return model._meta.app_label in settings.AUDIT_TRACKED_APPS and not model._meta.auto_created
 
 
+def _logging(model):
+    """Whether a change to `model` gets an audit entry right now (see audit_suspended())."""
+    return is_tracked(model) and not current_context().suspended
+
+
 def describe(obj):
     try:
         return str(obj)[:255]
@@ -132,14 +137,14 @@ def write_row(
 
 
 def remember_old_values(sender, instance, raw=False, **kwargs):
-    if raw or not is_tracked(sender) or instance._state.adding:
+    if raw or not _logging(sender) or instance._state.adding:
         return
     attnames = [field.attname for field in sender._meta.concrete_fields]
     instance._audit_old = sender._base_manager.filter(pk=instance.pk).values(*attnames).first()
 
 
 def log_save(sender, instance, created, raw=False, update_fields=None, **kwargs):
-    if raw or not is_tracked(sender):
+    if raw or not _logging(sender):
         return
     table = sender._meta.db_table
     row_id = str(instance.pk)
@@ -175,14 +180,14 @@ def log_save(sender, instance, created, raw=False, update_fields=None, **kwargs)
 
 
 def remember_deleted(sender, instance, **kwargs):
-    if not is_tracked(sender):
+    if not _logging(sender):
         return
     instance._audit_deleted = (describe(instance), _snapshot(sender, instance))
     _log_cleared_references_after_commit(instance)
 
 
 def log_delete(sender, instance, **kwargs):
-    if not is_tracked(sender) or "_audit_deleted" not in instance.__dict__:
+    if not _logging(sender) or "_audit_deleted" not in instance.__dict__:
         return
     row_label, snapshot = instance.__dict__.pop("_audit_deleted")
     write_row(
@@ -249,7 +254,7 @@ def _m2m_field_name(through, instance):
 
 
 def log_m2m(sender, instance, action, model, pk_set, **kwargs):
-    if not is_tracked(type(instance)) or action not in ("post_add", "post_remove", "pre_clear"):
+    if not _logging(type(instance)) or action not in ("post_add", "post_remove", "pre_clear"):
         return
     name = _m2m_field_name(sender, instance)
     if action == "pre_clear":

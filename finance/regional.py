@@ -13,11 +13,12 @@ import zoneinfo
 from contextlib import contextmanager, suppress
 from contextvars import ContextVar
 from dataclasses import dataclass, replace
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from decimal import ROUND_HALF_UP, Decimal
 from importlib import resources
 from pathlib import Path
 
+import tzlocal
 from django.conf import settings
 from django.utils import timezone
 
@@ -141,20 +142,6 @@ def format_datetime(value, seconds=False, preferences=None):
     return value.strftime(f"{(preferences or current()).date_pattern} {time_pattern}")
 
 
-def format_audit_timestamp(value):
-    """The audit log's own timestamp column (Phase 14 / A3): always ISO-style, with milliseconds
-    and the offset, in the viewer's own time zone - unlike every other date/time in the app,
-    it never follows the date_format preference, since it reads like a database log."""
-    if value is None or value == "":
-        return ""
-    local = timezone.localtime(value) if timezone.is_aware(value) else value
-    offset = local.utcoffset() if timezone.is_aware(local) else None
-    minutes = int((offset or timedelta()).total_seconds() // 60)
-    sign = "+" if minutes >= 0 else "-"
-    hours, minutes = divmod(abs(minutes), 60)
-    return f"{local:%Y-%m-%d %H:%M:%S}.{local.microsecond // 1000:03d} {sign}{hours:02d}:{minutes:02d}"
-
-
 # --- reading this computer's settings -----------------------------------------
 
 
@@ -170,6 +157,7 @@ def detect_from_computer():
 
 
 def _read_windows_settings():
+    # Imported here: winreg exists only on Windows (the caller catches the ImportError).
     import winreg
 
     with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Control Panel\International") as key:
@@ -218,8 +206,6 @@ def first_day_from_windows(value):
 
 def _local_time_zone(country):
     try:
-        import tzlocal
-
         name = tzlocal.get_localzone_name()
     except Exception:  # tzlocal raises its own error types for unreadable configurations
         return None

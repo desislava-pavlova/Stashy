@@ -248,7 +248,8 @@ Stashy/
 │   ├── services/         # importing a file, reconciling an account
 │   ├── forms.py
 │   ├── reporting.py      # report calculations
-│   ├── stashes.py        # creating stashes, owner names, PINs, lockout, recovery codes
+│   ├── stashes/          # registry.py: creating and finding stashes, owner names;
+│   │                     #   security.py: PINs, lockout, recovery codes
 │   ├── db_router.py      # sends each request's queries to its session's stash
 │   ├── middleware.py
 │   ├── backup.py

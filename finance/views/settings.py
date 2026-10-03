@@ -18,7 +18,6 @@ from django.shortcuts import redirect, render
 from django.views.decorators.http import require_POST
 
 from .. import backup as finance_backup
-from .. import stashes
 from ..auth_forms import ChangePinForm
 from ..currency import RateFetchError, RateTable, fetch_latest_rates
 from ..forms import (
@@ -29,6 +28,7 @@ from ..forms import (
     watched_expenses_picker_context,
 )
 from ..models import Account, Profile
+from ..stashes import registry, security
 
 
 def _stash_backup_root(request):
@@ -40,7 +40,7 @@ def _stash_backup_root(request):
     never change what a test expects - this project's fixtures all assume BASE_DIR."""
     stash_name = request.session.get("stash") if not settings.TESTING else None
     if stash_name:
-        return stashes.stash_path(stash_name)
+        return registry.stash_path(stash_name)
     return Path(settings.BASE_DIR)
 
 
@@ -50,7 +50,7 @@ def _current_stash_db_path(request):
     never a real stash's own file."""
     stash_name = request.session.get("stash") if not settings.TESTING else None
     if stash_name:
-        return stashes.stash_db_path(stash_name)
+        return registry.stash_db_path(stash_name)
     return settings.DATABASES["default"]["NAME"]
 
 
@@ -174,7 +174,7 @@ def recovery_code_view(request):
         profile = Profile.for_user(request.user)
         token = secrets.token_urlsafe(16)
         cache.set(
-            _recovery_code_cache_key(token), stashes.regenerate_recovery_code(profile), RECOVERY_CODE_CACHE_SECONDS
+            _recovery_code_cache_key(token), security.regenerate_recovery_code(profile), RECOVERY_CODE_CACHE_SECONDS
         )
         request.session["new_recovery_code_token"] = token
         return redirect("finance:recovery_code")
@@ -210,7 +210,7 @@ def backup_restore(request):
     if request.method == "POST":
         stash_name = request.session.get("stash") if not settings.TESTING else None
         if stash_name:
-            stashes.restore_stash(stash_name, backup_path)
+            registry.restore_stash(stash_name, backup_path)
         else:
             finance_backup.restore_from(backup_path, _current_stash_db_path(request), _stash_backup_root(request))
         messages.success(
