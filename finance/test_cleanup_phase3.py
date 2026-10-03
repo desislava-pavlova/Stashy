@@ -10,6 +10,7 @@ import tempfile
 from pathlib import Path
 
 from django.conf import settings
+from django.contrib.auth.decorators import login_not_required
 from django.contrib.staticfiles import finders
 from django.contrib.staticfiles.storage import staticfiles_storage
 from django.core.management import call_command
@@ -19,6 +20,9 @@ from django.urls import path
 from stashy.settings import base
 
 
+# Public, so the crash happens for an anonymous client too: this URLconf has no login page
+# for LoginRequiredMiddleware to redirect to.
+@login_not_required
 def _broken_view(request):
     raise RuntimeError("deliberate failure for the 500 page test")
 

@@ -1,4 +1,5 @@
 {% load stashy_format %}
+{# A category with no earlier activity averages 0: its Average shows "—", its Difference the real gap. #}
 <div class="table-responsive">
 <table class="table table-sm mb-0">
     <thead><tr><th>Category</th><th class="text-end">Current</th><th class="text-end">Average</th><th class="text-end">Difference</th></tr></thead>
@@ -14,7 +15,7 @@
                 <span class="{% if row.is_child %}category-sub{% else %}category-main{% endif %}">{{ row.name }}</span>
             </td>
             <td class="text-end {{ row.current|amount_class:signed }}{% if row.is_child %} report-value-sub{% endif %}">{{ row.current|moneyc:main_currency }}</td>
-            <td class="text-end text-muted{% if row.is_child %} report-value-sub{% endif %}">{{ row.average|moneyc:main_currency|default:"—" }}</td>
+            <td class="text-end text-muted{% if row.is_child %} report-value-sub{% endif %}">{% if row.no_earlier_activity %}—{% else %}{{ row.average|moneyc:main_currency|default:"—" }}{% endif %}</td>
             {% with lower=row.lower_is_good|default:lower_is_good %}
             <td class="text-end {% if row.difference is None %}text-muted{% else %}{{ row.difference|diff_tint:lower }}{% endif %}{% if row.is_child %} report-value-sub{% endif %}">{{ row.difference|moneyc:main_currency|default:"—" }}</td>
             {% endwith %}

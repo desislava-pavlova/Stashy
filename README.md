@@ -50,7 +50,9 @@ for development — Django's dev server also defaults to 8000), open `.env` and
 add or change a `PORT=` line (e.g. `PORT=8001`), then run `Stashy.bat` again.
 
 If an update changes the database, `Stashy.bat` backs up **every** stash into
-its own `stashes/<name>/backups/` folder before applying the change.
+its own `stashes/<name>/backups/` folder before applying the change. A backup's
+name says which stash, why and when, like
+`alex_backup_quarterly_2026-10-03_09-15-00.sqlite3`.
 
 Once installed, Stashy needs no internet connection: every style, font, icon
 and script ships inside the app (the only optional online feature is fetching
@@ -162,8 +164,10 @@ every stash automatically).
   spending everywhere, never the sign of the amount. A vs.-average report
   needs at least two earlier periods to exist at all (e.g. two full months
   before this one) and shows "No earlier data to compare with" otherwise;
-  within that, a category with no activity in any of those periods has no
-  average of its own rather than a misleading zero. Filter by date range
+  within that, a month without a category's spending counts as a real zero.
+  A category with no activity in any of those periods averages 0: its
+  Average shows "—", but its Difference shows the full gap and the chart
+  draws its average dot at 0 (the export writes 0.00). Filter by date range
   (including "Earliest to date"), subtotal
   (week to year), average interval (how many earlier periods to use) and
   account; every amount converts to your main currency. **Expand** a
@@ -213,7 +217,9 @@ can't read at all gets a message and imports nothing.
 
 Exports (CSV or Excel) can be opened straight in Excel: Excel files keep
 amounts as numbers and dates as dates, and CSV files show Cyrillic
-correctly.
+correctly. Each file's name ends with the date and time it was made, like
+`stashy-net-worth-2026-10-03_14-32-05.csv`, so several exports on one day
+never overwrite each other.
 
 OFX/QFX files exported directly from your bank are also supported.
 
@@ -235,13 +241,14 @@ Stashy/
 ├── audit/                # the audit log (records every data change)
 ├── finance/              # the app
 │   ├── models.py         # Account, Category, Payee, Transaction, Reminder, etc.
-│   ├── views.py          # dashboard, CRUD views, import/export, reports, backups
+│   ├── views/            # one file per area: accounts.py, transactions.py, reports.py,
+│   │                     #   exports.py, settings.py, auth.py (picker, PIN login),
+│   │                     #   welcome.py (the setup wizard), and so on
+│   ├── content.py        # the "Stashy tips" text shown beside forms
 │   ├── services/         # importing a file, reconciling an account
 │   ├── forms.py
 │   ├── reporting.py      # report calculations
 │   ├── stashes.py        # creating stashes, owner names, PINs, lockout, recovery codes
-│   ├── auth_views.py     # stash picker, create stash, PIN login, forgot PIN
-│   ├── welcome_views.py  # the four-step wizard after a new stash's first login
 │   ├── db_router.py      # sends each request's queries to its session's stash
 │   ├── middleware.py
 │   ├── backup.py

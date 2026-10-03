@@ -73,7 +73,7 @@
 <div class="row g-3 mb-3 report-row">
     <div class="col-md-6 report-col">
         <div class="card p-3 h-100 report-card">
-            {% include "finance/includes/report_card_header.html" with title="Spending by Category" export_url_name="finance:export_report_spending" show_hide_all=True %}
+            {% include "finance/includes/report_card_header.html" with title="Spending by Category" export_report="spending" show_hide_all=True %}
             {% if spending_table.overflow %}
             <div class="alert alert-warning py-2 small mb-0">{{ spending_table.overflow }}</div>
             {% else %}
@@ -86,7 +86,7 @@
     </div>
     <div class="col-md-6 report-col">
         <div class="card p-3 h-100 report-card">
-            {% include "finance/includes/report_card_header.html" with title="Current Spending vs. Average Spending by Category" export_url_name="finance:export_report_spending_vs_average" show_hide_all=True %}
+            {% include "finance/includes/report_card_header.html" with title="Current Spending vs. Average Spending by Category" export_report="spending-vs-average" show_hide_all=True %}
             {% if has_average %}
             <div class="report-chart-wrap"><div class="report-chart-inner"><canvas id="spendingVsAverageChart"></canvas></div></div>
             <div class="report-table mt-3" hidden>
@@ -104,7 +104,7 @@
 <div class="row g-3 mb-3 report-row">
     <div class="col-md-6 report-col">
         <div class="card p-3 h-100 report-card">
-            {% include "finance/includes/report_card_header.html" with title="Income by Category" export_url_name="finance:export_report_income" show_hide_all=True %}
+            {% include "finance/includes/report_card_header.html" with title="Income by Category" export_report="income" show_hide_all=True %}
             {% if income_table.overflow %}
             <div class="alert alert-warning py-2 small mb-0">{{ income_table.overflow }}</div>
             {% else %}
@@ -117,7 +117,7 @@
     </div>
     <div class="col-md-6 report-col">
         <div class="card p-3 h-100 report-card">
-            {% include "finance/includes/report_card_header.html" with title="Current Income vs. Average Income by Category" export_url_name="finance:export_report_income_vs_average" show_hide_all=True %}
+            {% include "finance/includes/report_card_header.html" with title="Current Income vs. Average Income by Category" export_report="income-vs-average" show_hide_all=True %}
             {% if has_average %}
             <div class="report-chart-wrap"><div class="report-chart-inner"><canvas id="incomeVsAverageChart"></canvas></div></div>
             <div class="report-table mt-3" hidden>
@@ -135,7 +135,7 @@
 <div class="row g-3 mb-3 report-row">
     <div class="col-md-6 report-col">
         <div class="card p-3 h-100 report-card">
-            {% include "finance/includes/report_card_header.html" with title="Income/Expense by Category" export_url_name="finance:export_report_income_expense" show_hide_all=True %}
+            {% include "finance/includes/report_card_header.html" with title="Income/Expense by Category" export_report="income-expense" show_hide_all=True %}
             {% if income_expense_table.overflow %}
             <div class="alert alert-warning py-2 small mb-0">{{ income_expense_table.overflow }}</div>
             {% else %}
@@ -166,7 +166,7 @@
     </div>
     <div class="col-md-6 report-col">
         <div class="card p-3 h-100 report-card">
-            {% include "finance/includes/report_card_header.html" with title="Current Income/Expense vs. Average Income/Expense by Category" export_url_name="finance:export_report_income_expense_vs_average" show_hide_all=True %}
+            {% include "finance/includes/report_card_header.html" with title="Current Income/Expense vs. Average Income/Expense by Category" export_report="income-expense-vs-average" show_hide_all=True %}
             {% if has_average %}
             <div class="report-chart-wrap"><div class="report-chart-inner"><canvas id="incomeExpenseVsAverageChart"></canvas></div></div>
             <div class="row text-center my-3 small">
@@ -196,7 +196,7 @@
 <div class="row g-3 mb-3 report-row">
     <div class="col-md-6 report-col">
         <div class="card p-3 h-100 report-card">
-            {% include "finance/includes/report_card_header.html" with title="Net Worth" export_url_name="finance:export_report_net_worth" show_hide_all=True %}
+            {% include "finance/includes/report_card_header.html" with title="Net Worth" export_report="net-worth" show_hide_all=True %}
             {% if net_worth_table.overflow %}
             <div class="alert alert-warning py-2 small mb-0">{{ net_worth_table.overflow }}</div>
             {% else %}
@@ -243,7 +243,7 @@
     </div>
     <div class="col-md-6 report-col">
         <div class="card p-3 h-100 report-card">
-            {% include "finance/includes/report_card_header.html" with title=watched_expenses_title export_url_name="finance:export_report_watched_expenses" show_hide_all=True %}
+            {% include "finance/includes/report_card_header.html" with title=watched_expenses_title export_report="watched-expenses" show_hide_all=True %}
             {% if not watched_has_categories %}
             <div class="empty-state py-4">
                 <h3 class="h6">No categories chosen</h3>

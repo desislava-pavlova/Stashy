@@ -264,11 +264,12 @@ def category_totals_vs_average(
     start, end, periods, expense_only=False, income_only=False, account=None, rates=None, top_level=False
 ):
     """Per category: [start, end]'s total vs. the average of the given trailing `periods` (see
-    trimmed_average_periods()). Periods with no activity for a category count as zero (R4) - the
+    trimmed_average_periods()). Periods with no activity for a category count as zero - the
     average always divides by len(periods), not by how many of them happened to have a row for
-    that category - but a category with no activity in *any* earlier period has no average at
-    all (None), rather than a misleading 0. `top_level=True` rolls subcategories into their main
-    category, for charts (R2)."""
+    that category. A category with no activity in any earlier period averages 0 too (a month
+    without a vacation is a real zero) and is marked `no_earlier_activity`, so the table can
+    show "—" for it. Only with no earlier periods at all is the average None.
+    `top_level=True` rolls subcategories into their main category, for charts."""
     qs = _reportable(account=account, expense_only=expense_only, income_only=income_only)
 
     top_of = {}
@@ -303,15 +304,21 @@ def category_totals_vs_average(
         current = to_cent(current_by_category.get(cid, ZERO))
         seen_before = any(cid in pt for pt in period_totals_list)
         average = (
-            to_cent(sum((pt.get(cid, ZERO) for pt in period_totals_list), ZERO) / len(periods))
-            if seen_before
-            else None
+            to_cent(sum((pt.get(cid, ZERO) for pt in period_totals_list), ZERO) / len(periods)) if periods else None
         )
         if expense_only or income_only:
             current = abs(current)
             if average is not None:
                 average = abs(average)
-        result.append({"category_id": cid, "name": names[cid], "current": current, "average": average})
+        result.append(
+            {
+                "category_id": cid,
+                "name": names[cid],
+                "current": current,
+                "average": average,
+                "no_earlier_activity": not seen_before,
+            }
+        )
 
     if expense_only or income_only:
         result.sort(key=lambda r: r["current"], reverse=True)
@@ -467,7 +474,9 @@ def category_vs_average_report_rows(
     (parent rolled up to include its subcategories) instead of sorted by amount, and with
     each row's difference (current - average) included - shaped for the report's table
     rather than its chart, which keeps using the amount-sorted, flat category_totals_vs_
-    average() unchanged. A category with no activity in any earlier period has no average (None)."""
+    average() unchanged. Averages follow category_totals_vs_average()'s rule: a category with
+    no earlier activity (counting its subcategories', for a main category) averages 0 and is
+    marked `no_earlier_activity`; only with no earlier periods at all is the average None."""
     qs = _reportable(account=account, expense_only=expense_only, income_only=income_only)
 
     def totals_for(s, e):
@@ -480,6 +489,9 @@ def category_vs_average_report_rows(
 
     current_by_category = totals_for(start, end)
     period_totals_list = [totals_for(s, e) for s, e in periods]
+    # Taken before the roll-up, which gives a main category an all-zero row in every period
+    # even when neither it nor its subcategories had any activity then.
+    active_before = {cid for pt in period_totals_list for cid in pt}
 
     all_ids = set(current_by_category)
     for pt in period_totals_list:
@@ -497,7 +509,7 @@ def category_vs_average_report_rows(
     have_a_row = set(current) | {cid for pt in period_totals_list for cid in pt}
 
     def average_of(cid):
-        if not any(cid in pt for pt in period_totals_list):
+        if not periods:
             return None
         return to_cent(sum((pt.get(cid, ZERO) for pt in period_totals_list), ZERO) / len(periods))
 
@@ -505,6 +517,9 @@ def category_vs_average_report_rows(
     for category in categories.values():
         if category.parent_id:
             child_ids_by_parent.setdefault(category.parent_id, []).append(category.pk)
+
+    def had_earlier_activity(cid):
+        return cid in active_before or any(child in active_before for child in child_ids_by_parent.get(cid, []))
 
     result_groups = []
     totals = {"current": ZERO, "average": ZERO}
@@ -528,6 +543,7 @@ def category_vs_average_report_rows(
                     "current": cur,
                     "average": avg,
                     "difference": None if avg is None else cur - avg,
+                    "no_earlier_activity": not had_earlier_activity(category.pk),
                 }
             )
             if not category.parent_id:

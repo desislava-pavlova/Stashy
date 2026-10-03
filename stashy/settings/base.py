@@ -59,6 +59,8 @@ MIDDLEWARE = [
     "django.middleware.csrf.CsrfViewMiddleware",
     "finance.middleware.StashSelectionMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    # Every page needs a login unless its view is marked @login_not_required.
+    "django.contrib.auth.middleware.LoginRequiredMiddleware",
     "finance.middleware.RequireStashMiddleware",
     "audit.middleware.AuditContextMiddleware",
     "finance.middleware.RegionalPreferencesMiddleware",

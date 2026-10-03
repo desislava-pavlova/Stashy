@@ -1,4 +1,5 @@
-{% url export_url_name as export_url %}
+{# Give it export_url_name (a URL name), or a ready-made export_url. #}
+{% if not export_url %}{% url export_url_name as export_url %}{% endif %}
 <div class="dropdown">
     <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
         <i class="bi bi-download me-1"></i>Export

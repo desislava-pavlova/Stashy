@@ -21,12 +21,15 @@ terms.
   **Never run git on your own**, not even read-only commands that change
   state. The one exception: when the user says "go commit", stage the
   listed files and commit them with the agreed message (since 03/10/2026).
-  Never push, and never run any other git step: tell the user the exact
-  command instead.
+  Push only when the user asks for it. Never run any other git step: tell
+  the user the exact command instead.
   **Nothing that costs money.** Free PyPI and CDN downloads are fine.
 - **One stash holds real data** (named in `CLAUDE.local.md`). Back it up
-  before any schema change or data fix: copy its `db.sqlite3` into its own
-  `backups/` folder, or use Settings → Back up now. Never write to it for a
+  before any schema change or data fix with
+  `finance.backup.backup_now(<stash dir>/db.sqlite3, <stash dir>, tag="before_…")`
+  (it names the file `<stash>_backup_<tag>_<time>`, so two stashes never get
+  the same name; the user asked, 03/10/2026), or use Settings → Back up now.
+  Never a plain file copy. Never write to it for a
   demo. The `test` stash is disposable.
 - **Everything committed stays free of personal data.** `DEVLOG.md`,
   `plans/`, `README.md`, this file, code comments and tests never name real
@@ -44,7 +47,7 @@ terms.
 ## Commands
 
 ```
-.venv\Scripts\python.exe manage.py test                          # full suite, ~17 s (610 tests on 02/10/2026)
+.venv\Scripts\python.exe manage.py test                          # full suite, ~20 s (633 tests on 03/10/2026)
 .venv\Scripts\python.exe manage.py test finance.test_phase15     # one module
 .venv\Scripts\python.exe manage.py migrate --database <stash>    # one stash (Stashy.bat does all, with backups)
 .venv\Scripts\python.exe manage.py reset_pin <owner name>        # real, visible action - ask first
@@ -88,9 +91,17 @@ terms.
     `ImportFileError`) and `reconciliation.py` (`reconcile()`, raises
     `UnacceptedDifferenceError`). Plain functions, no HTTP. Each runs in its
     own `atomic(using=<stash>)`.
-  - `views.py` (about 2,000 lines, split in plan 02 phase 5), plus
-    `auth_views.py` (picker/login/forgot-PIN) and `welcome_views.py`
-    (4-step setup wizard).
+  - `views/`: one module per area (`dashboard`, `accounts`, `categories`,
+    `payees`, `transactions`, `reminders`, `imports`, `exports`, `reports`,
+    `settings`, `api`, `auth` for picker/login/forgot-PIN, `welcome` for the
+    4-step wizard), plus `_helpers.py` (`_sorted`, `_safe_next`, the export
+    writers). `finance/urls.py` imports the modules, not the views; there
+    are no re-exports in `views/__init__.py`.
+  - Report exports: one view, `exports.export_report`, at
+    `reports/export/<slug>/`. A new one is one line in `REPORT_EXPORTS`.
+  - Settings: the page saves preferences; `check_rates`, `create_backup`
+    and `save_watched_expenses` are their own POST URLs.
+  - `content.py`: the help-card tips (`*_TIPS`).
   - `forms.py`, `auth_forms.py`.
   - `reporting.py`: all report maths. `currency.py`: RateTable,
     Frankfurter. `money.py`: Decimal helpers, `parse_amount`.
@@ -116,9 +127,14 @@ terms.
   - Stash aliases have `ATOMIC_REQUESTS=False`. `StashAtomicRequestMiddleware`
     (last in the chain, in `process_view`) wraps the view in a transaction on
     the *active* stash only. A view that must not hold the write lock (network
-    calls, restore) uses `@transaction.non_atomic_requests` and wraps its own
-    writes (see `_stash_atomic()` in `settings_view`).
-- Middleware chain: StashSelection → Auth → RequireStash (picker or the
+    calls, backup, restore) uses `@transaction.non_atomic_requests` and wraps
+    any writes of its own in `atomic(using=...)` (see `check_rates`).
+- **Login by default:** Django's `LoginRequiredMiddleware`. A page that must
+  work without a login (picker, PIN login, forgot PIN, logout) is marked
+  `@login_not_required`. A class view that overrides `dispatch()` loses the
+  mark its parent had, so give it again with `method_decorator`. A new view
+  needs no login decorator.
+- Middleware chain: StashSelection → Auth → LoginRequired → RequireStash (picker or the
   last-stash cookie) → AuditContext → RegionalPreferences (sets
   `request.stashy_profile`) → RequireSetup (welcome wizard) → … →
   StashAtomicRequest.
@@ -159,8 +175,13 @@ terms.
 - The one-level subcategory rule and the duplicate-name messages live in
   `Category.clean()`/`Payee.clean()`, so forms and the admin share them.
 - Reports convert through `RateTable` (main currency, latest known rate).
-  A category with no earlier activity has **no** average (never 0). The
-  vs-average reports need at least two earlier periods.
+  The vs-average reports need at least two earlier periods ("No earlier
+  data to compare with." otherwise). Within them, empty periods count as
+  real zeros, and a category with no earlier activity averages **0**
+  (plan 03 R6, 03/10/2026, replacing the 16/09 "no average" rule). Rows
+  carry `no_earlier_activity`: the page shows "—" for that average but
+  fills in the difference and draws the dot at 0, and the export writes
+  0.00. For a main category, its subcategories' earlier activity counts.
 - Code that changes audited data goes through model `save()`/`delete()`,
   never `queryset.update()`/`bulk_create()`, and automatic logic runs inside
   `system_action("reason")`.
@@ -182,7 +203,8 @@ terms.
   (`--stashy-net`). Stacked pieces are split by `--stashy-chart-line`, which
   also draws the average dots. There's no category palette except where
   series need their own identity (Watched-expenses lines, the dashboard
-  donut). A missing average means no dot.
+  donut). A category with no earlier activity gets its average dot at 0
+  (R6); only the "No earlier data" case draws no dots.
 - The report titles in `reports.html` are the user's own wording. Never
   rewrite them.
 - Use `stashy.css` tokens only. Everything must work in light and dark mode,
@@ -226,7 +248,8 @@ terms.
   - Suggest a commit: a short **Summary** line and a short **Description**
     (Copilot-style: one sentence or a few short bullets). The description
     starts with "Plan N, Phase M:", plus ", Part X" only when the phase
-    really was split into parts. Never add a `Co-Authored-By` line. Run
+    really was split into parts. Never add a `Co-Authored-By` line. List
+    the exact files the commit will include right with the message. Run
     `git` only after the user says "go commit" (see the git rule above).
 - **The user writes dates as DD/MM/YYYY**, and so should plans and DEVLOG.
 

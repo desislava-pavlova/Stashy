@@ -7,7 +7,6 @@ double-click works for first-time setup and for everyday launching.
 import contextlib
 import hashlib
 import secrets
-import shutil
 import socket
 import subprocess
 import sys
@@ -15,7 +14,6 @@ import threading
 import time
 import urllib.request
 import webbrowser
-from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -124,6 +122,11 @@ def migrate_database():
     """Migrates the picker's own placeholder database, then every stash in turn (Phase 12:
     with no restart needed to switch stashes, any of them could be picked on this launch, so
     all of them need to be current, not just whichever one happened to be selected last)."""
+    # finance.backup is standard library only, so it can be imported before Django is set up.
+    # Its backups go through SQLite's backup API and are named after the stash.
+    sys.path.insert(0, str(ROOT))
+    from finance.backup import backup_now
+
     pending = run_python("manage.py", "migrate", "--check", capture_output=True)
     if pending.returncode != 0:
         step("Preparing the database...")
@@ -136,10 +139,7 @@ def migrate_database():
         pending = run_python("manage.py", "migrate", "--database", name, "--check", capture_output=True)
         if pending.returncode == 0:
             continue
-        backups = stash_dir / "backups"
-        backups.mkdir(exist_ok=True)
-        backup = backups / f"db_before_update_{datetime.now():%Y%m%d_%H%M%S}.sqlite3"
-        shutil.copy2(db_file, backup)
+        backup = backup_now(db_file, stash_dir, tag="before_update")
         print(f"   '{name}' was backed up first to {backup.relative_to(ROOT)}")
         step(f"Preparing the '{name}' stash's database...")
         if run_python("manage.py", "migrate", "--database", name, "--noinput").returncode != 0:

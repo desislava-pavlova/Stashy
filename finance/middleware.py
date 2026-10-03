@@ -1,9 +1,15 @@
 from django.conf import settings
 from django.db import DEFAULT_DB_ALIAS, transaction
 from django.shortcuts import redirect
+from django.urls import reverse
 
 from . import db_router, regional, stashes
 from .models import Profile
+
+
+def _folder_of(url):
+    """The folder part of a URL: "/welcome/1/" -> "/welcome/"."""
+    return url.rstrip("/").rsplit("/", 1)[0] + "/"
 
 
 class StashAtomicRequestMiddleware:
@@ -41,9 +47,9 @@ class StashAtomicRequestMiddleware:
 
 
 class StashSelectionMiddleware:
-    """Multi-stash login (Phase 12, rewritten 2026-09-15): decides which stash's database
-    this request's ORM queries land in, from the session rather than a file read once at
-    process start - what lets someone switch stashes without closing and reopening Stashy.bat.
+    """Decides which stash's database this request's ORM queries land in, from the session
+    rather than a file read once at process start - what lets someone switch stashes without
+    closing and reopening Stashy.bat.
     Must run before AuthenticationMiddleware, since even loading request.user is itself a
     routed query. Sets a thread-local finance.db_router.StashRouter reads for the duration of
     this request/thread, and clears it again afterwards so a worker thread never carries a
@@ -72,12 +78,12 @@ class StashSelectionMiddleware:
 
 
 class RequireStashMiddleware:
-    """Multi-stash login (Phase 12): nothing in the app is reachable until a stash has been
+    """Nothing in the app is reachable until a stash has been
     chosen for this session. Everything redirects to the picker until then, except the
     picker's own pages, static files, and the admin (useful for a from-scratch troubleshooting
     session).
 
-    Phase 15 (L3): before falling back to the picker, check the "last stash used" cookie -
+    Before falling back to the picker, check the "last stash used" cookie -
     logging out flushes the session (and with it session['stash']) but that cookie survives,
     so Stashy opens straight on that stash's own PIN screen instead of the picker. Redirects
     back to the same URL rather than just setting the session and carrying on, so the *next*
@@ -85,15 +91,19 @@ class RequireStashMiddleware:
     session already populated - otherwise this request's own queries would still be routed by
     the stale, pre-fallback thread-local it already set."""
 
-    EXEMPT_PREFIXES = ("/stashes/", "/static/", "/admin/")
-
     def __init__(self, get_response):
         self.get_response = get_response
+
+    @staticmethod
+    def exempt_prefixes():
+        """The picker's own pages, static files and the admin. Built from the URL names, so
+        renaming a URL can't silently lock its page behind the picker."""
+        return (reverse("stash_picker"), settings.STATIC_URL, reverse("admin:index"))
 
     def __call__(self, request):
         if settings.TESTING:
             return self.get_response(request)
-        if not request.session.get("stash") and not request.path.startswith(self.EXEMPT_PREFIXES):
+        if not request.session.get("stash") and not request.path.startswith(self.exempt_prefixes()):
             remembered = request.COOKIES.get(stashes.LAST_STASH_COOKIE)
             if remembered and stashes.stash_exists(remembered):
                 request.session["stash"] = remembered
@@ -103,22 +113,30 @@ class RequireStashMiddleware:
 
 
 class RequireSetupMiddleware:
-    """Phase 15 (L4): once logged in, an unfinished welcome wizard blocks everything else -
+    """Once logged in, an unfinished welcome wizard blocks everything else -
     redirects to wherever it left off (Profile.welcome_step), so closing Stashy mid-setup
     resumes there next time instead of dropping into a half-configured dashboard. Placed after
     RegionalPreferencesMiddleware in settings.py so it can reuse the Profile already fetched
     there (`request.stashy_profile`) instead of a second query."""
 
-    EXEMPT_PREFIXES = ("/welcome/", "/static/", "/admin/", "/accounts/logout/")
-
     def __init__(self, get_response):
         self.get_response = get_response
+
+    @staticmethod
+    def exempt_prefixes():
+        """The wizard's own steps, static files, the admin and logging out."""
+        return (
+            _folder_of(reverse("finance:welcome_step", kwargs={"step": 1})),
+            settings.STATIC_URL,
+            reverse("admin:index"),
+            reverse("logout"),
+        )
 
     def __call__(self, request):
         if settings.TESTING:
             return self.get_response(request)
         profile = getattr(request, "stashy_profile", None)
-        if profile is not None and not profile.setup_finished and not request.path.startswith(self.EXEMPT_PREFIXES):
+        if profile is not None and not profile.setup_finished and not request.path.startswith(self.exempt_prefixes()):
             return redirect("finance:welcome_step", step=profile.welcome_step + 1)
         return self.get_response(request)
 

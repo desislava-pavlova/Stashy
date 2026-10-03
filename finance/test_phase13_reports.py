@@ -284,7 +284,9 @@ class AverageDisplayTests(LoggedInTestCase):
         self.assertTrue(response.context["has_average"])
         self.assertContains(response, 'id="spendingVsAverageChart"')
 
-    def test_only_categories_with_earlier_activity_get_an_average(self):
+    def test_a_category_without_earlier_activity_averages_zero(self):
+        # Plan 03 R6 (03/10/2026) replaced "no earlier activity = no average": once earlier
+        # periods exist, a category that had nothing in them averages 0.
         start, end = date(2026, 3, 1), date(2026, 3, 31)
         seen_before = Category.objects.create(name="Rent", category_type=Category.CategoryType.EXPENSE)
         brand_new = Category.objects.create(name="Gifts", category_type=Category.CategoryType.EXPENSE)
@@ -296,7 +298,9 @@ class AverageDisplayTests(LoggedInTestCase):
         periods = reporting.vs_average_periods(start, end, 2, range_key="this_month")
         rows = {r["name"]: r for r in reporting.category_totals_vs_average(start, end, periods, expense_only=True)}
         self.assertEqual(rows["Rent"]["average"], Decimal("30.00"))  # 60.00 over the 2 earlier months
-        self.assertIsNone(rows["Gifts"]["average"])
+        self.assertEqual(rows["Gifts"]["average"], Decimal("0.00"))
+        self.assertTrue(rows["Gifts"]["no_earlier_activity"])
+        self.assertFalse(rows["Rent"]["no_earlier_activity"])
 
     def test_top_5_color_data_is_gone(self):
         response = self.client.get(reverse("finance:reports"))
@@ -357,9 +361,8 @@ class WatchedExpensesSettingsTests(LoggedInTestCase):
 
     def test_saving_from_settings_updates_the_report(self):
         response = self.client.post(
-            reverse("finance:settings"),
+            reverse("finance:save_watched_expenses"),
             {
-                "save_watched_expenses": "1",
                 "watched_expenses_title": "My bills",
                 "watched_expenses_categories": [self.electricity.pk],
             },

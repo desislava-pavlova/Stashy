@@ -1,18 +1,15 @@
-"""The post-login welcome wizard (Phase 15 / L4): four steps run once, right after a brand
-new stash's first login - money & region, starter categories, watched expenses, first
-account. Each step saves on Next; Profile.welcome_step tracks how far along, so closing
-Stashy mid-setup resumes at the right step next time (RequireSetupMiddleware enforces this
-everywhere else in the app). Kept out of finance/views.py, same reasoning as auth_views.py:
-this is its own layer, not an ordinary in-app page.
+"""The post-login welcome wizard: four steps run once, right after a brand new stash's first
+login - money & region, starter categories, watched expenses, first account. Each step saves
+on Next; Profile.welcome_step tracks how far along, so closing Stashy mid-setup resumes at the
+right step next time (RequireSetupMiddleware enforces this everywhere else in the app).
 """
 
 from django.contrib import messages
-from django.contrib.auth.decorators import login_required
 from django.shortcuts import redirect, render
 
-from . import starter_categories
-from .forms import AccountCreateForm, ProfileForm, WatchedExpensesForm, watched_expenses_picker_context
-from .models import Profile
+from .. import starter_categories
+from ..forms import AccountCreateForm, ProfileForm, WatchedExpensesForm, watched_expenses_picker_context
+from ..models import Profile
 
 STEP_COUNT = Profile.WELCOME_STEPS_DONE
 
@@ -27,7 +24,6 @@ def _to_step(step):
     return redirect("finance:welcome_step", step=step)
 
 
-@login_required
 def welcome_step(request, step):
     profile = Profile.for_user(request.user)
     if profile.setup_finished:

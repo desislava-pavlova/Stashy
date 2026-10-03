@@ -49,7 +49,8 @@ class BackupHelperTests(SimpleTestCase):
     def test_backup_now_copies_the_file_into_backups(self):
         result = finance_backup.backup_now(self.db, self.root, tag="manual")
         self.assertTrue(result.exists())
-        self.assertTrue(result.name.startswith("backup_manual_"))
+        self.assertTrue(result.name.endswith(".sqlite3"))
+        self.assertIn("_backup_manual_", result.name)
         self.assertEqual(read_db(result), "current content")
 
     def test_backup_now_returns_none_when_theres_no_database_yet(self):
@@ -59,13 +60,13 @@ class BackupHelperTests(SimpleTestCase):
     def test_quarterly_backup_runs_when_none_exists_yet(self):
         result = finance_backup.quarterly_backup_if_due(self.db, self.root)
         self.assertIsNotNone(result)
-        self.assertTrue(result.name.startswith("backup_quarterly_"))
+        self.assertIn("_backup_quarterly_", result.name)
 
     def test_quarterly_backup_skips_if_a_recent_one_already_exists(self):
         finance_backup.quarterly_backup_if_due(self.db, self.root)
         second = finance_backup.quarterly_backup_if_due(self.db, self.root)
         self.assertIsNone(second)
-        self.assertEqual(len(list((self.root / "backups").glob("backup_quarterly_*.sqlite3"))), 1)
+        self.assertEqual(len(list((self.root / "backups").glob("*_backup_quarterly_*.sqlite3"))), 1)
 
     def test_quarterly_backup_runs_again_once_the_last_one_is_old_enough(self):
         backups_dir = self.root / "backups"
@@ -102,14 +103,14 @@ class BackupHelperTests(SimpleTestCase):
 
     def test_restore_from_copies_the_backup_over_the_database_and_keeps_a_safety_copy(self):
         finance_backup.backup_now(self.db, self.root, tag="manual")
-        target = next((self.root / "backups").glob("backup_manual_*.sqlite3"))
+        target = next((self.root / "backups").glob("*_backup_manual_*.sqlite3"))
         write_db(target, "chosen backup content")
         write_db(self.db, "current (about to be overwritten) content")
 
         finance_backup.restore_from(target, self.db, self.root)
 
         self.assertEqual(read_db(self.db), "chosen backup content")
-        safety_copies = list((self.root / "backups").glob("backup_before_restore_*.sqlite3"))
+        safety_copies = list((self.root / "backups").glob("*_backup_before_restore_*.sqlite3"))
         self.assertEqual(len(safety_copies), 1)
         self.assertEqual(read_db(safety_copies[0]), "current (about to be overwritten) content")
 
@@ -152,12 +153,12 @@ class ManualBackupButtonTests(LoggedInTestCase):
     def test_back_up_now_creates_a_file_and_shows_a_message(self):
         fake_backup = Path(settings.BASE_DIR) / "backups" / "db_manual_20260101_000000.sqlite3"
         with mock.patch("finance.backup.backup_now", return_value=fake_backup):
-            response = self.client.post(reverse("finance:settings"), {"backup_now": "1"}, follow=True)
+            response = self.client.post(reverse("finance:create_backup"), follow=True)
         self.assertContains(response, "Backed up to")
 
     def test_no_database_yet_shows_an_error_instead(self):
         with mock.patch("finance.backup.backup_now", return_value=None):
-            response = self.client.post(reverse("finance:settings"), {"backup_now": "1"}, follow=True)
+            response = self.client.post(reverse("finance:create_backup"), follow=True)
         self.assertContains(response, "Nothing to back up yet")
 
 

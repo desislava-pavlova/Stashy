@@ -3869,3 +3869,170 @@ new); `finance/views.py`, `finance/models.py`, `finance/forms.py`,
 `finance/reporting.py`, `finance/welcome_views.py`,
 `finance/templates/finance/import_form.html`,
 `finance/test_cleanup_phase1.py`; `README.md`, `CLAUDE.md`, the plans.
+
+---
+
+## 03/10/2026 — Plan 02, Phase 5: the views split into a package
+
+**What changed** (details and ticks in `plans/02_architecture_cleanup.md`):
+- **`finance/views.py` (2,035 lines) is now a `finance/views/` folder (5.1)**
+  with one file per area of the app: `dashboard.py`, `accounts.py`,
+  `categories.py`, `payees.py`, `transactions.py`, `reminders.py`,
+  `imports.py`, `exports.py`, `reports.py`, `settings.py` and `api.py`.
+  `auth_views.py` and `welcome_views.py` moved in as `auth.py` and
+  `welcome.py`. Small pieces several files use (column sorting, the safe
+  "next" link, the CSV/Excel writers) are in `_helpers.py`. The largest
+  file is `reports.py` at 370 lines. `finance/urls.py` names each view by
+  its file (`accounts.account_detail`), so the URL list doubles as a map.
+- **One view for every report export (5.2).** Eight nearly identical
+  `export_report_*` views became one, `export_report`, plus a table
+  (`REPORT_EXPORTS`) that says, per report, how to build it, how to lay out
+  its columns and what to call the file. The addresses
+  (`/reports/export/spending/` and so on) are exactly as before.
+- **Each form on Settings posts to its own address (5.3).** Before, one
+  view received all four forms and guessed which one was sent from the
+  button's name. Now "Check rates now" posts to `/settings/rates/check/`,
+  "Create a backup" to `/settings/backups/create/`, Watched expenses to
+  `/settings/watched-expenses/`, and the preferences to `/settings/` itself.
+- **The help-card tips moved to `finance/content.py` (5.4).** They're
+  wording, not logic.
+- **Every page needs a login unless it says otherwise (5.6).** Each view
+  used to carry its own `@login_required`, and a new view that forgot it
+  would have been open to anyone. Django's `LoginRequiredMiddleware` now
+  protects everything. The few pages that must work before you log in (the
+  stash picker, creating a stash, the PIN screen, forgot PIN, logout) are
+  marked `@login_not_required`. The two Stashy middlewares that let some
+  addresses through (the picker, the welcome wizard) now work those
+  addresses out from the URL names instead of having them typed in.
+- Comments in the moved code lost their history notes ("Phase 6",
+  "2026-09-14 follow-up"); that history lives here. New tests:
+  `finance/test_cleanup_phase5.py`, 23 of them.
+
+**Teaching note — why split a big file at all?** Python doesn't care
+whether a view is in a 2,000-line file or a 100-line one. People do. To
+change the Reminders page you had to find it among nine other features, and
+the imports at the top listed everything any of them used, so you couldn't
+tell what Reminders actually depends on. Now `reminders.py` imports only
+what reminders need, and a file name tells you where to look. A folder with
+an `__init__.py` is a *package*: `from .views import reminders` loads the
+file `views/reminders.py`, the same way `from . import models` loads
+`models.py`.
+
+**Teaching note — "secure by default".** When protection is something each
+view has to ask for, safety depends on nobody ever forgetting. Turning it
+around (everything is protected, and opening a page up takes a visible
+decorator) makes the safe choice the one that happens when you do nothing.
+One trap showed up right away: Django's `LoginView` is already marked
+public, but the mark sits on its `dispatch()` method. Stashy's
+`StashLoginView` writes its own `dispatch()`, which replaced the marked one,
+so the PIN screen itself suddenly needed a login and redirected to itself.
+Two existing tests failed on it before it could reach you. The fix gives
+the mark back with `method_decorator`.
+
+**Teaching note — a registry instead of copies.** Eight export views
+differed only in three things: which report function they called, which
+column layout they wrote, and the file name. When the differences are that
+small, put them in a table (a dict) and write the shared code once. Adding a
+ninth report export is now one line in `REPORT_EXPORTS`, not a new view, a
+new URL and a template change.
+
+**Coverage:** 91% (3,771 statements, 335 not run by any test), up from
+90%. Every new view module is at 91–100%, except `auth.py` at 45% (the PIN
+login and lockout run only with real stashes, which Phase 7 makes testable).
+
+**Verification:** full suite green: 633 tests in 22 s (610 before).
+`ruff check .` and `ruff format --check .` are clean. Every main page was
+rendered through the test client and checked for leaked template code. A
+test follows each Export link on the Reports page and gets a file back.
+The real middleware chain (which tests skip) was tried on a throwaway server
+on port 8765 against the `test` stash, with GET requests only. With no stash
+chosen, every page goes to the picker. Once one is chosen, the PIN screen
+opens and every app page goes to it with `?next=`. Not checked in a
+browser.
+
+**Files:** `finance/views/` (all new: `__init__.py`, `_helpers.py`,
+`accounts.py`, `api.py`, `auth.py`, `categories.py`, `dashboard.py`,
+`exports.py`, `imports.py`, `payees.py`, `reminders.py`, `reports.py`,
+`settings.py`, `transactions.py`, `welcome.py`), `finance/content.py`,
+`finance/test_cleanup_phase5.py` (new); `finance/views.py`,
+`finance/auth_views.py`, `finance/welcome_views.py` (removed);
+`finance/urls.py`, `finance/middleware.py`, `stashy/urls.py`,
+`stashy/settings/base.py`, `finance/templates/finance/reports.html`,
+`finance/templates/finance/settings.html`,
+`finance/templates/finance/includes/report_card_header.html`,
+`finance/templates/finance/includes/export_dropdown.html`, five test files;
+`README.md`, `CLAUDE.md`, the plans.
+
+---
+
+## 03/10/2026 — Plan 03, R4, R5 and R6: file names, and averages of 0
+
+You left the timing of R4–R6 to Claude. R4 and R5 were small, so they're
+done now, ahead of plan 03's own phases; R6 followed once its questions were
+answered, at your request in the same commit.
+
+**What changed:**
+- **Exports carry the time (R4).** A file used to be called
+  `stashy-net-worth-20261003.csv`, so a second export the same day got the
+  same name and the browser had to rename it ("(1)"). Now it's
+  `stashy-net-worth-2026-10-03_14-32-05.csv`, in the stash's own time zone.
+- **Backups carry the stash's name (R5).** The backups taken before each
+  plan phase had identical names in every stash's folder. New backups are
+  named `<stash>_backup_<tag>_<time>.sqlite3`, for example
+  `alex_backup_manual_2026-10-03_14-32-05.sqlite3`. Old backups keep their
+  names: the list on Settings, Restore and the quarterly check still read
+  all three naming schemes.
+- Along the way, `Stashy.bat`'s "back up before an update" step now uses
+  the same `backup_now()` as everything else. Before, it was the only
+  backup made with a plain file copy instead of SQLite's backup API.
+- **A category with no earlier activity averages 0 (R6, also settles R2).**
+  Compare this month with the last 3: if those months have data but no
+  Accommodation, that means no vacation, not missing data. So Accommodation
+  now averages 0. The table still shows "—" in its Average cell (you prefer
+  that), but its Difference shows the full amount with its colour, and the
+  chart draws its average dot at 0. The export writes 0.00 and the
+  difference. What stays: with fewer than two earlier periods of data the
+  reports still say "No earlier data to compare with.", and a category with
+  some earlier activity still averages over every period (600 in one of 3
+  months → 200). This replaces the 16/09/2026 rule "no earlier activity, no
+  average, no dot". A main category whose subcategory is brand new (R2) now
+  averages 0 too, instead of 0.00 beside a subcategory with no average.
+- New tests: `finance/test_fixes_plan03.py` (15). Three older tests that
+  encoded the 16/09 rule were updated or renamed.
+
+**Teaching note — why a regex can tell the names apart.** A backup's name
+now has up to four parts: stash, the word `backup`, a tag (`manual`,
+`before_update`) and the time. Tags can contain underscores, so "split on
+`_`" doesn't work. Stash folder names, though, never contain one (they're
+made of a-z, 0-9 and `-`), so the pattern
+`(stash_)?backup_(tag)_(time)` has only one way to match each name. That's
+how `quarterly_backup_if_due()` knows a stash called "quarterly" with a
+manual backup isn't a quarterly backup. A test checks exactly that.
+
+**Teaching note — "nothing" vs. "zero", revisited.** On 16/09 the worry
+was that an average of 0 reads as "you used to spend nothing here" when the
+truth might be "Stashy doesn't know". The answer then was to show no average
+at all. The better split turns out to be at the level of the whole stash:
+if the earlier months have data at all, an empty month for one category is
+a real fact (you didn't spend there), so 0 is the honest average. Only when
+there's no earlier data anywhere is "unknown" the right answer. The flag
+`no_earlier_activity` keeps the one thing the old rule got right: the table
+can still say "—" so the eye isn't drawn to a misleading 0.00.
+
+**Verification:** full suite green, 648 tests. `ruff check .` and
+`ruff format --check .` are clean. `scripts/bootstrap.py` compiles; its
+before-update backup runs only when a migration is pending, so it will first
+run for real at the next update.
+
+The Spending vs average row was read from the real Reports page HTML in a
+test: current and difference filled in, "—" for the average. Not checked in
+a browser.
+
+**Files:** `finance/backup.py`, `finance/views/exports.py`,
+`finance/reporting.py`,
+`finance/templates/finance/includes/report_vs_average_table.html`,
+`scripts/bootstrap.py`, `finance/test_fixes_plan03.py` (new),
+`finance/test_phase10.py`, `finance/test_phase11.py`,
+`finance/test_phase11_follow_up.py`, `finance/test_phase13_reports.py`;
+`README.md`, `CLAUDE.md`, `plans/02_architecture_cleanup.md`,
+`plans/03_fixes_and_changes_plan.md`.

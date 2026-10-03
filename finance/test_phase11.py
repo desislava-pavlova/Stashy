@@ -158,9 +158,9 @@ class CategoryTotalsVsAverageTests(LoggedInTestCase):
         row = next(r for r in rows if r["name"] == "Groceries")
         self.assertEqual(row["average"], Decimal("10.00"))
 
-    def test_a_category_with_no_earlier_activity_has_no_average(self):
-        # 16/09/2026: an average of 0 read as "spent nothing", when the truth is "nothing to
-        # compare with" - so there's no average at all, and the chart draws no dot.
+    def test_with_no_earlier_periods_there_is_no_average(self):
+        # Nothing to compare with at all - no average, and the chart draws no dot. (A category
+        # that merely had no activity in existing earlier periods averages 0: plan 03 R6.)
         Transaction.objects.create(
             account=self.account, date=self.start, category=self.groceries, amount=Decimal("-20.00")
         )

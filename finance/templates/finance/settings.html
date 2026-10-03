@@ -10,7 +10,7 @@
     <div class="col-lg-5 col-xxl-4">
         <div class="card p-4">
             <h2 class="h5 mb-3">Currency &amp; regional preferences</h2>
-            <form method="post">
+            <form method="post" action="{% url 'finance:settings' %}">
                 {% csrf_token %}
                 {% for error in form.non_field_errors %}<div class="alert alert-danger py-2">{{ error }}</div>{% endfor %}
                 {% for field in form %}
@@ -39,9 +39,9 @@
             <p class="text-muted small">Net worth converts every account into {{ profile.main_currency }} using the
                 latest known rate. "Check rates" needs an internet connection — without one, Stashy keeps using the
                 rates it already knows.</p>
-            <form method="post" class="mb-3">
+            <form method="post" action="{% url 'finance:check_rates' %}" class="mb-3">
                 {% csrf_token %}
-                <button type="submit" name="check_rates" value="1" class="btn btn-outline-secondary">
+                <button type="submit" class="btn btn-outline-secondary">
                     <i class="bi bi-arrow-repeat me-1"></i>Check rates now
                 </button>
             </form>
@@ -72,7 +72,7 @@
             <h2 class="h5 mb-1">Watched expenses</h2>
             <p class="text-muted small">Pick the expense categories the "Watched expenses" report on the Reports page
                 tracks closely - your regular bills, or anything else you want to keep an eye on.</p>
-            <form method="post">
+            <form method="post" action="{% url 'finance:save_watched_expenses' %}">
                 {% csrf_token %}
                 {% for error in watched_form.non_field_errors %}<div class="alert alert-danger py-2">{{ error }}</div>{% endfor %}
                 <div class="row g-2 align-items-end">
@@ -87,7 +87,7 @@
                         {% for error in watched_form.watched_expenses_categories.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
                     </div>
                     <div class="col-sm-2 col-lg-4">
-                        <button type="submit" name="save_watched_expenses" value="1" class="btn btn-outline-secondary">Save</button>
+                        <button type="submit" class="btn btn-outline-secondary">Save</button>
                     </div>
                 </div>
             </form>
@@ -97,9 +97,9 @@
             <h2 class="h5 mb-1">Backups</h2>
             <p class="text-muted small">A quarterly backup happens automatically
                 whenever you launch Stashy, no more than every ~90 days.</p>
-            <form method="post" class="mb-3">
+            <form method="post" action="{% url 'finance:create_backup' %}" class="mb-3">
                 {% csrf_token %}
-                <button type="submit" name="backup_now" value="1" class="btn btn-outline-secondary">
+                <button type="submit" class="btn btn-outline-secondary">
                     <i class="bi bi-archive me-1"></i>Create a backup
                 </button>
             </form>

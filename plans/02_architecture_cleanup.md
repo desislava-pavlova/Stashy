@@ -9,7 +9,8 @@ Progress is tracked with the checkboxes below. **Status:** Phase 1 done
 (01/10/2026, 540 tests green); Phase 2 done (01/10/2026, 572 tests green);
 Phase 3 done (02/10/2026, 580 tests green in 15 s) except the migrations
 question in 3.6, which waits until the cleanup is done; Phase 4 done
-(02/10/2026, 610 tests green in 17 s, coverage 89% → 90%); Phase 5 next.
+(02/10/2026, 610 tests green in 17 s, coverage 89% → 90%); Phase 5 done
+(03/10/2026, 633 tests green in 22 s, coverage 90% → 91%); Phase 6 next.
 
 Work through it phase by phase. Every phase leaves the app working and the
 full test suite green, so we can stop and resume anywhere. Line numbers in
@@ -683,31 +684,58 @@ step), and the dashboard's "due soon" filter (only what the page shows).*
 
 ## Phase 5 — Split the views module  (F4, F9, F15, F16, F49)
 
-- [ ] **5.1** `finance/views/` package: `dashboard.py`, `accounts.py`,
+- [x] **5.1** `finance/views/` package: `dashboard.py`, `accounts.py`,
   `categories.py`, `payees.py`, `transactions.py`, `reminders.py`,
   `imports.py`, `exports.py`, `reports.py`, `settings.py`, `api.py`, plus
   `_helpers.py` (`_sorted`, export response builders). Move `auth_views.py`
   and `welcome_views.py` in as `views/auth.py`, `views/welcome.py`.
   `views/__init__.py` re-exports so `finance/urls.py` changes minimally.
   URL **names** stay identical (templates and tests depend on them).
-- [ ] **5.2** Report exports (F15): one registry dict
+  *Done 03/10/2026. Claude's call: no re-exports in `views/__init__.py`.
+  `finance/urls.py` imports the modules (`accounts.account_detail`), so the
+  URL list shows which file each page is in, and a new view isn't listed in
+  two places. Report exports went into `exports.py` with the list exports,
+  which kept `reports.py` under 400 lines. The largest module is now
+  `reports.py` at 370 lines (was one file of 2,035). History notes in the
+  moved code's comments were dropped on the way (8.5, file by file).*
+- [x] **5.2** Report exports (F15): one registry dict
   `{slug: (builder, table_kind, filename)}`, one view, one URL
   `reports/export/<slug:report>/`. Keep the old URL names as aliases if
   templates reference them, or update the templates. `_export_rates` (F4,
   from 1.5) becomes a plain helper inside that one view.
-- [ ] **5.3** Settings (F16): separate POST endpoints -
+  *Done. `exports.REPORT_EXPORTS` maps each slug to a builder, a layout,
+  the file name and the amount column's label. The slugs are the old URL
+  paths, so every export address is unchanged; only the eight URL names
+  became one (`finance:export_report`). Templates and tests updated, no
+  aliases. `_export_rates` is gone: the view makes the `RateTable` itself.*
+- [x] **5.3** Settings (F16): separate POST endpoints -
   `settings/rates/check/`, `settings/backups/create/`,
   `settings/watched-expenses/`, `settings/` (preferences). Each redirects
   back to Settings. Update the template's form `action`s.
-- [ ] **5.4** Move the `*_TIPS` text out of Python into the templates (or a
+  *Done. URL names `check_rates`, `create_backup`, `save_watched_expenses`;
+  each takes POST only. An invalid Watched-expenses form shows the Settings
+  page with its errors, as before. Only `check_rates` and `create_backup`
+  still run outside the request's transaction, so `_stash_atomic()` is
+  gone.*
+- [x] **5.4** Move the `*_TIPS` text out of Python into the templates (or a
   `finance/content.py`), since it is presentation.
-- [ ] **5.5** Render-check every page touched (test client, read the HTML).
-- [ ] **5.6** Login by default (F49): add Django's `LoginRequiredMiddleware`
+  *Claude's call: `finance/content.py`. Six forms share `generic_form.html`,
+  so templates would have needed one include per page.*
+- [x] **5.5** Render-check every page touched (test client, read the HTML).
+- [x] **5.6** Login by default (F49): add Django's `LoginRequiredMiddleware`
   after `AuthenticationMiddleware`, mark the picker, stash create, switch,
   login and forgot-PIN views `@login_not_required`, and remove the per-view
   decorators and mixins. The middlewares' `EXEMPT_PREFIXES` come from
   `reverse()`/settings instead of hard-coded strings. Test: every URL in
   `finance/urls.py` redirects an anonymous client to the login page.
+  *Done. Also public: the admin-login redirect and logout (an expired
+  session still logs out cleanly). `StashLoginView` needs the mark again
+  through `method_decorator`, because it overrides `dispatch()`, where
+  Django's `LoginView` keeps it. Without it the login page redirected to
+  itself; the suite caught it. The exempt prefixes are built by
+  `exempt_prefixes()` and a test checks they equal the old strings. Checked
+  on a test server (port 8765, `test` stash, GET only): no stash → picker,
+  stash chosen → PIN page, every app page → PIN page with `?next=`.*
 
 **Done when:** no views module over ~400 lines; suite green; render-check
 clean.
@@ -787,6 +815,8 @@ settings; test count is the same or higher than before.
 - [ ] **8.5** Comments (F23, C2): move history notes to DEVLOG.md, keep the
   "why" of the current code. Do it file by file, alongside other edits to
   that file, not as one giant pass.
+  *03/10/2026: done for everything in `finance/views/`, `finance/middleware.py`
+  and `stashy/urls.py` during Phase 5.*
 - [ ] **8.6** Net worth: one query grouped by (account, date) plus a running
   sum per column, instead of accounts × periods queries (F34).
 - [ ] **8.7** `generic_form.html`: `unit_words_json|safe` → `json_script`
@@ -801,6 +831,10 @@ settings; test count is the same or higher than before.
   grand totals, which is the right number. So: delete the dead `None` checks,
   add a comment saying why, and add a test proving the total equals the
   average of the period totals. Nothing on screen changes.
+  *03/10/2026: plan 03's R6 (done the same day: a category with no earlier
+  activity averages 0) leaves `None` only for "no earlier periods at all".
+  What remains of 8.8: the test proving the total equals the average of the
+  period totals.*
 - [x] ~~**8.9** Period labels (`%b` in `period_bucket()`) depend on the OS
   locale; use a fixed English month table like the rest of the UI.~~
   Dropped 27/09/2026: nothing sets a locale, so `%b` is always English.
