@@ -3789,3 +3789,83 @@ refused. Not checked in a browser.
 
 **Files:** `stashy/settings/base.py`, `scripts/bootstrap.py`,
 `.env.example`, `README.md`, `finance/test_cleanup_phase3.py`.
+
+---
+
+## 02/10/2026 — Plan 02, Phase 4: service layer
+
+**What changed** (details and ticks in `plans/02_architecture_cleanup.md`):
+- **The importer moved out of the views (4.1, 4.2).** Everything that
+  reads a CSV, Excel or OFX file and turns its rows into transactions now
+  lives in `finance/services/importing.py`, behind one function:
+  `import_file(upload, account, date_format)`. It returns an
+  `ImportResult` (how many rows were imported, skipped as duplicates, or
+  unreadable). The Import page's view shrank to "check the form, call
+  `import_file()`, show the summary".
+- **Reconciling moved too (4.3).** `finance/services/reconciliation.py` has
+  `reconcile()`. If the ticked transactions don't match the statement and
+  you haven't accepted the difference, it raises `UnacceptedDifferenceError`
+  and saves nothing. The view catches that and shows the checklist again.
+- **Reminder rules live on the reminder (4.4).** `reminder.mark_entered(txn)`,
+  `reminder.skip()` and `reminder.apply_to_series()` replace code that was
+  copied between two views. The "moved it to …" messages now use your
+  stash's date format instead of always DD/MM/YYYY.
+- **One Watched-expenses picker (4.5).** Settings and the welcome wizard
+  each built the category picker and its button label. Both now call
+  `watched_expenses_picker_context()`.
+- **The Import page checks the file type in the form (4.6).** A `.pdf` now
+  gets its message right under the File field, and the page shows any
+  field's error, which it never did.
+- **Reports are built from named pieces (4.8).** "Has a category, isn't a
+  transfer, in this date range, for this account" was written out by hand
+  in nine report functions. It's now `Transaction.objects.reportable()
+  .in_range(start, end).for_account(account)`. One `_rollup_to_parents()`
+  replaces the two copies of "add each subcategory into its main category".
+- New tests (4.7): `finance/test_cleanup_phase4.py`, 28 of them, calling the
+  services and model methods directly, with no web request. Two of them are
+  the first tests of a successful Excel and OFX import.
+
+**Teaching note — what a "service layer" is for.** A view's job is the
+web part: read the request, pick a template, redirect. When the rules for
+importing a file live inside the view, the only way to use or test them is
+to fake a whole web request, with a logged-in user, a form and an upload.
+Moved into a plain function, the same rules can be called from a test, a
+management command or a future `.exe` (plan 04) the same way. The view gets
+short enough to read in one glance. C4 in the plan's decisions log says
+these are plain functions in modules, not classes: the smallest thing that
+does the job.
+
+**Teaching note — how to prove a refactor changed no numbers.** "The tests
+still pass" only proves what the tests check. Before touching
+`reporting.py`, a throwaway test filled a database with 600 random
+transactions. They covered two currencies, refunds, transfers, uncategorized
+rows and subcategories. The test called every report function in every
+combination (expense/income/both, with and without subtotals, one account
+or all) and wrote all 140 results to a file. After the refactor it ran
+again, and the two files were byte-for-byte identical. This is called a
+*characterization test*: it records what the code does today, right or
+wrong, so you can tell whether a change kept it.
+
+**Found along the way (filed, not fixed):** that probe showed a quirk in the
+vs-average table. A main category whose subcategory is used for the first
+time this period shows an average of 0.00, while the subcategory itself
+correctly shows none. This phase promised identical numbers, so it stays as
+it is. It's filed as plan 03, R2, for you to decide.
+
+**Coverage:** 90% (3,711 statements, 384 not run by any test), up from 89%
+and 425 before Phase 4. `services/importing.py` is at 95% and
+`services/reconciliation.py` at 100%.
+
+**Verification:** full suite green: 610 tests in 17.2 s (582 before).
+`ruff check .` and `ruff format --check .` are clean, and `makemigrations
+--check` finds no model change (a new manager needs no migration). The
+Import page was rendered through the test client with a wrong file type:
+the message shows under the field, and no template code leaks. Not checked
+in a browser.
+
+**Files:** `finance/services/__init__.py`, `finance/services/importing.py`,
+`finance/services/reconciliation.py`, `finance/test_cleanup_phase4.py` (all
+new); `finance/views.py`, `finance/models.py`, `finance/forms.py`,
+`finance/reporting.py`, `finance/welcome_views.py`,
+`finance/templates/finance/import_form.html`,
+`finance/test_cleanup_phase1.py`; `README.md`, `CLAUDE.md`, the plans.

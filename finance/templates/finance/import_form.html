@@ -13,16 +13,19 @@
                 <div class="mb-3">
                     <label class="form-label">Account</label>
                     {{ form.account }}
+                    {% for error in form.account.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
                     <div class="form-text">{{ form.account.help_text }}</div>
                 </div>
                 <div class="mb-3">
                     <label class="form-label">File</label>
                     {{ form.file }}
+                    {% for error in form.file.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
                     <div class="form-text">CSV, XLSX, OFX or QFX from your bank or another finance app.</div>
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Date format</label>
                     {{ form.date_format }}
+                    {% for error in form.date_format.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
                     <div class="form-text">{{ form.date_format.help_text }}</div>
                 </div>
                 <button type="submit" class="btn btn-primary px-4">Import</button>

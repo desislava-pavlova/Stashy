@@ -2,13 +2,24 @@ from datetime import date
 
 from django import forms
 from django.core.exceptions import ValidationError
+from django.core.validators import FileExtensionValidator
 from django.db.models import Q
 
 from audit.context import system_action
 
 from . import regional
-from .models import Account, Category, Payee, Profile, Reminder, Transaction, categories_alphabetical
+from .models import (
+    Account,
+    Category,
+    Payee,
+    Profile,
+    Reminder,
+    Transaction,
+    categories_alphabetical,
+    grouped_categories,
+)
 from .money import ZERO
+from .services.importing import SUPPORTED_EXTENSIONS, UNSUPPORTED_FILE_MESSAGE
 
 
 class DateInput(forms.DateInput):
@@ -391,7 +402,8 @@ class ImportUploadForm(forms.Form):
         help_text="Used for every row, unless the file has its own Account column - that takes over per row.",
     )
     file = forms.FileField(
-        help_text="CSV or XLSX (Date, Payee, Memo, Amount, optionally Num/Account/Category/Reconciled) or OFX/QFX"
+        help_text="CSV or XLSX (Date, Payee, Memo, Amount, optionally Num/Account/Category/Reconciled) or OFX/QFX",
+        validators=[FileExtensionValidator(SUPPORTED_EXTENSIONS, message=UNSUPPORTED_FILE_MESSAGE)],
     )
     date_format = forms.ChoiceField(
         choices=DATE_FORMAT_CHOICES,
@@ -504,6 +516,25 @@ class WatchedExpensesForm(BootstrapFormMixin, forms.ModelForm):
             Category.objects.filter(category_type=Category.CategoryType.EXPENSE, account__isnull=True)
         )
         self.fields["watched_expenses_title"].widget.attrs["class"] = "form-control"
+
+
+def watched_expenses_picker_context(profile):
+    """What the Watched-expenses category picker needs, on Settings and in the welcome wizard:
+    the expense categories in groups, the ones already chosen, and the button's label."""
+    chosen = list(profile.watched_expenses_categories.select_related("parent"))
+    if not chosen:
+        button_label = "No categories chosen"
+    elif len(chosen) == 1:
+        button_label = chosen[0].full_name
+    else:
+        button_label = f"{len(chosen)} categories selected"
+    return {
+        "watched_category_groups": grouped_categories(
+            Category.objects.filter(category_type=Category.CategoryType.EXPENSE, account__isnull=True)
+        ),
+        "watched_selected_values": {str(category.pk) for category in chosen},
+        "watched_button_label": button_label,
+    }
 
 
 def convertible_currencies(accounts):

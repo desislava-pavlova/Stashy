@@ -236,6 +236,7 @@ Stashy/
 ├── finance/              # the app
 │   ├── models.py         # Account, Category, Payee, Transaction, Reminder, etc.
 │   ├── views.py          # dashboard, CRUD views, import/export, reports, backups
+│   ├── services/         # importing a file, reconciling an account
 │   ├── forms.py
 │   ├── reporting.py      # report calculations
 │   ├── stashes.py        # creating stashes, owner names, PINs, lockout, recovery codes

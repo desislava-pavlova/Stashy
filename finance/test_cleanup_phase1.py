@@ -27,7 +27,8 @@ from . import db_router, stashes
 from .middleware import StashAtomicRequestMiddleware
 from .models import Account, Category, ExchangeRate, ImportBatch, Payee, Profile, Transaction
 from .reporting import income_and_spending, spending_tree
-from .views import _parse_transaction_number, _safe_next
+from .services.importing import _parse_transaction_number
+from .views import _safe_next
 
 
 class TemporaryStashesMixin:

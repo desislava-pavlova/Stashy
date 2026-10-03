@@ -11,28 +11,10 @@ from django.contrib.auth.decorators import login_required
 from django.shortcuts import redirect, render
 
 from . import starter_categories
-from .forms import AccountCreateForm, ProfileForm, WatchedExpensesForm
-from .models import Category, Profile, grouped_categories
+from .forms import AccountCreateForm, ProfileForm, WatchedExpensesForm, watched_expenses_picker_context
+from .models import Profile
 
 STEP_COUNT = Profile.WELCOME_STEPS_DONE
-
-
-def _watched_expenses_context(profile):
-    selected_values = {str(pk) for pk in profile.watched_expenses_categories.values_list("pk", flat=True)}
-    count = len(selected_values)
-    if count == 0:
-        button_label = "No categories chosen"
-    elif count == 1:
-        button_label = next(iter(profile.watched_expenses_categories.all())).full_name
-    else:
-        button_label = f"{count} categories selected"
-    return {
-        "watched_category_groups": grouped_categories(
-            Category.objects.filter(category_type=Category.CategoryType.EXPENSE, account__isnull=True)
-        ),
-        "watched_selected_values": selected_values,
-        "watched_button_label": button_label,
-    }
 
 
 def _advance(profile, completed_step):
@@ -127,7 +109,7 @@ def _step_watched_expenses(request, profile, step):
             "form": form,
             "step_number": step,
             "step_total": STEP_COUNT,
-            **_watched_expenses_context(profile),
+            **watched_expenses_picker_context(profile),
         },
     )
 

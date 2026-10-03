@@ -18,8 +18,11 @@ terms.
 ## Hard rules
 
 - **Stay inside this folder** (the scratchpad is fine for throwaway scripts).
-  **Never run git**, not even read-only commands that change state. The
-  user runs any git step themselves, so tell them the exact command.
+  **Never run git on your own**, not even read-only commands that change
+  state. The one exception: when the user says "go commit", stage the
+  listed files and commit them with the agreed message (since 03/10/2026).
+  Never push, and never run any other git step: tell the user the exact
+  command instead.
   **Nothing that costs money.** Free PyPI and CDN downloads are fine.
 - **One stash holds real data** (named in `CLAUDE.local.md`). Back it up
   before any schema change or data fix: copy its `db.sqlite3` into its own
@@ -41,7 +44,7 @@ terms.
 ## Commands
 
 ```
-.venv\Scripts\python.exe manage.py test                          # full suite, ~15 s (582 tests on 02/10/2026)
+.venv\Scripts\python.exe manage.py test                          # full suite, ~17 s (610 tests on 02/10/2026)
 .venv\Scripts\python.exe manage.py test finance.test_phase15     # one module
 .venv\Scripts\python.exe manage.py migrate --database <stash>    # one stash (Stashy.bat does all, with backups)
 .venv\Scripts\python.exe manage.py reset_pin <owner name>        # real, visible action - ask first
@@ -77,6 +80,14 @@ terms.
 - `finance/`: the whole app.
   - `models.py`: Profile, Account, Category, Payee, Transaction,
     ImportBatch, Reminder, ExchangeRate, Reconciliation.
+    `TransactionQuerySet` (`in_range`, `reportable`, `of_kind`,
+    `for_account`) is what every report query is built from. The reminder
+    rules live on the model: `mark_entered()`, `skip()`,
+    `apply_to_series()`.
+  - `services/`: `importing.py` (`import_file()` → `ImportResult`, raises
+    `ImportFileError`) and `reconciliation.py` (`reconcile()`, raises
+    `UnacceptedDifferenceError`). Plain functions, no HTTP. Each runs in its
+    own `atomic(using=<stash>)`.
   - `views.py` (about 2,000 lines, split in plan 02 phase 5), plus
     `auth_views.py` (picker/login/forgot-PIN) and `welcome_views.py`
     (4-step setup wizard).
@@ -208,7 +219,15 @@ terms.
     out of git for now (the user's choice, 01/10/2026; `.gitignore` has
     `**/migrations/*.py`), so don't list them. Discussion parked in plan 02,
     item 3.6.
-  - Report, and let the user choose what comes next.
+  - Report, and let the user choose what comes next. The report ends with
+    **"What to check"**: every change the user can see or should try
+    themselves (page, what to do, what they should see). Write "nothing
+    visible" when that's true. (Asked for 03/10/2026.)
+  - Suggest a commit: a short **Summary** line and a short **Description**
+    (Copilot-style: one sentence or a few short bullets). The description
+    starts with "Plan N, Phase M:", plus ", Part X" only when the phase
+    really was split into parts. Never add a `Co-Authored-By` line. Run
+    `git` only after the user says "go commit" (see the git rule above).
 - **The user writes dates as DD/MM/YYYY**, and so should plans and DEVLOG.
 
 ## Verification (there is no browser here)

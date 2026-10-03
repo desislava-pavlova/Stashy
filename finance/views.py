@@ -1,12 +1,8 @@
 import csv
-import hashlib
-import io
 import json
-import re
 import secrets
-from dataclasses import dataclass
-from datetime import date, datetime, timedelta
-from decimal import Decimal, InvalidOperation
+from datetime import date, timedelta
+from decimal import Decimal
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -49,6 +45,7 @@ from .forms import (
     TransferForm,
     WatchedExpensesForm,
     convertible_currencies,
+    watched_expenses_picker_context,
 )
 from .models import (
     Account,
@@ -56,15 +53,13 @@ from .models import (
     ImportBatch,
     Payee,
     Profile,
-    Reconciliation,
     Reminder,
     Transaction,
     categories_alphabetical,
     grouped_accounts,
     grouped_categories,
-    name_key,
 )
-from .money import CENT, ZERO, parse_amount
+from .money import ZERO
 from .reporting import (
     DEFAULT_LOOKBACK_PERIODS,
     DEFAULT_RANGE_KEY,
@@ -85,6 +80,7 @@ from .reporting import (
     watched_expenses_series,
     watched_expenses_totals,
 )
+from .services import importing, reconciliation
 
 ACCOUNT_TIPS = [
     "Opening balance is what the account held on the day you start tracking it in Stashy"
@@ -368,47 +364,25 @@ def account_reconcile(request, pk):
         statement_date = finish_form.cleaned_data["statement_date"]
         statement_balance = finish_form.cleaned_data["statement_balance"]
         checked = list(finish_form.cleaned_data["transaction"])
-        checked_ids = {str(t.pk) for t in checked}
-        opening_balance = account.reconciled_balance()
-        checked_total = sum((t.amount for t in checked), ZERO)
-        new_balance = opening_balance + checked_total
-        difference = (statement_balance - new_balance).quantize(CENT)
-
-        if difference != ZERO and not finish_form.cleaned_data["accept_difference"]:
+        try:
+            reconciliation.reconcile(
+                account,
+                statement_date,
+                statement_balance,
+                checked,
+                accept_difference=finish_form.cleaned_data["accept_difference"],
+            )
+        except reconciliation.UnacceptedDifferenceError as error:
             messages.error(
                 request,
-                f"That leaves a difference of {format_money(difference, account.currency)} — "
+                f"That leaves a difference of {format_money(error.difference, account.currency)} — "
                 "check the box to accept it and create an adjustment, or fix your selections.",
             )
+            checked_ids = {str(t.pk) for t in checked}
             return render(
                 request,
                 "finance/account_reconcile_review.html",
                 _reconcile_review_context(account, statement_date, statement_balance, checked_ids),
-            )
-
-        adjustment = None
-        with system_action(f"Account '{account.name}' reconciled to {regional.format_date(statement_date)}"):
-            for txn in checked:
-                txn.reconciled = True
-                txn.save(update_fields=["reconciled"])
-            if difference != ZERO:
-                # Not real income/spending - excluded from reports the same way a transfer or
-                # opening balance is (D1/D7), since it's a bookkeeping correction, not a purchase.
-                adjustment = Transaction.objects.create(
-                    account=account,
-                    date=statement_date,
-                    payee=Payee.system(Payee.RECONCILIATION_ADJUSTMENT),
-                    category=account.ensure_transfer_category(),
-                    memo="Reconciliation adjustment",
-                    amount=difference,
-                    reconciled=True,
-                )
-            Reconciliation.objects.create(
-                account=account,
-                statement_date=statement_date,
-                statement_balance=statement_balance,
-                opening_balance=opening_balance,
-                adjustment_transaction=adjustment,
             )
         messages.success(request, f"{account.name} reconciled to {regional.format_date(statement_date)}.")
         return redirect("finance:account_detail", pk=account.pk)
@@ -1094,19 +1068,12 @@ def transaction_form_view(request, pk=None):
                     account.save(update_fields=["is_active"])
             txn = form.save()
             if reminder:
-                reminder.last_entered_transaction = txn
-                reminder.save(update_fields=["last_entered_transaction"])
+                reminder.mark_entered(txn)
                 if reminder.frequency == Reminder.Frequency.ONE_TIME:
-                    # Nothing left to advance to - it's now permanently "Paid" (status()).
                     messages.success(request, f"Entered {reminder}.")
                 else:
-                    # The reminder now stands for the *next* period, which hasn't been paid -
-                    # drop the link to the transaction just entered so it doesn't show "Paid".
-                    reminder.record_period(transaction=txn)
-                    reminder.last_entered_transaction = None
-                    reminder.save(update_fields=["last_entered_transaction"])
-                    reminder.advance_due_date()
-                    messages.success(request, f"Entered {reminder} and moved it to {reminder.next_due_date:%d/%m/%Y}.")
+                    moved_to = regional.format_date(reminder.next_due_date)
+                    messages.success(request, f"Entered {reminder} and moved it to {moved_to}.")
                 return redirect("finance:reminder_list")
             messages.success(request, "Transaction saved.")
             if not instance:
@@ -1263,26 +1230,6 @@ class ReminderCreateView(LoginRequiredMixin, CreateView):
     extra_context = {"title": "Add reminder", **REMINDER_FORM_EXTRA_CONTEXT}
 
 
-# Fields regenerate_occurrences() already copies root -> new occurrence on generation; a
-# "whole series" edit (below) syncs the same fields onto every already-generated, still-open
-# occurrence too - schedule fields (frequency/interval/dates) stay per-row on purpose, since
-# they only really apply to the root and an occurrence's own date is what makes it that occurrence.
-SHARED_SERIES_FIELDS = ["account", "payee", "category", "amount", "reminder_type", "notes"]
-
-
-def _propagate_series_edit(saved, root):
-    if root.pk != saved.pk:
-        for field in SHARED_SERIES_FIELDS:
-            setattr(root, field, getattr(saved, field))
-        root.save(update_fields=SHARED_SERIES_FIELDS)
-    targets = root.occurrences.filter(last_entered_transaction__isnull=True, skipped=False).exclude(pk=saved.pk)
-    with system_action(f"Series-wide edit applied from reminder ({saved})"):
-        for occurrence in targets:
-            for field in SHARED_SERIES_FIELDS:
-                setattr(occurrence, field, getattr(saved, field))
-            occurrence.save(update_fields=SHARED_SERIES_FIELDS)
-
-
 @login_required
 def reminder_edit(request, pk):
     """Edit a reminder - if it's connected to a series (it's a series head with occurrences,
@@ -1300,7 +1247,7 @@ def reminder_edit(request, pk):
         if form.is_valid():
             saved = form.save()
             if has_connection and scope == "series":
-                _propagate_series_edit(saved, root)
+                saved.apply_to_series()
             messages.success(request, "Reminder updated.")
             return redirect("finance:reminder_list")
     else:
@@ -1340,19 +1287,11 @@ def reminder_skip(request, pk):
         return redirect("finance:reminder_list")
     reminder = get_object_or_404(Reminder, pk=pk)
     label = str(reminder)
+    reminder.skip()
     if reminder.frequency == Reminder.Frequency.ONE_TIME:
-        # No next period to advance to - mark it done instead (2026-09-14 follow-up).
-        reminder.skipped = True
-        reminder.save(update_fields=["skipped"])
         messages.success(request, f"Skipped {label}.")
     else:
-        # A skip is explicitly "not paying this one" - clear any stale link from a previous
-        # Enter so the next occurrence doesn't show as "paid" before it's actually due.
-        reminder.record_period(skipped=True)
-        reminder.last_entered_transaction = None
-        reminder.save(update_fields=["last_entered_transaction"])
-        reminder.advance_due_date()
-        messages.success(request, f"Skipped {label}; moved it to {reminder.next_due_date:%d/%m/%Y}.")
+        messages.success(request, f"Skipped {label}; moved it to {regional.format_date(reminder.next_due_date)}.")
     return redirect("finance:reminder_list")
 
 
@@ -1367,39 +1306,13 @@ def import_transactions(request):
         form = ImportUploadForm(request.POST, request.FILES)
         if form.is_valid():
             account = form.cleaned_data["account"]
-            upload = form.cleaned_data["file"]
-            filename = upload.name.lower()
-
-            if not filename.endswith((".csv", ".xlsx", ".ofx", ".qfx")):
-                messages.error(request, "Unsupported file type. Please upload a .csv, .xlsx, .ofx, or .qfx file.")
-                return redirect("finance:import_transactions")
-
-            # The whole file is read and checked before anything is written, so a file Stashy
-            # can't read gets a message and leaves nothing behind.
-            encoding_note = ""
+            date_format = form.cleaned_data.get("date_format") or "auto"
             try:
-                if filename.endswith(".csv"):
-                    fieldnames, rows, encoding_note = _read_csv(upload)
-                elif filename.endswith(".xlsx"):
-                    fieldnames, rows = _read_xlsx(upload)
-                else:
-                    ofx_rows = _read_ofx(upload)
-            except ImportFileError as error:
+                result = importing.import_file(form.cleaned_data["file"], account, date_format)
+            except importing.ImportFileError as error:
                 messages.error(request, str(error))
                 return redirect("finance:import_transactions")
-
-            with system_action(f"Imported from {upload.name}"):
-                batch = ImportBatch.objects.create(account=account, source_filename=upload.name)
-                if filename.endswith((".csv", ".xlsx")):
-                    date_format = form.cleaned_data.get("date_format") or "auto"
-                    result = _import_rows(fieldnames, rows, account, batch, date_format)
-                else:
-                    result = _import_ofx_rows(ofx_rows, account, batch)
-                batch.row_count = result.created
-                batch.duplicate_count = result.duplicates
-                batch.save(update_fields=["row_count", "duplicate_count"])
-
-            messages.success(request, _import_summary(result, encoding_note))
+            messages.success(request, _import_summary(result))
             return redirect("finance:account_detail", pk=account.pk)
     else:
         form = ImportUploadForm()
@@ -1410,24 +1323,11 @@ def import_transactions(request):
     )
 
 
-class ImportFileError(Exception):
-    """The uploaded file couldn't be read at all - the message is shown to the user as is."""
-
-
-@dataclass
-class ImportResult:
-    created: int = 0
-    duplicates: int = 0
-    unknown_account: int = 0
-    unreadable: int = 0
-    date_format: str | None = None
-
-
 def _plural(count, word):
     return f"{count} {word}{'' if count == 1 else 's'}"
 
 
-def _import_summary(result, encoding_note=""):
+def _import_summary(result):
     summary = f"Imported {_plural(result.created, 'transaction')} ({result.duplicates} duplicates skipped)."
     if result.unknown_account:
         summary += f" {_plural(result.unknown_account, 'row')} skipped - named an account that doesn't exist yet."
@@ -1436,297 +1336,9 @@ def _import_summary(result, encoding_note=""):
     if result.date_format:
         label = dict(regional.DATE_FORMAT_CHOICES).get(result.date_format, result.date_format)
         summary += f" Read dates as {label}."
-    if encoding_note:
-        summary += f" {encoding_note}"
+    if result.encoding_note:
+        summary += f" {result.encoding_note}"
     return summary
-
-
-def _fingerprint(account_id, txn_date, amount, payee):
-    raw = f"{account_id}|{txn_date.isoformat()}|{amount:.2f}|{payee}".encode()
-    return hashlib.sha256(raw).hexdigest()
-
-
-def _guessed_category(payee):
-    """The category to pre-fill for an imported row with no Category column value: this
-    payee's most recently used category, if any."""
-    if payee is None:
-        return None
-    history = payee.category_history()
-    return history[0].category if history else None
-
-
-_CATEGORY_SEPARATOR_RE = re.compile(r"\s*[:>]\s*")
-
-
-def _resolve_category(raw, amount):
-    """Resolve the category named in an import row, auto-creating it if Stashy doesn't already
-    have one by that name (Phase 9) - the main real-world use of this importer is a large
-    one-time historical migration, and requiring every category to exist beforehand would be
-    exactly the kind of friction that makes migrations painful. Matching is case-insensitive,
-    so "Groceries" from a file never creates a duplicate of an existing "groceries". Understands
-    "Parent:Child" or "Parent > Child" (Quicken's and this app's own separators) for one level
-    of subcategory - a third level, if a file somehow has one, folds into the child's own name
-    rather than erroring, since this app doesn't support deeper nesting anyway.
-    """
-    raw = (raw or "").strip()
-    if not raw:
-        return None
-    parts = _CATEGORY_SEPARATOR_RE.split(raw, maxsplit=1)
-    parent_name = parts[0].strip()
-    child_name = parts[1].strip() if len(parts) > 1 else ""
-    if not parent_name:
-        return None
-
-    category_type = Category.CategoryType.INCOME if amount > 0 else Category.CategoryType.EXPENSE
-    parent = Category.objects.filter(name_key=name_key(parent_name), parent__isnull=True, account__isnull=True).first()
-    if parent is None:
-        parent = Category.objects.create(name=parent_name, category_type=category_type, is_auto_generated=True)
-
-    if not child_name:
-        return parent
-
-    child = Category.objects.filter(name_key=name_key(child_name), parent=parent).first()
-    if child is None:
-        # A new subcategory always takes its parent's type - a mismatched pair (an "income"
-        # category with an "expense" child) would only confuse reports for no real benefit.
-        child = Category.objects.create(
-            name=child_name, category_type=parent.category_type, parent=parent, is_auto_generated=True
-        )
-    return child
-
-
-# A day value over 12 in either position settles day-first vs month-first; a 4-digit first
-# component is ISO. Ambiguous rows (both parts <= 12) are skipped - the caller falls back to
-# the profile's own format if nothing in the whole file was ever unambiguous.
-_DATE_SNIFF_RE = re.compile(r"^(\d{1,4})[./-](\d{1,2})[./-](\d{1,4})$")
-
-
-def _detect_date_format(raw_dates):
-    for raw in raw_dates:
-        match = _DATE_SNIFF_RE.match((raw or "").strip())
-        if not match:
-            continue
-        a, b, _c = match.groups()
-        if len(a) == 4:
-            return "ymd"
-        if int(a) > 12:
-            return "dmy"
-        if int(b) > 12:
-            return "mdy"
-    return None
-
-
-def _read_csv(upload):
-    """(fieldnames, rows, encoding note) from an uploaded CSV.
-
-    UTF-8 first (with or without Excel's BOM). Bulgarian bank exports are often Windows-1251,
-    so that's the fallback (Claude's call, plan 02 item 1.10) - and the summary says so, since a
-    Western file in Windows-1252 would come out with Cyrillic letters in place of its accents.
-    """
-    raw = upload.read()
-    try:
-        text, note = raw.decode("utf-8-sig"), ""
-    except UnicodeDecodeError:
-        try:
-            text = raw.decode("cp1251")
-        except UnicodeDecodeError:
-            raise ImportFileError(
-                "Stashy couldn't read this file's text. Save it as \"CSV UTF-8\" and try again."
-            ) from None
-        note = (
-            "The file wasn't UTF-8, so it was read as Windows-1251 (Cyrillic) - if names look wrong, "
-            'delete what was imported, save the file as "CSV UTF-8" and import it again.'
-        )
-    try:
-        reader = csv.DictReader(io.StringIO(text, newline=""))
-        rows = list(reader)
-    except csv.Error as error:
-        raise ImportFileError(f"This doesn't look like a CSV file Stashy can read ({error}).") from None
-    return reader.fieldnames or [], rows, note
-
-
-def _read_xlsx(upload):
-    """(fieldnames, rows) from the first sheet of an uploaded Excel file."""
-    from zipfile import BadZipFile
-
-    from openpyxl import load_workbook
-    from openpyxl.utils.exceptions import InvalidFileException
-
-    try:
-        workbook = load_workbook(upload, data_only=True, read_only=True)
-        all_rows = list(workbook.active.iter_rows(values_only=True))
-        workbook.close()
-    except (BadZipFile, InvalidFileException, KeyError, OSError, ValueError, TypeError):
-        raise ImportFileError(
-            "Stashy couldn't open this Excel file - it may be damaged or not really an .xlsx file."
-        ) from None
-
-    header = all_rows[0] if all_rows else []
-    fieldnames = [str(cell).strip() if cell is not None else "" for cell in header]
-
-    rows = []
-    for values in all_rows[1:]:
-        row = {}
-        for name, value in zip(fieldnames, values, strict=False):
-            if not name:
-                continue
-            if isinstance(value, datetime):
-                value = value.date()
-            if isinstance(value, date):
-                row[name] = value.isoformat()
-            elif value is None:
-                row[name] = ""
-            else:
-                row[name] = str(value)
-        rows.append(row)
-    return fieldnames, rows
-
-
-_RECONCILED_FALSE_VALUES = {"", "n", "no", "false", "0", "unreconciled", "uncleared", "u"}
-
-
-def _import_rows(fieldnames, rows, account, batch, date_format="auto"):
-    """Shared row processing for CSV and XLSX imports. Recognizes Date, Num, Account, Payee,
-    Category, Memo, Amount and Reconciled columns (the layout Quicken/Money "transaction
-    report" exports use) - only Date needs to be present in a row; Num, Payee, Category, Memo
-    and Reconciled can all be blank. Amount still has to parse, since a transaction can't be
-    saved without one, and an Account column naming an account that doesn't exist is skipped
-    rather than guessed at (D9 backlog "Accounts must already exist")."""
-    # Normalize header names so common bank export variants all work.
-    fieldmap = {name.strip().lower(): name for name in fieldnames if name}
-
-    def get(row, *keys):
-        for k in keys:
-            if k in fieldmap:
-                return (row.get(fieldmap[k]) or "").strip()
-        return ""
-
-    if date_format == "auto" or not date_format:
-        detected = _detect_date_format(get(row, "date", "transaction date") for row in rows)
-        date_format = detected or regional.current().date_format
-    date_formats = regional.Preferences(date_format=date_format).date_input_formats
-
-    accounts_by_name = {a.name.lower(): a for a in Account.objects.all()}
-
-    result = ImportResult(date_format=date_format)
-    for row in rows:
-        if not any(isinstance(value, str) and value.strip() for value in row.values()):
-            continue  # a completely empty line isn't a skipped transaction
-        raw_date = get(row, "date", "transaction date")
-        raw_amount = get(row, "amount")
-        raw_num = get(row, "num", "number", "check number")
-        payee_name = get(row, "payee", "description", "name")
-        memo = get(row, "memo", "notes")
-        raw_account = get(row, "account")
-        raw_category = get(row, "category")
-        raw_reconciled = get(row, "reconciled", "cleared", "status")
-
-        txn_date = _parse_date(raw_date, date_formats) if raw_date else None
-        amount = parse_amount(raw_amount) if raw_amount else None
-        if txn_date is None or amount is None:
-            result.unreadable += 1
-            continue
-
-        row_account = account
-        if raw_account:
-            row_account = accounts_by_name.get(raw_account.lower())
-            if row_account is None:
-                result.unknown_account += 1
-                continue
-
-        fp = _fingerprint(row_account.id, txn_date, amount, payee_name)
-        if Transaction.objects.filter(import_fingerprint=fp).exists():
-            result.duplicates += 1
-            continue
-
-        payee = Payee.objects.resolve(payee_name, reason=None) if payee_name else None
-        category = _resolve_category(raw_category, amount) if raw_category else _guessed_category(payee)
-
-        Transaction.objects.create(
-            account=row_account,
-            date=txn_date,
-            transaction_number=_parse_transaction_number(raw_num),
-            payee=payee,
-            memo=memo,
-            amount=amount,
-            reconciled=raw_reconciled.strip().lower() not in _RECONCILED_FALSE_VALUES,
-            import_batch=batch,
-            import_fingerprint=fp,
-            category=category,
-        )
-        result.created += 1
-
-    return result
-
-
-# The largest value Django guarantees a PositiveIntegerField can hold on every database.
-_MAX_TRANSACTION_NUMBER = 2_147_483_647
-
-
-def _parse_transaction_number(raw):
-    """A Num cell as a transaction number, or None ("no number") when it isn't a whole number
-    Stashy can store - blank, negative, huge, "inf", "12.5" or plain text."""
-    try:
-        number = Decimal(raw.strip())
-    except (InvalidOperation, AttributeError):
-        return None
-    if not number.is_finite() or number != number.to_integral_value():
-        return None
-    number = int(number)
-    return number if 0 <= number <= _MAX_TRANSACTION_NUMBER else None
-
-
-def _parse_date(raw, formats):
-    for fmt in formats:
-        try:
-            return datetime.strptime(raw, fmt).date()
-        except ValueError:
-            continue
-    return None
-
-
-def _read_ofx(upload):
-    """Every transaction in an OFX/QFX file as (date, raw amount, payee name, memo)."""
-    from ofxparse import OfxParser
-
-    try:
-        ofx = OfxParser.parse(upload)
-        return [
-            (txn.date.date(), txn.amount, (txn.payee or "").strip(), getattr(txn, "memo", "") or "")
-            for ofx_account in ofx.accounts
-            for txn in ofx_account.statement.transactions
-        ]
-    except Exception:
-        raise ImportFileError(
-            "Stashy couldn't read this OFX/QFX file - it may be damaged or in a different format."
-        ) from None
-
-
-def _import_ofx_rows(ofx_rows, account, batch):
-    result = ImportResult()
-    for txn_date, raw_amount, payee_name, memo in ofx_rows:
-        amount = parse_amount(raw_amount)
-        if amount is None:
-            result.unreadable += 1
-            continue
-        fp = _fingerprint(account.id, txn_date, amount, payee_name)
-        if Transaction.objects.filter(import_fingerprint=fp).exists():
-            result.duplicates += 1
-            continue
-        payee = Payee.objects.resolve(payee_name, reason=None) if payee_name else None
-        Transaction.objects.create(
-            account=account,
-            date=txn_date,
-            payee=payee,
-            memo=memo,
-            amount=amount,
-            import_batch=batch,
-            import_fingerprint=fp,
-            category=_guessed_category(payee),
-        )
-        result.created += 1
-    # OFX has no per-row account text field and no ambiguous textual dates to detect.
-    return result
 
 
 # ---------------------------------------------------------------------------
@@ -2309,15 +1921,6 @@ def settings_view(request):
     else:
         form = ProfileForm(instance=profile)
 
-    watched_selected_values = {str(pk) for pk in profile.watched_expenses_categories.values_list("pk", flat=True)}
-    watched_count = len(watched_selected_values)
-    if watched_count == 0:
-        watched_button_label = "No categories chosen"
-    elif watched_count == 1:
-        watched_button_label = next(iter(profile.watched_expenses_categories.all())).full_name
-    else:
-        watched_button_label = f"{watched_count} categories selected"
-
     rates = RateTable(profile.main_currency)
     known_rates = [(code, rates.known(code)) for code in currencies if code != profile.main_currency]
     recent_backups = finance_backup.list_backups(backup_root, limit=5)
@@ -2327,11 +1930,7 @@ def settings_view(request):
         {
             "form": form,
             "watched_form": watched_form,
-            "watched_category_groups": grouped_categories(
-                Category.objects.filter(category_type=Category.CategoryType.EXPENSE, account__isnull=True)
-            ),
-            "watched_selected_values": watched_selected_values,
-            "watched_button_label": watched_button_label,
+            **watched_expenses_picker_context(profile),
             "check_rates_form": CheckRatesForm(),
             "profile": profile,
             "known_rates": known_rates,

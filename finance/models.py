@@ -506,6 +506,32 @@ class Payee(models.Model):
         return history
 
 
+class TransactionQuerySet(models.QuerySet):
+    """The building blocks every report query is made of (finance/reporting.py)."""
+
+    def in_range(self, start, end):
+        """Dated from `start` to `end`, both days included."""
+        return self.filter(date__gte=start, date__lte=end)
+
+    def reportable(self):
+        """What counts as income or spending: it has a category, and that category isn't an
+        account's Transfer category (D7). Opening balances use the Transfer category too (D1)."""
+        return self.filter(category__isnull=False).exclude(category__account__isnull=False)
+
+    def of_kind(self, expense_only=False, income_only=False):
+        """Only expense or only income categories, or both when neither flag is set. The
+        category's type decides, never the amount's sign (R1)."""
+        if expense_only:
+            return self.filter(category__category_type=Category.CategoryType.EXPENSE)
+        if income_only:
+            return self.filter(category__category_type=Category.CategoryType.INCOME)
+        return self
+
+    def for_account(self, account):
+        """Only `account`'s transactions, or every account's when `account` is None."""
+        return self.filter(account=account) if account else self
+
+
 class Transaction(models.Model):
     """Sign convention: positive amount = money in (income/deposit),
     negative amount = money out (expense/withdrawal)."""
@@ -531,6 +557,8 @@ class Transaction(models.Model):
         max_length=64, blank=True, db_index=True, help_text="Hash used to detect duplicate imports"
     )
     created_at = models.DateTimeField(auto_now_add=True)
+
+    objects = TransactionQuerySet.as_manager()
 
     class Meta:
         # transaction_number is an integer column, so it sorts 1, 2, 10 - never "1, 10, 2" like text would (D9).
@@ -610,6 +638,12 @@ class Reminder(models.Model):
         (Category.CategoryType.INCOME.value, Category.CategoryType.INCOME.label),
         (Category.CategoryType.EXPENSE.value, Category.CategoryType.EXPENSE.label),
     ]
+
+    # What a "whole series" edit copies onto the series head and its still-open occurrences:
+    # the same fields regenerate_occurrences() copies onto a new occurrence. The schedule
+    # (frequency, interval, dates) stays per row, since an occurrence's own date is what makes it
+    # that occurrence.
+    SERIES_FIELDS = ["account", "payee", "category", "amount", "reminder_type", "notes"]
 
     # "Due soon" is treated as urgent enough to need action; anything further out than this
     # many days (and not already overdue) is either "paid" (see status()) or plain pending.
@@ -792,6 +826,48 @@ class Reminder(models.Model):
         who = self.payee.name if self.payee_id else (self.category.full_name if self.category_id else "Reminder")
         with system_action(f"Next due date moved forward one period for reminder ({who})"):
             self.save(update_fields=["next_due_date"])  # save() -> regenerate_occurrences()
+
+    def mark_entered(self, transaction):
+        """Enter (D6): `transaction` pays this reminder's current period. A one-time reminder
+        links to it and is "Paid" for good; a recurring one records the period and moves on."""
+        if self.frequency == self.Frequency.ONE_TIME:
+            self.last_entered_transaction = transaction
+            self.save(update_fields=["last_entered_transaction"])
+        else:
+            self._move_past_period(transaction=transaction)
+
+    def skip(self):
+        """Skip (D6): this period won't be paid. A one-time reminder is marked done, since it
+        has no next period; a recurring one records the period as skipped and moves on."""
+        if self.frequency == self.Frequency.ONE_TIME:
+            self.skipped = True
+            self.save(update_fields=["skipped"])
+        else:
+            self._move_past_period(skipped=True)
+
+    def apply_to_series(self):
+        """A "whole series" edit: copy this reminder's SERIES_FIELDS onto its series head (when
+        it's an occurrence) and onto every occurrence not yet paid or skipped."""
+        root = self.series if self.series_id else self
+        if root.pk != self.pk:
+            for field in self.SERIES_FIELDS:
+                setattr(root, field, getattr(self, field))
+            root.save(update_fields=self.SERIES_FIELDS)
+        targets = root.occurrences.filter(last_entered_transaction__isnull=True, skipped=False).exclude(pk=self.pk)
+        with system_action(f"Series-wide edit applied from reminder ({self})"):
+            for occurrence in targets:
+                for field in self.SERIES_FIELDS:
+                    setattr(occurrence, field, getattr(self, field))
+                occurrence.save(update_fields=self.SERIES_FIELDS)
+
+    def _move_past_period(self, transaction=None, skipped=False):
+        self.record_period(transaction=transaction, skipped=skipped)
+        # The reminder now stands for the next period, which nobody has paid yet - an old link
+        # left from an earlier Enter would make it show as "Paid".
+        if self.last_entered_transaction_id:
+            self.last_entered_transaction = None
+            self.save(update_fields=["last_entered_transaction"])
+        self.advance_due_date()
 
     def regenerate_occurrences(self):
         """Keep this recurring reminder's auto-generated future occurrences in sync with its

@@ -84,16 +84,15 @@ def earliest_transaction_date(account=None):
     """The date of the very first transaction (within the Account filter), or None with no
     transactions at all - "Earliest to date" starts here (R3), and it's also where "periods
     before the data begins don't count" (R4) trims the vs-average lookback."""
-    qs = Transaction.objects.all()
-    if account:
-        qs = qs.filter(account=account)
-    row = qs.order_by("date").first()
+    row = Transaction.objects.for_account(account).order_by("date").first()
     return row.date if row else None
 
 
-def excluding_transfers(queryset):
-    """Transfer-type categories (Phase 3) never count as income or spending (D7/D11)."""
-    return queryset.exclude(category__account__isnull=False)
+def _reportable(start=None, end=None, account=None, expense_only=False, income_only=False):
+    """The transactions a report counts (TransactionQuerySet.reportable(): a category, and not a
+    transfer), narrowed to the date range, the account and the kind when given."""
+    qs = Transaction.objects.reportable().of_kind(expense_only, income_only).for_account(account)
+    return qs.in_range(start, end) if start else qs
 
 
 def _convert(amount, currency, rates):
@@ -111,9 +110,7 @@ def _convert(amount, currency, rates):
 
 
 def income_and_spending(start, end, account=None, rates=None):
-    qs = excluding_transfers(Transaction.objects.filter(date__gte=start, date__lte=end, category__isnull=False))
-    if account:
-        qs = qs.filter(account=account)
+    qs = _reportable(start, end, account)
     income, spending = ZERO, ZERO
     for row in qs.values("amount", "category__category_type", "account__currency"):
         amount = _convert(row["amount"], row["account__currency"], rates)
@@ -209,23 +206,12 @@ def income_and_spending_vs_average(start, end, periods, account=None, rates=None
     return result
 
 
-def _category_type_filter(qs, expense_only, income_only):
-    if expense_only:
-        return qs.filter(category__category_type=Category.CategoryType.EXPENSE)
-    if income_only:
-        return qs.filter(category__category_type=Category.CategoryType.INCOME)
-    return qs
-
-
 def category_totals(start, end, expense_only=False, income_only=False, account=None, rates=None):
     """Per-category totals for the period, transfers excluded (R1: category type decides, not
     amount sign). expense_only/income_only return positive magnitudes sorted biggest-first (for
     the "by category" charts); otherwise totals stay signed (income positive, expense negative),
     sorted low-to-high, so the combined chart reads as one continuous scale."""
-    qs = excluding_transfers(Transaction.objects.filter(date__gte=start, date__lte=end, category__isnull=False))
-    qs = _category_type_filter(qs, expense_only, income_only)
-    if account:
-        qs = qs.filter(account=account)
+    qs = _reportable(start, end, account, expense_only, income_only)
 
     totals, names = {}, {}
     for row in qs.values("category_id", "category__name", "amount", "account__currency"):
@@ -247,10 +233,7 @@ def category_totals_top_level(start, end, expense_only=False, income_only=False,
     """Like category_totals(), but a subcategory's amount is rolled into its top-level parent's
     - for charts that read better as one bar per main category (R2: charts never show
     subcategories) than with every subcategory competing for space alongside them."""
-    qs = excluding_transfers(Transaction.objects.filter(date__gte=start, date__lte=end, category__isnull=False))
-    qs = _category_type_filter(qs, expense_only, income_only)
-    if account:
-        qs = qs.filter(account=account)
+    qs = _reportable(start, end, account, expense_only, income_only)
 
     raw = {}
     for row in qs.values("category_id", "amount", "account__currency"):
@@ -286,10 +269,7 @@ def category_totals_vs_average(
     that category - but a category with no activity in *any* earlier period has no average at
     all (None), rather than a misleading 0. `top_level=True` rolls subcategories into their main
     category, for charts (R2)."""
-    qs = excluding_transfers(Transaction.objects.filter(category__isnull=False))
-    qs = _category_type_filter(qs, expense_only, income_only)
-    if account:
-        qs = qs.filter(account=account)
+    qs = _reportable(account=account, expense_only=expense_only, income_only=income_only)
 
     top_of = {}
     if top_level:
@@ -299,9 +279,7 @@ def category_totals_vs_average(
 
     def totals_for(s, e):
         totals, names = {}, {}
-        for row in qs.filter(date__gte=s, date__lte=e).values(
-            "category_id", "category__name", "amount", "account__currency"
-        ):
+        for row in qs.in_range(s, e).values("category_id", "category__name", "amount", "account__currency"):
             amount = _convert(row["amount"], row["account__currency"], rates)
             cid, name = top_of.get(row["category_id"], (row["category_id"], row["category__name"]))
             totals[cid] = totals.get(cid, ZERO) + amount
@@ -397,10 +375,7 @@ def _period_columns(start, end, granularity):
 def uncategorized_count(start, end, account=None):
     """How many transactions in the period have no category - excluded from every report (R1),
     since Category stays optional (some imports can't supply one)."""
-    qs = Transaction.objects.filter(date__gte=start, date__lte=end, category__isnull=True)
-    if account:
-        qs = qs.filter(account=account)
-    return qs.count()
+    return Transaction.objects.in_range(start, end).filter(category__isnull=True).for_account(account).count()
 
 
 def category_report_rows(
@@ -422,10 +397,7 @@ def category_report_rows(
     if overflow:
         return {"periods": [], "groups": [], "totals": None, "overflow": overflow}
 
-    qs = excluding_transfers(Transaction.objects.filter(date__gte=start, date__lte=end, category__isnull=False))
-    qs = _category_type_filter(qs, expense_only, income_only)
-    if account:
-        qs = qs.filter(account=account)
+    qs = _reportable(start, end, account, expense_only, income_only)
     if category_ids is not None:
         qs = qs.filter(category_id__in=category_ids)
 
@@ -448,16 +420,8 @@ def category_report_rows(
     if not totals:
         return {"periods": [p["label"] for p in periods], "groups": [], "totals": None, "overflow": None}
 
-    categories = {c.pk: c for c in Category.objects.filter(pk__in=list(totals.keys())).select_related("parent")}
-    for category in list(categories.values()):
-        if category.parent_id and category.parent_id not in categories:
-            categories[category.parent_id] = category.parent
-
-    for category in list(categories.values()):
-        if category.parent_id:
-            parent_values = totals.setdefault(category.parent_id, [ZERO] * width)
-            for i, v in enumerate(totals.get(category.pk, [ZERO] * width)):
-                parent_values[i] += v
+    categories = _with_parents(totals)
+    totals = _rollup_to_parents(totals, categories, width)
 
     child_ids_by_parent = {}
     for category in categories.values():
@@ -504,20 +468,15 @@ def category_vs_average_report_rows(
     each row's difference (current - average) included - shaped for the report's table
     rather than its chart, which keeps using the amount-sorted, flat category_totals_vs_
     average() unchanged. A category with no activity in any earlier period has no average (None)."""
-    qs = excluding_transfers(Transaction.objects.filter(category__isnull=False))
-    qs = _category_type_filter(qs, expense_only, income_only)
-    if account:
-        qs = qs.filter(account=account)
+    qs = _reportable(account=account, expense_only=expense_only, income_only=income_only)
 
     def totals_for(s, e):
-        return (
-            {
-                r["category_id"]: to_cent(r["total"])
-                for r in qs.filter(date__gte=s, date__lte=e).values("category_id").annotate(total=Sum("amount"))
-            }
-            if rates is None
-            else _totals_for_converted(qs, s, e, rates)
-        )
+        """Category id -> [its total], one column wide, the shape _rollup_to_parents() takes."""
+        totals = {}
+        for row in qs.in_range(s, e).values("category_id", "amount", "account__currency"):
+            amount = _convert(row["amount"], row["account__currency"], rates)
+            totals[row["category_id"]] = totals.get(row["category_id"], ZERO) + amount
+        return {cid: [to_cent(total)] for cid, total in totals.items()}
 
     current_by_category = totals_for(start, end)
     period_totals_list = [totals_for(s, e) for s, e in periods]
@@ -528,19 +487,10 @@ def category_vs_average_report_rows(
     if not all_ids:
         return {"groups": [], "totals": None, "average_periods": len(periods)}
 
-    categories = {c.pk: c for c in Category.objects.filter(pk__in=all_ids).select_related("parent")}
-    for category in list(categories.values()):
-        if category.parent_id and category.parent_id not in categories:
-            categories[category.parent_id] = category.parent
+    categories = _with_parents(all_ids)
 
     def rollup(per_category_totals):
-        totals = dict(per_category_totals)
-        for category in categories.values():
-            if category.parent_id:
-                totals[category.parent_id] = totals.get(category.parent_id, ZERO) + per_category_totals.get(
-                    category.pk, ZERO
-                )
-        return totals
+        return {cid: values[0] for cid, values in _rollup_to_parents(per_category_totals, categories, 1).items()}
 
     current = rollup(current_by_category)
     period_totals_list = [rollup(pt) for pt in period_totals_list]
@@ -591,12 +541,26 @@ def category_vs_average_report_rows(
     return {"groups": result_groups, "totals": totals, "average_periods": len(periods)}
 
 
-def _totals_for_converted(qs, start, end, rates):
-    totals = {}
-    for row in qs.filter(date__gte=start, date__lte=end).values("category_id", "amount", "account__currency"):
-        amount = _convert(row["amount"], row["account__currency"], rates)
-        totals[row["category_id"]] = totals.get(row["category_id"], ZERO) + amount
-    return {cid: to_cent(total) for cid, total in totals.items()}
+def _with_parents(category_ids):
+    """The categories with these ids, plus each one's parent, by id."""
+    categories = {c.pk: c for c in Category.objects.filter(pk__in=list(category_ids)).select_related("parent")}
+    for category in list(categories.values()):
+        if category.parent_id and category.parent_id not in categories:
+            categories[category.parent_id] = category.parent
+    return categories
+
+
+def _rollup_to_parents(totals, categories, width):
+    """A copy of `totals` (category id -> one amount per column) where each parent's amounts
+    also include its subcategories', since a parent row means "itself and what's under it".
+    Every parent in `categories` with a subcategory there gets a row, even an all-zero one."""
+    rolled = {cid: list(values) for cid, values in totals.items()}
+    for category in categories.values():
+        if category.parent_id:
+            parent_values = rolled.setdefault(category.parent_id, [ZERO] * width)
+            for i, value in enumerate(totals.get(category.pk, [ZERO] * width)):
+                parent_values[i] += value
+    return rolled
 
 
 def net_worth_by_account(start, end, granularity, rates=None):
@@ -664,16 +628,7 @@ def watched_expenses_totals(start, end, category_ids, account=None, rates=None):
     so the view can show the "go to Settings" message instead of an empty chart."""
     if not category_ids:
         return None
-    qs = excluding_transfers(
-        Transaction.objects.filter(
-            date__gte=start,
-            date__lte=end,
-            category_id__in=category_ids,
-            category__category_type=Category.CategoryType.EXPENSE,
-        )
-    )
-    if account:
-        qs = qs.filter(account=account)
+    qs = _reportable(start, end, account, expense_only=True).filter(category_id__in=category_ids)
     totals, names = {}, {}
     for row in qs.values("category_id", "category__name", "amount", "account__currency"):
         amount = _convert(row["amount"], row["account__currency"], rates)
@@ -694,16 +649,7 @@ def watched_expenses_series(start, end, category_ids, granularity="month", accou
     periods = _period_columns(start, end, granularity)
     index = {p["key"]: i for i, p in enumerate(periods)}
     totals = {cid: [ZERO] * len(periods) for cid in category_ids}
-    qs = excluding_transfers(
-        Transaction.objects.filter(
-            date__gte=start,
-            date__lte=end,
-            category_id__in=category_ids,
-            category__category_type=Category.CategoryType.EXPENSE,
-        )
-    )
-    if account:
-        qs = qs.filter(account=account)
+    qs = _reportable(start, end, account, expense_only=True).filter(category_id__in=category_ids)
     for row in qs.values("category_id", "amount", "date", "account__currency"):
         key, _label = period_bucket(row["date"], granularity)
         totals[row["category_id"]][index[key]] += _convert(row["amount"], row["account__currency"], rates)
@@ -740,13 +686,7 @@ def spending_tree(start, end, rates=None):
         return chain
 
     spent = {}
-    rows = excluding_transfers(
-        Transaction.objects.filter(
-            date__gte=start,
-            date__lte=end,
-            category__category_type=Category.CategoryType.EXPENSE,
-        )
-    ).values("category_id", "amount", "account__currency")
+    rows = _reportable(start, end, expense_only=True).values("category_id", "amount", "account__currency")
     for row in rows:
         # Spending is stored negative, so a refund (positive) reduces what was spent.
         amount = -_convert(row["amount"], row["account__currency"], rates)

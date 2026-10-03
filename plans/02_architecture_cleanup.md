@@ -8,7 +8,8 @@ findings added (F41–F58), five items dropped or moved (see "Plan review,
 Progress is tracked with the checkboxes below. **Status:** Phase 1 done
 (01/10/2026, 540 tests green); Phase 2 done (01/10/2026, 572 tests green);
 Phase 3 done (02/10/2026, 580 tests green in 15 s) except the migrations
-question in 3.6, which waits until the cleanup is done; Phase 4 next.
+question in 3.6, which waits until the cleanup is done; Phase 4 done
+(02/10/2026, 610 tests green in 17 s, coverage 89% → 90%); Phase 5 next.
 
 Work through it phase by phase. Every phase leaves the app working and the
 full test suite green, so we can stop and resume anywhere. Line numbers in
@@ -616,36 +617,69 @@ Stashy.bat.
 
 ## Phase 4 — Service layer  (F10, F11, F24, F53)
 
-- [ ] **4.1** `finance/services/importing.py`: move `_import_csv`,
+- [x] **4.1** `finance/services/importing.py`: move `_import_csv`,
   `_import_xlsx`, `_import_ofx`, `_import_rows`, `_resolve_category`,
   `_detect_date_format`, `_parse_date`, `_fingerprint`, `_guessed_category`.
   Public entry point: `import_file(upload, account, date_format) ->
   ImportResult` (a small dataclass). Drop the dead `ofxparse` ImportError
   branch (F24).
-- [ ] **4.2** One payee resolver, audited, used by the form, the importer and
+  *Done 02/10/2026. The dead branch was already gone. `ImportResult` also
+  carries the Windows-1251 note, and `import_file()` runs in its own
+  transaction, so it is safe to call outside a web request too. The summary
+  message stays in the view, since it's wording.*
+- [x] **4.2** One payee resolver, audited, used by the form, the importer and
   anywhere else (F11) - e.g. a `PayeeQuerySet.resolve(name)` manager method.
   *Mostly done in 2.4 (01/10/2026):* `Payee.objects.resolve()` exists and
   every caller uses it. Left for here: the importer moves into the service.
-- [ ] **4.3** `finance/services/reconciliation.py`: `reconcile(account,
+  *Done with 4.1.*
+- [x] **4.3** `finance/services/reconciliation.py`: `reconcile(account,
   statement_date, statement_balance, transaction_ids, accept_difference)`.
-- [ ] **4.4** `Reminder.mark_entered(transaction)` and `Reminder.skip()` on
+  *Claude's call: it takes the Transaction objects, not ids. The finish
+  form has already checked they belong to the account and aren't
+  reconciled yet, and taking ids would mean checking that twice.* A gap
+  without "accept" raises `UnacceptedDifferenceError` (carrying the
+  amount), and nothing is saved.
+- [x] **4.4** `Reminder.mark_entered(transaction)` and `Reminder.skip()` on
   the model; `transaction_form_view` and `reminder_skip` call them (F10).
-- [ ] **4.5** One helper for the Watched-expenses picker context, used by
+  *Also moved: the "whole series" edit (`Reminder.apply_to_series()`, was
+  `views._propagate_series_edit`). Entering a recurring reminder no longer
+  saves a link and then clears it straight away: two audit rows that
+  cancelled each other out. The "moved it to <date>" messages now follow the
+  stash's date format instead of a hard-coded DD/MM/YYYY.*
+- [x] **4.5** One helper for the Watched-expenses picker context, used by
   both Settings and the welcome wizard (F11).
-- [ ] **4.6** Replace `_safe_next()` with `url_has_allowed_host_and_scheme`;
+  *`forms.watched_expenses_picker_context(profile)`.*
+- [x] **4.6** Replace `_safe_next()` with `url_has_allowed_host_and_scheme`;
   move the upload extension check to `FileExtensionValidator` (F24).
-- [ ] **4.7** Services get their own unit tests (no HTTP), existing view
+  *`_safe_next()` already calls Django's check since Phase 1 (F55). It stays
+  as a 3-line wrapper because its three callers all need the request's own
+  host. A wrong file type is now a form error shown under the File field
+  (before, it was a message at the top after a redirect). The Import page
+  now shows every field's errors, which it never did.*
+- [x] **4.7** Services get their own unit tests (no HTTP), existing view
   tests stay as they are.
-- [ ] **4.8** `TransactionQuerySet` (F53): `.in_range(start, end)`,
+  *`finance/test_cleanup_phase4.py`, 28 tests. They include the first
+  tests of a successful XLSX and OFX import.*
+- [x] **4.8** `TransactionQuerySet` (F53): `.in_range(start, end)`,
   `.reportable()` (has a category, not a transfer), `.of_kind(expense_only,
   income_only)`, `.for_account(account)`. Every `reporting.py` function builds
   its queryset from these, and one `_rollup_to_parents()` replaces the copied
   roll-up block. Totals stay Python `Decimal` sums, so every number stays
   exactly the same.
-- [ ] **4.9** Type hints on the new service modules' public functions (moved
+  *Verified: a throwaway probe saved the output of every report function
+  (two currencies, refunds, transfers, uncategorized rows, subcategories,
+  every kind/subtotal/account combination) before and after: 140 results,
+  byte-for-byte identical. The vs-average table used SQLite's float `SUM`
+  when there was one currency. It now sums `Decimal`s like everything else,
+  which can't differ after rounding to cents. The probe also showed a quirk
+  that was kept as is: plan 03, R2.*
+- [x] **4.9** Type hints on the new service modules' public functions (moved
   from the backlog). Old code gets hints only when it's touched anyway.
 
 **Done when:** no business rule remains in a view function body; suite green.
+*Left in the views on purpose: reactivating an inactive account when you
+enter a transaction on it (three lines that belong to the "are you sure?"
+step), and the dashboard's "due soon" filter (only what the page shows).*
 
 ## Phase 5 — Split the views module  (F4, F9, F15, F16, F49)
 
