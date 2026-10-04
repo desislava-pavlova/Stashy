@@ -16,12 +16,13 @@ from .base import LoggedInWithAccountTestCase
 
 
 class ExportTransactionsTests(LoggedInWithAccountTestCase):
-    def setUp(self):
-        super().setUp()
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
         rent = Category.objects.create(name="Rent", category_type=Category.CategoryType.EXPENSE)
         payee = Payee.objects.create(name="Landlord")
         Transaction.objects.create(
-            account=self.account,
+            account=cls.account,
             date=date(2026, 1, 1),
             payee=payee,
             category=rent,
@@ -93,11 +94,12 @@ class ExportOtherListsTests(LoggedInWithAccountTestCase):
 class ExportTests(LoggedInWithAccountTestCase):
     """1.11 (F33, F46): exports open correctly in Excel and can't run formulas."""
 
-    def setUp(self):
-        super().setUp()
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
         rent = Category.objects.create(name="Rent", category_type=Category.CategoryType.EXPENSE)
         Transaction.objects.create(
-            account=self.account,
+            account=cls.account,
             date=date(2026, 9, 1),
             category=rent,
             payee=Payee.objects.create(name="Магазин"),
@@ -128,11 +130,12 @@ class ExportTests(LoggedInWithAccountTestCase):
 
 
 class ReportExportTests(LoggedInWithAccountTestCase):
-    def setUp(self):
-        super().setUp()
-        self.groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
         Transaction.objects.create(
-            account=self.account, date=date.today(), category=self.groceries, amount=Decimal("-42.00")
+            account=cls.account, date=date.today(), category=cls.groceries, amount=Decimal("-42.00")
         )
 
     def test_spending_export_has_a_plain_amount_column_when_not_subtotaled(self):
@@ -167,11 +170,12 @@ class ReportExportTests(LoggedInWithAccountTestCase):
 class ReportExportRegistryTests(LoggedInWithAccountTestCase):
     """5.2 (F15, F4): one registry and one view for every report export."""
 
-    def setUp(self):
-        super().setUp()
-        self.groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
         Transaction.objects.create(
-            account=self.account, date=date.today(), category=self.groceries, amount=Decimal("-42.00")
+            account=cls.account, date=date.today(), category=cls.groceries, amount=Decimal("-42.00")
         )
 
     def _csv(self, slug, **params):

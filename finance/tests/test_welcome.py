@@ -29,13 +29,16 @@ class SetupFinishedTests(SimpleTestCase):
 
 
 class WelcomeWizardTestCase(StashTestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = get_user_model().objects.create_user("tester", password="not-a-real-password-123")
+        cls.profile = Profile.for_user(cls.user)
+        cls.profile.owner_name = "Alex"
+        cls.profile.welcome_step = 0
+        cls.profile.save(update_fields=["owner_name", "welcome_step"])
+
     def setUp(self):
-        self.user = get_user_model().objects.create_user("tester", password="not-a-real-password-123")
         self.client.force_login(self.user)
-        self.profile = Profile.for_user(self.user)
-        self.profile.owner_name = "Alex"
-        self.profile.welcome_step = 0
-        self.profile.save(update_fields=["owner_name", "welcome_step"])
 
 
 class WelcomeStepOrderTests(WelcomeWizardTestCase):
@@ -81,10 +84,14 @@ class WelcomeStepOneTests(WelcomeWizardTestCase):
 
 
 class WelcomeStepTwoTests(WelcomeWizardTestCase):
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.profile.welcome_step = 1
+        cls.profile.save(update_fields=["welcome_step"])
+
     def setUp(self):
         super().setUp()
-        self.profile.welcome_step = 1
-        self.profile.save(update_fields=["welcome_step"])
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         path = Path(self.tmp.name) / "starter_categories.xlsx"
@@ -124,11 +131,12 @@ class WelcomeStepTwoTests(WelcomeWizardTestCase):
 
 
 class WelcomeStepThreeTests(WelcomeWizardTestCase):
-    def setUp(self):
-        super().setUp()
-        self.profile.welcome_step = 2
-        self.profile.save(update_fields=["welcome_step"])
-        self.category = Category.objects.create(name="Bills", category_type=Category.CategoryType.EXPENSE)
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.profile.welcome_step = 2
+        cls.profile.save(update_fields=["welcome_step"])
+        cls.category = Category.objects.create(name="Bills", category_type=Category.CategoryType.EXPENSE)
 
     def test_skip_advances_without_saving_anything(self):
         response = self.client.post(reverse("finance:welcome_step", args=[3]), {"skip": "1"})
@@ -166,10 +174,11 @@ class WelcomeStepThreeTests(WelcomeWizardTestCase):
 
 
 class WelcomeStepFourTests(WelcomeWizardTestCase):
-    def setUp(self):
-        super().setUp()
-        self.profile.welcome_step = 3
-        self.profile.save(update_fields=["welcome_step"])
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.profile.welcome_step = 3
+        cls.profile.save(update_fields=["welcome_step"])
 
     def test_skip_finishes_setup_without_creating_an_account(self):
         response = self.client.post(reverse("finance:welcome_step", args=[4]), {"skip": "1"})

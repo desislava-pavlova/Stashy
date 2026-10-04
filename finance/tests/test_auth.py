@@ -46,9 +46,10 @@ class LockoutTests(StashTestCase):
     """These operate on the *current* (test/default) database's own Profile, exactly the way
     the login view does - no temp stash needed, since lockout state lives on Profile."""
 
-    def setUp(self):
-        self.user = get_user_model().objects.create_user("tester", password="1234")
-        self.profile = Profile.objects.create(user=self.user)
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = get_user_model().objects.create_user("tester", password="1234")
+        cls.profile = Profile.objects.create(user=cls.user)
 
     def test_not_locked_out_initially(self):
         self.assertFalse(security.is_locked_out(self.profile))
@@ -78,10 +79,11 @@ class LockoutTests(StashTestCase):
 
 
 class RecoveryCodeResetTests(StashTestCase):
-    def setUp(self):
-        self.user = get_user_model().objects.create_user("tester", password="1234")
-        self.recovery_code = "ABCD-EFGH-JKLM"
-        self.profile = Profile.objects.create(user=self.user, recovery_code_hash=security._hash(self.recovery_code))
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = get_user_model().objects.create_user("tester", password="1234")
+        cls.recovery_code = "ABCD-EFGH-JKLM"
+        cls.profile = Profile.objects.create(user=cls.user, recovery_code_hash=security._hash(cls.recovery_code))
 
     def test_correct_code_resets_the_pin_and_issues_a_new_code(self):
         ok, new_code = security.reset_pin_with_recovery_code(self.profile, self.recovery_code, "9999")

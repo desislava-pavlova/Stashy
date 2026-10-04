@@ -118,10 +118,11 @@ class CategoryParentTypeFilterTests(StashTestCase):
 
 
 class CategorySearchTests(LoggedInTestCase):
-    def setUp(self):
-        super().setUp()
-        self.food = Category.objects.create(name="Food", category_type=Type.EXPENSE)
-        Category.objects.create(name="Groceries", parent=self.food, category_type=Type.EXPENSE)
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.food = Category.objects.create(name="Food", category_type=Type.EXPENSE)
+        Category.objects.create(name="Groceries", parent=cls.food, category_type=Type.EXPENSE)
         Category.objects.create(name="Rent", category_type=Type.EXPENSE)
 
     def test_search_matches_by_own_name_or_parent_name(self):
@@ -135,14 +136,15 @@ class CategorySearchTests(LoggedInTestCase):
 
 
 class CategoryUsageAndRecategorizeTests(LoggedInTestCase):
-    def setUp(self):
-        super().setUp()
-        self.account = Account.objects.create(name="Checking")
-        self.groceries = Category.objects.create(name="Groceries", category_type=Type.EXPENSE)
-        self.household = Category.objects.create(name="Household", category_type=Type.EXPENSE)
-        self.txns = [
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.account = Account.objects.create(name="Checking")
+        cls.groceries = Category.objects.create(name="Groceries", category_type=Type.EXPENSE)
+        cls.household = Category.objects.create(name="Household", category_type=Type.EXPENSE)
+        cls.txns = [
             Transaction.objects.create(
-                account=self.account, date=date(2026, 1, d), category=self.groceries, amount=Decimal("-10.00")
+                account=cls.account, date=date(2026, 1, d), category=cls.groceries, amount=Decimal("-10.00")
             )
             for d in (1, 2, 3)
         ]
@@ -242,9 +244,10 @@ class CategoryUniquenessTests(StashTestCase):
 class OneLevelRuleTests(StashTestCase):
     """2.6 (F13): the one-level subcategory rule lives on the model, so the admin keeps it too."""
 
-    def setUp(self):
-        self.food = Category.objects.create(name="Food", category_type=EXPENSE)
-        self.snacks = Category.objects.create(name="Snacks", parent=self.food, category_type=EXPENSE)
+    @classmethod
+    def setUpTestData(cls):
+        cls.food = Category.objects.create(name="Food", category_type=EXPENSE)
+        cls.snacks = Category.objects.create(name="Snacks", parent=cls.food, category_type=EXPENSE)
 
     def assert_parent_error(self, category, message):
         with self.assertRaises(ValidationError) as caught:
@@ -286,9 +289,10 @@ class OneLevelRuleTests(StashTestCase):
 
 
 class CategoryLoopTests(StashTestCase):
-    def setUp(self):
-        self.parent = Category.objects.create(name="Parent")
-        self.child = Category.objects.create(name="Child", parent=self.parent)
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = Category.objects.create(name="Parent")
+        cls.child = Category.objects.create(name="Child", parent=cls.parent)
 
     def test_descendants_stops_at_a_loop(self):
         Category.objects.filter(pk=self.parent.pk).update(parent=self.child)
@@ -306,15 +310,16 @@ class CategoryLoopTests(StashTestCase):
 
 
 class CategoryDeleteTests(LoggedInWithAccountTestCase):
-    def setUp(self):
-        super().setUp()
-        self.food = Category.objects.create(name="Food")
-        self.groceries = Category.objects.create(name="Groceries", parent=self.food)
-        self.organic = Category.objects.create(name="Organic", parent=self.groceries)
-        self.txn = Transaction.objects.create(
-            account=self.account,
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.food = Category.objects.create(name="Food")
+        cls.groceries = Category.objects.create(name="Groceries", parent=cls.food)
+        cls.organic = Category.objects.create(name="Organic", parent=cls.groceries)
+        cls.txn = Transaction.objects.create(
+            account=cls.account,
             date=date(2026, 1, 5),
-            category=self.organic,
+            category=cls.organic,
             amount=Decimal("-5.00"),
         )
 
@@ -385,8 +390,9 @@ class CategoryDropdownOrderingTests(LoggedInWithAccountTestCase):
 
 
 class IndentedCategoryDropdownTests(LoggedInWithAccountTestCase):
-    def setUp(self):
-        super().setUp()
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
         food = Category.objects.create(name="Food", category_type=Category.CategoryType.EXPENSE)
         Category.objects.create(name="Groceries", parent=food, category_type=Category.CategoryType.EXPENSE)
 

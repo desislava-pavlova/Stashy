@@ -117,10 +117,11 @@ class TransferCategoryTests(StashTestCase):
 
 
 class TransferButtonTests(LoggedInTestCase):
-    def setUp(self):
-        super().setUp()
-        self.checking = Account.objects.create(name="Checking")
-        self.savings = Account.objects.create(name="Savings")
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.checking = Account.objects.create(name="Checking")
+        cls.savings = Account.objects.create(name="Savings")
 
     def test_transfer_creates_two_paired_transactions(self):
         response = self.client.post(
@@ -290,8 +291,9 @@ class AccountDeleteTests(LoggedInWithAccountTestCase):
 class AccountSaveTests(StashTestCase):
     """6.1 (F12): only a new account or a new name touches its transfer category."""
 
-    def setUp(self):
-        self.account = Account.objects.create(name="Wallet")
+    @classmethod
+    def setUpTestData(cls):
+        cls.account = Account.objects.create(name="Wallet")
 
     def test_a_new_account_gets_its_transfer_category(self):
         self.assertEqual(self.account.transfer_category.name, "[Wallet]")

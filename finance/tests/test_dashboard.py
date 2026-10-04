@@ -30,12 +30,13 @@ class SavingsRateTests(SimpleTestCase):
 
 
 class SpendingTreeTests(StashTestCase):
-    def setUp(self):
-        self.account = Account.objects.create(name="Checking")
-        self.food = Category.objects.create(name="Food")
-        self.groceries = Category.objects.create(name="Groceries", parent=self.food)
-        self.organic = Category.objects.create(name="Organic", parent=self.groceries)
-        self.rent = Category.objects.create(name="Rent")
+    @classmethod
+    def setUpTestData(cls):
+        cls.account = Account.objects.create(name="Checking")
+        cls.food = Category.objects.create(name="Food")
+        cls.groceries = Category.objects.create(name="Groceries", parent=cls.food)
+        cls.organic = Category.objects.create(name="Organic", parent=cls.groceries)
+        cls.rent = Category.objects.create(name="Rent")
 
     def add(self, amount, category, on=date(2026, 9, 5)):
         Transaction.objects.create(account=self.account, date=on, category=category, amount=Decimal(amount))
@@ -149,11 +150,12 @@ class DashboardCurrencyTests(LoggedInWithAccountTestCase):
 class SpendingTreeRefundTests(StashTestCase):
     """1.9 (F31): every category is its own net total; a bigger refund shows as negative."""
 
-    def setUp(self):
-        self.account = Account.objects.create(name="Checking")
+    @classmethod
+    def setUpTestData(cls):
+        cls.account = Account.objects.create(name="Checking")
         expense = Category.CategoryType.EXPENSE
-        self.groceries = Category.objects.create(name="Groceries", category_type=expense)
-        self.rent = Category.objects.create(name="Rent", category_type=expense)
+        cls.groceries = Category.objects.create(name="Groceries", category_type=expense)
+        cls.rent = Category.objects.create(name="Rent", category_type=expense)
 
     def add(self, amount, category):
         Transaction.objects.create(

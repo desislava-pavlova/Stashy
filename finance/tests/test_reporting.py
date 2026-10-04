@@ -18,11 +18,12 @@ EXPENSE, INCOME = Category.CategoryType.EXPENSE, Category.CategoryType.INCOME
 
 
 class CategoryTotalsTests(LoggedInWithAccountTestCase):
-    def setUp(self):
-        super().setUp()
-        self.groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
-        self.salary = Category.objects.create(name="Salary", category_type=Category.CategoryType.INCOME)
-        self.other_account = Account.objects.create(name="Savings")
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
+        cls.salary = Category.objects.create(name="Salary", category_type=Category.CategoryType.INCOME)
+        cls.other_account = Account.objects.create(name="Savings")
 
     def test_expense_only_returns_positive_magnitudes_sorted_biggest_first(self):
         Transaction.objects.create(
@@ -93,10 +94,11 @@ class CategoryTotalsVsAverageTests(LoggedInWithAccountTestCase):
     added earliest-date trimming on top of this - see trimmed_average_periods() and
     TrimmedAveragePeriodsTests below)."""
 
-    def setUp(self):
-        super().setUp()
-        self.groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
-        self.start, self.end = date(2026, 3, 1), date(2026, 3, 31)  # 31 days
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
+        cls.start, cls.end = date(2026, 3, 1), date(2026, 3, 31)  # 31 days
 
     def test_current_period_total_and_trailing_average(self):
         Transaction.objects.create(
@@ -264,13 +266,14 @@ class PeriodBucketTests(SimpleTestCase):
 
 
 class CategoryReportRowsTests(LoggedInWithAccountTestCase):
-    def setUp(self):
-        super().setUp()
-        self.groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
-        self.supermarket = Category.objects.create(
-            name="Supermarket", parent=self.groceries, category_type=Category.CategoryType.EXPENSE
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
+        cls.supermarket = Category.objects.create(
+            name="Supermarket", parent=cls.groceries, category_type=Category.CategoryType.EXPENSE
         )
-        self.salary = Category.objects.create(name="Salary", category_type=Category.CategoryType.INCOME)
+        cls.salary = Category.objects.create(name="Salary", category_type=Category.CategoryType.INCOME)
 
     def test_parent_rolls_up_its_subcategory_total(self):
         Transaction.objects.create(
@@ -573,10 +576,11 @@ class CalendarAveragePeriodsTests(SimpleTestCase):
 
 
 class TransferExclusionTests(StashTestCase):
-    def setUp(self):
-        self.account = Account.objects.create(name="Checking")
-        self.other = Account.objects.create(name="Savings")
-        self.groceries = Category.objects.create(name="Groceries")
+    @classmethod
+    def setUpTestData(cls):
+        cls.account = Account.objects.create(name="Checking")
+        cls.other = Account.objects.create(name="Savings")
+        cls.groceries = Category.objects.create(name="Groceries")
 
     def test_transfers_are_excluded_from_income_and_spending(self):
         Transaction.objects.create(
@@ -606,9 +610,10 @@ class TransferExclusionTests(StashTestCase):
 
 
 class TransactionQuerySetTests(StashTestCase):
-    def setUp(self):
-        self.wallet = Account.objects.create(name="Wallet")
-        self.bank = Account.objects.create(name="Bank")
+    @classmethod
+    def setUpTestData(cls):
+        cls.wallet = Account.objects.create(name="Wallet")
+        cls.bank = Account.objects.create(name="Bank")
         groceries = Category.objects.create(name="Groceries", category_type=EXPENSE)
         salary = Category.objects.create(name="Salary", category_type=INCOME)
 
@@ -617,14 +622,14 @@ class TransactionQuerySetTests(StashTestCase):
                 account=account, date=date(2026, 1, day), category=category, amount=Decimal(amount)
             )
 
-        self.spent = add(self.wallet, 1, groceries, "-10")
-        self.refund = add(self.wallet, 31, groceries, "4")  # positive, still spending (R1)
-        self.earned = add(self.bank, 15, salary, "100")
-        self.uncategorized = add(self.wallet, 10, None, "-1")
-        self.transfer = add(self.wallet, 10, self.wallet.ensure_transfer_category(), "-50")
-        self.february = add(self.wallet, 1, groceries, "-1")
-        self.february.date = date(2026, 2, 1)
-        self.february.save()
+        cls.spent = add(cls.wallet, 1, groceries, "-10")
+        cls.refund = add(cls.wallet, 31, groceries, "4")  # positive, still spending (R1)
+        cls.earned = add(cls.bank, 15, salary, "100")
+        cls.uncategorized = add(cls.wallet, 10, None, "-1")
+        cls.transfer = add(cls.wallet, 10, cls.wallet.ensure_transfer_category(), "-50")
+        cls.february = add(cls.wallet, 1, groceries, "-1")
+        cls.february.date = date(2026, 2, 1)
+        cls.february.save()
 
     def pks(self, queryset):
         return set(queryset.values_list("pk", flat=True))

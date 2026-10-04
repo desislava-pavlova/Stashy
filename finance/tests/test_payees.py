@@ -69,11 +69,14 @@ class PayeeUniquenessTests(StashTestCase):
 class PayeeResolutionViewTests(StashTestCase):
     """2.4: every way in - the transaction form, the import and autofill - finds the saved payee."""
 
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = get_user_model().objects.create_user("tester", password="not-a-real-password-123")
+        cls.account = Account.objects.create(name="Checking")
+        cls.lidl = Payee.objects.create(name="Lidl")
+
     def setUp(self):
-        user = get_user_model().objects.create_user("tester", password="not-a-real-password-123")
-        self.client.force_login(user)
-        self.account = Account.objects.create(name="Checking")
-        self.lidl = Payee.objects.create(name="Lidl")
+        self.client.force_login(self.user)
 
     def test_typing_lidl_on_a_transaction_saves_it_as_lidl(self):
         self.client.post(
@@ -110,11 +113,12 @@ class PayeeHistoryTests(StashTestCase):
     """Payee memory (Phase 6) is computed live from transaction history, per category —
     there's no stored default to fall out of sync."""
 
-    def setUp(self):
-        self.account = Account.objects.create(name="Checking")
-        self.groceries = Category.objects.create(name="Groceries")
-        self.household = Category.objects.create(name="Household")
-        self.payee = Payee.objects.create(name="Lidl")
+    @classmethod
+    def setUpTestData(cls):
+        cls.account = Account.objects.create(name="Checking")
+        cls.groceries = Category.objects.create(name="Groceries")
+        cls.household = Category.objects.create(name="Household")
+        cls.payee = Payee.objects.create(name="Lidl")
 
     def test_one_transaction_gives_one_history_entry(self):
         Transaction.objects.create(
@@ -228,25 +232,26 @@ class PayeeDetailTests(LoggedInWithAccountTestCase):
 
 
 class PayeeListFilterAndSortTests(LoggedInWithAccountTestCase):
-    def setUp(self):
-        super().setUp()
-        self.groceries = Category.objects.create(name="Groceries")
-        self.household = Category.objects.create(name="Household")
-        self.lidl = Payee.objects.create(name="Lidl")
-        self.ikea = Payee.objects.create(name="Ikea")
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.groceries = Category.objects.create(name="Groceries")
+        cls.household = Category.objects.create(name="Household")
+        cls.lidl = Payee.objects.create(name="Lidl")
+        cls.ikea = Payee.objects.create(name="Ikea")
         Transaction.objects.create(
-            account=self.account,
+            account=cls.account,
             date=date(2026, 1, 5),
-            payee=self.lidl,
-            category=self.groceries,
+            payee=cls.lidl,
+            category=cls.groceries,
             memo="weekly shop",
             amount=Decimal("-30.00"),
         )
         Transaction.objects.create(
-            account=self.account,
+            account=cls.account,
             date=date(2026, 1, 6),
-            payee=self.ikea,
-            category=self.household,
+            payee=cls.ikea,
+            category=cls.household,
             memo="shelves",
             amount=Decimal("-90.00"),
         )

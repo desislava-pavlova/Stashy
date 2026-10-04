@@ -147,14 +147,15 @@ class StatusTests(LoggedInWithAccountTestCase):
 
 
 class EnterOpensAPrefilledFormTests(LoggedInWithAccountTestCase):
-    def setUp(self):
-        super().setUp()
-        self.payee = Payee.objects.create(name="Landlord")
-        self.category = Category.objects.create(name="Rent", category_type=Category.CategoryType.EXPENSE)
-        self.reminder = Reminder.objects.create(
-            account=self.account,
-            payee=self.payee,
-            category=self.category,
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.payee = Payee.objects.create(name="Landlord")
+        cls.category = Category.objects.create(name="Rent", category_type=Category.CategoryType.EXPENSE)
+        cls.reminder = Reminder.objects.create(
+            account=cls.account,
+            payee=cls.payee,
+            category=cls.category,
             amount=Decimal("500.00"),
             reminder_type=Category.CategoryType.EXPENSE,
             next_due_date=date(2026, 10, 1),
@@ -319,15 +320,14 @@ class CategoryDropdownFilteredByTypeTests(LoggedInWithAccountTestCase):
 
 
 class ReminderListFilterTests(LoggedInWithAccountTestCase):
-    def setUp(self):
-        super().setUp()
-        self.soon = Reminder.objects.create(account=self.account, amount=Decimal("1"), next_due_date=date(2026, 9, 15))
-        self.later = Reminder.objects.create(
-            account=self.account, amount=Decimal("1"), next_due_date=date(2026, 12, 1)
-        )
-        txn = Transaction.objects.create(account=self.account, date=date(2026, 9, 1), amount=Decimal("-1.00"))
-        self.paid = Reminder.objects.create(
-            account=self.account,
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.soon = Reminder.objects.create(account=cls.account, amount=Decimal("1"), next_due_date=date(2026, 9, 15))
+        cls.later = Reminder.objects.create(account=cls.account, amount=Decimal("1"), next_due_date=date(2026, 12, 1))
+        txn = Transaction.objects.create(account=cls.account, date=date(2026, 9, 1), amount=Decimal("-1.00"))
+        cls.paid = Reminder.objects.create(
+            account=cls.account,
             amount=Decimal("1"),
             next_due_date=date(2026, 12, 15),
             last_entered_transaction=txn,
@@ -617,10 +617,11 @@ class AutoGenerateOccurrencesTests(LoggedInWithAccountTestCase):
 
 @mock.patch("django.utils.timezone.localdate", return_value=TODAY_14_SEPT)
 class ReminderListDefaultWindowTests(LoggedInWithAccountTestCase):
-    def setUp(self):
-        super().setUp()
-        self.soon = Reminder.objects.create(account=self.account, amount=Decimal("1"), next_due_date=date(2026, 9, 20))
-        self.far = Reminder.objects.create(account=self.account, amount=Decimal("1"), next_due_date=date(2026, 12, 1))
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.soon = Reminder.objects.create(account=cls.account, amount=Decimal("1"), next_due_date=date(2026, 9, 20))
+        cls.far = Reminder.objects.create(account=cls.account, amount=Decimal("1"), next_due_date=date(2026, 12, 1))
 
     def test_a_fresh_visit_defaults_to_this_month(self, _):
         response = self.client.get(reverse("finance:reminder_list"))
@@ -786,16 +787,17 @@ class ReminderDeleteWarningTests(LoggedInWithAccountTestCase):
 
 
 class ReminderEditScopeTests(LoggedInWithAccountTestCase):
-    def setUp(self):
-        super().setUp()
-        self.root = Reminder.objects.create(
-            account=self.account,
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.root = Reminder.objects.create(
+            account=cls.account,
             amount=Decimal("10.00"),
             next_due_date=date(2026, 9, 20),
             frequency="monthly",
             end_date=date(2026, 12, 20),
         )
-        self.november = self.root.occurrences.get(next_due_date=date(2026, 11, 20))
+        cls.november = cls.root.occurrences.get(next_due_date=date(2026, 11, 20))
 
     def test_a_standalone_reminder_skips_the_prompt(self):
         solo = Reminder.objects.create(account=self.account, amount=Decimal("5.00"), next_due_date=date(2026, 9, 25))
@@ -1060,10 +1062,11 @@ class EnteredPeriodStaysVisibleTests(LoggedInWithAccountTestCase):
 
 
 class ReminderEnterAndSkipTests(StashTestCase):
-    def setUp(self):
-        self.account = Account.objects.create(name="Wallet")
-        self.due = date.today() + timedelta(days=3)
-        self.txn = Transaction.objects.create(account=self.account, date=self.due, amount=Decimal("-5"))
+    @classmethod
+    def setUpTestData(cls):
+        cls.account = Account.objects.create(name="Wallet")
+        cls.due = date.today() + timedelta(days=3)
+        cls.txn = Transaction.objects.create(account=cls.account, date=cls.due, amount=Decimal("-5"))
 
     def reminder(self, frequency=Reminder.Frequency.ONE_TIME):
         return Reminder.objects.create(
@@ -1122,9 +1125,10 @@ class ReminderEnterAndSkipTests(StashTestCase):
 class ReminderSaveTests(StashTestCase):
     """6.2 (F12): a save regenerates occurrences only when it can move a date."""
 
-    def setUp(self):
+    @classmethod
+    def setUpTestData(cls):
         account = Account.objects.create(name="Wallet")
-        self.reminder = Reminder.objects.create(
+        cls.reminder = Reminder.objects.create(
             account=account, frequency=Reminder.Frequency.MONTHLY, next_due_date=date(2026, 10, 15)
         )
 

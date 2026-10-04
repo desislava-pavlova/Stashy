@@ -4290,3 +4290,62 @@ own.
 `stashy/settings/base.py`, `stashy/settings/test.py`, `pyproject.toml`
 (coverage leaves out `finance/tests/`); `README.md`, `CLAUDE.md`,
 `DEVLOG.md`, `plans/02_architecture_cleanup.md`, `plans/README.md`.
+
+---
+
+## 05/10/2026 — Plan 02, Phase 7 (part 2): test data built once per class
+
+**What changed** (ticks in `plans/02_architecture_cleanup.md`, item 7.4):
+- **58 test classes build their data once per class instead of before every
+  test.** Their accounts, categories, payees, transactions, reminders and
+  users are now made in `setUpTestData`. What has to be fresh for every test
+  stays in `setUp`: logging the test client in, temporary folders, and
+  mocks. Part 1 did the same for the three shared base classes; this is the
+  rest.
+- **Nine classes kept their `setUp`, on purpose.** Seven are
+  `SimpleTestCase` classes, which never touch the database, so there's
+  nothing to build once and Django doesn't offer `setUpTestData` there.
+  The other two only make a temporary spreadsheet file and point the app at
+  it with a mock, and both of those must be made and undone for each test.
+- **Only the setup moved.** A script converted the 49 plain cases
+  (`setUp` → `setUpTestData`, `self.` → `cls.`) and refused to touch any
+  line that logs in, patches or cleans up; the other nine were done by
+  hand. A second script compared every test method's syntax tree with the
+  version before: all 683 are unchanged. The one other edit is a small
+  helper in the "averages of 0" report tests, which became a class method
+  because the class's setup now calls it.
+- **Checked in other orders too.** Tests that share data can quietly depend
+  on running in a certain order, so the suite also ran in reverse and in a
+  shuffled order. Both passed.
+
+**Teaching note — `setUp` versus `setUpTestData`.** `setUp` runs before
+every single test, so a class with ten tests creates its accounts ten
+times. `setUpTestData` runs once for the whole class. That's safe because
+Django wraps the class in a database transaction and each test in a
+savepoint inside it: whatever a test writes is rolled back when it ends, so
+the next test sees the data exactly as `setUpTestData` left it. Django also
+hands every test its own copy of the objects stored on the class
+(`self.account` and friends), so changing one in memory can't leak into
+the next test either. The rule of thumb: things in the *database* go in
+`setUpTestData`; things *outside* it go in `setUp`. That covers the test
+client (each test gets a new one, so it must log in again), mocks (they
+have to be switched off after each test) and temporary files (deleted after
+each test).
+
+**Suite time:** the old and new test files were run three times each,
+alternating, to even out the machine's ups and downs: median 25.2 s before,
+24.3 s after. Since the faster password hasher in Phase 3 (298 s → 15 s),
+this was more about tidiness than speed, as the plan already said.
+
+**Verification:** full suite green, 683 tests, also with `--reverse` and
+`--shuffle`. `ruff check .` and `ruff format --check .` are clean. Coverage
+unchanged at 94% (no app code changed). Nothing visible changed, and no
+stash file was touched.
+
+**Files:** `finance/tests/test_accounts.py`, `test_api.py`, `test_auth.py`,
+`test_categories.py`, `test_dashboard.py`, `test_exports.py`,
+`test_imports.py`, `test_payees.py`, `test_reconciliation.py`,
+`test_reminders.py`, `test_reporting.py`, `test_reports.py`,
+`test_settings.py`, `test_transactions.py`, `test_welcome.py`;
+`audit/tests.py`; `DEVLOG.md`, `plans/02_architecture_cleanup.md`,
+`plans/README.md`.

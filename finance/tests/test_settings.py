@@ -14,9 +14,10 @@ from .base import AlexsStashTestCase, LoggedInWithAccountTestCase
 class SettingsEndpointsTests(LoggedInWithAccountTestCase):
     """5.3 (F16): each form on Settings posts to its own URL."""
 
-    def setUp(self):
-        super().setUp()
-        self.profile = Profile.for_user(self.user)
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.profile = Profile.for_user(cls.user)
 
     def test_each_form_on_the_page_posts_to_its_own_url(self):
         page = self.client.get(reverse("finance:settings")).content.decode()

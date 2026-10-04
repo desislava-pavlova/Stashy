@@ -11,9 +11,9 @@ Phase 3 done (02/10/2026, 580 tests green in 15 s) except the migrations
 question in 3.6, which waits until the cleanup is done; Phase 4 done
 (02/10/2026, 610 tests green in 17 s, coverage 89% → 90%); Phase 5 done
 (03/10/2026, 633 tests green in 22 s, coverage 90% → 91%); Phase 6 done
-(03/10/2026, 675 tests green in 23 s, coverage 94%); Phase 7 part 1 done
-(04/10/2026, 683 tests green in 22 s, coverage 94%: 7.1-7.3 and the shared
-bases of 7.4); next: the rest of 7.4, then Phase 8.
+(03/10/2026, 675 tests green in 23 s, coverage 94%); Phase 7 done in two
+parts (04/10/2026: 7.1-7.3 and the shared bases of 7.4; 05/10/2026: the
+rest of 7.4; 683 tests green in 24 s, coverage 94%); next: Phase 8.
 
 Work through it phase by phase. Every phase leaves the app working and the
 full test suite green, so we can stop and resume anywhere. Line numbers in
@@ -812,6 +812,7 @@ side effect; suite green. ✔ (`AccountSaveTests`, `ReminderSaveTests`)
 ## Phase 7 — Tests restructure  (F19, F20, F52)
 
 Part 1 done 04/10/2026 (7.1-7.3, and 7.4 for the shared base classes).
+Part 2 done 05/10/2026 (the rest of 7.4). Phase 7 is done.
 
 - [x] **7.1** Remove every `settings.TESTING` branch from production code.
   Tests instead create a throwaway stash (temp dir via
@@ -842,7 +843,7 @@ Part 1 done 04/10/2026 (7.1-7.3, and 7.4 for the shared base classes).
   unchanged apart from listed edits (DEVLOG 04/10/2026). Claude's calls: the
   25 copies of `LoggedInTestCase` became shared bases in `base.py`; the four
   audit-log tests that lived in finance moved to `audit/tests.py`.*
-- [ ] **7.4** While moving (F52): classes whose tests only read shared data
+- [x] **7.4** While moving (F52): classes whose tests only read shared data
   switch their fixtures from `setUp` to `setUpTestData`. Record the suite
   time before and after. *(02/10/2026: the fast test hasher in 3.5 already
   took the suite from 298 s to 15 s, so this is now about tidiness more
@@ -853,11 +854,17 @@ Part 1 done 04/10/2026 (7.1-7.3, and 7.4 for the shared base classes).
   own `setUp`. Claude's call: a class whose tests change that data
   qualifies too, because Django undoes each test's database changes and
   gives every test its own copy of the objects.*
+  *05/10/2026, part 2: 58 of the 67 classes build their data in
+  `setUpTestData`; logging in, temp files and mocks stay in `setUp`. The
+  other 9 have nothing to move: 7 are `SimpleTestCase` (no database, so no
+  `setUpTestData`), and 2 only make a temp file and a mock. A syntax-tree
+  comparison proved all 683 test methods unchanged; the suite also passes
+  in reverse and shuffled order. Median of three alternating runs: 25.2 s →
+  24.3 s.*
 
 **Done when:** `grep -r "TESTING" finance audit stashy` finds only the test
-settings; test count is the same or higher than before. *Part 1:* ✔ no app
-code mentions `TESTING` (a test in `test_project.py` checks); 675 → 683
-tests.
+settings; test count is the same or higher than before. ✔ No app code
+mentions `TESTING` (a test in `test_project.py` checks); 675 → 683 tests.
 
 ## Phase 8 — Polish and performance  (F8, F23, F29, F34, F39, F40, F48, F51, F56)
 

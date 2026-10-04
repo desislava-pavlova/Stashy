@@ -147,9 +147,10 @@ class CategoryAutoCreateTests(ImportTestCase):
 
 
 class AccountColumnTests(ImportTestCase):
-    def setUp(self):
-        super().setUp()
-        self.other = Account.objects.create(name="Savings")
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.other = Account.objects.create(name="Savings")
 
     def test_a_row_naming_an_existing_account_goes_there_instead_of_the_selected_one(self):
         self._import("Date,Account,Payee,Memo,Amount\n01/01/2026,Savings,Employer,,100.00\n")
@@ -279,8 +280,9 @@ class ImportErrorTests(LoggedInWithAccountTestCase):
 
 
 class ImportFileTests(StashTestCase):
-    def setUp(self):
-        self.account = Account.objects.create(name="Wallet")
+    @classmethod
+    def setUpTestData(cls):
+        cls.account = Account.objects.create(name="Wallet")
 
     def test_imports_every_row_as_one_batch(self):
         upload = csv_upload(
@@ -378,8 +380,9 @@ class ImportFileTests(StashTestCase):
 
 
 class ImportUploadFormTests(StashTestCase):
-    def setUp(self):
-        self.account = Account.objects.create(name="Wallet")
+    @classmethod
+    def setUpTestData(cls):
+        cls.account = Account.objects.create(name="Wallet")
 
     def form(self, name):
         return ImportUploadForm({"account": self.account.pk}, {"file": SimpleUploadedFile(name, b"x")})
@@ -394,9 +397,13 @@ class ImportUploadFormTests(StashTestCase):
 
 
 class ImportPageTests(StashTestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = get_user_model().objects.create_user("alex")
+        cls.account = Account.objects.create(name="Wallet")
+
     def setUp(self):
-        self.client.force_login(get_user_model().objects.create_user("alex"))
-        self.account = Account.objects.create(name="Wallet")
+        self.client.force_login(self.user)
 
     def test_an_unsupported_file_is_explained_on_the_form(self):
         response = self.client.post(

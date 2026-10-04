@@ -197,10 +197,11 @@ class ReconcileChecklistDisplayTests(LoggedInWithAccountTestCase):
 class ReconcileFinishFormTests(LoggedInWithAccountTestCase):
     """1.6 (F5): a garbled finish step gets a message, never a server error."""
 
-    def setUp(self):
-        super().setUp()
-        self.txn = Transaction.objects.create(account=self.account, date=date(2026, 9, 1), amount=Decimal("-20.00"))
-        self.url = reverse("finance:account_reconcile", args=[self.account.pk])
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.txn = Transaction.objects.create(account=cls.account, date=date(2026, 9, 1), amount=Decimal("-20.00"))
+        cls.url = reverse("finance:account_reconcile", args=[cls.account.pk])
 
     def finish(self, **data):
         return self.client.post(self.url, {"stage": "finish", **data})
@@ -227,10 +228,11 @@ class ReconcileFinishFormTests(LoggedInWithAccountTestCase):
 
 
 class ReconcileTests(StashTestCase):
-    def setUp(self):
-        self.account = Account.objects.create(name="Wallet")
-        self.pay = Transaction.objects.create(account=self.account, date=date(2026, 1, 5), amount=Decimal("100.00"))
-        self.buy = Transaction.objects.create(account=self.account, date=date(2026, 1, 6), amount=Decimal("-30.00"))
+    @classmethod
+    def setUpTestData(cls):
+        cls.account = Account.objects.create(name="Wallet")
+        cls.pay = Transaction.objects.create(account=cls.account, date=date(2026, 1, 5), amount=Decimal("100.00"))
+        cls.buy = Transaction.objects.create(account=cls.account, date=date(2026, 1, 6), amount=Decimal("-30.00"))
 
     def test_a_matching_statement_marks_the_transactions_reconciled(self):
         done = reconciliation.reconcile(self.account, date(2026, 1, 31), Decimal("70.00"), [self.pay, self.buy])

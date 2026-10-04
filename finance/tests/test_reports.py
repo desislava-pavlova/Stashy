@@ -92,15 +92,16 @@ class DateRangeFilterFormTests(SimpleTestCase):
 
 
 class ReportsPageMarkupTests(LoggedInWithAccountTestCase):
-    def setUp(self):
-        super().setUp()
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
         groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
         Category.objects.create(name="Supermarket", parent=groceries, category_type=Category.CategoryType.EXPENSE)
         Transaction.objects.create(
-            account=self.account, date=date.today(), category=groceries, amount=Decimal("-10.00")
+            account=cls.account, date=date.today(), category=groceries, amount=Decimal("-10.00")
         )
         subcat = Category.objects.get(name="Supermarket")
-        Transaction.objects.create(account=self.account, date=date.today(), category=subcat, amount=Decimal("-15.00"))
+        Transaction.objects.create(account=cls.account, date=date.today(), category=subcat, amount=Decimal("-15.00"))
 
     def test_collapsible_toggle_and_parent_child_classes_are_present(self):
         response = self.client.get(reverse("finance:reports"))
@@ -198,11 +199,12 @@ class UncategorizedNoticeTests(LoggedInWithAccountTestCase):
 class ReportFixesAfterFirstLookTests(LoggedInWithAccountTestCase):
     """Bugs the user found on the real page after Phase 13 shipped (15/09/2026)."""
 
-    def setUp(self):
-        super().setUp()
-        self.bills = Category.objects.create(name="Bills", category_type=Category.CategoryType.EXPENSE)
-        self.water = Category.objects.create(
-            name="Water", parent=self.bills, category_type=Category.CategoryType.EXPENSE
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.bills = Category.objects.create(name="Bills", category_type=Category.CategoryType.EXPENSE)
+        cls.water = Category.objects.create(
+            name="Water", parent=cls.bills, category_type=Category.CategoryType.EXPENSE
         )
 
     def test_show_hide_all_is_hidden_until_a_report_is_expanded(self):
@@ -331,10 +333,11 @@ class InvalidFilterTests(LoggedInWithAccountTestCase):
 
 
 class WatchedExpensesSettingsTests(LoggedInWithAccountTestCase):
-    def setUp(self):
-        super().setUp()
-        self.profile = Profile.for_user(self.user)
-        self.electricity = Category.objects.create(name="Electricity", category_type=Category.CategoryType.EXPENSE)
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.profile = Profile.for_user(cls.user)
+        cls.electricity = Category.objects.create(name="Electricity", category_type=Category.CategoryType.EXPENSE)
 
     def test_default_title_is_bills_and_utilities(self):
         self.assertEqual(self.profile.watched_expenses_title, "Bills & Utilities")
@@ -450,10 +453,11 @@ class TableRenderTests(SimpleTestCase):
 
 
 class WatchedExpensesPickerTests(StashTestCase):
-    def setUp(self):
-        self.profile = Profile.for_user(get_user_model().objects.create_user("alex"))
-        self.food = Category.objects.create(name="Food", category_type=EXPENSE)
-        self.groceries = Category.objects.create(name="Groceries", category_type=EXPENSE, parent=self.food)
+    @classmethod
+    def setUpTestData(cls):
+        cls.profile = Profile.for_user(get_user_model().objects.create_user("alex"))
+        cls.food = Category.objects.create(name="Food", category_type=EXPENSE)
+        cls.groceries = Category.objects.create(name="Groceries", category_type=EXPENSE, parent=cls.food)
 
     def test_the_button_label_follows_what_is_chosen(self):
         self.assertEqual(watched_expenses_picker_context(self.profile)["watched_button_label"], "No categories chosen")
@@ -471,13 +475,15 @@ class NoEarlierActivityAveragesZeroTests(LoggedInWithAccountTestCase):
     """Plan 03 R6: with earlier periods to compare with, a category that had nothing in them
     averages 0 - the page shows "—" for it but fills in the difference and draws the dot."""
 
-    def setUp(self):
-        super().setUp()
-        self.month_start = timezone.localdate().replace(day=1)
-        self.groceries = self._category("Groceries")
-        self.accommodation = self._category("Accommodation")
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.month_start = timezone.localdate().replace(day=1)
+        cls.groceries = cls._category("Groceries")
+        cls.accommodation = cls._category("Accommodation")
 
-    def _category(self, name, parent=None):
+    @classmethod
+    def _category(cls, name, parent=None):
         return Category.objects.create(name=name, category_type=Category.CategoryType.EXPENSE, parent=parent)
 
     def _spend(self, category, amount, months_back=0):

@@ -26,8 +26,11 @@ Action = AuditLogEntry.Action
 
 
 class AuditTestCase(StashTestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = get_user_model().objects.create_superuser("tester", password="not-a-real-password-123")
+
     def setUp(self):
-        self.user = get_user_model().objects.create_superuser("tester", password="not-a-real-password-123")
         self.client.force_login(self.user)
 
     def entries(self, model=None, **filters):

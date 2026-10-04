@@ -11,11 +11,12 @@ from .base import LoggedInWithAccountTestCase
 
 
 class ApiPayeeAutofillTests(LoggedInWithAccountTestCase):
-    def setUp(self):
-        super().setUp()
-        self.payee = Payee.objects.create(name="Lidl")
-        self.groceries = Category.objects.create(name="Groceries")
-        self.household = Category.objects.create(name="Household")
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.payee = Payee.objects.create(name="Lidl")
+        cls.groceries = Category.objects.create(name="Groceries")
+        cls.household = Category.objects.create(name="Household")
 
     def fetch(self, name):
         response = self.client.get(reverse("finance:api_payee_autofill"), {"name": name})

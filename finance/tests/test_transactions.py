@@ -23,8 +23,9 @@ TODAY = date(2026, 9, 13)
 
 
 class TransactionNumberingTests(StashTestCase):
-    def setUp(self):
-        self.account = Account.objects.create(name="Checking")
+    @classmethod
+    def setUpTestData(cls):
+        cls.account = Account.objects.create(name="Checking")
 
     def test_numbers_start_at_one_and_increase(self):
         first = Transaction.objects.create(account=self.account, date=date(2026, 1, 1), amount=Decimal("-1.00"))
@@ -58,10 +59,11 @@ class TransactionNumberingTests(StashTestCase):
 class DefaultViewTests(LoggedInWithAccountTestCase):
     """The transaction list defaults to this year, until you explicitly ask otherwise."""
 
-    def setUp(self):
-        super().setUp()
-        Transaction.objects.create(account=self.account, date=date(2026, 3, 1), amount=Decimal("-1.00"))
-        Transaction.objects.create(account=self.account, date=date(2025, 12, 31), amount=Decimal("-1.00"))
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        Transaction.objects.create(account=cls.account, date=date(2026, 3, 1), amount=Decimal("-1.00"))
+        Transaction.objects.create(account=cls.account, date=date(2025, 12, 31), amount=Decimal("-1.00"))
 
     def shown(self, mock_date, **params):
         mock_date.today.return_value = TODAY
@@ -89,16 +91,17 @@ class DefaultViewTests(LoggedInWithAccountTestCase):
 
 
 class ReconciledFilterTests(LoggedInWithAccountTestCase):
-    def setUp(self):
-        super().setUp()
-        self.reconciled = Transaction.objects.create(
-            account=self.account,
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.reconciled = Transaction.objects.create(
+            account=cls.account,
             date=date(2026, 1, 1),
             amount=Decimal("-1.00"),
             reconciled=True,
         )
-        self.unreconciled = Transaction.objects.create(
-            account=self.account,
+        cls.unreconciled = Transaction.objects.create(
+            account=cls.account,
             date=date(2026, 1, 2),
             amount=Decimal("-1.00"),
             reconciled=False,
@@ -120,11 +123,12 @@ class ReconciledFilterTests(LoggedInWithAccountTestCase):
 
 
 class SortingTests(LoggedInWithAccountTestCase):
-    def setUp(self):
-        super().setUp()
-        self.other = Account.objects.create(name="Savings")
-        self.big = Transaction.objects.create(account=self.account, date=date(2026, 1, 1), amount=Decimal("-50.00"))
-        self.small = Transaction.objects.create(account=self.other, date=date(2026, 1, 2), amount=Decimal("-5.00"))
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.other = Account.objects.create(name="Savings")
+        cls.big = Transaction.objects.create(account=cls.account, date=date(2026, 1, 1), amount=Decimal("-50.00"))
+        cls.small = Transaction.objects.create(account=cls.other, date=date(2026, 1, 2), amount=Decimal("-5.00"))
 
     def ordered(self, sort):
         response = self.client.get(reverse("finance:transaction_list"), {"range": "", "sort": sort})
@@ -200,20 +204,19 @@ class TransactionNumberFormTests(StashTestCase):
 
 
 class TransactionListFilterTests(LoggedInWithAccountTestCase):
-    def setUp(self):
-        super().setUp()
-        self.food = Category.objects.create(name="Food")
-        self.groceries = Category.objects.create(name="Groceries", parent=self.food)
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.food = Category.objects.create(name="Food")
+        cls.groceries = Category.objects.create(name="Groceries", parent=cls.food)
 
         def add(on, category):
-            return Transaction.objects.create(
-                account=self.account, date=on, category=category, amount=Decimal("-1.00")
-            )
+            return Transaction.objects.create(account=cls.account, date=on, category=category, amount=Decimal("-1.00"))
 
-        self.september_groceries = add(date(2026, 9, 5), self.groceries)
-        self.september_food = add(date(2026, 9, 6), self.food)
-        self.september_uncategorized = add(date(2026, 9, 7), None)
-        self.august_groceries = add(date(2026, 8, 30), self.groceries)
+        cls.september_groceries = add(date(2026, 9, 5), cls.groceries)
+        cls.september_food = add(date(2026, 9, 6), cls.food)
+        cls.september_uncategorized = add(date(2026, 9, 7), None)
+        cls.august_groceries = add(date(2026, 8, 30), cls.groceries)
 
     def shown(self, **params):
         response = self.client.get(reverse("finance:transaction_list"), params)
@@ -275,9 +278,10 @@ class TransactionListTotalTests(LoggedInWithAccountTestCase):
 
 
 class InactiveAccountTransactionConfirmTests(LoggedInTestCase):
-    def setUp(self):
-        super().setUp()
-        self.account = Account.objects.create(name="Old Wallet", is_active=False)
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.account = Account.objects.create(name="Old Wallet", is_active=False)
 
     def test_posting_without_confirmation_asks_first_and_does_not_save(self):
         response = self.client.post(
@@ -340,10 +344,11 @@ class TransactionListTotalCurrencySymbolTests(LoggedInTestCase):
 
 
 class EditRedirectTests(LoggedInWithAccountTestCase):
-    def setUp(self):
-        super().setUp()
-        self.other = Account.objects.create(name="Savings")
-        self.txn = Transaction.objects.create(account=self.account, date=date(2026, 1, 1), amount=Decimal("-1.00"))
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.other = Account.objects.create(name="Savings")
+        cls.txn = Transaction.objects.create(account=cls.account, date=date(2026, 1, 1), amount=Decimal("-1.00"))
 
     def edit(self, **extra):
         data = {
@@ -442,8 +447,11 @@ class ReconciledRowStylingTests(LoggedInWithAccountTestCase):
 
 
 class TagsAreGoneTests(StashTestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = get_user_model().objects.create_superuser("tester", password="not-a-real-password-123")
+
     def setUp(self):
-        self.user = get_user_model().objects.create_superuser("tester", password="not-a-real-password-123")
         self.client.force_login(self.user)
 
     def test_transaction_model_has_no_tags_field(self):
@@ -467,9 +475,10 @@ class TagsAreGoneTests(StashTestCase):
 
 
 class SaveAndAddAnotherTests(LoggedInTestCase):
-    def setUp(self):
-        super().setUp()
-        self.account = Account.objects.create(name="Checking")
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.account = Account.objects.create(name="Checking")
 
     def _data(self, **extra):
         return {
@@ -549,14 +558,15 @@ class TransactionListEditModeRenderTests(LoggedInTestCase):
 
 
 class TransactionQuickEditTests(LoggedInTestCase):
-    def setUp(self):
-        super().setUp()
-        self.account = Account.objects.create(name="Checking")
-        self.category = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
-        self.txn = Transaction.objects.create(
-            account=self.account,
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.account = Account.objects.create(name="Checking")
+        cls.category = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
+        cls.txn = Transaction.objects.create(
+            account=cls.account,
             date=date(2026, 9, 20),
-            category=self.category,
+            category=cls.category,
             memo="Lidl",
             amount=Decimal("-12.50"),
         )
