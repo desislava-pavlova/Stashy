@@ -11,7 +11,9 @@ Phase 3 done (02/10/2026, 580 tests green in 15 s) except the migrations
 question in 3.6, which waits until the cleanup is done; Phase 4 done
 (02/10/2026, 610 tests green in 17 s, coverage 89% → 90%); Phase 5 done
 (03/10/2026, 633 tests green in 22 s, coverage 90% → 91%); Phase 6 done
-(03/10/2026, 675 tests green in 23 s, coverage 94%); Phase 7 next.
+(03/10/2026, 675 tests green in 23 s, coverage 94%); Phase 7 part 1 done
+(04/10/2026, 683 tests green in 22 s, coverage 94%: 7.1-7.3 and the shared
+bases of 7.4); next: the rest of 7.4, then Phase 8.
 
 Work through it phase by phase. Every phase leaves the app working and the
 full test suite green, so we can stop and resume anywhere. Line numbers in
@@ -809,25 +811,53 @@ side effect; suite green. ✔ (`AccountSaveTests`, `ReminderSaveTests`)
 
 ## Phase 7 — Tests restructure  (F19, F20, F52)
 
-- [ ] **7.1** Remove every `settings.TESTING` branch from production code.
+Part 1 done 04/10/2026 (7.1-7.3, and 7.4 for the shared base classes).
+
+- [x] **7.1** Remove every `settings.TESTING` branch from production code.
   Tests instead create a throwaway stash (temp dir via
   `override_settings(BASE_DIR=...)`/`STASHES_DIR`) and select it in the
   session, so the real middleware runs. `finance/apps.py`'s own `sys.argv`
   check goes too (the test settings module handles it).
-- [ ] **7.2** Add tests for the middleware chain itself: no stash → picker;
+  *Claude's call on how: `settings/test.py` makes a new temporary
+  `STASHES_DIR` per run holding one stash, `TEST_STASH` ("tester"), which
+  `apps.py` registers like any stash; its database is the test runner's
+  in-memory one. `StashTestCase` (`finance/tests/base.py`) sends the test's
+  own queries there and its client starts with that stash chosen. `default`
+  is off limits to these tests unless a class asks for it, so code that
+  forgets its stash fails loudly. `db_router.use_stash()` puts back the
+  previous stash after a request instead of clearing it. A test run started
+  with the app's own settings stops at once (`finance/tests/__init__.py`).
+  `TESTING` is gone everywhere, the test settings included.*
+- [x] **7.2** Add tests for the middleware chain itself: no stash → picker;
   remembered cookie → PIN page; unfinished setup → wizard.
-- [ ] **7.3** Move tests into `finance/tests/` by feature (`test_accounts.py`,
+  *`MiddlewareChainTests` (6), through a real test client; also picker +
+  PIN → dashboard, and no query on `default` once a stash is chosen. Each
+  fails if its middleware is switched off (checked).*
+- [x] **7.3** Move tests into `finance/tests/` by feature (`test_accounts.py`,
   `test_reminders.py`, `test_import.py`, …), mirroring Phase 5's modules.
   Move, don't rewrite: every existing test keeps its assertions. Record the
   old → new file mapping in DEVLOG.md.
+  *23 modules named after the code they test (so `test_imports.py`, after
+  `views/imports.py`). A syntax-tree comparison proved every test method
+  unchanged apart from listed edits (DEVLOG 04/10/2026). Claude's calls: the
+  25 copies of `LoggedInTestCase` became shared bases in `base.py`; the four
+  audit-log tests that lived in finance moved to `audit/tests.py`.*
 - [ ] **7.4** While moving (F52): classes whose tests only read shared data
   switch their fixtures from `setUp` to `setUpTestData`. Record the suite
   time before and after. *(02/10/2026: the fast test hasher in 3.5 already
   took the suite from 298 s to 15 s, so this is now about tidiness more
   than speed.)*
+  *04/10/2026, part 1: the shared bases (`LoggedInTestCase` and its two
+  subclasses, used by about 130 classes) build their data in
+  `setUpTestData`; 23.0 s → 22.4 s. Still to do: the 67 classes with their
+  own `setUp`. Claude's call: a class whose tests change that data
+  qualifies too, because Django undoes each test's database changes and
+  gives every test its own copy of the objects.*
 
 **Done when:** `grep -r "TESTING" finance audit stashy` finds only the test
-settings; test count is the same or higher than before.
+settings; test count is the same or higher than before. *Part 1:* ✔ no app
+code mentions `TESTING` (a test in `test_project.py` checks); 675 → 683
+tests.
 
 ## Phase 8 — Polish and performance  (F8, F23, F29, F34, F39, F40, F48, F51, F56)
 

@@ -25,7 +25,7 @@ quote-style = "double"
 
 [tool.coverage.run]
 source = ["finance", "audit", "stashy"]
-omit = ["*/migrations/*", "*/test_*.py", "*/tests.py"]
+omit = ["*/migrations/*", "*/tests/*", "*/tests.py"]
 
 [tool.coverage.report]
 skip_empty = true

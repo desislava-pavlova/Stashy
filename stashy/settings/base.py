@@ -20,10 +20,6 @@ STASHES_DIR = BASE_DIR / "stashes"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 LOG_DIR = BASE_DIR / "logs"
 
-# True only in stashy/settings/test.py. The stash and setup middleware skip their gates
-# under tests, so a test doesn't have to pick a stash first (plan 02 phase 7 removes this).
-TESTING = False
-
 
 # No fallback: Stashy.bat writes a random key into .env on first run, and a missing key
 # should stop Stashy rather than quietly use a key that's public in the source code.

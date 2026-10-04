@@ -1,5 +1,3 @@
-import sys
-
 from django.apps import AppConfig
 
 
@@ -7,22 +5,12 @@ class FinanceConfig(AppConfig):
     name = "finance"
 
     def ready(self):
-        # Multi-stash login (Phase 12): every stash that already exists on disk needs to be a
-        # real Django connection alias before finance.db_router.StashRouter can route a
-        # session's queries to it - registering them here, once, at process start covers
-        # everything that existed before this launch; StashSelectionMiddleware registers a
-        # stash lazily too, for the rare case one was added after this process started.
+        # Every stash that already exists on disk becomes a connection alias here, once, so
+        # finance.db_router.StashRouter can route a session's queries to it.
+        # StashSelectionMiddleware registers a stash created after this process started. Under
+        # `manage.py test`, STASHES_DIR is the test settings' temporary folder, so the only stash
+        # found is the test stash.
         #
-        # Never under `manage.py test`: Django's test runner manages connection isolation
-        # (which alias a given TestCase may touch) off the *live* connections.databases
-        # registry, not just settings.DATABASES - registering a real stash here would make it
-        # a third, unmanaged alias the test isolation machinery trips over, regardless of
-        # whether any test actually queries it. This reads the command line rather than
-        # settings.TESTING on purpose: a test run must never register the real stashes, even
-        # one started with the app's own settings by mistake.
-        if len(sys.argv) > 1 and sys.argv[1] == "test":
-            return
-
         # Imported here, not at the top: the registry imports the models, which don't exist
         # yet when Django imports this module.
         from .stashes import registry

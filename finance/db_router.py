@@ -11,9 +11,21 @@ The current stash is kept in a ContextVar, the same mechanism audit.context uses
 private to the current request's thread (and to its async task, if Django ever runs one).
 """
 
+from contextlib import contextmanager
 from contextvars import ContextVar
 
 _current_alias = ContextVar("stash_alias", default=None)
+
+
+@contextmanager
+def use_stash(alias):
+    """Route the queries made inside this block to stash `alias` (None: the placeholder), then
+    put back whichever stash was current before."""
+    token = _current_alias.set(alias or None)
+    try:
+        yield
+    finally:
+        _current_alias.reset(token)
 
 
 def set_current_stash_alias(alias):

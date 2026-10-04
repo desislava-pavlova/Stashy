@@ -1,19 +1,31 @@
-from datetime import date
-from decimal import Decimal
+"""The audit log: what each save and delete records (who, what and why), imports and cascaded
+deletes, the read-only admin and its timestamps, audit_suspended(), and the after-commit step
+on the stash's own database."""
 
+import threading
+from datetime import UTC, date, datetime
+from decimal import Decimal
+from unittest import mock
+
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase
+from django.db.models import signals as model_signals
+from django.test import SimpleTestCase
 from django.urls import reverse
 
-from audit.context import system_action
+from audit import signals as audit_signals
+from audit.admin import format_timestamp
+from audit.context import audit_suspended, system_action
 from audit.models import AuditLogEntry
-from finance.models import Account, Category, ImportBatch, Payee, Transaction
+from finance import regional
+from finance.models import Account, Category, ImportBatch, Payee, Profile, Transaction
+from finance.tests.base import LoggedInWithAccountTestCase, StashTestCase
 
 Action = AuditLogEntry.Action
 
 
-class AuditTestCase(TestCase):
+class AuditTestCase(StashTestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_superuser("tester", password="not-a-real-password-123")
         self.client.force_login(self.user)
@@ -117,7 +129,6 @@ class ModelChangeLoggingTests(AuditTestCase):
         self.assertEqual(payee_entry.operation, transaction_entry.operation)
 
     def test_watched_expenses_categories_changes_log_one_row_per_item(self):
-        from finance.models import Profile
 
         profile = Profile.for_user(self.user)
         groceries = Category.objects.create(name="Groceries")
@@ -139,7 +150,6 @@ class ModelChangeLoggingTests(AuditTestCase):
         self.assertEqual(removed.old_value, f"{groceries.pk} (Groceries)")
 
     def test_recovery_code_hash_is_never_logged(self):
-        from finance.models import Profile
 
         profile = Profile.for_user(self.user)
         profile.recovery_code_hash = "pbkdf2_sha256$some$real$hash"
@@ -149,7 +159,6 @@ class ModelChangeLoggingTests(AuditTestCase):
         self.assertEqual(entry.new_value, "(hidden)")
 
     def test_failed_pin_attempts_still_logged(self):
-        from finance.models import Profile
 
         profile = Profile.for_user(self.user)
         profile.failed_pin_attempts = 1
@@ -230,7 +239,6 @@ class AuditAdminTests(AuditTestCase):
         response = self.client.get(reverse("admin:index"))
         self.assertNotContains(response, "Users")
         self.assertNotContains(response, "Groups")
-        from finance.models import Profile
 
         profile = Profile.for_user(self.user)
         self.assertEqual(self.client.get(reverse("admin:finance_profile_add")).status_code, 403)
@@ -238,3 +246,86 @@ class AuditAdminTests(AuditTestCase):
         self.assertEqual(detail.status_code, 200)
         self.assertNotContains(detail, "recovery_code_hash")
         self.assertNotContains(detail, "failed_pin_attempts")
+
+
+class OnCommitUsesTheStashTests(LoggedInWithAccountTestCase):
+    """1.1 (F42): the audit log's after-commit step waits on the stash's own database."""
+
+    def test_cleared_references_wait_for_the_routed_database(self):
+        payee = Payee.objects.create(name="Corner shop")
+        Transaction.objects.create(account=self.account, date=date(2026, 9, 1), payee=payee, amount=Decimal("-5"))
+        with (
+            mock.patch("audit.signals.router.db_for_write", return_value=settings.TEST_STASH) as db_for_write,
+            mock.patch("audit.signals.transaction.on_commit") as on_commit,
+        ):
+            payee.delete()
+        db_for_write.assert_called()
+        self.assertEqual(on_commit.call_args.kwargs["using"], settings.TEST_STASH)
+
+
+class AuditSkipsNameKeyTests(StashTestCase):
+    """name_key only repeats the name, so the audit log leaves it out."""
+
+    def test_neither_inserts_nor_renames_log_the_key(self):
+        payee = Payee.objects.create(name="Lidl")
+        payee.name = "Lidl Express"
+        payee.save()
+        rows = AuditLogEntry.objects.filter(table="finance_payee", row_id=str(payee.pk))
+        self.assertNotIn("name_key", rows.get(action="insert").values)
+        self.assertEqual(list(rows.filter(action="update").values_list("column", flat=True)), ["name"])
+
+
+class AuditSuspendedTests(StashTestCase):
+    """6.3 (F17): the audit app owns its own off switch, and it affects only this thread."""
+
+    def test_nothing_is_logged_inside_the_block(self):
+        before = AuditLogEntry.objects.count()
+        with audit_suspended():
+            account = Account.objects.create(name="Wallet")
+            account.notes = "Pocket money"
+            account.save()
+            account.delete()
+        self.assertEqual(AuditLogEntry.objects.count(), before)
+
+    def test_logging_comes_back_after_the_block(self):
+        with audit_suspended():
+            pass
+        before = AuditLogEntry.objects.count()
+        Account.objects.create(name="Wallet")
+        self.assertGreater(AuditLogEntry.objects.count(), before)
+
+    def test_the_signal_handlers_stay_connected(self):
+        with audit_suspended():
+            receivers = str(model_signals.post_save.receivers)
+        self.assertIn("audit.post_save", receivers)
+
+    def test_other_threads_keep_logging(self):
+        seen = {}
+        with audit_suspended():
+            self.assertFalse(audit_signals._logging(Account))
+            thread = threading.Thread(target=lambda: seen.update(other=audit_signals._logging(Account)))
+            thread.start()
+            thread.join()
+        self.assertTrue(seen["other"])
+
+
+class AuditTimestampFormatTests(SimpleTestCase):
+    def test_iso_style_with_milliseconds_and_offset(self):
+        value = datetime(2026, 9, 15, 12, 6, 48, 930000, tzinfo=UTC)
+        with regional.activate(regional.Preferences(time_zone="Europe/Sofia")):
+            self.assertEqual(format_timestamp(value), "2026-09-15 15:06:48.930 +03:00")
+
+    def test_never_follows_the_date_format_preference(self):
+        value = datetime(2026, 9, 15, 12, 6, 48, tzinfo=UTC)
+        preferences = regional.Preferences(date_format="mdy", time_zone="Europe/Sofia")
+        with regional.activate(preferences):
+            self.assertTrue(format_timestamp(value).startswith("2026-09-15"))
+
+    def test_negative_offset(self):
+        value = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
+        with regional.activate(regional.Preferences(time_zone="America/New_York")):
+            formatted = format_timestamp(value)
+        self.assertTrue(formatted.endswith("-05:00"), formatted)
+
+    def test_blank_for_missing_value(self):
+        self.assertEqual(format_timestamp(None), "")

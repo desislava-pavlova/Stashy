@@ -6,7 +6,6 @@ Every page in Stashy needs a login (LoginRequiredMiddleware), so each view here 
 without one is marked @login_not_required.
 """
 
-from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import logout
 from django.contrib.auth.decorators import login_not_required
@@ -113,13 +112,6 @@ class StashLoginView(LoginView):
     redirect_authenticated_user = True
 
     def dispatch(self, request, *args, **kwargs):
-        # Tests log in via Client.force_login() and never exercise this view's own PIN check
-        # or lockout - fixed, harmless placeholders here keep that true regardless of whatever
-        # stashes/ happens to really contain on the machine running the suite (a couple of
-        # pages do render this view directly, e.g. an offline-assets check).
-        if settings.TESTING:
-            self.stash_name, self.profile = "test", None
-            return super().dispatch(request, *args, **kwargs)
         self.stash_name = request.session.get("stash", "")
         if not self.stash_name:
             return redirect("stash_picker")

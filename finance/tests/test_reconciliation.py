@@ -1,24 +1,17 @@
-"""Tests for Phase 8 (Reconciliation): the account page's Reconcile button, the two-step
-statement-balance -> checklist flow, and the resulting adjustment transaction when needed."""
+"""Reconciling an account against a statement: the button, the two steps, the checklist and
+the adjustment transaction."""
 
 from datetime import date
 from decimal import Decimal
 
-from django.contrib.auth import get_user_model
-from django.test import TestCase
 from django.urls import reverse
 
-from .models import Account, Payee, Reconciliation, Transaction
+from ..models import Account, Payee, Reconciliation, Transaction
+from ..services import reconciliation
+from .base import LoggedInWithAccountTestCase, StashTestCase
 
 
-class LoggedInTestCase(TestCase):
-    def setUp(self):
-        self.user = get_user_model().objects.create_user("tester", password="not-a-real-password-123")
-        self.client.force_login(self.user)
-        self.account = Account.objects.create(name="Checking")
-
-
-class ReconciledBalanceTests(LoggedInTestCase):
+class ReconciledBalanceTests(LoggedInWithAccountTestCase):
     def test_only_reconciled_transactions_count(self):
         Transaction.objects.create(
             account=self.account, date=date(2026, 1, 1), amount=Decimal("100.00"), reconciled=True
@@ -29,7 +22,7 @@ class ReconciledBalanceTests(LoggedInTestCase):
         self.assertEqual(self.account.reconciled_balance(), Decimal("100.00"))
 
 
-class ReconcileStartTests(LoggedInTestCase):
+class ReconcileStartTests(LoggedInWithAccountTestCase):
     def test_shows_the_reconciled_balance_as_the_opening_balance(self):
         Transaction.objects.create(
             account=self.account, date=date(2026, 1, 1), amount=Decimal("50.00"), reconciled=True
@@ -52,7 +45,7 @@ class ReconcileStartTests(LoggedInTestCase):
         self.assertEqual(len(response.context["deposits"]), 0)
 
 
-class ReconcileChecklistSplitTests(LoggedInTestCase):
+class ReconcileChecklistSplitTests(LoggedInWithAccountTestCase):
     def test_deposits_and_payments_split_by_sign_and_exclude_already_reconciled_and_future(self):
         Transaction.objects.create(account=self.account, date=date(2026, 1, 1), amount=Decimal("100.00"))
         Transaction.objects.create(account=self.account, date=date(2026, 1, 2), amount=Decimal("-40.00"))
@@ -89,7 +82,7 @@ class ReconcileChecklistSplitTests(LoggedInTestCase):
         self.assertFalse(by_pk[t2.pk])
 
 
-class ReconcileFinishTests(LoggedInTestCase):
+class ReconcileFinishTests(LoggedInWithAccountTestCase):
     def _finish(self, statement_date, statement_balance, checked, accept=False):
         data = {
             "stage": "finish",
@@ -155,13 +148,13 @@ class ReconcileFinishTests(LoggedInTestCase):
         self.assertNotIn(Payee.RECONCILIATION_ADJUSTMENT, response.json()["payees"])
 
 
-class ReconcileButtonTests(LoggedInTestCase):
+class ReconcileButtonTests(LoggedInWithAccountTestCase):
     def test_reconcile_button_on_account_page(self):
         response = self.client.get(reverse("finance:account_detail", args=[self.account.pk]))
         self.assertContains(response, reverse("finance:account_reconcile", args=[self.account.pk]))
 
 
-class ReconcileChecklistDisplayTests(LoggedInTestCase):
+class ReconcileChecklistDisplayTests(LoggedInWithAccountTestCase):
     def test_payments_show_with_a_negative_sign(self):
         Transaction.objects.create(account=self.account, date=date(2026, 1, 1), amount=Decimal("-40.00"))
         response = self.client.post(
@@ -199,3 +192,65 @@ class ReconcileChecklistDisplayTests(LoggedInTestCase):
         )
         self.assertContains(response, 'id="mark-all-btn"')
         self.assertContains(response, "Mark all")
+
+
+class ReconcileFinishFormTests(LoggedInWithAccountTestCase):
+    """1.6 (F5): a garbled finish step gets a message, never a server error."""
+
+    def setUp(self):
+        super().setUp()
+        self.txn = Transaction.objects.create(account=self.account, date=date(2026, 9, 1), amount=Decimal("-20.00"))
+        self.url = reverse("finance:account_reconcile", args=[self.account.pk])
+
+    def finish(self, **data):
+        return self.client.post(self.url, {"stage": "finish", **data})
+
+    def test_missing_or_garbled_values_restart_with_a_message(self):
+        for data in (
+            {},
+            {"statement_date": "yesterday", "statement_balance": "-20.00"},
+            {"statement_date": "2026-09-30", "statement_balance": "lots"},
+            {"statement_date": "2026-09-30", "statement_balance": "-20.00", "transaction": "abc"},
+        ):
+            with self.subTest(data=data):
+                response = self.finish(**data)
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, "didn&#x27;t come through")
+        self.txn.refresh_from_db()
+        self.assertFalse(self.txn.reconciled)
+
+    def test_a_valid_finish_still_reconciles(self):
+        response = self.finish(statement_date="2026-09-30", statement_balance="-20.00", transaction=self.txn.pk)
+        self.assertRedirects(response, reverse("finance:account_detail", args=[self.account.pk]))
+        self.txn.refresh_from_db()
+        self.assertTrue(self.txn.reconciled)
+
+
+class ReconcileTests(StashTestCase):
+    def setUp(self):
+        self.account = Account.objects.create(name="Wallet")
+        self.pay = Transaction.objects.create(account=self.account, date=date(2026, 1, 5), amount=Decimal("100.00"))
+        self.buy = Transaction.objects.create(account=self.account, date=date(2026, 1, 6), amount=Decimal("-30.00"))
+
+    def test_a_matching_statement_marks_the_transactions_reconciled(self):
+        done = reconciliation.reconcile(self.account, date(2026, 1, 31), Decimal("70.00"), [self.pay, self.buy])
+        self.assertIsNone(done.adjustment_transaction)
+        self.assertEqual(done.opening_balance, Decimal("0"))
+        self.assertEqual(self.account.transactions.filter(reconciled=True).count(), 2)
+
+    def test_an_unaccepted_difference_saves_nothing(self):
+        with self.assertRaises(reconciliation.UnacceptedDifferenceError) as caught:
+            reconciliation.reconcile(self.account, date(2026, 1, 31), Decimal("75.00"), [self.pay, self.buy])
+        self.assertEqual(caught.exception.difference, Decimal("5.00"))
+        self.assertFalse(Reconciliation.objects.exists())
+        self.assertFalse(self.account.transactions.filter(reconciled=True).exists())
+
+    def test_an_accepted_difference_gets_an_adjustment_outside_the_reports(self):
+        done = reconciliation.reconcile(
+            self.account, date(2026, 1, 31), Decimal("65.00"), [self.pay], accept_difference=True
+        )
+        adjustment = done.adjustment_transaction
+        self.assertEqual((adjustment.amount, adjustment.reconciled), (Decimal("-35.00"), True))
+        self.assertEqual(adjustment.category, self.account.ensure_transfer_category())
+        self.assertEqual(self.account.reconciled_balance(), Decimal("65.00"))
+        self.assertFalse(Transaction.objects.reportable().filter(pk=adjustment.pk).exists())

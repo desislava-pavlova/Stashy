@@ -253,6 +253,8 @@ Stashy/
 │   ├── db_router.py      # sends each request's queries to its session's stash
 │   ├── middleware.py
 │   ├── backup.py
+│   ├── tests/            # one file per area (test_accounts.py, test_reminders.py, …);
+│   │                     #   base.py: the setup the tests share
 │   ├── migrations/
 │   └── templates/, static/
 ├── stashes/<name>/       # one folder per stash: db.sqlite3 + backups/ (not in git)
@@ -262,8 +264,10 @@ Stashy/
 ## Development
 
 - Run the tests with `python manage.py test` (on Windows:
-  `.venv\Scripts\python.exe manage.py test`). They use a throwaway
-  in-memory database and never touch a stash, and take about 15 seconds.
+  `.venv\Scripts\python.exe manage.py test`). They run inside a throwaway
+  test stash (a temporary folder and an in-memory database), never touch
+  your own stashes, and take about 25 seconds. Run one area with
+  `python manage.py test finance.tests.test_reminders`.
 - Install the tools with `pip install -r requirements-dev.txt`. Check the
   code with `ruff check .`, tidy its layout with `ruff format .`, and see
   how much of it the tests run with `coverage run manage.py test` followed

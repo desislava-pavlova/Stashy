@@ -8,7 +8,6 @@ redirects back to the page when it succeeds.
 import secrets
 from pathlib import Path
 
-from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import update_session_auth_hash
 from django.core.cache import cache
@@ -32,26 +31,16 @@ from ..stashes import registry, security
 
 
 def _stash_backup_root(request):
-    """Each stash keeps its own backups/ folder next to its own db.sqlite3 - reachable only
-    once a stash is selected for this session (finance.middleware.RequireStashMiddleware
-    blocks every finance URL, this one included, until then). Always BASE_DIR under
-    `manage.py test`: TESTING also bypasses that middleware gate (see finance/middleware.py),
-    and whatever a real session happens to have selected on the machine running the suite must
-    never change what a test expects - this project's fixtures all assume BASE_DIR."""
-    stash_name = request.session.get("stash") if not settings.TESTING else None
-    if stash_name:
-        return registry.stash_path(stash_name)
-    return Path(settings.BASE_DIR)
+    """The folder of this session's stash, which holds its backups/ folder. The session always
+    names a stash here: finance.middleware.RequireStashMiddleware lets no finance page open
+    until one is chosen."""
+    return registry.stash_path(request.session["stash"])
 
 
 def _current_stash_db_path(request):
-    """The actual db.sqlite3 file behind this session's selected stash - not
-    settings.DATABASES["default"]["NAME"], which is always the inert picker placeholder,
-    never a real stash's own file."""
-    stash_name = request.session.get("stash") if not settings.TESTING else None
-    if stash_name:
-        return registry.stash_db_path(stash_name)
-    return settings.DATABASES["default"]["NAME"]
+    """The db.sqlite3 file behind this session's stash - never `default`'s, which is only the
+    picker's empty placeholder."""
+    return registry.stash_db_path(request.session["stash"])
 
 
 def _rate_currencies(profile):
@@ -208,11 +197,7 @@ def backup_restore(request):
     backup_path = _backup_path_or_404(request, name)
 
     if request.method == "POST":
-        stash_name = request.session.get("stash") if not settings.TESTING else None
-        if stash_name:
-            registry.restore_stash(stash_name, backup_path)
-        else:
-            finance_backup.restore_from(backup_path, _current_stash_db_path(request), _stash_backup_root(request))
+        registry.restore_stash(request.session["stash"], backup_path)
         messages.success(
             request,
             f"Restored from {backup_path.name}. A safety backup of what was there before is in backups/ too.",

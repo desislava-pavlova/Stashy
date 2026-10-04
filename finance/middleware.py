@@ -52,16 +52,15 @@ class StashSelectionMiddleware:
     rather than a file read once at process start - what lets someone switch stashes without
     closing and reopening Stashy.bat.
     Must run before AuthenticationMiddleware, since even loading request.user is itself a
-    routed query. Sets a thread-local finance.db_router.StashRouter reads for the duration of
-    this request/thread, and clears it again afterwards so a worker thread never carries a
-    stale stash into a later request it happens to handle."""
+    routed query. Makes the session's stash the current one for the rest of the request
+    (finance.db_router.use_stash), then puts back what was current before - nothing, in a
+    server thread - so a worker thread never carries a stale stash into a later request it
+    happens to handle."""
 
     def __init__(self, get_response):
         self.get_response = get_response
 
     def __call__(self, request):
-        if settings.TESTING:
-            return self.get_response(request)
         alias = request.session.get("stash") or None
         if alias:
             if registry.stash_exists(alias):
@@ -71,11 +70,8 @@ class StashSelectionMiddleware:
                 # same as none chosen rather than routing queries at a dead alias.
                 alias = None
                 request.session.pop("stash", None)
-        db_router.set_current_stash_alias(alias)
-        try:
+        with db_router.use_stash(alias):
             return self.get_response(request)
-        finally:
-            db_router.clear_current_stash_alias()
 
 
 class RequireStashMiddleware:
@@ -89,8 +85,8 @@ class RequireStashMiddleware:
     so Stashy opens straight on that stash's own PIN screen instead of the picker. Redirects
     back to the same URL rather than just setting the session and carrying on, so the *next*
     request is the one StashSelectionMiddleware (which runs before this one) sees with the
-    session already populated - otherwise this request's own queries would still be routed by
-    the stale, pre-fallback thread-local it already set."""
+    session already populated - otherwise this request's own queries would still be routed to
+    the stash it chose before the fallback (none)."""
 
     def __init__(self, get_response):
         self.get_response = get_response
@@ -102,8 +98,6 @@ class RequireStashMiddleware:
         return (reverse("stash_picker"), settings.STATIC_URL, reverse("admin:index"))
 
     def __call__(self, request):
-        if settings.TESTING:
-            return self.get_response(request)
         if not request.session.get("stash") and not request.path.startswith(self.exempt_prefixes()):
             remembered = request.COOKIES.get(registry.LAST_STASH_COOKIE)
             if remembered and registry.stash_exists(remembered):
@@ -134,8 +128,6 @@ class RequireSetupMiddleware:
         )
 
     def __call__(self, request):
-        if settings.TESTING:
-            return self.get_response(request)
         profile = getattr(request, "stashy_profile", None)
         if profile is not None and not profile.setup_finished and not request.path.startswith(self.exempt_prefixes()):
             return redirect("finance:welcome_step", step=profile.welcome_step + 1)

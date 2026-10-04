@@ -1,23 +1,21 @@
-"""Tests for Phase 10 (Backup & Export): the backup helper (D8's quarterly check, and the
-Settings page's "Back up now" button), and CSV/XLSX export for transactions/accounts/
-categories/payees."""
+"""Backups: the backup files, the quarterly backup, Settings' "Back up now", and restoring a
+stash from a backup."""
 
-import csv
-import io
 import sqlite3
 import tempfile
 from datetime import date, datetime, timedelta
-from decimal import Decimal
 from pathlib import Path
 from unittest import mock
 
 from django.conf import settings
-from django.contrib.auth import get_user_model
-from django.test import SimpleTestCase, TestCase
+from django.core.management import call_command
+from django.db import connections
+from django.test import SimpleTestCase
 from django.urls import reverse
 
-from . import backup as finance_backup
-from .models import Account, Category, Payee, Transaction
+from .. import backup as finance_backup
+from ..stashes import registry
+from .base import LoggedInWithAccountTestCase, TemporaryStashesMixin
 
 
 def write_db(path, content):
@@ -36,6 +34,12 @@ def read_db(path):
         return connection.execute("SELECT content FROM note").fetchone()[0]
     finally:
         connection.close()
+
+
+def _make_db(path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    sqlite3.connect(path).close()
+    return path
 
 
 class BackupHelperTests(SimpleTestCase):
@@ -139,19 +143,12 @@ class BackupHelperTests(SimpleTestCase):
         self.assertEqual(finance_backup._parse_stamp(older), datetime(2026, 9, 15, 9, 0, 0))
 
 
-class LoggedInTestCase(TestCase):
-    def setUp(self):
-        self.user = get_user_model().objects.create_user("tester", password="not-a-real-password-123")
-        self.client.force_login(self.user)
-        self.account = Account.objects.create(name="Checking")
-
-
-class ManualBackupButtonTests(LoggedInTestCase):
-    # The view's actual database path is ":memory:" under the test runner, so these patch
-    # finance.backup.backup_now itself rather than relying on a real file existing on disk -
-    # the file-copying logic itself is already covered directly by BackupHelperTests above.
+class ManualBackupButtonTests(LoggedInWithAccountTestCase):
+    # The test stash's db.sqlite3 is an empty placeholder (its data lives in the test runner's
+    # in-memory database), so these patch finance.backup.backup_now itself - the file-copying
+    # logic is covered directly by BackupHelperTests above.
     def test_back_up_now_creates_a_file_and_shows_a_message(self):
-        fake_backup = Path(settings.BASE_DIR) / "backups" / "db_manual_20260101_000000.sqlite3"
+        fake_backup = registry.stash_backups_dir(settings.TEST_STASH) / "db_manual_20260101_000000.sqlite3"
         with mock.patch("finance.backup.backup_now", return_value=fake_backup):
             response = self.client.post(reverse("finance:create_backup"), follow=True)
         self.assertContains(response, "Backed up to")
@@ -162,84 +159,9 @@ class ManualBackupButtonTests(LoggedInTestCase):
         self.assertContains(response, "Nothing to back up yet")
 
 
-class ExportTransactionsTests(LoggedInTestCase):
-    def setUp(self):
-        super().setUp()
-        rent = Category.objects.create(name="Rent", category_type=Category.CategoryType.EXPENSE)
-        payee = Payee.objects.create(name="Landlord")
-        Transaction.objects.create(
-            account=self.account,
-            date=date(2026, 1, 1),
-            payee=payee,
-            category=rent,
-            memo="January rent",
-            amount=Decimal("-500.00"),
-            reconciled=True,
-        )
-        Account.objects.create(name="Savings")
-
-    def test_csv_export_contains_the_row(self):
-        response = self.client.get(reverse("finance:export_transactions"), {"format": "csv"})
-        self.assertEqual(response["Content-Type"], "text/csv; charset=utf-8")
-        rows = list(csv.reader(io.StringIO(response.content.decode("utf-8-sig"))))
-        self.assertEqual(
-            rows[0], ["Date", "Number", "Account", "Payee", "Category", "Memo", "Amount", "Currency", "Reconciled"]
-        )
-        self.assertIn(
-            ["2026-01-01", rows[1][1], "Checking", "Landlord", "Rent", "January rent", "-500.00", "EUR", "Y"], rows
-        )
-
-    def test_xlsx_export_has_the_right_content_type(self):
-        response = self.client.get(reverse("finance:export_transactions"), {"format": "xlsx"})
-        self.assertEqual(response["Content-Type"], "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-        self.assertTrue(len(response.content) > 0)
-
-    def test_export_respects_the_current_filters(self):
-        savings = Account.objects.get(name="Savings")
-        Transaction.objects.create(account=savings, date=date(2026, 1, 2), amount=Decimal("10.00"))
-        response = self.client.get(
-            reverse("finance:export_transactions"), {"format": "csv", "account": self.account.pk}
-        )
-        rows = list(csv.reader(io.StringIO(response.content.decode())))
-        accounts_in_export = {row[2] for row in rows[1:]}
-        self.assertEqual(accounts_in_export, {"Checking"})
-
-
-class ExportOtherListsTests(LoggedInTestCase):
-    def test_accounts_export_lists_every_account(self):
-        response = self.client.get(reverse("finance:export_accounts"), {"format": "csv"})
-        rows = list(csv.reader(io.StringIO(response.content.decode())))
-        names = [row[0] for row in rows[1:]]
-        self.assertIn("Checking", names)
-
-    def test_categories_export_is_a_full_export_including_transfer_categories(self):
-        # 2026-09-14 follow-up: "full export of the data" - system-managed rows are included
-        # now, just marked, rather than left out silently.
-        Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
-        response = self.client.get(reverse("finance:export_categories"), {"format": "csv"})
-        rows = list(csv.reader(io.StringIO(response.content.decode())))
-        by_name = {row[0]: row for row in rows[1:]}
-        self.assertIn("Groceries", by_name)
-        self.assertEqual(by_name["Groceries"][4], "N")
-        transfer_name = self.account.ensure_transfer_category().name
-        self.assertIn(transfer_name, by_name)
-        self.assertEqual(by_name[transfer_name][4], "Y")
-
-    def test_payees_export_is_a_full_export_including_system_payees(self):
-        Payee.objects.create(name="Lidl")
-        Payee.system(Payee.OPENING_BALANCE)
-        response = self.client.get(reverse("finance:export_payees"), {"format": "csv"})
-        rows = list(csv.reader(io.StringIO(response.content.decode())))
-        by_name = {row[0]: row for row in rows[1:]}
-        self.assertIn("Lidl", by_name)
-        self.assertEqual(by_name["Lidl"][2], "N")
-        self.assertIn(Payee.OPENING_BALANCE, by_name)
-        self.assertEqual(by_name[Payee.OPENING_BALANCE][2], "Y")
-
-
-class RestoreBackupTests(LoggedInTestCase):
+class RestoreBackupTests(LoggedInWithAccountTestCase):
     def existing_backup(self):
-        backups_dir = Path(settings.BASE_DIR) / "backups"
+        backups_dir = registry.stash_backups_dir(settings.TEST_STASH)
         backups_dir.mkdir(exist_ok=True)
         path = backups_dir / "backup_manual_2026-09-14_11-57-36.sqlite3"
         path.write_text("a backup file")
@@ -266,3 +188,97 @@ class RestoreBackupTests(LoggedInTestCase):
         restore_from.assert_called_once()
         self.assertEqual(restore_from.call_args.args[0], backup)
         self.assertContains(response, "Restored from")
+
+
+class BackupNamesCarryTheStashTests(SimpleTestCase):
+    """Plan 03 R5: two stashes' backups never share a file name."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.stashes = Path(tmp.name)
+
+    def _stash(self, name):
+        folder = self.stashes / name
+        _make_db(folder / "db.sqlite3")
+        return folder
+
+    def test_the_name_starts_with_the_stash(self):
+        alex = self._stash("alex")
+        result = finance_backup.backup_now(alex / "db.sqlite3", alex, tag="manual")
+        self.assertRegex(result.name, r"^alex_backup_manual_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.sqlite3$")
+
+    def test_two_stashes_backed_up_together_get_different_names(self):
+        alex, sam = self._stash("alex"), self._stash("sam-2")
+        first = finance_backup.backup_now(alex / "db.sqlite3", alex, tag="before_update")
+        second = finance_backup.backup_now(sam / "db.sqlite3", sam, tag="before_update")
+        self.assertNotEqual(first.name, second.name)
+        self.assertTrue(second.name.startswith("sam-2_backup_before_update_"))
+
+    def test_the_list_mixes_all_three_naming_schemes_newest_first(self):
+        alex = self._stash("alex")
+        backups = alex / "backups"
+        backups.mkdir()
+        for name in (
+            "db_before_update_20260101_000000.sqlite3",
+            "backup_manual_2026-06-01_00-00-00.sqlite3",
+            "alex_backup_before_restore_2026-09-14_11-57-36.sqlite3",
+        ):
+            (backups / name).write_text("x")
+        names = [p.name for p in finance_backup.list_backups(alex)]
+        self.assertEqual(
+            names,
+            [
+                "alex_backup_before_restore_2026-09-14_11-57-36.sqlite3",
+                "backup_manual_2026-06-01_00-00-00.sqlite3",
+                "db_before_update_20260101_000000.sqlite3",
+            ],
+        )
+
+    def test_the_quarterly_check_sees_a_recent_quarterly_backup_under_the_new_name(self):
+        alex = self._stash("alex")
+        (alex / "backups").mkdir()
+        recent = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        (alex / "backups" / f"alex_backup_quarterly_{recent}.sqlite3").write_text("x")
+        self.assertIsNone(finance_backup.quarterly_backup_if_due(alex / "db.sqlite3", alex))
+
+    def test_an_old_quarterly_backup_under_the_new_name_makes_a_new_one_due(self):
+        alex = self._stash("alex")
+        (alex / "backups").mkdir()
+        old = (datetime.now() - timedelta(days=100)).strftime("%Y-%m-%d_%H-%M-%S")
+        (alex / "backups" / f"alex_backup_quarterly_{old}.sqlite3").write_text("x")
+        self.assertIsNotNone(finance_backup.quarterly_backup_if_due(alex / "db.sqlite3", alex))
+
+    def test_a_manual_backup_is_never_mistaken_for_a_quarterly_one(self):
+        # A stash may even be called "quarterly": only the tag after "backup_" counts.
+        quarterly = self._stash("quarterly")
+        finance_backup.backup_now(quarterly / "db.sqlite3", quarterly, tag="manual")
+        self.assertIsNotNone(finance_backup.quarterly_backup_if_due(quarterly / "db.sqlite3", quarterly))
+
+    def test_restoring_leaves_a_safety_backup_named_after_the_stash(self):
+        alex = self._stash("alex")
+        source = finance_backup.backup_now(alex / "db.sqlite3", alex, tag="manual")
+        finance_backup.restore_from(source, alex / "db.sqlite3", alex)
+        tags = sorted(p.name.split("_backup_")[1].rsplit("_", 2)[0] for p in finance_backup.list_backups(alex))
+        self.assertEqual(tags, ["before_restore", "manual"])
+
+
+class RestoreBringsBackTodaysSchemaTests(TemporaryStashesMixin, SimpleTestCase):
+    """1.3 (F44): a backup taken before an update is migrated as soon as it's restored."""
+
+    def test_restoring_a_pre_update_backup_migrates_it(self):
+        self.make_stashes("restorecheck")
+        call_command("migrate", "finance", "0016", database="restorecheck", verbosity=0)
+        old_backup = finance_backup.backup_now(
+            registry.stash_db_path("restorecheck"), registry.stash_path("restorecheck"), tag="before_update"
+        )
+        call_command("migrate", database="restorecheck", verbosity=0)
+
+        registry.restore_stash("restorecheck", old_backup)
+
+        with connections["restorecheck"].cursor() as cursor:
+            columns = [
+                c.name
+                for c in connections["restorecheck"].introspection.get_table_description(cursor, "finance_profile")
+            ]
+        self.assertIn("owner_name", columns)  # added by migration 0017, after the backup

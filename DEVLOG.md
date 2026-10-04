@@ -4138,3 +4138,155 @@ Forgot PIN open and show their PIN boxes. Not checked in a browser.
 `finance/test_phase12_stash_login.py`, `finance/test_phase14.py`,
 `finance/test_phase15.py`; `README.md`, `CLAUDE.md`,
 `plans/02_architecture_cleanup.md`, `plans/03_fixes_and_changes_plan.md`.
+
+## 04/10/2026 — Plan 02, Phase 7 (part 1): tests by feature, through the real middleware
+
+**What changed** (details and ticks in `plans/02_architecture_cleanup.md`):
+- **The tests moved into `finance/tests/`, one file per area (7.3).** The
+  37 files named after the phase that wrote them (`test_phase7_2.py`,
+  `test_cleanup_phase4.py`, `tests.py`, …) became 23 files named after the
+  code they test: `test_accounts.py` goes with `views/accounts.py`,
+  `test_reporting.py` with `reporting.py` (the Reports page itself is
+  `test_reports.py`), `test_project.py` holds Django's settings, logging and
+  the rules the code follows, `test_pages.py` the checks every page must
+  pass. Four audit-log tests that lived in finance moved to
+  `audit/tests.py`. The 25 copies of `LoggedInTestCase` became three shared
+  base classes in `finance/tests/base.py`.
+- **Moved, not rewritten.** A script moved each class as text, and a second
+  script compared every test method's syntax tree with the original. The
+  only differences are planned ones: imports made inside a test now sit at
+  the top of its file (one, `from . import models`, would have broken one
+  folder down); two classes got new names because their names clashed in
+  one file (`ReportExportRegistryTests`, `ReportsCustomRangeErrorTests`);
+  the clashing pretend-today dates are `TODAY_13_SEPT`, `TODAY_14_SEPT` and
+  `TODAY_19_SEPT` (and `TODAY_12_SEPT` on the dashboard); a few docstrings
+  pointed at deleted files; and one test used a real person's name as a
+  stash name, now "alex". All 675 tests ran, name for name, before anything
+  else changed.
+- **Tests now run through the real middleware (7.1).** Until now the stash
+  picker, the stash choice and the welcome-wizard gate all stepped aside
+  whenever `settings.TESTING` was on, so the suite never ran the code that
+  every real request runs. Now each test run makes its own throwaway stash,
+  "tester", in a temporary folder that is deleted afterwards. Every database
+  test runs inside it: its own queries go to that stash, and its test client
+  starts with the stash already chosen, as if picked on the picker. The
+  `TESTING` switch is gone from the app code (a test checks it stays gone),
+  and so is `apps.py`'s check of the command line.
+- **The placeholder database is off limits in tests.** `default` (the
+  picker's empty database) can't be touched by a test unless the test asks
+  for it, so code that forgets which stash it's in fails loudly instead of
+  quietly writing to the placeholder. The app code passed. Eight tests
+  failed at first: their own `transaction.atomic()` didn't say which
+  database, so it opened one on `default`. They now say
+  `using=settings.TEST_STASH`.
+- **The middleware chain has tests of its own (7.2):** with no stash chosen,
+  every page goes to the picker; the "last stash used" cookie opens that
+  stash's PIN screen; picking a stash and typing its PIN reaches the
+  dashboard; an unfinished welcome wizard comes before every page; a page in
+  a chosen stash runs no query on the placeholder. Each test fails when its
+  piece of middleware is switched off (checked once by hand).
+- **Shared test data is built once per class (7.4, part 1).** The shared
+  base classes create their user and account in `setUpTestData` instead of
+  before every test. The classes with a `setUp` of their own come next.
+- **Found along the way:** two old backup tests wrote into a `backups/`
+  folder in the project itself, which is why an empty one kept appearing
+  there. They now use the test stash's own folder, and the empty folder is
+  gone. A test run started with the app's own settings (an editor set up
+  that way, say) now stops at once with "Run the tests with
+  stashy.settings.test".
+
+**Teaching note — testing the real path.** A switch like `if TESTING:` makes
+tests easier to write, but every line behind it is code the tests never run,
+and those lines are exactly the ones that decide which database a request
+uses. The fix is to make the test world look like the real one (a real stash
+chosen in a real session) instead of making the code behave differently
+under test. One small change made it possible: the middleware used to
+*clear* the current stash after each request. Now `db_router.use_stash()`
+*puts back* whatever was there before (a ContextVar "token" remembers it).
+In the server that is always "nothing", so Stashy behaves exactly as before.
+In a test, the test's own stash stays current after each request it makes.
+
+**Teaching note — setUp vs. setUpTestData.** `setUp` runs before every
+test, so 50 tests in a class build the same rows 50 times. `setUpTestData`
+builds them once per class. That is safe because Django wraps each test in a
+transaction it rolls back, and hands every test its own copy of the objects
+made there, so no test sees another test's changes. Anything that isn't
+database data (logging in a test client, mocks, temporary files) stays in
+`setUp`.
+
+**Old → new test files** (number of classes that went to each):
+
+| Old file | New file(s) in `finance/tests/` |
+|---|---|
+| `test_category_dropdown_indent.py` | test_categories.py |
+| `test_cleanup_phase1.py` | test_auth.py (2), test_dashboard.py (2), audit/tests.py (1), test_backup.py (1), test_exports.py (1), test_imports.py (1), test_middleware.py (1), test_reconciliation.py (1), test_settings.py (1), test_transactions.py (1) |
+| `test_cleanup_phase2.py` | test_payees.py (3), test_categories.py (2), audit/tests.py (1), test_admin.py (1), test_transactions.py (1) |
+| `test_cleanup_phase3.py` | test_project.py (4), test_pages.py (1) |
+| `test_cleanup_phase4.py` | test_imports.py (3), test_reporting.py (2), test_reconciliation.py (1), test_reminders.py (1), test_reports.py (1) |
+| `test_cleanup_phase5.py` | test_pages.py (2), test_auth.py (1), test_exports.py (1), test_middleware.py (1), test_settings.py (1) |
+| `test_cleanup_phase6.py` | test_project.py (2), audit/tests.py (1), test_accounts.py (1), test_auth.py (1), test_categories.py (1), test_middleware.py (1), test_reminders.py (1), test_stashes.py (1) |
+| `test_dashboard.py` | test_dashboard.py (3), test_categories.py (1), test_pages.py (1), test_transactions.py (1) |
+| `test_fixes_plan03.py` | test_backup.py (1), test_exports.py (1), test_reports.py (1) |
+| `test_phase3.py` | test_accounts.py (4), test_formatting.py (2), test_currency.py (1), test_reporting.py (1), test_transactions.py (1) |
+| `test_phase4.py` | test_categories.py |
+| `test_phase5.py` | test_transactions.py (4), test_accounts.py (1) |
+| `test_phase6.py` | test_payees.py (3), test_api.py (2), test_imports.py (1) |
+| `test_phase6_1.py` | test_accounts.py (1), test_categories.py (1), test_pages.py (1), test_payees.py (1), test_transactions.py (1) |
+| `test_phase6_2.py` | test_reminders.py (2), test_transactions.py (1) |
+| `test_phase6_3.py` | test_dashboard.py (2), test_payees.py (1) |
+| `test_phase7.py` | test_reminders.py |
+| `test_phase7_1.py` | test_reminders.py (3), test_dashboard.py (1) |
+| `test_phase7_2.py` | test_reminders.py (6), test_categories.py (1), test_transactions.py (1) |
+| `test_phase7_3.py` | test_categories.py (1), test_reminders.py (1), test_transactions.py (1) |
+| `test_phase7_4.py` | test_reminders.py |
+| `test_phase8.py` | test_reconciliation.py |
+| `test_phase9.py` | test_imports.py |
+| `test_phase10.py` | test_backup.py (3), test_exports.py (2) |
+| `test_phase11.py` | test_reporting.py (2), test_reports.py (1) |
+| `test_phase11_1.py` | test_reporting.py (1), test_reports.py (1), test_transactions.py (1) |
+| `test_phase11_follow_up.py` | test_reporting.py (4), test_reports.py (2), test_exports.py (1), test_transactions.py (1) |
+| `test_phase12_stash_login.py` | test_auth.py (3), test_middleware.py (2) |
+| `test_phase13.py` | test_accounts.py (2), test_transactions.py (2), test_payees.py (1), test_reports.py (1) |
+| `test_phase13_reports.py` | test_reports.py (6), test_reporting.py (5), test_pages.py (1) |
+| `test_phase14.py` | audit/tests.py (1), test_transactions.py (1) |
+| `test_phase15.py` | test_welcome.py (7), test_settings.py (3), test_categories.py (2), test_middleware.py (2), test_stashes.py (1) |
+| `test_reminder_month.py` | test_reminders.py |
+| `test_save_and_add.py` | test_transactions.py |
+| `test_transaction_quick_edit.py` | test_transactions.py |
+| `test_vs_average_tint.py` | test_reports.py |
+| `tests.py` | test_formatting.py (3), test_reports.py (2), test_accounts.py (1), test_categories.py (1), test_imports.py (1), test_payees.py (1), test_transactions.py (1) |
+
+**Test changes beyond the move** (all for 7.1; no assertion changed except
+where said): 53 classes changed base from `TestCase` to `StashTestCase`;
+15 `@override_settings(TESTING=False)` lines went; eight `atomic()` calls
+got `using=`; two backup tests use the test stash's own backups folder; one
+test chooses the stash again after logging out; one counts queries on the
+stash's connection; the audit "after-commit" test now expects the test stash
+where it expected `default`; the settings test checks the settings module
+where it checked `TESTING`; two new settings tests.
+
+**Suite time:** 675 tests in 23.2 s before; 683 tests in 23.0 s after 7.1
+and 7.2; 22.4 s once the shared bases used `setUpTestData`.
+
+**Coverage:** 94% (3,764 statements, 208 not run by any test, down from
+233). `middleware.py` and `db_router.py` are now fully covered.
+
+**Verification:** full suite green, 683 tests. `ruff check .` and `ruff
+format --check .` are clean. Single modules run on their own too
+(`manage.py test finance.tests.test_reminders`, `manage.py test audit`). The
+real middleware was tried on a throwaway server on port 8765 with the `test`
+stash, GET requests and the picker form only: with no stash chosen, every
+page goes to the picker; choosing `test` opens its PIN screen; forgot PIN
+and the admin login behave as before. Not checked in a browser. No stash
+file was written.
+
+**Still to do (7.4, part 2):** the 67 test classes with a `setUp` of their
+own.
+
+**Files:** `finance/tests/` (new: `__init__.py`, `base.py` and 23
+`test_*.py`); `finance/tests.py` and the 36 old `finance/test_*.py` files
+(removed); `audit/tests.py`, `finance/apps.py`, `finance/db_router.py`,
+`finance/middleware.py`, `finance/views/auth.py`, `finance/views/settings.py`,
+`stashy/settings/base.py`, `stashy/settings/test.py`, `pyproject.toml`
+(coverage leaves out `finance/tests/`); `README.md`, `CLAUDE.md`,
+`DEVLOG.md`, `plans/02_architecture_cleanup.md`, `plans/README.md`.

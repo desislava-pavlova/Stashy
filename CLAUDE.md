@@ -47,8 +47,8 @@ terms.
 ## Commands
 
 ```
-.venv\Scripts\python.exe manage.py test                          # full suite, ~23 s (675 tests on 03/10/2026)
-.venv\Scripts\python.exe manage.py test finance.test_phase15     # one module
+.venv\Scripts\python.exe manage.py test                          # full suite, ~22 s (683 tests on 04/10/2026)
+.venv\Scripts\python.exe manage.py test finance.tests.test_reminders  # one module (audit: `test audit`)
 .venv\Scripts\python.exe manage.py migrate --database <stash>    # one stash (Stashy.bat does all, with backups)
 .venv\Scripts\python.exe manage.py reset_pin <owner name>        # real, visible action - ask first
 .venv\Scripts\ruff.exe check .  /  ruff.exe format .      # must stay clean (pyproject.toml)
@@ -128,7 +128,8 @@ terms.
   (never disconnect the signals: that is process-wide). The audit app
   imports nothing from `finance` (a test checks).
 - **Multi-stash routing:** the session's `stash` → `StashSelectionMiddleware`
-  → a ContextVar in `db_router` → `StashRouter`.
+  → a ContextVar in `db_router` → `StashRouter`. `db_router.use_stash(alias)`
+  sets it for a block and puts back the previous one afterwards.
   - `default` is `_picker.sqlite3`, an empty placeholder.
   - Every stash is its own connection alias named after its folder.
   - Sessions are signed cookies, because they must work before a stash is
@@ -156,15 +157,24 @@ terms.
 - `/admin/login/` redirects to the stash PIN login (`admin_login`), so the
   lockout covers every login. Secrets shown once (a new recovery code) go in
   the local-memory cache, never the signed-cookie session.
-- Tests: `finance/test_phase*.py`, `finance/test_*.py`, `audit/tests.py`.
-  `settings.TESTING` (True only in `settings/test.py`) currently bypasses
-  the stash and setup middleware. `finance/apps.py` still checks `sys.argv`
-  itself, so a test run never registers the real stashes. Plan 02 phase 7
-  removes both.
-  `test_phase13.py` belongs to Phase 12.1; Phase 13's tests are in
-  `test_phase13_reports.py`. Plan 02's tests are `test_cleanup_phase<N>.py`.
-  `TemporaryStashesMixin` (in `test_cleanup_phase1.py`) gives a test real
-  stash aliases in a temp folder, registered the way the app does it.
+- Tests: `finance/tests/test_<area>.py`, one module per area, named after the
+  code they test (`views/<area>.py`; `reporting.py` → `test_reporting.py`,
+  while the Reports page is `test_reports.py`; Django settings, logging and
+  code-wide rules → `test_project.py`), plus `audit/tests.py`.
+  - `settings/test.py` makes a temporary `STASHES_DIR` per run holding one
+    stash, `settings.TEST_STASH` ("tester"). `apps.py` registers it like any
+    stash; its database is the runner's in-memory one. App code never asks
+    whether it's under test (a test checks).
+  - `finance/tests/base.py`: every database test derives from `StashTestCase`
+    (or `LoggedInTestCase`, `LoggedInWithAccountTestCase`,
+    `AlexsStashTestCase`). Its queries go to the test stash and its client
+    starts with that stash chosen, so requests run the real middleware.
+    `default` is off limits unless a class adds it to `databases`, so a test's
+    own `atomic()` needs `using=settings.TEST_STASH`.
+  - Build shared data in `setUpTestData`; log in (and anything about the
+    client, mocks or temp files) in `setUp`.
+  - `TemporaryStashesMixin` gives a test extra real stash aliases in a temp
+    folder, registered the way the app does it.
 
 ## Domain rules (settled with the user; don't change them silently)
 
