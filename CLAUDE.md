@@ -47,7 +47,7 @@ terms.
 ## Commands
 
 ```
-.venv\Scripts\python.exe manage.py test                          # full suite, ~22 s (683 tests on 04/10/2026)
+.venv\Scripts\python.exe manage.py test                          # full suite, ~25 s (697 tests on 05/10/2026)
 .venv\Scripts\python.exe manage.py test finance.tests.test_reminders  # one module (audit: `test audit`)
 .venv\Scripts\python.exe manage.py migrate --database <stash>    # one stash (Stashy.bat does all, with backups)
 .venv\Scripts\python.exe manage.py reset_pin <owner name>        # real, visible action - ask first
@@ -95,9 +95,19 @@ terms.
   - `views/`: one module per area (`dashboard`, `accounts`, `categories`,
     `payees`, `transactions`, `reminders`, `imports`, `exports`, `reports`,
     `settings`, `api`, `auth` for picker/login/forgot-PIN, `welcome` for the
-    4-step wizard), plus `_helpers.py` (`_sorted`, `_safe_next`, the export
-    writers). `finance/urls.py` imports the modules, not the views; there
-    are no re-exports in `views/__init__.py`.
+    4-step wizard), plus `_helpers.py` (`_sorted`, `_paged`, `_safe_next`,
+    the export writers). `finance/urls.py` imports the modules, not the
+    views; there are no re-exports in `views/__init__.py`.
+  - Transaction lists page at `TRANSACTIONS_PER_PAGE` (1,000) through
+    `_paged()`, only when the range is longer than a year or open (the
+    account register always is). The count and total cover every page;
+    exports ignore `page`. `_paged()` ends every order with `-pk`, so tied
+    rows never repeat or vanish across pages.
+  - The Transactions page's Edit mode: rows carry raw values as `data-`
+    attributes, and `transaction-quick-edit.js` builds the controls from
+    the one `<template id="quick-edit-controls">` on the first switch.
+    Never put per-row `<select>`s back in the server HTML (that was 8.10's
+    slowness). A date box added by script calls `window.stashyDatepicker()`.
   - Report exports: one view, `exports.export_report`, at
     `reports/export/<slug>/`. A new one is one line in `REPORT_EXPORTS`.
   - Settings: the page saves preferences; `check_rates`, `create_backup`

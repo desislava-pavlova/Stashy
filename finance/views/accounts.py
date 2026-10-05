@@ -12,7 +12,7 @@ from ..forms import AccountCreateForm, AccountForm, ReconcileFinishForm, Reconci
 from ..models import Account, Profile, grouped_accounts
 from ..money import ZERO
 from ..services import reconciliation
-from ._helpers import _sorted
+from ._helpers import _paged, _sorted
 
 
 class AccountListView(ListView):
@@ -48,12 +48,17 @@ def account_detail(request, pk):
     account = get_object_or_404(Account, pk=pk)
     transactions = account.transactions.select_related("category__parent", "payee")
     transactions, sort, sort_next = _sorted(request, transactions, ACCOUNT_REGISTER_SORT_FIELDS)
+    # The register has no date range - it always shows the account's whole history - so it
+    # follows the Transactions page's rule for an open range and splits into pages.
+    rows, page_obj = _paged(request, transactions, split=True)
     return render(
         request,
         "finance/account_detail.html",
         {
             "account": account,
-            "transactions": transactions,
+            "transactions": rows,
+            "page_obj": page_obj,
+            "transaction_count": page_obj.paginator.count,
             "sort": sort,
             "sort_next": sort_next,
         },

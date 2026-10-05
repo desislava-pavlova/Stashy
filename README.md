@@ -150,7 +150,11 @@ every stash automatically).
   the "Lidl" you already have, and two payees can never differ only in case. The list can be filtered
   by date, status, account, several categories at once and text, exported
   to CSV/Excel, and switched into **Edit mode**, where every row's fields
-  can be changed in place and save themselves.
+  can be changed in place and save themselves. A date range longer than a
+  year (or "All time") shows 1,000 transactions per page, with page links
+  above and below the list; the count and the total always cover every
+  page, and the export always holds everything the filters match. An
+  account's own register pages the same way.
 - **Reminders** — recurring or one-time bills and income. A recurring
   reminder creates its upcoming dates ahead of time. **Enter** opens a
   pre-filled transaction; **Skip** moves on without creating one; either way

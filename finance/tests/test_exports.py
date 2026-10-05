@@ -58,6 +58,15 @@ class ExportTransactionsTests(LoggedInWithAccountTestCase):
         accounts_in_export = {row[2] for row in rows[1:]}
         self.assertEqual(accounts_in_export, {"Checking"})
 
+    def test_export_has_every_matching_row_not_just_the_page_on_screen(self):
+        # 8.11: the export link carries the page you're on, and the export ignores it.
+        Transaction.objects.bulk_create(
+            Transaction(account=self.account, date=date(2026, 1, 1), amount=Decimal("-1.00")) for _ in range(1001)
+        )
+        response = self.client.get(reverse("finance:export_transactions"), {"format": "csv", "range": "", "page": 2})
+        rows = list(csv.reader(io.StringIO(response.content.decode("utf-8-sig"))))
+        self.assertEqual(len(rows), 1 + 1002)  # the header, the rent row and the 1,001 new ones
+
 
 class ExportOtherListsTests(LoggedInWithAccountTestCase):
     def test_accounts_export_lists_every_account(self):

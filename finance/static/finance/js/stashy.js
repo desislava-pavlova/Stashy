@@ -50,10 +50,15 @@
 
     var dateFormat = document.body.dataset.dateFormat || 'd/m/Y';
     var firstDayOfWeek = parseInt(document.body.dataset.firstDay, 10);
-    document.querySelectorAll('input[data-datepicker]').forEach(function (input) {
+    // Global so a date box added after the page loaded (the Transactions page's Edit mode)
+    // gets the same picker.
+    window.stashyDatepicker = function (input) {
         flatpickr(input, {
             dateFormat: dateFormat, allowInput: true,
             locale: { firstDayOfWeek: isNaN(firstDayOfWeek) ? 1 : firstDayOfWeek },
         });
+    };
+    document.querySelectorAll('input[data-datepicker]').forEach(function (input) {
+        window.stashyDatepicker(input);
     });
 })();

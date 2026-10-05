@@ -13,7 +13,9 @@ question in 3.6, which waits until the cleanup is done; Phase 4 done
 (03/10/2026, 633 tests green in 22 s, coverage 90% → 91%); Phase 6 done
 (03/10/2026, 675 tests green in 23 s, coverage 94%); Phase 7 done in two
 parts (04/10/2026: 7.1-7.3 and the shared bases of 7.4; 05/10/2026: the
-rest of 7.4; 683 tests green in 24 s, coverage 94%); next: Phase 8.
+rest of 7.4; 683 tests green in 24 s, coverage 94%); Phase 8 part 1 done
+(05/10/2026: 8.10 and 8.11, 697 tests green, coverage 95%); next: the rest
+of Phase 8.
 
 Work through it phase by phase. Every phase leaves the app working and the
 full test suite green, so we can stop and resume anywhere. Line numbers in
@@ -905,7 +907,7 @@ mentions `TESTING` (a test in `test_project.py` checks); 675 → 683 tests.
 - [x] ~~**8.9** Period labels (`%b` in `period_bucket()`) depend on the OS
   locale; use a fixed English month table like the rest of the UI.~~
   Dropped 27/09/2026: nothing sets a locale, so `%b` is always English.
-- [ ] **8.10** Transactions page weight (F48). The slowness is in View mode
+- [x] **8.10** Transactions page weight (F48). The slowness is in View mode
   too: every row always carries its hidden Edit-mode controls (six inputs
   and two `<select>`s, one with about 150 categories), whichever mode is
   showing. Fix: rows render only their View cells plus `data-` attributes
@@ -913,13 +915,25 @@ mentions `TESTING` (a test in `test_project.py` checks); 675 → 683 tests.
   `transaction-quick-edit.js` builds each row's controls from it when Edit
   mode turns on. Looks and works the same. Render-check it, and record the
   page size and load time before and after on "Earliest to date" in DEVLOG.
+  *05/10/2026: done. Measured on a made-up stash shaped like the real one
+  (never the real stash), server time only: "Earliest to date" 44.5 MB /
+  9.7 s → 7.9 MB / 1.1 s (all rows); "This year" 6.8 MB / 1.5 s → 1.2 MB /
+  0.16 s. Claude's call: the controls are built once, on the first click of
+  Edit mode, and kept; the date pickers start then too (until now, each
+  hidden date box got its own picker at every page load). Untested in a
+  browser.*
+  *05/10/2026 (user, after trying it): "Edit mode is a bit slow still" -
+  to look at later. Likely suspects: building every row's controls in one
+  go on the first click (a category list per row, a calendar per date
+  box). One fix would be to build each row's controls only when they're
+  needed.*
 - [ ] **8.10b** Edit mode locks the filters (user, 27/09/2026). While Edit
   mode is on, the filter bar (range, dates, status, account, categories,
   search, sort headers) and the page links from 8.11 are disabled, with a
   short hint: "Finish editing to change filters". Today nothing locks them:
   changing one reloads the page and silently leaves Edit mode, and a field
   still being typed in can be lost.
-- [ ] **8.11** Transactions pagination (Q3): Django's `Paginator` with 1,000
+- [x] **8.11** Transactions pagination (Q3): Django's `Paginator` with 1,000
   rows per page, only when the range is longer than a year (or unbounded).
   Sorting happens in the database before paging, so page 2 continues the same
   order. The total is still computed on the whole filtered queryset. Page
@@ -927,8 +941,19 @@ mentions `TESTING` (a test in `test_project.py` checks); 675 → 683 tests.
   the filter matches. The account register (`account_detail`) follows the
   same rule. Tests: a range over a year with 1,001 rows gives two pages and
   the same total on both; a one-year range never paginates. Render-check.
-- [ ] **8.12a** Do 8.10 and 8.11 early if the page keeps getting slower.
-  Neither depends on the phases before it.
+  *05/10/2026: done. "Earliest to date" on the made-up stash: 1.8 MB /
+  0.27 s for page 1 of 5. Claude's calls: "longer than a year" means the
+  end is on or after the start's date one year later, so 01/01–31/12 is
+  one page and 01/01/2026–01/01/2027 is two; page links sit above and
+  below the list; a new sort starts again at page 1 (filters already did);
+  a page number that doesn't exist shows the nearest page; every order
+  ends with the newest-created row first as a tie-breaker, so rows that
+  tie on the sorted column (same payee, say) never repeat or go missing
+  across pages. The register has no date range, so it always counts as
+  open. 14 new tests.*
+- [x] **8.12a** Do 8.10 and 8.11 early if the page keeps getting slower.
+  Neither depends on the phases before it. *Nothing left to do: both were
+  done first in Phase 8 (05/10/2026).*
 - [ ] **8.13** Transactions range list: keep "All time" and remove "Earliest
   to date" (user, 27/09/2026, changed the same day from the opposite). "All
   time" has no date limits, so it also shows a transaction dated in the

@@ -1,10 +1,11 @@
-"""Small pieces several view modules share: column sorting, the safe "next" redirect, and the
-CSV/XLSX writers every export goes through."""
+"""Small pieces several view modules share: column sorting, paging, the safe "next" redirect,
+and the CSV/XLSX writers every export goes through."""
 
 import csv
 from datetime import date
 from decimal import Decimal
 
+from django.core.paginator import Paginator
 from django.http import HttpResponse
 from django.utils.http import url_has_allowed_host_and_scheme
 from openpyxl import Workbook
@@ -29,6 +30,26 @@ def _sorted(request, queryset, sortable_columns):
         sort = ""
     sort_next = {name: (f"-{name}" if sort == name else name) for name in sortable_columns}
     return queryset, sort, sort_next
+
+
+# Rows per page on a long list of transactions. A year of real use stays well under this, so
+# only a range of several years ever gets a second page.
+TRANSACTIONS_PER_PAGE = 1000
+
+
+def _paged(request, transactions, split):
+    """(the rows to show, the page or None) for a list of transactions, already sorted.
+
+    Only a `split` list is cut into pages, at ?page=N (a missing or wrong number shows the
+    nearest real page). Either way the order ends with the primary key: rows that tie on every
+    sort column (the same payee, say) need one fixed order, or the database could put the same
+    row on two pages and leave another off both."""
+    ordering = transactions.query.order_by or transactions.model._meta.ordering
+    transactions = transactions.order_by(*ordering, "-pk")
+    if not split:
+        return transactions, None
+    page = Paginator(transactions, TRANSACTIONS_PER_PAGE).get_page(request.GET.get("page"))
+    return page.object_list, page
 
 
 def _safe_next(request, url):

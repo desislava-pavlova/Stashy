@@ -176,6 +176,29 @@ class PaymentDepositColumnTests(LoggedInWithAccountTestCase):
         self.assertIn('amount-positive">30.00', html.replace(" ", ""))
 
 
+class AccountRegisterPagingTests(LoggedInWithAccountTestCase):
+    """8.11: the register has no date range, so it follows the Transactions page's rule for an
+    open range: 1,000 rows per page, and the count covers every page."""
+
+    def test_a_long_register_has_pages_and_the_count_covers_them_all(self):
+        Transaction.objects.bulk_create(
+            Transaction(account=self.account, date=date(2026, 1, 1), amount=Decimal("-1.00")) for _ in range(1001)
+        )
+        url = reverse("finance:account_detail", args=[self.account.pk])
+        first, second = self.client.get(url), self.client.get(url, {"page": 2})
+        self.assertEqual(len(first.context["transactions"]), 1000)
+        self.assertEqual(len(second.context["transactions"]), 1)
+        for response in (first, second):
+            self.assertContains(response, "1001 transactions")
+        self.assertContains(second, 'aria-current="page"><span class="page-link">2</span>')
+
+    def test_a_short_register_has_no_page_links(self):
+        Transaction.objects.create(account=self.account, date=date(2026, 1, 1), amount=Decimal("-1.00"))
+        response = self.client.get(reverse("finance:account_detail", args=[self.account.pk]))
+        self.assertContains(response, "1 transaction")
+        self.assertNotContains(response, 'class="pagination')
+
+
 class AccountFormNotesSizeTests(StashTestCase):
     def test_notes_widget_is_two_rows(self):
         form = AccountForm()

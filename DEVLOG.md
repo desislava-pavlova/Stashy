@@ -4349,3 +4349,85 @@ stash file was touched.
 `test_settings.py`, `test_transactions.py`, `test_welcome.py`;
 `audit/tests.py`; `DEVLOG.md`, `plans/02_architecture_cleanup.md`,
 `plans/README.md`.
+
+---
+
+## 05/10/2026 — Plan 02, Phase 8 (part 1): a light, paged Transactions page
+
+**What changed** (ticks in `plans/02_architecture_cleanup.md`, items 8.10 and 8.11):
+- **Rows no longer carry hidden Edit-mode controls (8.10).** Until now every
+  row of the Transactions page arrived with its Edit-mode boxes already
+  built and hidden: six inputs, an account dropdown and a category dropdown
+  of about 150 options. A year of rows meant over 100,000 hidden options
+  that the server had to write and the browser had to read, in View mode
+  too. Now a row holds only what it shows, plus its raw values as `data-`
+  attributes (`data-account="3"`, `data-amount="-12.50"`, …). The page has
+  one `<template>` with a single set of controls. The first time you click
+  **Edit mode**, the script copies those controls into every row and fills
+  them in from the row's values. Every click after that just shows and hides
+  them, as before.
+- **The date pickers wait for Edit mode too.** Each hidden date box used to
+  get its own calendar at every page load. They now start when the controls
+  are built. `stashy.js` exposes its date-picker setup as
+  `window.stashyDatepicker()` for that.
+- **Long ranges show 1,000 rows per page (8.11).** A date range longer than
+  a year, or one with no limit ("All time", or only a start date), is split
+  into pages of 1,000. A whole calendar year (01/01 to 31/12) is still one
+  page, and no single year has come close to 1,000 rows yet, so in
+  practice only multi-year ranges get a second page. The count ("2500
+  transactions · showing 1001–2000") and the total always cover every
+  page, and the export always holds everything the filters match. Page
+  links sit above and below the list and keep every filter and the sort.
+  A new sort starts again at page 1. An account's own register has no date
+  range, so it pages the same way.
+- **Ties get a fixed order.** Sorted by payee, all of one payee's rows tie.
+  A database may return tied rows in any order, so page 2 could repeat a
+  row from page 1 and skip another. Every list now ends its order with the
+  most recently added row first, which makes the order total.
+- **14 new tests:** two pages with the same count and total on both; a
+  calendar year never pages, one day more does; page links keep every
+  filter; a new sort leaves out the page; tied rows appear exactly once;
+  a page that doesn't exist shows the nearest one; the register pages; the
+  export ignores the page. One older test now checks the row's
+  `data-category-label` instead of a pre-built `<option>`.
+
+**Measured** on a made-up stash shaped like the real one (several thousand
+rows over five years, about 150 categories), never the real one. Times are
+the server's own; the browser's work is on top of that and wasn't
+measured here.
+
+| Page | Before | After 8.10 | After 8.11 |
+|---|---|---|---|
+| This year (the default) | 6.8 MB, 1.5 s | 1.2 MB, 0.16 s | same |
+| Earliest to date | 44.5 MB, 9.7 s | 7.9 MB, 1.1 s | 1.8 MB, 0.27 s (page 1 of 5) |
+
+**Teaching note — send data, not interface.** The old page sent the
+browser a finished interface for every row, including one nobody had asked
+to see yet. The new page sends the data (a few `data-` values per row) and
+one copy of the interface (the `<template>`), and lets the browser put them
+together only when Edit mode is opened. Most of the 44 MB was the same
+150-option category list, repeated thousands of times. The second idea is
+paging: no screen shows thousands of rows at once anyway, so sending 1,000 at a
+time costs nothing you'd notice. A paged list needs a *total* order, though.
+If two rows can swap places between one page load and the next, a row can
+appear on both pages or on neither. That's why the order always ends with
+the row's own id.
+
+**Verification:** full suite green, 697 tests (683 + 14), coverage 94% →
+95%. `ruff check .` and `ruff format --check .` are clean. Both changed
+scripts parse (checked with a JavaScript parser, as there's no browser
+here). The real `collectstatic` ran into a scratch folder without errors.
+The rendered pages were read: no leaked template syntax on any page, page
+links and sort links as intended, Edit and Delete links bring you back to
+the same page. **Not checked in a browser**, so Edit mode in particular
+needs a try.
+
+**Files:** `finance/views/_helpers.py`, `finance/views/transactions.py`,
+`finance/views/accounts.py`, `finance/templates/finance/transaction_list.html`,
+`finance/templates/finance/account_detail.html`,
+`finance/templates/finance/includes/pager.html` (new),
+`finance/static/finance/js/transaction-quick-edit.js`,
+`finance/static/finance/js/stashy.js`, `finance/static/finance/css/stashy.css`;
+`finance/tests/test_transactions.py`, `test_accounts.py`, `test_exports.py`;
+`README.md`, `CLAUDE.md`, `DEVLOG.md`, `plans/02_architecture_cleanup.md`,
+`plans/README.md`.

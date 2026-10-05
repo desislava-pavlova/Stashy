@@ -1,14 +1,53 @@
-// Transactions list "Edit mode" (2026-09-22) - every row's cells double as editable fields;
-// toggling the button just shows/hides them, and each field autosaves itself on blur/change
-// via the transaction_quick_edit endpoint, reusing TransactionForm server-side.
+// Transactions list "Edit mode": every row's cells double as editable fields, and each field
+// autosaves itself on change via the transaction_quick_edit endpoint, which reuses
+// TransactionForm server-side.
+//
+// The page arrives with view cells only. Each row carries its raw values as data- attributes,
+// and the first switch to Edit mode builds every row's controls from those values and the one
+// shared #quick-edit-controls template. After that the button just shows and hides them.
 (function () {
     var table = document.getElementById('transactions-table');
     if (!table) return;
     var toggleBtn = document.getElementById('edit-mode-toggle');
     var csrfInput = document.querySelector('#transactions-csrf input[name=csrfmiddlewaretoken]');
     var quickEditUrlBase = table.dataset.quickEditUrlBase;
+    var controlsTemplate = document.getElementById('quick-edit-controls');
+    var controlsBuilt = false;
     var payeeNamesList = document.getElementById('quick-edit-payee-names');
     var payeeNamesLoaded = false;
+
+    function fillControl(control, values) {
+        var amount = parseFloat(values.amount);
+        switch (control.dataset.cell) {
+            case 'date': control.value = values.date; break;
+            case 'transaction_number': control.value = values.number; break;
+            case 'account_name': control.value = values.account; break;
+            case 'payee': control.value = values.payee; break;
+            case 'category_name':
+                // Transfer categories aren't in the shared list (they aren't picked by hand),
+                // but a transaction already filed under one still shows it, selected.
+                if (values.categoryLabel) control.add(new Option(values.categoryLabel, values.category));
+                control.value = values.category;
+                break;
+            case 'memo': control.value = values.memo; break;
+            case 'payment': control.value = amount < 0 ? values.amount.replace('-', '') : ''; break;
+            case 'deposit': control.value = amount > 0 ? values.amount : ''; break;
+            case 'reconciled': control.checked = values.reconciled === '1'; break;
+        }
+    }
+
+    function buildControls() {
+        if (controlsBuilt) return;
+        controlsBuilt = true;
+        table.querySelectorAll('tbody tr[data-pk]').forEach(function (row) {
+            var controls = controlsTemplate.content.cloneNode(true);
+            controls.querySelectorAll('[data-cell]').forEach(function (control) {
+                fillControl(control, row.dataset);
+                row.querySelector('[data-view="' + control.dataset.cell + '"]').after(control);
+                if (control.dataset.cell === 'date') window.stashyDatepicker(control);
+            });
+        });
+    }
 
     function loadPayeeNames() {
         if (payeeNamesLoaded || !payeeNamesList || !table.dataset.payeeListUrl) return;
@@ -37,6 +76,7 @@
 
     toggleBtn.addEventListener('click', function () {
         loadPayeeNames();
+        buildControls();
         setEditing(!table.classList.contains('editing'));
     });
 

@@ -1,6 +1,7 @@
 from datetime import date
 from urllib.parse import urlencode
 
+from dateutil.relativedelta import relativedelta
 from django.contrib import messages
 from django.db.models import Q, Sum
 from django.http import JsonResponse
@@ -18,7 +19,7 @@ from ..forms import DateRangeFilterForm, TransactionForm
 from ..models import Account, Category, Profile, Reminder, Transaction, grouped_categories
 from ..money import ZERO
 from ..reporting import resolve_range
-from ._helpers import _safe_next, _sorted
+from ._helpers import _paged, _safe_next, _sorted
 
 # The transaction list adds "All time" to Reports' own date-range presets - a register
 # naturally wants an unbounded view sometimes, unlike a chart that needs a range.
@@ -40,6 +41,12 @@ def _iso_date(value):
         return date.fromisoformat(value) if value else None
     except ValueError:
         return None
+
+
+def _longer_than_a_year(start, end):
+    """Whether a date range is long enough to be split into pages: longer than one year, or
+    open at either end ("All time"). A whole calendar year, 01/01 to 31/12, is not."""
+    return start is None or end is None or end >= start + relativedelta(years=1)
 
 
 def _filtered_transactions(request):
@@ -111,9 +118,11 @@ def _filtered_transactions(request):
 def transaction_list(request):
     transactions, filters = _filtered_transactions(request)
     transactions, sort, sort_next = _sorted(request, transactions, TRANSACTION_LIST_SORT_FIELDS)
-    # Mixes currencies across accounts without conversion, same known simplification as the
+    # Every page shows the total of everything the filters match, so it's taken before paging.
+    # It mixes currencies across accounts without conversion, same known simplification as the
     # accounts page's own net worth total (D2) - accurate for a single-currency setup.
     total_amount = transactions.aggregate(total=Sum("amount"))["total"] or ZERO
+    rows, page_obj = _paged(request, transactions, split=_longer_than_a_year(filters["start"], filters["end"]))
 
     category_groups = grouped_categories(Category.objects.select_related("parent"))
 
@@ -130,7 +139,9 @@ def transaction_list(request):
         category_filter_label = f"{picked_count} categories selected"
 
     context = {
-        "transactions": transactions,
+        "transactions": rows,
+        "page_obj": page_obj,
+        "transaction_count": page_obj.paginator.count if page_obj else len(rows),
         "total_amount": total_amount,
         # Mixed currencies have no one true symbol either - the main currency is the same
         # stand-in the accounts page's own net worth total already uses (D2).

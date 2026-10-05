@@ -301,6 +301,25 @@ h1, h2, h3, h4, h5, h6,
     --bs-btn-active-border-color: var(--stashy-line);
 }
 
+/* Page links on long registers; Bootstrap's own active page is its default blue. */
+.pagination {
+    --bs-pagination-color: var(--stashy-ink);
+    --bs-pagination-bg: var(--stashy-surface);
+    --bs-pagination-border-color: var(--stashy-line);
+    --bs-pagination-hover-color: var(--stashy-ink);
+    --bs-pagination-hover-bg: var(--stashy-surface-2);
+    --bs-pagination-hover-border-color: var(--stashy-line);
+    --bs-pagination-focus-color: var(--stashy-ink);
+    --bs-pagination-focus-bg: var(--stashy-surface-2);
+    --bs-pagination-focus-box-shadow: 0 0 0 .2rem rgba(var(--stashy-acorn-rgb), .2);
+    --bs-pagination-active-color: var(--stashy-on-acorn);
+    --bs-pagination-active-bg: var(--stashy-acorn);
+    --bs-pagination-active-border-color: var(--stashy-acorn);
+    --bs-pagination-disabled-color: var(--stashy-muted);
+    --bs-pagination-disabled-bg: var(--stashy-surface);
+    --bs-pagination-disabled-border-color: var(--stashy-line);
+}
+
 .form-control,
 .form-select {
     background-color: var(--stashy-surface);

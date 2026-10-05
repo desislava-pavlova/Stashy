@@ -1,0 +1,23 @@
+{% if page_obj.has_other_pages %}
+<nav class="d-flex justify-content-center {{ extra_class }}" aria-label="Pages">
+    <ul class="pagination pagination-sm mb-0">
+        {% if page_obj.has_previous %}
+        <li class="page-item"><a class="page-link" href="{% querystring page=page_obj.previous_page_number %}"><i class="bi bi-chevron-left" aria-hidden="true"></i> Previous</a></li>
+        {% else %}
+        <li class="page-item disabled"><span class="page-link"><i class="bi bi-chevron-left" aria-hidden="true"></i> Previous</span></li>
+        {% endif %}
+        {% for number in page_obj.paginator.page_range %}
+        {% if number == page_obj.number %}
+        <li class="page-item active" aria-current="page"><span class="page-link">{{ number }}</span></li>
+        {% else %}
+        <li class="page-item"><a class="page-link" href="{% querystring page=number %}" aria-label="Page {{ number }}">{{ number }}</a></li>
+        {% endif %}
+        {% endfor %}
+        {% if page_obj.has_next %}
+        <li class="page-item"><a class="page-link" href="{% querystring page=page_obj.next_page_number %}">Next <i class="bi bi-chevron-right" aria-hidden="true"></i></a></li>
+        {% else %}
+        <li class="page-item disabled"><span class="page-link">Next <i class="bi bi-chevron-right" aria-hidden="true"></i></span></li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}

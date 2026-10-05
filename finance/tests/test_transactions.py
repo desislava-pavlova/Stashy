@@ -1,9 +1,12 @@
 """Transactions: numbers, the add and edit forms, the list (filters, sorting, totals, Edit
 mode), deleting, and where you land after saving."""
 
-from datetime import date
+import html
+import re
+from datetime import date, timedelta
 from decimal import Decimal
 from unittest import mock
+from urllib.parse import parse_qs, urlsplit
 
 from django.conf import settings
 from django.contrib import admin
@@ -17,6 +20,7 @@ from .. import models
 from ..forms import TransactionForm
 from ..models import Account, Category, Payee, Transaction
 from ..views._helpers import _safe_next
+from ..views.transactions import _longer_than_a_year
 from .base import LoggedInTestCase, LoggedInWithAccountTestCase, StashTestCase
 
 TODAY = date(2026, 9, 13)
@@ -275,6 +279,103 @@ class TransactionListTotalTests(LoggedInWithAccountTestCase):
         response = self.client.get(reverse("finance:transaction_list"))
         self.assertEqual(response.context["total_amount"], Decimal("60.00"))
         self.assertContains(response, "Total:")
+
+
+class LongerThanAYearTests(SimpleTestCase):
+    """8.11: which date ranges are split into pages."""
+
+    def test_a_whole_calendar_year_is_not_longer_than_a_year(self):
+        self.assertFalse(_longer_than_a_year(date(2026, 1, 1), date(2026, 12, 31)))
+        self.assertFalse(_longer_than_a_year(date(2028, 1, 1), date(2028, 12, 31)))  # a leap year
+
+    def test_one_day_more_is(self):
+        self.assertTrue(_longer_than_a_year(date(2026, 1, 1), date(2027, 1, 1)))
+
+    def test_a_range_open_at_either_end_is(self):
+        self.assertTrue(_longer_than_a_year(None, None))
+        self.assertTrue(_longer_than_a_year(date(2026, 1, 1), None))
+        self.assertTrue(_longer_than_a_year(None, date(2026, 1, 1)))
+
+
+class TransactionPagingTests(LoggedInWithAccountTestCase):
+    """8.11: a range longer than a year shows 1,000 rows per page; the count and the total
+    always cover every page."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
+        lidl = Payee.objects.create(name="Lidl")
+        # 1,001 rows inside 2026, all with the same payee, so a sort by payee ties on every row.
+        amounts = [-Decimal(i % 7 + 1) for i in range(1001)]
+        Transaction.objects.bulk_create(
+            Transaction(
+                account=cls.account,
+                date=date(2026, 1, 1) + timedelta(days=i % 365),
+                payee=lidl,
+                category=cls.groceries,
+                amount=amount,
+            )
+            for i, amount in enumerate(amounts)
+        )
+        cls.total = sum(amounts)
+
+    def get(self, **params):
+        return self.client.get(reverse("finance:transaction_list"), params)
+
+    def test_a_range_over_a_year_has_two_pages_with_the_same_count_and_total(self):
+        first, second = self.get(range=""), self.get(range="", page=2)
+        self.assertEqual(len(first.context["transactions"]), 1000)
+        self.assertEqual(len(second.context["transactions"]), 1)
+        for response in (first, second):
+            self.assertEqual(response.context["total_amount"], self.total)
+            self.assertContains(response, "1001 transactions")
+        self.assertContains(first, "showing 1–1000")
+        self.assertContains(second, "showing 1001–1001")
+
+    def test_a_one_year_range_never_paginates(self):
+        response = self.get(start="2026-01-01", end="2026-12-31")
+        self.assertIsNone(response.context["page_obj"])
+        self.assertEqual(len(response.context["transactions"]), 1001)
+        self.assertNotContains(response, 'class="pagination')
+
+    def test_one_day_more_than_a_year_does(self):
+        self.assertEqual(len(self.get(start="2026-01-01", end="2027-01-01").context["transactions"]), 1000)
+
+    def test_page_links_keep_every_filter_and_sort(self):
+        filters = {
+            "range": "",
+            "category": str(self.groceries.pk),
+            "q": "lidl",
+            "status": "unreconciled",
+            "sort": "-amount",
+        }
+        response = self.get(**filters)
+        links = re.findall(r'href="([^"]*)" aria-label="Page 2"', response.content.decode())
+        self.assertEqual(len(links), 2)  # the page links above and below the table
+        query = parse_qs(urlsplit(html.unescape(links[0])).query, keep_blank_values=True)
+        self.assertEqual(query, {**{key: [value] for key, value in filters.items()}, "page": ["2"]})
+
+    def test_a_new_sort_starts_again_at_page_one(self):
+        sort_links = re.findall(r'href="([^"]*)" class="sort-link"', self.get(range="", page=2).content.decode())
+        self.assertEqual(len(sort_links), 8)
+        for link in sort_links:
+            self.assertNotIn("page=", link)
+
+    def test_rows_that_tie_on_the_sort_column_appear_exactly_once(self):
+        first, second = self.get(range="", sort="payee"), self.get(range="", sort="payee", page=2)
+        shown = [t.pk for t in first.context["transactions"]] + [t.pk for t in second.context["transactions"]]
+        self.assertEqual(sorted(shown), sorted(Transaction.objects.values_list("pk", flat=True)))
+
+    def test_a_page_number_that_doesnt_exist_shows_the_nearest_page(self):
+        self.assertEqual(len(self.get(range="", page=99).context["transactions"]), 1)
+        self.assertEqual(len(self.get(range="", page="abc").context["transactions"]), 1000)
+
+    def test_the_second_page_renders_cleanly(self):
+        content = self.get(range="", page=2).content.decode()
+        for leaked in ("{#", "#}", "{%", "%}"):
+            self.assertNotIn(leaked, content)
+        self.assertIn('aria-current="page"><span class="page-link">2</span>', content)
 
 
 class InactiveAccountTransactionConfirmTests(LoggedInTestCase):
@@ -543,7 +644,8 @@ class TransactionListEditModeRenderTests(LoggedInTestCase):
 
     def test_a_transfer_categorys_own_transaction_still_offers_it_in_the_dropdown(self):
         # Transfer categories are excluded from the shared options list (like the full edit
-        # form) but a transaction already filed under one must still show it, selected.
+        # form) but a transaction already filed under one must still show it, selected. Edit
+        # mode adds that option from the row's data-category-label (8.10).
         source = Account.objects.create(name="Checking")
         destination = Account.objects.create(name="Savings")
         transfer_category = destination.transfer_category
@@ -554,7 +656,8 @@ class TransactionListEditModeRenderTests(LoggedInTestCase):
             amount=Decimal("-100"),
         )
         response = self.client.get(reverse("finance:transaction_list"))
-        self.assertContains(response, f'value="{transfer_category.pk}" selected')
+        self.assertContains(response, f'data-category="{transfer_category.pk}" data-category-label="[Savings]"')
+        self.assertNotContains(response, f'<option value="{transfer_category.pk}">[Savings]</option>')
 
 
 class TransactionQuickEditTests(LoggedInTestCase):
