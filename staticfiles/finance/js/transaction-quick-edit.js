@@ -1,14 +1,86 @@
-// Transactions list "Edit mode" (2026-09-22) - every row's cells double as editable fields;
-// toggling the button just shows/hides them, and each field autosaves itself on blur/change
-// via the transaction_quick_edit endpoint, reusing TransactionForm server-side.
+// Transactions list "Edit mode": every row's cells double as editable fields, and each field
+// autosaves itself on change via the transaction_quick_edit endpoint, which reuses
+// TransactionForm server-side.
+//
+// The page arrives with view cells only. Each row carries its raw values as data- attributes.
+// While Edit mode is on, a row gets its controls (copied from the one shared
+// #quick-edit-controls template) as it comes near the screen, so the first click doesn't have
+// to build a thousand rows at once. A date box gets its calendar the first time it's focused.
+// Which of a row's two faces shows is decided by one class on the table (stashy.css).
 (function () {
     var table = document.getElementById('transactions-table');
     if (!table) return;
     var toggleBtn = document.getElementById('edit-mode-toggle');
     var csrfInput = document.querySelector('#transactions-csrf input[name=csrfmiddlewaretoken]');
     var quickEditUrlBase = table.dataset.quickEditUrlBase;
+    var controlsTemplate = document.getElementById('quick-edit-controls');
     var payeeNamesList = document.getElementById('quick-edit-payee-names');
     var payeeNamesLoaded = false;
+    var filterFields = document.getElementById('transaction-filter-fields');
+    var filterHint = document.getElementById('edit-mode-filter-hint');
+    // Everything that would leave the page: the sort headers, the page links and "Clear all filters".
+    var LOCKED_LINKS = '#transaction-filters a, #transactions-table thead a, .pagination a';
+    var rowWatcher = null;
+
+    function isEditing() {
+        return table.classList.contains('editing');
+    }
+
+    function fillControl(control, values) {
+        var amount = parseFloat(values.amount);
+        switch (control.dataset.cell) {
+            case 'date': control.value = values.date; break;
+            case 'transaction_number': control.value = values.number; break;
+            case 'account_name': control.value = values.account; break;
+            case 'payee': control.value = values.payee; break;
+            case 'category_name':
+                // Transfer categories aren't in the shared list (they aren't picked by hand),
+                // but a transaction already filed under one still shows it, selected.
+                if (values.categoryLabel) control.add(new Option(values.categoryLabel, values.category));
+                control.value = values.category;
+                break;
+            case 'memo': control.value = values.memo; break;
+            case 'payment': control.value = amount < 0 ? values.amount.replace('-', '') : ''; break;
+            case 'deposit': control.value = amount > 0 ? values.amount : ''; break;
+            case 'reconciled': control.checked = values.reconciled === '1'; break;
+        }
+    }
+
+    function buildRow(row) {
+        if (row.classList.contains('quick-edit-ready')) return;
+        var controls = controlsTemplate.content.cloneNode(true);
+        controls.querySelectorAll('[data-cell]').forEach(function (control) {
+            fillControl(control, row.dataset);
+            row.querySelector('[data-view="' + control.dataset.cell + '"]').after(control);
+        });
+        row.classList.add('quick-edit-ready');
+    }
+
+    function unbuiltRows() {
+        return table.querySelectorAll('tbody tr[data-pk]:not(.quick-edit-ready)');
+    }
+
+    // Rows within a screen or so of the visible part are built; the rest wait until you scroll
+    // towards them. Until a row is built it keeps showing its text, never an empty row.
+    function watchRows() {
+        if (!('IntersectionObserver' in window)) {
+            unbuiltRows().forEach(buildRow);
+            return;
+        }
+        rowWatcher = new IntersectionObserver(function (entries) {
+            entries.forEach(function (entry) {
+                if (!entry.isIntersecting) return;
+                buildRow(entry.target);
+                rowWatcher.unobserve(entry.target);
+            });
+        }, { rootMargin: '800px 0px' });
+        unbuiltRows().forEach(function (row) { rowWatcher.observe(row); });
+    }
+
+    function stopWatchingRows() {
+        if (rowWatcher) rowWatcher.disconnect();
+        rowWatcher = null;
+    }
 
     function loadPayeeNames() {
         if (payeeNamesLoaded || !payeeNamesList || !table.dataset.payeeListUrl) return;
@@ -24,10 +96,26 @@
             });
     }
 
+    // While editing, the filters and every link that reloads the page are locked: a reload
+    // would leave Edit mode and lose a field still being typed in.
+    function lockFilters(on) {
+        if (filterFields) filterFields.disabled = on;
+        if (filterHint) filterHint.hidden = !on;
+        document.querySelectorAll(LOCKED_LINKS).forEach(function (link) {
+            link.classList.toggle('edit-locked', on);
+            if (on) {
+                link.setAttribute('aria-disabled', 'true');
+                link.setAttribute('tabindex', '-1');
+            } else {
+                link.removeAttribute('aria-disabled');
+                link.removeAttribute('tabindex');
+            }
+        });
+    }
+
     function setEditing(on) {
         table.classList.toggle('editing', on);
-        table.querySelectorAll('.quick-edit-view').forEach(function (el) { el.classList.toggle('d-none', on); });
-        table.querySelectorAll('.quick-edit-cell').forEach(function (el) { el.classList.toggle('d-none', !on); });
+        lockFilters(on);
         toggleBtn.innerHTML = on
             ? '<i class="bi bi-check-lg me-1"></i>Done editing'
             : '<i class="bi bi-pencil-square me-1"></i>Edit mode';
@@ -36,8 +124,25 @@
     }
 
     toggleBtn.addEventListener('click', function () {
-        loadPayeeNames();
-        setEditing(!table.classList.contains('editing'));
+        var on = !isEditing();
+        if (on) {
+            loadPayeeNames();
+            watchRows();
+        } else {
+            stopWatchingRows();
+        }
+        setEditing(on);
+    });
+
+    // A locked link can still be reached by keyboard shortcuts or an old focus; ignore it.
+    document.addEventListener('click', function (event) {
+        if (isEditing() && event.target.closest(LOCKED_LINKS)) event.preventDefault();
+    }, true);
+
+    table.addEventListener('focusin', function (event) {
+        var input = event.target;
+        if (input.dataset.cell !== 'date' || input._flatpickr) return;
+        window.stashyDatepicker(input).open();
     });
 
     function clearRowErrors(row) {

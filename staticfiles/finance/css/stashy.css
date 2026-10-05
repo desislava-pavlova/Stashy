@@ -163,8 +163,7 @@
     --bs-link-hover-color-rgb: 246, 162, 111;
 
     /* Same 8 hues, stepped for the dark surface (#1f1a17) - validated separately, not a flip of
-       the light values (worst adjacent CVD ΔE 8.4, normal-vision floor 19.3). The light steps
-       were silently reused here before Phase 13; this is the first real dark-mode chart palette. */
+       the light values (worst adjacent CVD ΔE 8.4, normal-vision floor 19.3). */
     --stashy-chart-1: #3987e5;
     --stashy-chart-2: #d95926;
     --stashy-chart-3: #199e70;
@@ -232,7 +231,7 @@ h1, h2, h3, h4, h5, h6,
     font-weight: 600;
 }
 
-/* Transactions list category filter (2026-09-15): a button styled like a plain closed <select>
+/* Transactions list category filter: a button styled like a plain closed <select>
    (form-select gives it the same border/height/chevron) that opens a checkbox list instead of
    a native <select multiple> - looks like a single-select until you open it. */
 .category-filter { width: 100%; }
@@ -301,6 +300,25 @@ h1, h2, h3, h4, h5, h6,
     --bs-btn-active-border-color: var(--stashy-line);
 }
 
+/* Page links on long registers; Bootstrap's own active page is its default blue. */
+.pagination {
+    --bs-pagination-color: var(--stashy-ink);
+    --bs-pagination-bg: var(--stashy-surface);
+    --bs-pagination-border-color: var(--stashy-line);
+    --bs-pagination-hover-color: var(--stashy-ink);
+    --bs-pagination-hover-bg: var(--stashy-surface-2);
+    --bs-pagination-hover-border-color: var(--stashy-line);
+    --bs-pagination-focus-color: var(--stashy-ink);
+    --bs-pagination-focus-bg: var(--stashy-surface-2);
+    --bs-pagination-focus-box-shadow: 0 0 0 .2rem rgba(var(--stashy-acorn-rgb), .2);
+    --bs-pagination-active-color: var(--stashy-on-acorn);
+    --bs-pagination-active-bg: var(--stashy-acorn);
+    --bs-pagination-active-border-color: var(--stashy-acorn);
+    --bs-pagination-disabled-color: var(--stashy-muted);
+    --bs-pagination-disabled-bg: var(--stashy-surface);
+    --bs-pagination-disabled-border-color: var(--stashy-line);
+}
+
 .form-control,
 .form-select {
     background-color: var(--stashy-surface);
@@ -346,7 +364,7 @@ h1, h2, h3, h4, h5, h6,
 .account-group-name { font-weight: 700; font-size: .95rem; color: var(--stashy-ink); }
 .account-group-explainer { font-size: .78rem; font-style: italic; color: var(--stashy-muted); }
 
-/* Payee name typeahead + per-category pick list (Phase 6/6.1) — a styled dropdown instead of
+/* Payee name typeahead + per-category pick list — a styled dropdown instead of
    the browser's native, unstyleable <datalist> popup. .payee-field gives it something to
    anchor to; the list itself overlays the page rather than pushing content down. */
 .payee-field { position: relative; }
@@ -365,7 +383,7 @@ h1, h2, h3, h4, h5, h6,
 }
 .payee-suggestion:hover, .payee-suggestion:focus-visible { background: var(--stashy-sage-soft); outline: none; }
 
-/* Sortable register/list column headers (Phase 5). */
+/* Sortable register/list column headers. */
 .sort-link { color: inherit; display: inline-flex; align-items: center; gap: .25rem; }
 .sort-link:hover { color: var(--stashy-acorn); }
 .sort-arrow { font-size: .65rem; }
@@ -383,13 +401,13 @@ h1, h2, h3, h4, h5, h6,
 .category-sub { display: inline-flex; align-items: center; gap: .4rem; color: var(--stashy-muted); }
 .category-connector { font-size: .8rem; color: var(--stashy-line); }
 
-/* Report tables (Phase 11.1): a parent row's collapse chevron, and a lighter shade for its
+/* Report tables: a parent row's collapse chevron, and a lighter shade for its
    children's own values - on top of the usual positive/negative color, not instead of it. */
 .report-toggle-icon { cursor: pointer; font-size: .75rem; margin-right: .3rem; display: inline-block; transition: transform .15s ease; }
 .report-toggle-icon.is-collapsed { transform: rotate(-90deg); }
 .report-value-sub { opacity: .72; }
 
-/* Chart height/width is set from JS (Phase 13) - a fixed collapsed preview, sized to the data
+/* Chart height/width is set from JS - a fixed collapsed preview, sized to the data
    once a card is expanded (one row per bar/category; a minimum width per column, scrolling
    sideways only when columns still don't fit - never squeezed to fit). */
 .report-chart-wrap { position: relative; height: 220px; overflow-x: auto; }
@@ -406,9 +424,15 @@ h1, h2, h3, h4, h5, h6,
    payment-deposit coloring, rather than fighting its color with a flat muted text color. */
 .row-reconciled { opacity: .6; }
 
-/* Edit mode (2026-09-22) - each row's cells hold both a view span and an edit control;
-   JS toggles which one is visible, so entering/leaving Edit mode needs no page reload. */
+/* The Transactions page's Edit mode (transaction-quick-edit.js). A row's controls sit next to
+   its text once they're built (.quick-edit-ready), and one class on the table decides which
+   of the two shows, so switching modes changes one class instead of thousands. */
 .register .quick-edit-cell { min-width: 6rem; }
+#transactions-table:not(.editing) .quick-edit-cell { display: none; }
+#transactions-table.editing tr.quick-edit-ready .quick-edit-view { display: none; }
+/* Links that would leave the page while Edit mode is on (sort headers, page links, "Clear
+   all filters"): dimmed and unclickable until editing is finished. */
+.edit-locked { opacity: .5; pointer-events: none; }
 .register .quick-edit-saved { animation: quick-edit-flash .6s ease-out; }
 @keyframes quick-edit-flash {
     from { background-color: rgba(var(--stashy-success-rgb, 25, 135, 84), .18); }
