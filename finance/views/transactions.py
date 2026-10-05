@@ -7,6 +7,7 @@ from django.db.models import Q, Sum
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils import timezone
 from django.views.decorators.http import require_POST
 from django.views.generic import DeleteView
 
@@ -16,14 +17,18 @@ from .. import regional
 from ..content import TRANSACTION_TIPS
 from ..currency import format_money
 from ..forms import DateRangeFilterForm, TransactionForm
-from ..models import Account, Category, Profile, Reminder, Transaction, grouped_categories
+from ..models import Account, Category, Reminder, Transaction, grouped_categories
 from ..money import ZERO
-from ..reporting import resolve_range
+from ..reporting import EARLIEST_RANGE_KEY, resolve_range
 from ._helpers import _paged, _safe_next, _sorted
 
-# The transaction list adds "All time" to Reports' own date-range presets - a register
-# naturally wants an unbounded view sometimes, unlike a chart that needs a range.
-TRANSACTION_RANGE_CHOICES = [("", "All time"), *DateRangeFilterForm.RANGE_CHOICES]
+# Reports' date-range presets, plus "All dates": no date limits at all, so even a transaction
+# dated in the future by mistake shows up. It takes the place of Reports' "Earliest to date",
+# which a chart needs (it has to start somewhere) but a register doesn't.
+TRANSACTION_RANGE_CHOICES = [
+    ("", "All dates"),
+    *(choice for choice in DateRangeFilterForm.RANGE_CHOICES if choice[0] != EARLIEST_RANGE_KEY),
+]
 
 TRANSACTION_LIST_SORT_FIELDS = {
     "date": ["date", "transaction_number"],
@@ -34,13 +39,6 @@ TRANSACTION_LIST_SORT_FIELDS = {
     "memo": ["memo"],
     "amount": ["amount"],
 }
-
-
-def _iso_date(value):
-    try:
-        return date.fromisoformat(value) if value else None
-    except ValueError:
-        return None
 
 
 def _longer_than_a_year(start, end):
@@ -67,17 +65,23 @@ def _filtered_transactions(request):
     )
 
     range_key = request.GET.get("range", "")
-    start = _iso_date(request.GET.get("start"))
-    end = _iso_date(request.GET.get("end"))
-    if range_key and range_key != "custom":
+    if range_key == EARLIEST_RANGE_KEY:
+        range_key = ""  # a bookmark from before "Earliest to date" became "All dates"
+    start = regional.parse_date(request.GET.get("start"))
+    end = regional.parse_date(request.GET.get("end"))
+    if range_key == "custom":
+        pass
+    elif range_key:
         start, end, _ = resolve_range({"range": range_key})
-    elif "range" not in request.GET and start is None and end is None:
-        # Default view: this year, until you explicitly ask for something else - "range"
-        # being present at all (even "" for "All time") means you already did.
+    elif "range" in request.GET:
+        # "All dates". The form still sends its date boxes, holding the previous range's dates.
+        start = end = None
+    elif start is None and end is None:
+        # Default view: this year, until you explicitly ask for something else.
         start, end, _ = resolve_range({"range": "this_year"})
         range_key = "this_year"
-    elif start or end:
-        range_key = "custom"
+    else:
+        range_key = "custom"  # dates without a range: the dashboard's links
 
     if account_id.isdigit():
         transactions = transactions.filter(account_id=account_id)
@@ -145,7 +149,7 @@ def transaction_list(request):
         "total_amount": total_amount,
         # Mixed currencies have no one true symbol either - the main currency is the same
         # stand-in the accounts page's own net worth total already uses (D2).
-        "main_currency": Profile.for_user(request.user).main_currency,
+        "main_currency": request.stashy_profile.main_currency,
         "accounts": Account.objects.all(),
         # Income -> Expense -> Transfer, each main category with its own subcategories right
         # under it - the category list page's own grouping, reused so the checkbox dropdown
@@ -224,7 +228,7 @@ def transaction_form_view(request, pk=None):
             try:
                 initial["date"] = date.fromisoformat(request.GET.get("date", ""))
             except ValueError:
-                initial["date"] = date.today()
+                initial["date"] = timezone.localdate()
             # A preview of what Stashy would assign anyway - change the date and clear the
             # number to have it recomputed for that date's year instead.
             initial["transaction_number"] = Transaction.next_number(initial["date"])

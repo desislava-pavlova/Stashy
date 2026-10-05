@@ -25,7 +25,7 @@ def _to_step(step):
 
 
 def welcome_step(request, step):
-    profile = Profile.for_user(request.user)
+    profile = request.stashy_profile
     if profile.setup_finished:
         return redirect("finance:dashboard")
     # Only an already-completed step, or the very next one, can be viewed - typing a later

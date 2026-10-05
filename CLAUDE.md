@@ -37,8 +37,6 @@ terms.
   stash/owner. Write "the real stash", and use made-up examples ("Alex",
   "Lidl", "Groceries"). Personal specifics go in `CLAUDE.local.md` or
   nowhere.
-- **Never rerun `scripts/load_test_data.py`.** It wipes a stash (plan 02
-  deletes it; its input file is already gone).
 - **Don't kill running processes.** The user's own Stashy runs on the
   `PORT` from `.env` (see `CLAUDE.local.md`). Test servers use a spare
   port, e.g. 8765.
@@ -47,7 +45,7 @@ terms.
 ## Commands
 
 ```
-.venv\Scripts\python.exe manage.py test                          # full suite, ~25 s (697 tests on 05/10/2026)
+.venv\Scripts\python.exe manage.py test                          # full suite, ~25 s (723 tests on 05/10/2026)
 .venv\Scripts\python.exe manage.py test finance.tests.test_reminders  # one module (audit: `test audit`)
 .venv\Scripts\python.exe manage.py migrate --database <stash>    # one stash (Stashy.bat does all, with backups)
 .venv\Scripts\python.exe manage.py reset_pin <owner name>        # real, visible action - ask first
@@ -104,10 +102,21 @@ terms.
     exports ignore `page`. `_paged()` ends every order with `-pk`, so tied
     rows never repeat or vanish across pages.
   - The Transactions page's Edit mode: rows carry raw values as `data-`
-    attributes, and `transaction-quick-edit.js` builds the controls from
-    the one `<template id="quick-edit-controls">` on the first switch.
+    attributes, and `transaction-quick-edit.js` builds a row's controls
+    from the one `<template id="quick-edit-controls">` as the row comes near
+    the screen (`IntersectionObserver`; built rows get `.quick-edit-ready`).
+    One class on the table, `.editing`, decides what shows (`stashy.css`).
     Never put per-row `<select>`s back in the server HTML (that was 8.10's
-    slowness). A date box added by script calls `window.stashyDatepicker()`.
+    slowness). A date box added by script calls `window.stashyDatepicker()`
+    (it returns the picker); Edit mode does that on first focus. While
+    editing, the filters' `<fieldset>` is disabled and the links that
+    reload the page are locked (8.10b).
+  - Date-range forms: a date box with `data-range-date` switches its
+    form's `range` select to "custom" as you type (`stashy.js`), without
+    submitting. Dates typed into a URL are read with
+    `regional.parse_date()` (the stash's format, or YYYY-MM-DD).
+    Transactions has "All dates" (`range=""`, ignores the date boxes)
+    instead of Reports' "Earliest to date".
   - Report exports: one view, `exports.export_report`, at
     `reports/export/<slug>/`. A new one is one line in `REPORT_EXPORTS`.
   - Settings: the page saves preferences; `check_rates`, `create_backup`
@@ -231,7 +240,9 @@ terms.
   stash's Profile can override them, so always format through `regional` or
   the template filters (`sdate`, `moneyc`), never with a hard-coded
   `strftime`. Show times only where they matter (import history, audit
-  log).
+  log). "Today" is `timezone.localdate()` (the stash's time zone), never
+  `date.today()`; only `backup.py` uses the computer's clock (a test
+  checks).
 - **Each page keeps its own agreed filter defaults.**
   - Transactions: "This year".
   - Reports: This month · no subtotal · Last 3 periods · All accounts.
@@ -257,8 +268,9 @@ terms.
   `plans/README.md` indexes them. `plans/` and `DEVLOG.md` are committed
   (since 27/09/2026), so the personal-data rule above applies to them.
   - 01, upgrade plan: done.
-  - **02, architecture cleanup:** F1–F58 findings, 8 phases, all questions
-    answered. Status is at the top of the file.
+  - **02, architecture cleanup:** F1–F58 findings, 8 phases, all done
+    (05/10/2026). Only item 3.6 is open: committing migrations (to discuss
+    with the user) and the user's own `git rm -r --cached staticfiles .idea`.
   - **03, fixes and changes plan:** collects the user's bugs and changes
     while 02 runs. "Add to 03: …" means file it and don't start it, unless
     the user says "fix R<n> now".

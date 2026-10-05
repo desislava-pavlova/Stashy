@@ -4,7 +4,7 @@ from django.shortcuts import render
 from django.utils import timezone
 
 from ..currency import SUFFIX_CURRENCIES, RateTable, convert_balances
-from ..models import Account, Profile, Reminder, grouped_accounts
+from ..models import Account, Reminder, grouped_accounts
 from ..reporting import income_and_spending, savings_rate, spending_tree
 
 # Kept as one constant on the model (Reminder.DUE_SOON_DAYS) so the dashboard's "due soon"
@@ -27,7 +27,7 @@ def dashboard(request):
     last_month_end = month_start - timedelta(days=1)
     last_month_start = last_month_end.replace(day=1)
 
-    main_currency = Profile.for_user(request.user).main_currency
+    main_currency = request.stashy_profile.main_currency
     accounts = list(Account.objects.filter(is_active=True).with_balances())
     net_worth, missing_rates = convert_balances(accounts, main_currency)
     # Same grouping/order as the accounts page (Physical Liquid -> Digital Liquid -> Illiquid) -
@@ -43,7 +43,7 @@ def dashboard(request):
 
     due_soon = list(
         Reminder.objects.filter(next_due_date__lte=today + timedelta(days=REMINDER_LOOKAHEAD_DAYS))
-        .select_related("account")
+        .select_related("account", "payee", "category__parent")
         .order_by("next_due_date")
     )
     # Already paid or skipped doesn't belong on a "what needs attention" widget, even if its

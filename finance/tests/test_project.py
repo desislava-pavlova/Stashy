@@ -154,6 +154,23 @@ class AuditStandsAloneTests(SimpleTestCase):
                         self.assertFalse(name == "finance" or name.startswith("finance."))
 
 
+class OneTodayTests(SimpleTestCase):
+    """8.1 (F8): "today" is the stash's own date (its time zone preference), so app code asks
+    timezone.localdate(), never the computer's clock. backup.py is the one exception: it runs
+    before Django is set up, and a backup's name records when the file was made here."""
+
+    def test_app_code_never_reads_the_computer_clock_for_today(self):
+        root = Path(settings.BASE_DIR)
+        for folder in ("finance", "audit", "stashy"):
+            for path in (root / folder).rglob("*.py"):
+                if "tests" in path.parts or path.name.startswith("test") or "migrations" in path.parts:
+                    continue
+                if path.name == "backup.py":
+                    continue
+                with self.subTest(file=str(path.relative_to(root))):
+                    self.assertNotRegex(path.read_text(encoding="utf-8"), r"\bdate\.today\(|\bdatetime\.(today|now)\(")
+
+
 class NoHiddenImportCyclesTests(SimpleTestCase):
     """6.10 (F50): every import that stays inside a function says why."""
 

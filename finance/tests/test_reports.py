@@ -71,6 +71,19 @@ class ReportsCustomRangeErrorTests(LoggedInWithAccountTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "custom range needs both a start and an end date")
 
+    def test_a_custom_range_is_applied(self):
+        response = self.client.get(
+            reverse("finance:reports"), {"range": "custom", "start": "01/02/2026", "end": "31/03/2026"}
+        )
+        self.assertEqual((response.context["start"], response.context["end"]), (date(2026, 2, 1), date(2026, 3, 31)))
+
+    def test_the_date_boxes_switch_the_range_to_custom_and_earliest_to_date_stays(self):
+        # 8.14: stashy.js switches Range to "Custom range" when a date is typed. 8.13 removes
+        # "Earliest to date" from the Transactions page only.
+        response = self.client.get(reverse("finance:reports"))
+        self.assertEqual(response.content.decode().count("data-range-date"), 2)
+        self.assertContains(response, '<option value="earliest">Earliest to date</option>', html=True)
+
 
 class DateRangeFilterFormTests(SimpleTestCase):
     def test_custom_range_requires_both_dates(self):

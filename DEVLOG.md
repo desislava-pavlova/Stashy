@@ -4431,3 +4431,129 @@ needs a try.
 `finance/tests/test_transactions.py`, `test_accounts.py`, `test_exports.py`;
 `README.md`, `CLAUDE.md`, `DEVLOG.md`, `plans/02_architecture_cleanup.md`,
 `plans/README.md`.
+
+## 05/10/2026 — Plan 02, Phase 8 (part 2): fewer queries, one "today", a calmer Edit mode
+
+This finishes Phase 8, and with it every phase of plan 02.
+
+**What changed** (ticks in `plans/02_architecture_cleanup.md`, items 8.1,
+8.3–8.8, 8.10b and 8.12–8.15):
+- **One "today" (8.1).** A few places asked the computer's clock for the
+  date (`date.today()`), while the rest asked for the date in the stash's
+  own time zone (`timezone.localdate()`). Near midnight the two can
+  disagree, and a stash set to another time zone saw a new form default to
+  the wrong day. Everything now uses the stash's date. The one exception is
+  `backup.py`, which runs before Django starts and names a file after the
+  moment it was made on this computer. A new test fails if app code reads
+  the computer's clock anywhere else.
+- **Import checks for duplicates in memory (8.3).** Each imported row used
+  to ask the database "have I seen this fingerprint?". Now the import reads
+  every stored fingerprint once into a Python `set` and checks against
+  that. A row it creates adds its own fingerprint to the set, so a row
+  repeated within the same file still counts as a duplicate.
+- **The Profile is read once per page (8.4).** The middleware already loads
+  your preferences for every request (`request.stashy_profile`). Eleven
+  places in the views asked the database for them again.
+- **Net worth: one query instead of hundreds (8.6).** The report asked the
+  database for every account's balance at the end of every column, so 5
+  accounts × 36 monthly columns meant 180 queries. Now one query sums the
+  transactions per account and day. Walking those days in order keeps a
+  running balance per account, read off at each column's last day. A test
+  checks every column against the plain sum.
+- **No `|safe` left in templates (8.7).** The reminder form's unit words
+  ("week(s)", "month(s)") now reach its script through `json_script`, like
+  every other page's data.
+- **The vs-average total row (8.8).** The total's average is the sum of the
+  main categories' averages. A new test shows it equals the average of the
+  earlier periods' grand totals. Each row's average is rounded to the cent
+  first, so the two can differ by a cent. The column still adds up, as
+  before. One fix: with no earlier periods at all, every row's average is
+  empty, but the total showed 0.00. Now it's empty too. Only an export can
+  show this; the page says "No earlier data to compare with".
+- **Edit mode locks the filters (8.10b).** While Edit mode is on, every
+  filter box, dropdown and the Filter button are disabled (they now sit in
+  one `<fieldset>`, which the script disables in one step). The sort
+  headers, page links and "Clear all filters" are dimmed and ignore clicks.
+  A line above the filters says "Finish editing to change filters." Until
+  now, changing a filter reloaded the page, which quietly left Edit mode and
+  could lose a field you were still typing in.
+- **Edit mode starts faster.** Last time you found the first click slow.
+  It built controls for every row at once (up to 1,000, each with a ~150-option
+  category list) and started a calendar for every date box. Now a row gets
+  its controls only as it comes within about a screen of what you're
+  looking at, so the first click builds a few dozen. A row not built yet
+  keeps showing its text, so you never see an empty row. A date box gets
+  its calendar the first time you click into it. Switching modes now
+  changes one class on the table instead of thousands of elements.
+- **"Earliest to date" → "All dates" on Transactions (8.13).** "All dates"
+  has no date limits, so even a transaction dated in the future by mistake
+  shows up. Reports keeps "Earliest to date" (a chart needs a start). An old
+  bookmark with `range=earliest` opens on "All dates".
+- **Typing a date switches to Custom range (8.14).** On Transactions and
+  Reports, typing or picking a Start/End date switches the Range dropdown to
+  "Custom range" straight away, without reloading. The page updates when
+  you click **Filter** or **Apply**. Until now, a typed date was ignored
+  whenever a preset range was selected.
+- **A bug the 8.14 test found.** The Transactions page read Start/End only
+  in the form 2026-02-01. The date boxes, and the "View them" link Reports
+  shows for uncategorized transactions, send 01/02/2026. So a custom range
+  was dropped even with "Custom range" selected, and the page showed every
+  date. Dates are now read in the stash's own date format
+  (`regional.parse_date()`, which also accepts 2026-02-01, as the
+  dashboard's links use).
+- **Dead code gone (8.12).** `scripts/load_test_data.py` (its input file
+  was gone) and `reporting.category_totals()`, which only tests still
+  called. Those eight tests checked rules every report shares, so they now
+  run against its live twin, `category_totals_top_level()`.
+- **Small repeated queries (8.15).** The dashboard's "due soon" list and
+  the reminder list load each reminder's payee and category together with
+  the list. The accounts export and the admin's account list compute every
+  balance in one query.
+- **Comments (8.5).** History notes ("Phase 13", "2026-09-15 follow-up")
+  left the comments of every file this phase touched. The "why" stays.
+- **26 new tests:** the one-today rule and a time-zone test; duplicates
+  within one CSV or OFX file, and one fingerprint lookup per import; one
+  Profile read per page; net worth against plain sums, and a flat query
+  count; `json_script`; the total average, and an empty total without
+  earlier periods; eight range tests (All dates, old bookmarks, typed dates
+  in DD/MM/YYYY and MM/DD/YYYY, presets); the locked filter fieldset;
+  Reports' date boxes; four flat query counts; deleting from the admin's
+  account list still works.
+
+**Teaching note — count the queries, not the rows.** Most of this phase
+fixes one pattern, known as "N+1 queries": a loop over N things that asks
+the database something inside the loop. Each question is fast, so nothing
+looks wrong with 3 accounts in a test. With 5 accounts and 36 columns it's
+180 round trips, and each one pays the cost of asking. The fixes all have
+the same shape: ask once, up front, for everything the loop will need, and
+let the loop work in memory. That's a `select_related()` (fetch the payee
+along with the reminder), an annotation (`with_balances()`), a `set` of
+fingerprints, or a grouped query plus a running sum. The tests for this
+don't count rows. They count queries, then add more data and check the
+count didn't move. That's the reliable way to tell "fast because the data
+is small" from "fast because the code is right".
+
+**Verification:** full suite green, 723 tests (697 + 26), in about 23 s,
+coverage 95%. `ruff check .` and `ruff format --check .` are clean. Each
+new query-count test was run against the old code first and failed there.
+Both changed scripts parse (checked with a JavaScript parser, as there's no
+browser here). The real `collectstatic` ran into a scratch folder without
+errors. The rendered pages were read (Transactions with each kind of range,
+Reports, the reminder form, the dashboard, reminders, accounts, reconcile,
+the admin's account list): no leaked template syntax, the range list and
+date boxes as intended. You tried Edit mode afterwards and found it
+"significantly faster". The filter lock and the Custom range switch
+haven't been tried in a browser yet.
+
+**Files:** `finance/forms.py`, `finance/regional.py`, `finance/reporting.py`,
+`finance/backup.py`, `finance/admin.py`, `finance/services/importing.py`,
+`finance/views/accounts.py`, `dashboard.py`, `exports.py`, `reminders.py`,
+`reports.py`, `settings.py`, `transactions.py`, `welcome.py`,
+`finance/templates/finance/transaction_list.html`, `generic_form.html`,
+`finance/static/finance/js/transaction-quick-edit.js`, `stashy.js`,
+`finance/static/finance/css/stashy.css`; `scripts/load_test_data.py`
+(deleted); `finance/tests/test_project.py`, `test_transactions.py`,
+`test_imports.py`, `test_middleware.py`, `test_reporting.py`,
+`test_reminders.py`, `test_dashboard.py`, `test_exports.py`,
+`test_admin.py`, `test_reports.py`; `README.md`, `CLAUDE.md`, `DEVLOG.md`,
+`plans/02_architecture_cleanup.md`, `plans/README.md`.

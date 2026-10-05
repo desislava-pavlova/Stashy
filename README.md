@@ -150,8 +150,13 @@ every stash automatically).
   the "Lidl" you already have, and two payees can never differ only in case. The list can be filtered
   by date, status, account, several categories at once and text, exported
   to CSV/Excel, and switched into **Edit mode**, where every row's fields
-  can be changed in place and save themselves. A date range longer than a
-  year (or "All time") shows 1,000 transactions per page, with page links
+  can be changed in place and save themselves. While Edit mode is on, the
+  filters, sort headers and page links are locked ("Finish editing to
+  change filters"), so nothing reloads the page under you. **All dates**
+  shows every transaction, even one dated in the future by mistake. Typing
+  a Start or End date switches the range to **Custom range**; the list
+  updates when you click **Filter**. A date range longer than a
+  year (or "All dates") shows 1,000 transactions per page, with page links
   above and below the list; the count and the total always cover every
   page, and the export always holds everything the filters match. An
   account's own register pages the same way.
@@ -172,7 +177,8 @@ every stash automatically).
   A category with no activity in any of those periods averages 0: its
   Average shows "—", but its Difference shows the full gap and the chart
   draws its average dot at 0 (the export writes 0.00). Filter by date range
-  (including "Earliest to date"), subtotal
+  (including "Earliest to date"; typing a Start or End date switches it to
+  Custom range, and **Apply** updates the page), subtotal
   (week to year), average interval (how many earlier periods to use) and
   account; every amount converts to your main currency. **Expand** a
   report to see its table; once expanded, **Show all/Hide all** opens or

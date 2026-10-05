@@ -7,6 +7,9 @@ import re
 from datetime import date, datetime
 from decimal import Decimal
 
+from django.conf import settings
+from django.db import connections
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from openpyxl import load_workbook
 
@@ -251,3 +254,21 @@ class ExportNamesCarryTheTimeTests(LoggedInWithAccountTestCase):
         response = self.client.get(reverse("finance:export_report", args=["net-worth"]), {"format": "xlsx"})
         self.assertRegex(response["Content-Disposition"], rf'filename="stashy-net-worth-{self.STAMP}\.xlsx"')
         self.assertTrue(re.search(self.STAMP, response["Content-Disposition"]))
+
+
+class AccountExportQueryTests(LoggedInWithAccountTestCase):
+    """8.15 (F56): every balance in the accounts export comes from the same query."""
+
+    def queries_with(self, count):
+        for i in range(count):
+            account = Account.objects.create(name=f"Account {count}-{i}")
+            Transaction.objects.create(account=account, date=date(2026, 1, 5), amount=Decimal("10.00"))
+        url = reverse("finance:export_accounts")
+        self.client.get(url)  # the first page of a session also creates its Profile
+        with CaptureQueriesContext(connections[settings.TEST_STASH]) as queries:
+            response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        return len(queries)
+
+    def test_more_accounts_need_no_more_queries(self):
+        self.assertEqual(self.queries_with(1), self.queries_with(4))

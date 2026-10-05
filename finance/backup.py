@@ -4,6 +4,9 @@ Pure standard library on purpose - `scripts/bootstrap.py` calls `quarterly_backu
 at launch, before the rest of the app is necessarily importable, and the Settings page's
 "Back up now" and "Restore" actions call the other functions here the same way.
 
+For the same reason the time stamps come from this computer's own clock (`datetime.now()`),
+not the stash's time zone preference: a backup's name says when the file was made, here.
+
 Copies go through SQLite's own backup API (`Connection.backup`), never a plain file copy:
 SQLite takes the locks it needs, so a backup is a consistent snapshot even if Stashy is
 writing at that moment, and a restore rewrites the live file page by page in a way every

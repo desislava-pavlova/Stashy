@@ -13,7 +13,7 @@ import zoneinfo
 from contextlib import contextmanager, suppress
 from contextvars import ContextVar
 from dataclasses import dataclass, replace
-from datetime import date, datetime
+from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal
 from importlib import resources
 from pathlib import Path
@@ -133,6 +133,18 @@ def format_date(value, preferences=None):
     return value.strftime((preferences or current()).date_pattern)
 
 
+def parse_date(text, preferences=None):
+    """A date typed in the active date format, or None. Every format also accepts YYYY-MM-DD,
+    which is how links built by the app itself carry a date."""
+    text = (text or "").strip()
+    for pattern in (preferences or current()).date_input_formats if text else ():
+        try:
+            return datetime.strptime(text, pattern).date()
+        except ValueError:
+            continue
+    return None
+
+
 def format_datetime(value, seconds=False, preferences=None):
     if value is None or value == "":
         return ""
@@ -230,7 +242,7 @@ def zone_for_country(zone_name, country):
 
 def _same_clock(name, reference):
     zone = _zone(name)
-    year = date.today().year
+    year = timezone.localdate().year
     return zone is not None and all(
         datetime(year, month, 15, 12, tzinfo=zone).utcoffset()
         == datetime(year, month, 15, 12, tzinfo=reference).utcoffset()

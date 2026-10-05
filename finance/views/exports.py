@@ -12,7 +12,7 @@ from django.http import Http404, HttpResponse
 from django.utils import timezone
 
 from ..currency import RateTable
-from ..models import Account, Category, Payee, Profile
+from ..models import Account, Category, Payee
 from ..reporting import (
     category_report_rows,
     category_vs_average_report_rows,
@@ -66,7 +66,7 @@ def export_accounts(request):
     headers = ["Name", "Type", "Currency", "Institution", "Active", "Balance"]
     rows = [
         [a.name, a.get_account_type_display(), a.currency, a.institution, "Y" if a.is_active else "N", a.balance]
-        for a in Account.objects.all()
+        for a in Account.objects.with_balances()
     ]
     return _export_response(_requested_format(request), _filename("accounts"), headers, rows)
 
@@ -228,7 +228,7 @@ def export_report(request, report):
     export = REPORT_EXPORTS.get(report)
     if export is None:
         raise Http404("No such report.")
-    profile = Profile.for_user(request.user)
+    profile = request.stashy_profile
     table = export.build(_report_filters(request), RateTable(profile.main_currency), profile)
     if table is None:
         return HttpResponse(export.empty_message, status=404)

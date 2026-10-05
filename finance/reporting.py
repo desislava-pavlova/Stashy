@@ -1,25 +1,26 @@
 """Helpers for turning a DateRangeFilterForm's cleaned data into a concrete
 (start, end, interval) tuple, and for bucketing/aggregating transactions for the Reports page.
 
-Phase 13 (15/09/2026) rule, everywhere in this file: a category's own type decides income vs.
+The rule everywhere in this file: a category's own type decides income vs.
 spending, never the sign of its amount (R1) - an expense category that nets positive (a refund
 exceeding spend) just nets against its own total, no special handling. Every total also passes
 through an optional `rates` (a currency.RateTable) so multi-currency accounts convert into the
 main currency the same way net worth already does (D2: latest known rate, not historical).
 """
 
-from datetime import date, timedelta
+from datetime import timedelta
 from decimal import Decimal
 
 from dateutil.relativedelta import relativedelta
 from django.db.models import Sum
+from django.utils import timezone
 
 from .models import Account, Category, Transaction, grouped_accounts, grouped_categories
 from .money import ZERO, to_cent
 
 # Default depth for "Average interval": how many periods of the current date range's own
-# length to average over, immediately preceding it (see vs_average_periods() below). R3
-# (Phase 13): defaults are This month - no subtotal - Last 3 periods - All accounts.
+# length to average over, immediately preceding it (see vs_average_periods() below). The
+# Reports page's defaults (R3) are This month - no subtotal - Last 3 periods - All accounts.
 DEFAULT_LOOKBACK_PERIODS = 3
 DEFAULT_RANGE_KEY = "this_month"
 
@@ -42,7 +43,7 @@ _SUBTOTAL_SINGULAR = {"month": "month", "quarter": "quarter", "half_year": "half
 
 
 def resolve_range(cleaned_data, account=None):
-    today = date.today()
+    today = timezone.localdate()
     range_key = cleaned_data.get("range") or DEFAULT_RANGE_KEY
     start = cleaned_data.get("start")
     end = cleaned_data.get("end")
@@ -98,8 +99,8 @@ def _reportable(start=None, end=None, account=None, expense_only=False, income_o
 def _convert(amount, currency, rates):
     """`amount` (in `currency`) converted into `rates`'s target currency, cents-rounded.
 
-    `rates=None` means "don't convert" (single-currency setups, and every existing caller/test
-    that predates Phase 13) - amounts are trusted to already be comparable. With rates given but
+    `rates=None` means "don't convert" (single-currency setups, and callers that only ever see
+    one currency) - amounts are trusted to already be comparable. With rates given but
     no known rate for `currency`, the amount is left out (0) rather than silently mixed into a
     total in the wrong currency; reports_view() separately warns once when this happens (missing
     a rate is rare and worth a banner, not a per-row asterisk)."""
@@ -206,33 +207,12 @@ def income_and_spending_vs_average(start, end, periods, account=None, rates=None
     return result
 
 
-def category_totals(start, end, expense_only=False, income_only=False, account=None, rates=None):
-    """Per-category totals for the period, transfers excluded (R1: category type decides, not
-    amount sign). expense_only/income_only return positive magnitudes sorted biggest-first (for
-    the "by category" charts); otherwise totals stay signed (income positive, expense negative),
-    sorted low-to-high, so the combined chart reads as one continuous scale."""
-    qs = _reportable(start, end, account, expense_only, income_only)
-
-    totals, names = {}, {}
-    for row in qs.values("category_id", "category__name", "amount", "account__currency"):
-        amount = _convert(row["amount"], row["account__currency"], rates)
-        totals[row["category_id"]] = totals.get(row["category_id"], ZERO) + amount
-        names[row["category_id"]] = row["category__name"]
-
-    rows = [{"category_id": cid, "name": names[cid], "total": to_cent(total)} for cid, total in totals.items()]
-    if expense_only or income_only:
-        for r in rows:
-            r["total"] = abs(r["total"])
-        rows.sort(key=lambda r: r["total"], reverse=True)
-    else:
-        rows.sort(key=lambda r: r["total"])
-    return rows
-
-
 def category_totals_top_level(start, end, expense_only=False, income_only=False, account=None, rates=None):
-    """Like category_totals(), but a subcategory's amount is rolled into its top-level parent's
-    - for charts that read better as one bar per main category (R2: charts never show
-    subcategories) than with every subcategory competing for space alongside them."""
+    """Per-main-category totals for the period, transfers excluded (R1: the category's type
+    decides, not the amount's sign). A subcategory's amount is rolled into its main category's,
+    since charts show one bar per main category (R2). expense_only/income_only return positive
+    magnitudes sorted biggest-first (for the "by category" charts); otherwise totals stay
+    signed (income positive, expense negative), sorted low-to-high."""
     qs = _reportable(start, end, account, expense_only, income_only)
 
     raw = {}
@@ -522,7 +502,11 @@ def category_vs_average_report_rows(
         return cid in active_before or any(child in active_before for child in child_ids_by_parent.get(cid, []))
 
     result_groups = []
-    totals = {"current": ZERO, "average": ZERO}
+    # The total's average is the sum of the main categories' averages, so the column adds up.
+    # That is the average of the earlier periods' grand totals (give or take the cents each row's
+    # own rounding moves it): a category with no earlier activity averages 0, so it adds nothing
+    # to either. With no earlier periods at all, every average is None, and so is this.
+    totals = {"current": ZERO, "average": ZERO if periods else None}
     for group in grouped_categories(categories.values()):
         rows = []
         for category in group["categories"]:
@@ -548,7 +532,7 @@ def category_vs_average_report_rows(
             )
             if not category.parent_id:
                 totals["current"] += cur
-                if avg is not None and totals["average"] is not None:
+                if periods:
                     totals["average"] += avg
         if rows:
             result_groups.append({"key": group["key"], "name": group["name"], "rows": rows})
@@ -595,13 +579,11 @@ def net_worth_by_account(start, end, granularity, rates=None):
     periods = _period_columns(start, end, granularity)
     width = len(periods)
     accounts = list(Account.objects.all())
+    native_by_account = _running_balances(accounts, [p["end"] for p in periods])
     missing_accounts = []
     values_by_account = {}
     for account in accounts:
-        native = [
-            to_cent(account.transactions.filter(date__lte=p["end"]).aggregate(total=Sum("amount"))["total"])
-            for p in periods
-        ]
+        native = native_by_account[account.pk]
         if rates is None or account.currency == rates.target:
             values_by_account[account.pk] = native
         else:
@@ -632,6 +614,30 @@ def net_worth_by_account(start, end, granularity, rates=None):
         "overflow": None,
         "missing_accounts": missing_accounts,
     }
+
+
+def _running_balances(accounts, as_of_dates):
+    """Each account's balance at the end of each of `as_of_dates` (ascending), in its own
+    currency. One query sums the transactions per account and day; walking those days in order
+    keeps a running balance per account, read off at each date."""
+    balances = {account.pk: ZERO for account in accounts}
+    columns = {account.pk: [] for account in accounts}
+    if not as_of_dates:
+        return columns
+    daily = iter(
+        Transaction.objects.filter(date__lte=as_of_dates[-1])
+        .values("account_id", "date")
+        .annotate(total=Sum("amount"))
+        .order_by("date")
+    )
+    day = next(daily, None)
+    for as_of in as_of_dates:
+        while day is not None and day["date"] <= as_of:
+            balances[day["account_id"]] += day["total"]
+            day = next(daily, None)
+        for account_id, balance in balances.items():
+            columns[account_id].append(to_cent(balance))
+    return columns
 
 
 def watched_expenses_category_ids(profile):

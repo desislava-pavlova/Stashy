@@ -2,7 +2,7 @@ from django.shortcuts import render
 
 from ..currency import RateTable, format_money
 from ..forms import DateRangeFilterForm
-from ..models import Account, Profile
+from ..models import Account
 from ..reporting import (
     DEFAULT_LOOKBACK_PERIODS,
     DEFAULT_RANGE_KEY,
@@ -147,7 +147,7 @@ def reports_view(request):
         filters["account"],
     )
 
-    profile = Profile.for_user(request.user)
+    profile = request.stashy_profile
     main_currency = profile.main_currency
     rates = RateTable(main_currency)
     # A once-per-page-load warning - not per report, since the same missing rate would

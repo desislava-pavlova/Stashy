@@ -26,7 +26,7 @@ from ..forms import (
     convertible_currencies,
     watched_expenses_picker_context,
 )
-from ..models import Account, Profile
+from ..models import Account
 from ..stashes import registry, security
 
 
@@ -70,7 +70,7 @@ def _render_settings(request, profile, form=None, watched_form=None):
 
 def settings_view(request):
     """Shows the page; a POST saves the currency and regional preferences."""
-    profile = Profile.for_user(request.user)
+    profile = request.stashy_profile
     form = None
     if request.method == "POST":
         form = ProfileForm(request.POST, instance=profile)
@@ -87,7 +87,7 @@ def check_rates(request):
     """Runs without the per-request transaction so it never holds the stash's write lock
     while it waits on the internet. fetch_latest_rates() takes its own short one for the
     writes."""
-    profile = Profile.for_user(request.user)
+    profile = request.stashy_profile
     try:
         stored, unavailable = fetch_latest_rates(profile.main_currency, _rate_currencies(profile))
     except RateFetchError as error:
@@ -119,7 +119,7 @@ def create_backup(request):
 
 @require_POST
 def save_watched_expenses(request):
-    profile = Profile.for_user(request.user)
+    profile = request.stashy_profile
     watched_form = WatchedExpensesForm(request.POST, instance=profile)
     if watched_form.is_valid():
         watched_form.save()
@@ -160,7 +160,7 @@ def recovery_code_view(request):
     cookie) only carries a random one-time key to it. The page shows it once and deletes it.
     Stashy is one process, so the local-memory cache is shared by every request."""
     if request.method == "POST":
-        profile = Profile.for_user(request.user)
+        profile = request.stashy_profile
         token = secrets.token_urlsafe(16)
         cache.set(
             _recovery_code_cache_key(token), security.regenerate_recovery_code(profile), RECOVERY_CODE_CACHE_SECONDS

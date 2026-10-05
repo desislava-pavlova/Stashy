@@ -5,7 +5,10 @@ from datetime import date
 from decimal import Decimal
 from unittest import mock
 
+from django.conf import settings
+from django.db import connections
 from django.test import SimpleTestCase
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
 from ..models import Account, Category, ExchangeRate, Payee, Reminder, Transaction
@@ -215,3 +218,31 @@ class DashboardDonutCurrencyTests(LoggedInWithAccountTestCase):
         response = self.client.get(reverse("finance:dashboard"))
         self.assertContains(response, 'data-main-currency="€"')
         self.assertContains(response, 'data-currency-suffix="1"')
+
+
+@mock.patch("django.utils.timezone.localdate", return_value=date(2026, 9, 12))
+class DueSoonQueryTests(LoggedInWithAccountTestCase):
+    """8.15 (F56): the "due soon" list loads each reminder's payee and category with the list."""
+
+    def queries_with(self, count):
+        food = Category.objects.get_or_create(name="Food", category_type=Category.CategoryType.EXPENSE)[0]
+        for i in range(count):
+            Reminder.objects.create(
+                account=self.account,
+                payee=Payee.objects.create(name=f"Shop {count}-{i}")
+                if i % 2
+                else None,  # no payee: the category shows
+                category=food.create_subcategory(f"Groceries {count}-{i}"),
+                amount=Decimal("10.00"),
+                next_due_date=date(2026, 9, 14),
+                frequency="one_time",
+            )
+        url = reverse("finance:dashboard")
+        self.client.get(url)  # the first page of a session also creates its Profile
+        with CaptureQueriesContext(connections[settings.TEST_STASH]) as queries:
+            response = self.client.get(url)
+        self.assertEqual(len(response.context["due_soon"]), Reminder.objects.count())
+        return len(queries)
+
+    def test_more_reminders_need_no_more_queries(self, _today):
+        self.assertEqual(self.queries_with(1), self.queries_with(4))

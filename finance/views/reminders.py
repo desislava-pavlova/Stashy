@@ -1,4 +1,3 @@
-import json
 from datetime import date, timedelta
 
 from dateutil.relativedelta import relativedelta
@@ -38,7 +37,7 @@ def reminder_list(request):
     # hidden by default elsewhere; the form always sends an explicit 0/1 once it's used.
     show_done_param = request.GET.get("show_done")
     show_done = (window == "month") if show_done_param is None else show_done_param == "1"
-    reminders = Reminder.objects.select_related("account", "category", "payee")
+    reminders = Reminder.objects.select_related("account", "payee", "category__parent")
     cutoff = _reminder_window_cutoff(window, today)
     if cutoff is not None:
         reminders = reminders.filter(next_due_date__lte=cutoff)
@@ -62,7 +61,7 @@ def reminder_list(request):
 REMINDER_FORM_EXTRA_CONTEXT = {
     "tips": REMINDER_TIPS,
     "reminder_type_filter": True,
-    "unit_words_json": json.dumps(Reminder.FREQUENCY_UNIT_WORDS),
+    "unit_words": Reminder.FREQUENCY_UNIT_WORDS,
 }
 
 

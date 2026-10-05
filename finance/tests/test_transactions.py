@@ -3,7 +3,7 @@ mode), deleting, and where you land after saving."""
 
 import html
 import re
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from unittest import mock
 from urllib.parse import parse_qs, urlsplit
@@ -15,10 +15,11 @@ from django.db import connections
 from django.test import RequestFactory, SimpleTestCase
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
+from django.utils import timezone
 
 from .. import models
 from ..forms import TransactionForm
-from ..models import Account, Category, Payee, Transaction
+from ..models import Account, Category, Payee, Profile, Transaction
 from ..views._helpers import _safe_next
 from ..views.transactions import _longer_than_a_year
 from .base import LoggedInTestCase, LoggedInWithAccountTestCase, StashTestCase
@@ -59,7 +60,7 @@ class TransactionNumberingTests(StashTestCase):
         self.assertEqual(following.transaction_number, 10000)
 
 
-@mock.patch("finance.reporting.date")
+@mock.patch("django.utils.timezone.localdate", return_value=TODAY)
 class DefaultViewTests(LoggedInWithAccountTestCase):
     """The transaction list defaults to this year, until you explicitly ask otherwise."""
 
@@ -69,29 +70,95 @@ class DefaultViewTests(LoggedInWithAccountTestCase):
         Transaction.objects.create(account=cls.account, date=date(2026, 3, 1), amount=Decimal("-1.00"))
         Transaction.objects.create(account=cls.account, date=date(2025, 12, 31), amount=Decimal("-1.00"))
 
-    def shown(self, mock_date, **params):
-        mock_date.today.return_value = TODAY
+    def shown(self, mock_today, **params):
         response = self.client.get(reverse("finance:transaction_list"), params)
         return {t.pk for t in response.context["transactions"]}, response
 
-    def test_no_filters_at_all_defaults_to_this_year(self, mock_date):
-        shown, response = self.shown(mock_date)
+    def test_no_filters_at_all_defaults_to_this_year(self, mock_today):
+        shown, response = self.shown(mock_today)
         self.assertEqual(len(shown), 1)
         self.assertEqual(response.context["range"], "this_year")
 
-    def test_explicit_all_time_shows_everything(self, mock_date):
-        shown, response = self.shown(mock_date, range="")
+    def test_explicit_all_dates_shows_everything(self, mock_today):
+        shown, response = self.shown(mock_today, range="")
         self.assertEqual(len(shown), 2)
         self.assertEqual(response.context["range"], "")
 
-    def test_a_named_preset_is_respected(self, mock_date):
-        shown, _response = self.shown(mock_date, range="last_year")
+    def test_a_named_preset_is_respected(self, mock_today):
+        shown, _response = self.shown(mock_today, range="last_year")
         self.assertEqual(len(shown), 1)
 
-    def test_explicit_custom_dates_are_marked_as_custom(self, mock_date):
-        shown, response = self.shown(mock_date, start="2025-01-01", end="2025-12-31")
+    def test_explicit_custom_dates_are_marked_as_custom(self, mock_today):
+        shown, response = self.shown(mock_today, start="2025-01-01", end="2025-12-31")
         self.assertEqual(response.context["range"], "custom")
         self.assertEqual(len(shown), 1)
+
+
+@mock.patch("django.utils.timezone.localdate", return_value=TODAY)
+class TransactionRangeTests(LoggedInWithAccountTestCase):
+    """8.13: "All dates" takes the place of "Earliest to date". 8.14: dates typed into the
+    Start/End boxes are read in the stash's own date format."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.last_year = Transaction.objects.create(account=cls.account, date=date(2025, 12, 31), amount=-1)
+        cls.march = Transaction.objects.create(account=cls.account, date=date(2026, 3, 1), amount=-1)
+        cls.future = Transaction.objects.create(account=cls.account, date=date(2027, 1, 5), amount=-1)
+
+    def shown(self, **params):
+        response = self.client.get(reverse("finance:transaction_list"), params)
+        return {t.pk for t in response.context["transactions"]}, response
+
+    def test_the_range_list_offers_all_dates_and_no_earliest_to_date(self, _today):
+        _shown, response = self.shown()
+        values = [value for value, _label in response.context["range_choices"]]
+        self.assertIn(("", "All dates"), response.context["range_choices"])
+        self.assertNotIn("earliest", values)
+        self.assertIn("custom", values)
+        self.assertNotContains(response, "Earliest to date")
+
+    def test_all_dates_shows_everything_even_a_date_in_the_future(self, _today):
+        shown, _response = self.shown(range="")
+        self.assertEqual(shown, {self.last_year.pk, self.march.pk, self.future.pk})
+
+    def test_all_dates_ignores_the_dates_the_form_still_sends(self, _today):
+        # Picking "All dates" submits the form with the previous range's dates still in the boxes.
+        shown, response = self.shown(range="", start="01/01/2026", end="31/12/2026")
+        self.assertEqual(len(shown), 3)
+        self.assertIsNone(response.context["start"])
+        self.assertIsNone(response.context["end"])
+
+    def test_an_old_earliest_to_date_bookmark_lands_on_all_dates(self, _today):
+        shown, response = self.shown(range="earliest", start="01/01/2026", end="31/12/2026")
+        self.assertEqual(len(shown), 3)
+        self.assertEqual(response.context["range"], "")
+
+    def test_a_custom_range_reads_dates_in_the_stashs_own_format(self, _today):
+        shown, response = self.shown(range="custom", start="01/02/2026", end="31/03/2026")
+        self.assertEqual(shown, {self.march.pk})
+        self.assertEqual((response.context["start"], response.context["end"]), (date(2026, 2, 1), date(2026, 3, 31)))
+
+    def test_a_custom_range_follows_the_stashs_date_format(self, _today):
+        profile = Profile.for_user(self.user)
+        profile.date_format = "mdy"
+        profile.save()
+        shown, _response = self.shown(range="custom", start="02/01/2026", end="03/31/2026")
+        self.assertEqual(shown, {self.march.pk})
+
+    def test_a_preset_still_decides_when_the_range_says_so(self, _today):
+        # The page's script switches the Range dropdown to "Custom range" as soon as a date is typed.
+        shown, _response = self.shown(range="last_year", start="01/02/2026", end="31/03/2026")
+        self.assertEqual(shown, {self.last_year.pk})
+
+    def test_the_date_boxes_switch_the_range_to_custom(self, _today):
+        _shown, response = self.shown()
+        self.assertContains(
+            response, 'name="start" class="form-control form-control-sm" data-datepicker data-range-date'
+        )
+        self.assertContains(
+            response, 'name="end" class="form-control form-control-sm" data-datepicker data-range-date'
+        )
 
 
 class ReconciledFilterTests(LoggedInWithAccountTestCase):
@@ -620,7 +687,16 @@ class SaveAndAddAnotherTests(LoggedInTestCase):
 
     def test_bad_date_in_url_falls_back_to_today(self):
         response = self.client.get(reverse("finance:transaction_add"), {"date": "garbage"})
-        self.assertEqual(response.context["form"].initial["date"], date.today())
+        self.assertEqual(response.context["form"].initial["date"], timezone.localdate())
+
+    @mock.patch("django.utils.timezone.now", return_value=datetime(2026, 10, 5, 12, 0, tzinfo=UTC))
+    def test_today_is_the_stashs_own_date_not_the_computers(self, _now):
+        # 8.1 (F8): noon in London is already the next day in Auckland (UTC+13 in October).
+        profile = Profile.for_user(self.user)
+        profile.time_zone = "Pacific/Auckland"
+        profile.save()
+        response = self.client.get(reverse("finance:transaction_add"))
+        self.assertEqual(response.context["form"].initial["date"], date(2026, 10, 6))
 
 
 class TransactionListEditModeRenderTests(LoggedInTestCase):
@@ -658,6 +734,20 @@ class TransactionListEditModeRenderTests(LoggedInTestCase):
         response = self.client.get(reverse("finance:transaction_list"))
         self.assertContains(response, f'data-category="{transfer_category.pk}" data-category-label="[Savings]"')
         self.assertNotContains(response, f'<option value="{transfer_category.pk}">[Savings]</option>')
+
+    def test_every_filter_sits_in_the_one_fieldset_edit_mode_locks(self):
+        # 8.10b: the script disables the fieldset (and the links) while Edit mode is on.
+        response = self.client.get(reverse("finance:transaction_list"))
+        content = response.content.decode()
+        start = content.index('id="transaction-filters"')
+        form = content[start : content.index("</form>", start)]
+        fieldset = form[form.index('<fieldset id="transaction-filter-fields">') : form.index("</fieldset>")]
+        for name in ("range", "start", "end", "status", "account", "category", "q"):
+            with self.subTest(field=name):
+                self.assertIn(f'name="{name}"', fieldset)
+        self.assertIn(">Filter</button>", fieldset)
+        self.assertIn('id="edit-mode-filter-hint" hidden', form)
+        self.assertIn("Finish editing to change filters.", form)
 
 
 class TransactionQuickEditTests(LoggedInTestCase):

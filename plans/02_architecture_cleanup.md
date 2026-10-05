@@ -13,9 +13,11 @@ question in 3.6, which waits until the cleanup is done; Phase 4 done
 (03/10/2026, 633 tests green in 22 s, coverage 90% → 91%); Phase 6 done
 (03/10/2026, 675 tests green in 23 s, coverage 94%); Phase 7 done in two
 parts (04/10/2026: 7.1-7.3 and the shared bases of 7.4; 05/10/2026: the
-rest of 7.4; 683 tests green in 24 s, coverage 94%); Phase 8 part 1 done
-(05/10/2026: 8.10 and 8.11, 697 tests green, coverage 95%); next: the rest
-of Phase 8.
+rest of 7.4; 683 tests green in 24 s, coverage 94%); Phase 8 done in two
+parts (05/10/2026: 8.10 and 8.11, 697 tests green; then everything else,
+723 tests green in 23 s, coverage 95%). **Every phase is done.** Still
+open: the migrations question in 3.6 (to discuss now) and the
+`git rm -r --cached staticfiles .idea` step in 3.6 (the user runs it).
 
 Work through it phase by phase. Every phase leaves the app working and the
 full test suite green, so we can stop and resume anywhere. Line numbers in
@@ -870,27 +872,47 @@ mentions `TESTING` (a test in `test_project.py` checks); 675 → 683 tests.
 
 ## Phase 8 — Polish and performance  (F8, F23, F29, F34, F39, F40, F48, F51, F56)
 
-- [ ] **8.1** Replace `date.today()` with `timezone.localdate()` everywhere
+- [x] **8.1** Replace `date.today()` with `timezone.localdate()` everywhere
   in app code (forms' `initial=date.today` → a small callable); messages use
   `regional.format_date()` instead of `%d/%m/%Y` (F8).
+  *05/10/2026: done. The messages already used `regional.format_date()`.
+  `timezone.localdate` is itself the callable for `initial=`. One exception
+  (Claude's call): `backup.py` keeps the computer's clock, because it runs
+  before Django is set up and a backup's name says when the file was made
+  here. A test now fails if app code reads the computer's clock for
+  "today" anywhere else.*
 - [x] ~~**8.2** Reports (F28): aggregate in the database grouped by
   `(category, account__currency)` (and period bucket where needed), then
   convert the grouped totals.~~ Moved to the backlog on 27/09/2026 (see
   "Plan review" above). 4.8 does the readability part.
-- [ ] **8.3** Import (F29): load existing fingerprints into a set once per
+- [x] **8.3** Import (F29): load existing fingerprints into a set once per
   import instead of one query per row.
-- [ ] **8.4** Views read `request.stashy_profile` instead of calling
+  *05/10/2026: done. Each new row's fingerprint joins the set, so a row
+  repeated within one file still counts as a duplicate (tested for CSV and
+  OFX).*
+- [x] **8.4** Views read `request.stashy_profile` instead of calling
   `Profile.for_user()` again (F29).
-- [ ] **8.5** Comments (F23, C2): move history notes to DEVLOG.md, keep the
+  *05/10/2026: done in all 11 places; a test checks each main page reads
+  the Profile once.*
+- [x] **8.5** Comments (F23, C2): move history notes to DEVLOG.md, keep the
   "why" of the current code. Do it file by file, alongside other edits to
   that file, not as one giant pass.
   *03/10/2026: done for everything in `finance/views/`, `finance/middleware.py`
   and `stashy/urls.py` during Phase 5.*
-- [ ] **8.6** Net worth: one query grouped by (account, date) plus a running
+  *05/10/2026: done for every other file Phase 8 touched (`reporting.py`,
+  `forms.py`, `services/importing.py`, `stashy.css`, `generic_form.html`).
+  Ticked: what's left follows rule C2 whenever a file is next edited, not
+  as a pass of its own.*
+- [x] **8.6** Net worth: one query grouped by (account, date) plus a running
   sum per column, instead of accounts × periods queries (F34).
-- [ ] **8.7** `generic_form.html`: `unit_words_json|safe` → `json_script`
+  *05/10/2026: done (`reporting._running_balances()`). A test compares every
+  column with a plain per-account sum up to that column's last day, on 120
+  transactions over three accounts and 13 weekly columns; another checks
+  the query count stays the same with more accounts and columns.*
+- [x] **8.7** `generic_form.html`: `unit_words_json|safe` → `json_script`
   (F39).
-- [ ] **8.8** Fix the dead `None` branch in
+  *05/10/2026: done. No `|safe` is left in any template.*
+- [x] **8.8** Fix the dead `None` branch in
   `category_vs_average_report_rows()` totals and decide what the total
   average means when some rows have none (F40) - agree with the user, it's
   a number on screen. **Resolved 27/09/2026 (Claude's call), no question
@@ -904,6 +926,15 @@ mentions `TESTING` (a test in `test_project.py` checks); 675 → 683 tests.
   activity averages 0) leaves `None` only for "no earlier periods at all".
   What remains of 8.8: the test proving the total equals the average of the
   period totals.*
+  *05/10/2026: done. Two findings while writing the test. (1) Each row's
+  average is rounded to the cent before the total adds them, so the total
+  can differ from the exact average of the period totals by a cent or so.
+  Kept as is (Claude's call): the column adds up, as a table's should, and
+  nothing on screen changes. The test uses amounts that divide evenly. (2)
+  The "dead" branch wasn't quite dead: with no earlier periods at all,
+  every row's average is empty but the total said 0.00. The total now
+  stays empty too (Claude's call). Only an export can show that case; the
+  page says "No earlier data to compare with" instead.*
 - [x] ~~**8.9** Period labels (`%b` in `period_bucket()`) depend on the OS
   locale; use a fixed English month table like the rest of the UI.~~
   Dropped 27/09/2026: nothing sets a locale, so `%b` is always English.
@@ -927,12 +958,27 @@ mentions `TESTING` (a test in `test_project.py` checks); 675 → 683 tests.
   go on the first click (a category list per row, a calendar per date
   box). One fix would be to build each row's controls only when they're
   needed.*
-- [ ] **8.10b** Edit mode locks the filters (user, 27/09/2026). While Edit
+  *05/10/2026: done with 8.10b. While Edit mode is on, a row gets its
+  controls as it comes within about a screen of the visible part (an
+  `IntersectionObserver`), so the first click builds a few dozen rows, not
+  a thousand. A row not built yet keeps showing its text. A date box gets
+  its calendar the first time it's focused. Switching modes now changes
+  one class on the table (`stashy.css` hides the right half) instead of
+  toggling thousands of elements. Claude's calls.*
+  *05/10/2026 (user, after trying it): "transactions edit mode is
+  significantly faster".*
+- [x] **8.10b** Edit mode locks the filters (user, 27/09/2026). While Edit
   mode is on, the filter bar (range, dates, status, account, categories,
   search, sort headers) and the page links from 8.11 are disabled, with a
   short hint: "Finish editing to change filters". Today nothing locks them:
   changing one reloads the page and silently leaves Edit mode, and a field
   still being typed in can be lost.
+  *05/10/2026: done. The filter fields sit in one `<fieldset>` that the
+  script disables, which disables every box, dropdown and the Filter
+  button at once. The sort headers, page links and "Clear all filters" are
+  dimmed and ignore clicks and the keyboard. The hint shows above the
+  filters. Export and New transaction stay usable (not in the list).
+  Untested in a browser.*
 - [x] **8.11** Transactions pagination (Q3): Django's `Paginator` with 1,000
   rows per page, only when the range is longer than a year (or unbounded).
   Sorting happens in the database before paging, so page 2 continues the same
@@ -954,7 +1000,7 @@ mentions `TESTING` (a test in `test_project.py` checks); 675 → 683 tests.
 - [x] **8.12a** Do 8.10 and 8.11 early if the page keeps getting slower.
   Neither depends on the phases before it. *Nothing left to do: both were
   done first in Phase 8 (05/10/2026).*
-- [ ] **8.13** Transactions range list: keep "All time" and remove "Earliest
+- [x] **8.13** Transactions range list: keep "All time" and remove "Earliest
   to date" (user, 27/09/2026, changed the same day from the opposite). "All
   time" has no date limits, so it also shows a transaction dated in the
   future by mistake, and nothing can hide. **Reports keeps "Earliest to date"
@@ -964,7 +1010,10 @@ mentions `TESTING` (a test in `test_project.py` checks); 675 → 683 tests.
   **Answered 01/10/2026 (user):** the option is renamed **"All dates"** (on
   Transactions; the URL value can stay as it is). Everything above that says
   "All time" means this option.
-- [ ] **8.14** Typing a Start/End date switches the Range dropdown to "Custom
+  *05/10/2026: done. Choosing "All dates" now also ignores the dates still
+  sitting in the Start/End boxes (the form sends them along); see 8.14 for
+  why that matters now.*
+- [x] **8.14** Typing a Start/End date switches the Range dropdown to "Custom
   range" (user, 27/09/2026). Today, a typed date is silently ignored
   whenever a preset is selected. The switch happens without reloading the
   page. The page updates **only when Filter (Transactions) or Apply (Reports)
@@ -973,16 +1022,33 @@ mentions `TESTING` (a test in `test_project.py` checks); 675 → 683 tests.
   away, as it does now. **Same on Reports (Claude's call):** it has the same
   two fields and the same trap. Tests cover the server side (a custom
   start/end is applied); render-check both pages.
-- [ ] **8.15** Small repeated queries (F56): the dashboard's "due soon" list
+  *05/10/2026: done, in `stashy.js` for any form whose date boxes carry
+  `data-range-date`. Writing the server test found a real bug: the
+  Transactions page read Start/End only as YYYY-MM-DD, but the date boxes
+  (and Reports' "View them" link for uncategorized transactions) send
+  DD/MM/YYYY. So a typed custom range was dropped even with "Custom range"
+  selected, and the page showed every date. Now the dates are read in the
+  stash's own date format (`regional.parse_date()`, which also accepts
+  YYYY-MM-DD for the dashboard's links).*
+- [x] **8.15** Small repeated queries (F56): the dashboard's "due soon" list
   and the reminder list load each reminder's payee and category, and the
   category's parent, one row at a time. Add `select_related("payee",
   "category__parent")`. `export_accounts` and the admin's account list
   compute each balance with its own query; use `with_balances()`.
-- [ ] **8.12** Dead code (F51): delete `scripts/load_test_data.py` (its
+  *05/10/2026: done. Four tests check the query count doesn't grow with
+  more reminders or accounts; each fails on the old code.*
+- [x] **8.12** Dead code (F51): delete `scripts/load_test_data.py` (its
   input file is gone) and `reporting.category_totals()` together with the
   tests that only cover it.
+  *05/10/2026: done. Claude's call: `category_totals()`'s eight tests
+  checked rules every report shares (a category's type decides, transfers
+  and uncategorized rows left out, the account filter, conversion), so
+  they now run against its live twin, `category_totals_top_level()`,
+  instead of being deleted.*
 
 **Done when:** reports produce identical numbers; suite green.
+*05/10/2026: done. Report numbers are unchanged except the two 8.8 cases
+and the 8.14 bug fix noted above.*
 
 ---
 

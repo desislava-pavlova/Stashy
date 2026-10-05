@@ -13,8 +13,11 @@
 <div id="transactions-csrf" class="d-none">{% csrf_token %}</div>
 <datalist id="quick-edit-payee-names"></datalist>
 
-<form method="get" class="card p-3 mb-3">
+<form method="get" class="card p-3 mb-3" id="transaction-filters">
     {% if with_subcategories %}<input type="hidden" name="with_subcategories" value="1">{% endif %}
+    <p class="small text-body-secondary mb-2" id="edit-mode-filter-hint" hidden><i class="bi bi-lock me-1" aria-hidden="true"></i>Finish editing to change filters.</p>
+    {# Edit mode disables everything in here at once (transaction-quick-edit.js). #}
+    <fieldset id="transaction-filter-fields">
     <div class="row g-2 mb-2">
         <div class="col-md-3">
             <select name="range" class="form-select form-select-sm" onchange="this.form.submit()" aria-label="Date range">
@@ -22,10 +25,10 @@
             </select>
         </div>
         <div class="col-md-3">
-            <input type="text" name="start" class="form-control form-control-sm" data-datepicker placeholder="Start" value="{{ start|sdate }}" aria-label="Start date">
+            <input type="text" name="start" class="form-control form-control-sm" data-datepicker data-range-date placeholder="Start" value="{{ start|sdate }}" aria-label="Start date" autocomplete="off">
         </div>
         <div class="col-md-3">
-            <input type="text" name="end" class="form-control form-control-sm" data-datepicker placeholder="End" value="{{ end|sdate }}" aria-label="End date">
+            <input type="text" name="end" class="form-control form-control-sm" data-datepicker data-range-date placeholder="End" value="{{ end|sdate }}" aria-label="End date" autocomplete="off">
         </div>
         <div class="col-md-3">
             <select name="status" class="form-select form-select-sm" onchange="this.form.submit()" aria-label="Reconciliation status">
@@ -52,6 +55,7 @@
             <button class="btn btn-sm btn-outline-secondary w-100">Filter</button>
         </div>
     </div>
+    </fieldset>
     {% if with_subcategories and selected_category_obj %}
     <div class="d-flex flex-wrap align-items-center gap-2 mt-2 small">
         <span class="filter-chip"><i class="bi bi-diagram-3"></i>{{ selected_category_obj.name }} + subcategories</span>

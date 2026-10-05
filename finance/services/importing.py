@@ -85,7 +85,7 @@ def _read_csv(upload):
     """(fieldnames, rows, encoding note) from an uploaded CSV.
 
     UTF-8 first (with or without Excel's BOM). Bulgarian bank exports are often Windows-1251,
-    so that's the fallback (Claude's call, plan 02 item 1.10) - and the summary says so, since a
+    so that's the fallback - and the summary says so, since a
     Western file in Windows-1252 would come out with Cyrillic letters in place of its accents.
     """
     raw = upload.read()
@@ -186,6 +186,7 @@ def _import_rows(fieldnames, rows, account, batch, date_format="auto"):
     date_formats = regional.Preferences(date_format=date_format).date_input_formats
 
     accounts_by_name = {a.name.lower(): a for a in Account.objects.all()}
+    known = _known_fingerprints()
 
     result = ImportResult(date_format=date_format)
     for row in rows:
@@ -214,9 +215,10 @@ def _import_rows(fieldnames, rows, account, batch, date_format="auto"):
                 continue
 
         fp = _fingerprint(row_account.id, txn_date, amount, payee_name)
-        if Transaction.objects.filter(import_fingerprint=fp).exists():
+        if fp in known:
             result.duplicates += 1
             continue
+        known.add(fp)
 
         payee = Payee.objects.resolve(payee_name, reason=None) if payee_name else None
         category = _resolve_category(raw_category, amount) if raw_category else _guessed_category(payee)
@@ -240,15 +242,17 @@ def _import_rows(fieldnames, rows, account, batch, date_format="auto"):
 
 def _import_ofx_rows(ofx_rows, account, batch):
     result = ImportResult()
+    known = _known_fingerprints()
     for txn_date, raw_amount, payee_name, memo in ofx_rows:
         amount = parse_amount(raw_amount)
         if amount is None:
             result.unreadable += 1
             continue
         fp = _fingerprint(account.id, txn_date, amount, payee_name)
-        if Transaction.objects.filter(import_fingerprint=fp).exists():
+        if fp in known:
             result.duplicates += 1
             continue
+        known.add(fp)
         payee = Payee.objects.resolve(payee_name, reason=None) if payee_name else None
         Transaction.objects.create(
             account=account,
@@ -263,6 +267,12 @@ def _import_ofx_rows(ofx_rows, account, batch):
         result.created += 1
     # OFX has no per-row account text field and no ambiguous textual dates to detect.
     return result
+
+
+def _known_fingerprints():
+    """Every fingerprint already stored, read in one query. Each row the import creates adds
+    its own, so a row repeated within the same file counts as a duplicate too."""
+    return set(Transaction.objects.exclude(import_fingerprint="").values_list("import_fingerprint", flat=True))
 
 
 def _fingerprint(account_id, txn_date, amount, payee):
@@ -286,7 +296,7 @@ _CATEGORY_SEPARATOR_RE = re.compile(r"\s*[:>]\s*")
 
 def _resolve_category(raw, amount):
     """Resolve the category named in an import row, auto-creating it if Stashy doesn't already
-    have one by that name (Phase 9) - the main real-world use of this importer is a large
+    have one by that name - the main real-world use of this importer is a large
     one-time historical migration, and requiring every category to exist beforehand would be
     exactly the kind of friction that makes migrations painful. Matching is case-insensitive,
     so "Groceries" from a file never creates a duplicate of an existing "groceries". Understands

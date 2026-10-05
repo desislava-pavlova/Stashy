@@ -1,9 +1,8 @@
-from datetime import date
-
 from django import forms
 from django.core.exceptions import ValidationError
 from django.core.validators import FileExtensionValidator
 from django.db.models import Q
+from django.utils import timezone
 
 from audit.context import system_action
 
@@ -87,12 +86,12 @@ class AccountForm(BootstrapFormMixin, forms.ModelForm):
 
 class AccountCreateForm(AccountForm):
     """Account creation also asks for an opening balance, which becomes a real transaction (D1).
-    Every new account gets one, even a zero-amount one dated today by default (2026-09-15
-    follow-up) - so a fresh account's register never starts empty, and reconciliation always
+    Every new account gets one, even a zero-amount one dated today by default, so a fresh
+    account's register never starts empty, and reconciliation always
     has a starting transaction to reconcile from."""
 
     opening_balance = forms.DecimalField(max_digits=12, decimal_places=2, required=False, initial=0)
-    opening_balance_date = forms.DateField(required=False, widget=DateInput(), initial=date.today)
+    opening_balance_date = forms.DateField(required=False, widget=DateInput(), initial=timezone.localdate)
 
     field_order = [
         "name",
@@ -115,7 +114,7 @@ class AccountCreateForm(AccountForm):
         if cleaned.get("opening_balance") is None:
             cleaned["opening_balance"] = ZERO
         if not cleaned.get("opening_balance_date"):
-            cleaned["opening_balance_date"] = date.today()
+            cleaned["opening_balance_date"] = timezone.localdate()
         if not cleaned.get("is_active", True) and cleaned.get("opening_balance"):
             raise ValidationError("A new account can't be inactive if it has an opening balance.")
         return cleaned
@@ -141,7 +140,7 @@ class TransferForm(forms.Form):
 
     to_account = forms.ModelChoiceField(queryset=Account.objects.none(), label="Transfer to")
     amount = forms.DecimalField(max_digits=12, decimal_places=2, min_value=0.01, help_text="Enter a positive amount.")
-    date = forms.DateField(widget=DateInput(), initial=date.today)
+    date = forms.DateField(widget=DateInput(), initial=timezone.localdate)
 
     def __init__(self, *args, from_account=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -186,9 +185,9 @@ class TransferForm(forms.Form):
 
 
 class ReconcileStartForm(forms.Form):
-    """Step 1 of the account page's Reconcile button (Phase 8): what your statement says."""
+    """Step 1 of the account page's Reconcile button: what your statement says."""
 
-    statement_date = forms.DateField(widget=DateInput(), initial=date.today)
+    statement_date = forms.DateField(widget=DateInput(), initial=timezone.localdate)
     statement_balance = forms.DecimalField(
         max_digits=12,
         decimal_places=2,
@@ -202,7 +201,7 @@ class ReconcileStartForm(forms.Form):
 
 
 class ReconcileFinishForm(forms.Form):
-    """Step 2's "Finish reconciling" (Phase 8): the statement figures carried over from step 1
+    """Step 2's "Finish reconciling": the statement figures carried over from step 1
     in hidden fields, plus the ticked transactions. Validated like any other form, so a
     tampered or half-sent submission gets a message instead of a server error."""
 
@@ -218,7 +217,7 @@ class ReconcileFinishForm(forms.Form):
 
 class CategoryParentSelect(forms.Select):
     """Tags each <option> with its category's own type, so JS can narrow the Parent list to
-    only categories matching whichever type is currently chosen above (Phase 4)."""
+    only categories matching whichever type is currently chosen above."""
 
     def __init__(self, *args, categories_by_id=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -331,7 +330,7 @@ class TransactionForm(BootstrapFormMixin, forms.ModelForm):
 
 class ReminderForm(BootstrapFormMixin, forms.ModelForm):
     # Not a model field - a friendlier affordance than "just leave the date blank" for a
-    # reminder with no end date (Phase 7).
+    # reminder with no end date.
     no_end_date = forms.BooleanField(required=False, label="No end date")
 
     class Meta:
@@ -385,7 +384,7 @@ class ReminderForm(BootstrapFormMixin, forms.ModelForm):
         if not cleaned.get("interval"):
             cleaned["interval"] = 1
         # An auto-generated occurrence (series is set) can't become its own new recurring
-        # series head - it exists to represent one specific future date (2026-09-14 follow-up).
+        # series head - it exists to represent one specific future date.
         if self.instance.series_id and cleaned.get("frequency") != Reminder.Frequency.ONE_TIME:
             raise ValidationError(
                 "This reminder was auto-generated from a recurring one, so it can't have its "
@@ -432,7 +431,7 @@ class DateRangeFilterForm(forms.Form):
         ("custom", "Custom range"),
     ]
     # How many periods the same length as the selected date range to average against,
-    # immediately preceding it (2026-09-15 follow-up) - not a separate bucketing granularity;
+    # immediately preceding it - not a separate bucketing granularity;
     # see reporting.vs_average_periods().
     INTERVAL_CHOICES = [
         ("3", "Last 3 periods"),
@@ -452,11 +451,12 @@ class DateRangeFilterForm(forms.Form):
         ("year", "Year"),
     ]
 
-    # R3 (Phase 13): reports default to This month, Last 3 periods - a fresh, unbound form
+    # R3: reports default to This month, Last 3 periods - a fresh, unbound form
     # shows these as selected even before any filter is submitted.
     range = forms.ChoiceField(choices=RANGE_CHOICES, required=False, initial="this_month")
-    start = forms.DateField(required=False, widget=DateInput())
-    end = forms.DateField(required=False, widget=DateInput())
+    # data-range-date: typing a date switches Range to "Custom range" (stashy.js).
+    start = forms.DateField(required=False, widget=DateInput(attrs={"data-range-date": ""}))
+    end = forms.DateField(required=False, widget=DateInput(attrs={"data-range-date": ""}))
     interval = forms.ChoiceField(choices=INTERVAL_CHOICES, required=False, initial="3", label="Average interval")
     subtotal = forms.ChoiceField(choices=SUBTOTAL_CHOICES, required=False, label="Subtotal by")
     account = forms.ModelChoiceField(queryset=Account.objects.all(), required=False)

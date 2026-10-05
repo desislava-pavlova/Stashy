@@ -103,8 +103,8 @@
 {% if form.frequency and form.end_date %}
 <script>
 (function () {
-    // A one-time reminder has no period to end, align to the end of, or repeat every N of
-    // (2026-09-14) - hide those fields rather than leave them sitting there with nothing to do.
+    // A one-time reminder has no period to end, align to the end of, or repeat every N of -
+    // hide those fields rather than leave them sitting there with nothing to do.
     var freqField = document.getElementById('{{ form.frequency.id_for_label }}');
     var rows = ['end_date', 'no_end_date', 'end_of_period', 'interval'].map(function (name) {
         return document.getElementById('field-' + name);
@@ -122,14 +122,14 @@
 </script>
 {% endif %}
 {% if form.interval %}
+{{ unit_words|json_script:"frequency-unit-words" }}
 <script>
 (function () {
-    // Shows the picked frequency's unit word next to the "Every" field, e.g. "Every [2]
-    // week(s)" - replaces the old fixed "Every 2 weeks" choice (2026-09-14 follow-up).
+    // Shows the picked frequency's unit word next to the "Every" field, e.g. "Every [2] week(s)".
     var freqField = document.getElementById('{{ form.frequency.id_for_label }}');
     var intervalInput = document.getElementById('{{ form.interval.id_for_label }}');
     if (!freqField || !intervalInput) return;
-    var unitWords = {{ unit_words_json|default:"{}"|safe }};
+    var unitWords = JSON.parse(document.getElementById('frequency-unit-words').textContent);
     var unitSpan = document.createElement('span');
     unitSpan.className = 'ms-2 text-muted';
     intervalInput.insertAdjacentElement('afterend', unitSpan);

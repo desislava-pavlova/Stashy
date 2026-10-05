@@ -1,5 +1,3 @@
-from datetime import date
-
 from django.contrib import messages
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse_lazy
@@ -9,7 +7,7 @@ from .. import regional
 from ..content import ACCOUNT_TIPS
 from ..currency import SUFFIX_CURRENCIES, convert_balances, format_money
 from ..forms import AccountCreateForm, AccountForm, ReconcileFinishForm, ReconcileStartForm, TransferForm
-from ..models import Account, Profile, grouped_accounts
+from ..models import Account, grouped_accounts
 from ..money import ZERO
 from ..services import reconciliation
 from ._helpers import _paged, _sorted
@@ -25,7 +23,7 @@ class AccountListView(ListView):
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        main_currency = Profile.for_user(self.request.user).main_currency
+        main_currency = self.request.stashy_profile.main_currency
         net_worth, missing_rates = convert_balances(ctx["accounts"], main_currency)
         ctx["net_worth"] = net_worth
         ctx["main_currency"] = main_currency
@@ -153,7 +151,7 @@ def account_reconcile(request, pk):
                 "finance/account_reconcile_start.html",
                 {
                     "account": account,
-                    "form": ReconcileStartForm(initial={"statement_date": date.today()}),
+                    "form": ReconcileStartForm(),
                     "opening_balance": account.reconciled_balance(),
                 },
             )
@@ -194,7 +192,7 @@ def account_reconcile(request, pk):
                 ),
             )
     else:
-        start_form = ReconcileStartForm(initial={"statement_date": date.today()})
+        start_form = ReconcileStartForm()
 
     return render(
         request,

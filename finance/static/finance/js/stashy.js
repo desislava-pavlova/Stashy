@@ -53,12 +53,25 @@
     // Global so a date box added after the page loaded (the Transactions page's Edit mode)
     // gets the same picker.
     window.stashyDatepicker = function (input) {
-        flatpickr(input, {
+        return flatpickr(input, {
             dateFormat: dateFormat, allowInput: true,
             locale: { firstDayOfWeek: isNaN(firstDayOfWeek) ? 1 : firstDayOfWeek },
         });
     };
     document.querySelectorAll('input[data-datepicker]').forEach(function (input) {
         window.stashyDatepicker(input);
+    });
+
+    // Typing (or picking) a Start/End date means a range of your own, so the form's Range
+    // dropdown switches to "Custom range" straight away. Setting it from here fires no change
+    // event, so nothing reloads: the page updates when you click Filter or Apply.
+    document.querySelectorAll('input[data-range-date]').forEach(function (input) {
+        var range = input.form && input.form.elements.namedItem('range');
+        if (!range) return;
+        ['input', 'change'].forEach(function (type) {
+            input.addEventListener(type, function () {
+                if (range.value !== 'custom') range.value = 'custom';
+            });
+        });
     });
 })();

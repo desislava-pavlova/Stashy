@@ -3,11 +3,15 @@ and accounts named in a file, guessing a category from the payee's history, date
 and the messages for files that can't be read."""
 
 import io
+import re
 from datetime import date, datetime
 from decimal import Decimal
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db import connections
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from openpyxl import Workbook
 
@@ -310,6 +314,29 @@ class ImportFileTests(StashTestCase):
         result = importing.import_file(csv_upload(text), self.account)
         self.assertEqual((result.created, result.duplicates), (0, 1))
         self.assertEqual(Transaction.objects.count(), 1)
+
+    def test_a_row_repeated_within_one_file_is_a_duplicate(self):
+        text = "Date,Payee,Amount\n2026-01-05,Lidl,-3.00\n2026-01-05,Lidl,-3.00\n"
+        result = importing.import_file(csv_upload(text), self.account)
+        self.assertEqual((result.created, result.duplicates), (1, 1))
+
+    def test_a_transaction_repeated_within_one_ofx_file_is_a_duplicate(self):
+        transaction = re.search(rb"<STMTTRN>.*?</STMTTRN>", OFX_FILE).group()
+        repeated = OFX_FILE.replace(transaction, transaction * 2)
+        result = importing.import_file(SimpleUploadedFile("bank.ofx", repeated), self.account)
+        self.assertEqual((result.created, result.duplicates), (1, 1))
+
+    def test_stored_fingerprints_are_read_once_not_once_per_row(self):
+        # 8.3 (F29): one query for the whole file, however many rows it has.
+        rows = "".join(f"2026-01-{day:02d},Lidl,-{day}.00\n" for day in range(1, 29))
+        with CaptureQueriesContext(connections[settings.TEST_STASH]) as queries:
+            result = importing.import_file(csv_upload("Date,Payee,Amount\n" + rows), self.account)
+        self.assertEqual(result.created, 28)
+        # Other queries read the column along with the rest of a row; these filter on it.
+        fingerprint_lookups = [
+            q["sql"] for q in queries.captured_queries if "import_fingerprint" in q["sql"].partition("WHERE")[2]
+        ]
+        self.assertEqual(len(fingerprint_lookups), 1)
 
     def test_an_existing_payee_keeps_its_spelling(self):
         lidl = Payee.objects.create(name="Lidl")

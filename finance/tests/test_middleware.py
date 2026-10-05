@@ -21,7 +21,7 @@ from ..middleware import (
 )
 from ..models import Profile
 from ..stashes import registry
-from .base import StashTestCase, TemporaryStashesMixin
+from .base import AlexsStashTestCase, StashTestCase, TemporaryStashesMixin
 
 
 class StashSelectionMiddlewareTests(SimpleTestCase):
@@ -328,3 +328,17 @@ class MiddlewareChainTests(StashTestCase):
             response = self.client.get(reverse("finance:dashboard"))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(placeholder_queries), 0)
+
+
+class ProfileFetchedOnceTests(AlexsStashTestCase):
+    """8.4 (F29): RegionalPreferencesMiddleware fetches the Profile, and the views and the
+    templates reuse it (request.stashy_profile) instead of asking the database again."""
+
+    def test_each_page_reads_the_profile_once(self):
+        pages = ("dashboard", "account_list", "transaction_list", "reports", "settings")
+        for name in (f"finance:{page}" for page in pages):
+            with self.subTest(page=name):
+                with CaptureQueriesContext(connections[settings.TEST_STASH]) as queries:
+                    self.assertEqual(self.client.get(reverse(name)).status_code, 200)
+                profile_reads = [q for q in queries.captured_queries if 'FROM "finance_profile" ' in q["sql"]]
+                self.assertEqual(len(profile_reads), 1)

@@ -46,6 +46,10 @@ class AccountAdmin(AuditHistoryAdminMixin, admin.ModelAdmin):
     list_filter = ("account_type", "currency", "is_active")
     search_fields = ("name", "institution")
 
+    def get_queryset(self, request):
+        # Every balance in the list comes from the same query, not one extra query per account.
+        return super().get_queryset(request).with_balances()
+
     def get_readonly_fields(self, request, obj=None):
         # Account.clean() refuses a new currency once transactions exist; show it as text instead.
         if obj is not None and obj.transactions.exists():
