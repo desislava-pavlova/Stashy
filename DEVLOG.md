@@ -4557,3 +4557,165 @@ haven't been tried in a browser yet.
 `test_reminders.py`, `test_dashboard.py`, `test_exports.py`,
 `test_admin.py`, `test_reports.py`; `README.md`, `CLAUDE.md`, `DEVLOG.md`,
 `plans/02_architecture_cleanup.md`, `plans/README.md`.
+
+---
+
+## 10/10/2026 — Structure review: plan 05 written (no code changes)
+
+**What changed:** No application code. A second full pass over the code,
+after plan 02 finished, produced `plans/05_structure_review.md`: 21
+findings (S1–S21) in 5 phases, plus two questions for you (Q1, Q2).
+`plans/README.md` and `CLAUDE.md` list the new plan.
+
+**How it was checked**, beyond reading every file:
+- **A dead-code scan:** every function, method and constant name, counted
+  across Python, templates and JavaScript, split into "used by the app"
+  and "used only by tests".
+- **The same kind of count for templates, static files, URL names, CSS
+  classes and CSS tokens.**
+- **A throwaway test** run through the real middleware, to confirm each
+  suspected bug before writing it down.
+- **The full suite** (723 green), ruff, `manage.py check` and
+  `check --deploy`.
+
+**The most important findings** (details and fixes in the plan):
+- **Four small real bugs:**
+  - A transfer of exactly 0.01 is refused (S1).
+  - Two hand-edited URLs crash instead of saying "not found" (S2).
+  - The Income & expense vs average export lacks the two total rows the
+    page shows (S3).
+  - Dropdowns sort "Вода" before "бензин" (S4).
+- **21 tests only check that something removed stays removed** (S11).
+  They can't fail unless someone re-adds the old field on purpose.
+- **Inside the app, getting a new recovery code is easier than changing
+  the PIN** (S7, Q1). Change PIN asks for the current PIN. New recovery
+  code asks for nothing, and that code can then set a new PIN.
+- **The Reports page is one 231-line function** (S14). The bug in S3
+  comes from that: part of one report's logic lives only in the view, so
+  the export never sees it.
+
+**Teaching note — a test should be able to fail for a reason you care
+about.** When a field is removed, it's tempting to add a test that it's
+gone. But that test can only fail if someone deliberately adds the field
+back, and then they'd delete the test too. It guards history, not
+behaviour. The useful question for any test is: "What mistake would make
+this fail?" If the honest answer is "none anyone would make by accident",
+the test costs reading time and suite time and protects nothing. The
+opposite also exists: a test that *should* catch something but checks the
+wrong place. The export tests passed while one export missed two rows:
+they check the numbers in single rows, but never compare the export's list
+of rows with the page's. Good tests usually compare two things that are
+supposed to agree.
+
+**Files touched:** `plans/05_structure_review.md` (new),
+`plans/README.md`, `CLAUDE.md`, this log.
+
+---
+
+## 10/10/2026 — Plans renumbered; migrations question moved to plan 03's end
+
+**What changed:** No application code.
+- **Renumbered (your call), so the numbers follow the order the work
+  happens:**
+  - The structure review from the entry above (written as plan 05) is now
+    **plan 03**: the developer's side, making the code as fit as possible.
+  - The fixes and changes plan went from 03 to **04**: the user's side,
+    what you see and use.
+  - The .exe plan went from 04 to **05**: packaging comes last.
+- **Plan 02's item 3.6 closed as saved for later.** Its two open parts
+  (whether migrations go into git, and your
+  `git rm -r --cached staticfiles .idea`) are now plan 03's Phase 6. That
+  phase always stays the last one, whatever is added to the plan.
+- **Q1 answered (yes).** A new recovery code will ask for the current PIN.
+  Wrong PINs on Change PIN and New recovery code will count toward the
+  lockout, and reaching it logs you out. Q2 (Content-Security-Policy) waits
+  for you: you asked for more detail, which is now in plan 03.
+- **A place for your own findings:** plan 03 has an "add to 03" table (S22
+  onwards) for anything that looks odd while you read the code.
+- **How this log is written:** CLAUDE.md now says it outright. This log
+  follows the app's development in order, with the reasoning behind each
+  code decision. An entry is never rewritten later; if something it
+  describes changes or disappears, a later entry says why. "You asked for
+  it" is reason enough.
+
+**Why the references were handled two ways:** a plan number is a name that
+other text points at. Living files that describe today were updated to the
+new numbers:
+- the plans themselves, `plans/README.md`, `CLAUDE.md` and `README.md`;
+- six comments in the tests and in `settings/base.py`, such as
+  "Plan 03 R5" → "Plan 04 R5".
+
+History was left as it was: older entries in this log, and plan 02 (which
+is finished). Both get a forwarding note instead, in `plans/README.md` and
+at the top of plan 02. There, "plan 03" means today's 04, and "plan 04"
+today's 05.
+
+**Teaching note — renaming something other things point at.** Renaming is
+only half the job. The other half is every reference to the old name. A
+code editor's "rename symbol" does this for code. For words in documents
+it's a search for the old name, then a decision for each hit: is this text
+describing *now* (update it) or recording *then* (leave it, and add a
+pointer)? Django makes the same choice with database tables. A model
+rename gets a migration that renames the table and keeps its rows, rather
+than dropping the old table and starting fresh. And the order of the steps
+matters: here 03 → 04 → 05 could be moved one at a time only because no two
+files ever wanted the same name at once. Had they clashed, one file would
+first have needed a temporary name.
+
+**Files touched:** `plans/03_structure_review.md` (was
+`05_structure_review.md`, never committed), `plans/04_fixes_and_changes_plan.md`
+(was `03_…`), `plans/05_exe_packaging.md` (was `04_…`),
+`plans/02_architecture_cleanup.md`, `plans/README.md`, `CLAUDE.md`,
+`README.md`, `stashy/settings/base.py`, `finance/tests/__init__.py`,
+`test_backup.py`, `test_exports.py`, `test_reporting.py`, `test_reports.py`
+(comments only), this log.
+
+---
+
+## 23/10/2026 — Plan 05 written: the admin's look; the .exe plan becomes 06
+
+**What changed:** No application code.
+- **A new plan 05, the admin's look** (`plans/05_admin_look.md`). The
+  admin gets Stashy's fonts and colours but stays recognisable as the
+  admin: a bark-brown top bar with a gold "Admin" tag, where the website
+  has its green sidebar. One light/dark switch will serve both. Two
+  phases, nothing built yet.
+- **The .exe plan moved from 05 to 06** (your call), so packaging still
+  comes last, as first intended.
+- The idea was filed as plan 04's row R10 earlier the same day. That row
+  now points to plan 05.
+- Plan 04's table had a blank line in the middle, which cut it in two:
+  rows R4 onwards showed as plain text. Removed.
+
+**Why its own plan:** Claude first filed it as R10, to avoid renumbering
+the .exe plan only two weeks after the last renumbering. On a closer look
+that cost was small. The 10/10 renumbering isn't committed yet, so git
+will see the .exe plan go straight from 04 to 06. And your point held:
+plan 04's rows are small fixes, while this is a feature with its own
+design, a change to how the website's CSS is organised, and two phases.
+
+**References, handled the same way as on 10/10:** the living files were
+updated (plans 03, 04 and 06, `plans/README.md`, `CLAUDE.md`, and plan
+02's forwarding note, whose job is to point at today's numbers). Older
+entries in this log keep "plan 05" for the .exe, and `plans/README.md`
+says so.
+
+**Teaching note — why a template override can silently do nothing.**
+Django finds a template by asking each template folder in turn and takes
+the first file with that name. With `APP_DIRS`, those folders are the
+apps' own `templates/` folders, in the order of `INSTALLED_APPS`.
+`django.contrib.admin` is listed before `finance`, so a
+`finance/templates/admin/base_site.html` would never be reached: Django
+finds its own copy first, raises no error, and the page just looks
+unchanged. That's why plan 05's phase 2 starts by fixing the order (or by
+adding a `DIRS` folder, which is searched before any app) and a test that
+checks which file was used. The colours are the easy part, for a related
+reason: since Django 3.2 the admin's stylesheet takes nearly every colour
+from CSS variables (`--primary`, `--header-bg`, …). One small file loaded
+after it can redefine them all, and Django's own CSS does the rest.
+
+**Files touched:** `plans/05_admin_look.md` (new),
+`plans/06_exe_packaging.md` (was `05_…`, never committed),
+`plans/04_fixes_and_changes_plan.md`, `plans/03_structure_review.md`,
+`plans/02_architecture_cleanup.md`, `plans/README.md`, `CLAUDE.md`, this
+log.

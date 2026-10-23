@@ -284,8 +284,8 @@ Stashy/
   by `coverage report`.
 - After changing a model, run `python manage.py makemigrations`.
   `Stashy.bat` applies the new migration to every stash (after a backup) on
-  its next launch. Migration files aren't in git for now (see plan 02, item
-  3.6).
+  its next launch. Migration files aren't in git for now; whether they go
+  in is decided in the last phase of plan 03.
 - Planned work lives in `plans/`, and the reasoning behind past changes in
   `DEVLOG.md`.
 

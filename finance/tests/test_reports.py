@@ -314,7 +314,7 @@ class AverageDisplayTests(LoggedInWithAccountTestCase):
         self.assertContains(response, 'id="spendingVsAverageChart"')
 
     def test_a_category_without_earlier_activity_averages_zero(self):
-        # Plan 03 R6 (03/10/2026) replaced "no earlier activity = no average": once earlier
+        # Plan 04 R6 (03/10/2026) replaced "no earlier activity = no average": once earlier
         # periods exist, a category that had nothing in them averages 0.
         start, end = date(2026, 3, 1), date(2026, 3, 31)
         seen_before = Category.objects.create(name="Rent", category_type=Category.CategoryType.EXPENSE)
@@ -485,7 +485,7 @@ class WatchedExpensesPickerTests(StashTestCase):
 
 
 class NoEarlierActivityAveragesZeroTests(LoggedInWithAccountTestCase):
-    """Plan 03 R6: with earlier periods to compare with, a category that had nothing in them
+    """Plan 04 R6: with earlier periods to compare with, a category that had nothing in them
     averages 0 - the page shows "—" for it but fills in the difference and draws the dot."""
 
     @classmethod

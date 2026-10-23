@@ -15,9 +15,13 @@ question in 3.6, which waits until the cleanup is done; Phase 4 done
 parts (04/10/2026: 7.1-7.3 and the shared bases of 7.4; 05/10/2026: the
 rest of 7.4; 683 tests green in 24 s, coverage 94%); Phase 8 done in two
 parts (05/10/2026: 8.10 and 8.11, 697 tests green; then everything else,
-723 tests green in 23 s, coverage 95%). **Every phase is done.** Still
-open: the migrations question in 3.6 (to discuss now) and the
-`git rm -r --cached staticfiles .idea` step in 3.6 (the user runs it).
+723 tests green in 23 s, coverage 95%). **Every phase is done.** Item 3.6's
+two open parts (the migrations question and the
+`git rm -r --cached staticfiles .idea` step) were closed here on 10/10/2026
+as saved for later, and moved to the last phase of plan 03 (the structure
+review). **The plans were renumbered that day:** in this file, "plan 03"
+means today's plan 04 (fixes and changes), and "plan 04" today's plan 06
+(the .exe; it was 05 from 10/10 to 23/10/2026).
 
 Work through it phase by phase. Every phase leaves the app working and the
 full test suite green, so we can stop and resume anywhere. Line numbers in
@@ -585,7 +589,7 @@ rejected at the database level.
   *Done: `manage.py` picks `test.py` for the `test` command. The suite went
   from 298 s to 15 s. Folder locations (`STASHES_DIR`, `STATIC_ROOT`,
   `LOG_DIR`) sit together at the top of `base.py` for plan 04.*
-- [ ] **3.6** Repo hygiene (F27): *(`staticfiles/` and `logs/` ignored on
+- [x] **3.6** Repo hygiene (F27): *(`staticfiles/` and `logs/` ignored on
   02/10/2026; the `git rm` and the migrations question below still open)* add `staticfiles/` to `.gitignore`
   (`_picker.sqlite3` and `backups/` are already there; `all_data.xlsx` and
   `test_data.TXT` are gone). Untracking needs
@@ -597,6 +601,10 @@ rejected at the database level.
   `finance/migrations/0001_initial.py`. A fresh clone gets models that no
   committed migration builds. Options: commit them all, or keep them local
   and accept that the repo alone can't set up a new copy.
+  *10/10/2026: closed here as saved for later (your call). The ignore rules
+  were done on 02/10/2026. The two open parts, the migrations question and
+  your `git rm`, moved to plan 03's Phase 6, which always stays that plan's
+  last phase.*
 - [x] **3.7** `bootstrap.py` writes `DEBUG=False` into new `.env` files
   (F37). Existing `.env` files are the user's to change - tell them, don't
   edit them. Check that WhiteNoise still serves static files with

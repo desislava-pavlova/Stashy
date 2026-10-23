@@ -1,8 +1,9 @@
 # CLAUDE.md — working on Stashy
 
 This file is for Claude: the rules, map and pitfalls of this project.
-`DEVLOG.md` is for the user: what changed and *why*, written to teach.
-`plans/` holds what is planned. Keep all three current. Don't copy one
+`DEVLOG.md` is the app's development history, in order: each code decision
+with a developer's reasoning behind it, written to teach (see "After each
+piece of work"). `plans/` holds what is planned. Keep all three current. Don't copy one
 into another. `CLAUDE.local.md` (gitignored) holds facts true only on the
 user's computer: which stash holds real data, and the port. Read it too.
 
@@ -219,7 +220,7 @@ terms.
   The vs-average reports need at least two earlier periods ("No earlier
   data to compare with." otherwise). Within them, empty periods count as
   real zeros, and a category with no earlier activity averages **0**
-  (plan 03 R6, 03/10/2026, replacing the 16/09 "no average" rule). Rows
+  (plan 04 R6, 03/10/2026, replacing the 16/09 "no average" rule). Rows
   carry `no_earlier_activity`: the page shows "—" for that average but
   fills in the difference and draws the dot at 0, and the export writes
   0.00. For a main category, its subcategories' earlier activity counts.
@@ -268,13 +269,34 @@ terms.
   `plans/README.md` indexes them. `plans/` and `DEVLOG.md` are committed
   (since 27/09/2026), so the personal-data rule above applies to them.
   - 01, upgrade plan: done.
+  - Renumbered on 10/10/2026 so the numbers follow the order of the work.
+    Older DEVLOG entries and plan 02 use the old numbers (their "plan 03"
+    is today's 04, their "plan 04" today's 06). On 23/10/2026 the .exe plan
+    moved again, from 05 to 06, to make room for the admin plan, so
+    entries from 10/10 to 22/10 call the .exe "plan 05";
+    `plans/README.md` explains.
   - **02, architecture cleanup:** F1–F58 findings, 8 phases, all done
-    (05/10/2026). Only item 3.6 is open: committing migrations (to discuss
-    with the user) and the user's own `git rm -r --cached staticfiles .idea`.
-  - **03, fixes and changes plan:** collects the user's bugs and changes
-    while 02 runs. "Add to 03: …" means file it and don't start it, unless
-    the user says "fix R<n> now".
-  - **04, Windows .exe packaging:** idea stage, starts after 02. Don't
+    (05/10/2026). Item 3.6 closed as saved for later and moved to plan 03's
+    last phase (10/10/2026).
+  - **03, structure review** (the developer's side, making the code fit):
+    S1–S21 in 6 phases, planned only. Start a phase when the user names it.
+    Q1 (S7) is answered yes; Q2 (S9, Content-Security-Policy) is open, and
+    the user asked for more detail first. "Add to 03: …" (something odd in
+    the code) means file it as the next S number, check it against the code
+    and propose a phase, but don't start it. **Phase 6 (migrations in git
+    and the user's `git rm -r --cached staticfiles .idea`) always stays the
+    last phase:** new phases go before it.
+  - **04, fixes and changes plan** (the user's side: what they see and
+    use): collects the user's bugs and changes until plan 03 is done.
+    "Add to 04: …" means file it and don't start it, unless the user says
+    "fix R<n> now".
+  - **05, the admin's look:** Stashy's fonts and colours for Django's admin,
+    still recognisable as the admin (bark-brown top bar, gold "Admin" tag),
+    and one light/dark switch shared with the website. 2 phases, planned
+    only; comes after 04, but start a phase when the user names it. "Add to
+    05: …" (something about the admin) means file it as the next AD number
+    and don't start it.
+  - **06, Windows .exe packaging:** idea stage, starts after 05. Don't
     start it, but keep new folder paths (data, logs) defined in one place
     in the settings, so moving them out of the program folder stays easy.
 - **Big requests:** fold them into the plan first, and ask genuine forks
@@ -284,13 +306,18 @@ terms.
   once.
 - **After each piece of work:**
   - Tick the plan's checkboxes.
-  - Add a DEVLOG.md entry: what changed, why, and a short teaching note.
+  - Add a DEVLOG.md entry: what changed, the developer's reasoning behind
+    each code decision, and a short teaching note. Entries follow the
+    app's development in order and are never rewritten afterwards. Code
+    that later changes or disappears stays in its old entry; a later entry
+    says why it went. "The user asked for it" is reason enough (the user,
+    10/10/2026).
   - Keep README.md accurate for anything the user can see.
   - Update this file if the architecture or the rules changed.
   - List the new files the user needs to `git add`. Migrations are kept
     out of git for now (the user's choice, 01/10/2026; `.gitignore` has
-    `**/migrations/*.py`), so don't list them. Discussion parked in plan 02,
-    item 3.6.
+    `**/migrations/*.py`), so don't list them. Discussion parked in plan 03's
+    last phase (it was plan 02's item 3.6).
   - Report, and let the user choose what comes next. The report ends with
     **"What to check"**: every change the user can see or should try
     themselves (page, what to do, what they should see). Write "nothing

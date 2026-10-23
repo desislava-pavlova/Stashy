@@ -6,7 +6,7 @@ rules the code follows; test_pages.py holds checks every page must pass. base.py
 classes these tests and audit/tests.py share.
 
 A class docstring that starts with an item number like "1.7 (F6)" points to that item (and
-finding) in plans/02_architecture_cleanup.md. "Plan 03 R4" and "Phase 13 R4" (a phase of plan
+finding) in plans/02_architecture_cleanup.md. "Plan 04 R4" and "Phase 13 R4" (a phase of plan
 01) name their plan.
 
 Run one module with `manage.py test finance.tests.test_reminders`.

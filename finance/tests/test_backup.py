@@ -191,7 +191,7 @@ class RestoreBackupTests(LoggedInWithAccountTestCase):
 
 
 class BackupNamesCarryTheStashTests(SimpleTestCase):
-    """Plan 03 R5: two stashes' backups never share a file name."""
+    """Plan 04 R5: two stashes' backups never share a file name."""
 
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()

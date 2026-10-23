@@ -242,7 +242,7 @@ class ReportExportRegistryTests(LoggedInWithAccountTestCase):
 
 
 class ExportNamesCarryTheTimeTests(LoggedInWithAccountTestCase):
-    """Plan 03 R4: several exports on one day get their own names."""
+    """Plan 04 R4: several exports on one day get their own names."""
 
     STAMP = r"\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}"
 

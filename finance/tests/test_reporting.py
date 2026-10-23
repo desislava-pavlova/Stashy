@@ -171,7 +171,7 @@ class CategoryTotalsVsAverageTests(LoggedInWithAccountTestCase):
 
     def test_with_no_earlier_periods_there_is_no_average(self):
         # Nothing to compare with at all - no average, and the chart draws no dot. (A category
-        # that merely had no activity in existing earlier periods averages 0: plan 03 R6.)
+        # that merely had no activity in existing earlier periods averages 0: plan 04 R6.)
         Transaction.objects.create(
             account=self.account, date=self.start, category=self.groceries, amount=Decimal("-20.00")
         )

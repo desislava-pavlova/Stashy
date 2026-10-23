@@ -1,8 +1,11 @@
 # Stashy as a Windows .exe
 
-Plan 04, started 02/10/2026. **Status:** idea stage. Nothing here is worked
-on until you name it. It starts after plan 02, because Phases 3 and 7 of
-plan 02 prepare the ground (see "What plan 02 already does").
+Plan 06, started 02/10/2026 (numbered 04 until 10/10/2026, then 05 until
+23/10/2026). **Status:** idea stage. Nothing here is worked on until you
+name it. It's the last of the plans after plan 02: plan 03 makes the code
+fit, plan 04 does the updates you want on screen, plan 05 gives the admin
+Stashy's look, then this one packages Stashy. Phases 3 and 7
+of plan 02 already prepare the ground (see "What plan 02 already does").
 
 ## Goal
 
@@ -33,8 +36,8 @@ way `Stashy.bat` does it today (back up, then migrate).
   quarterly backup when due, and serves with Waitress, all as today.
 - **Migrations travel inside the program.** Each stash records by name which
   migrations it has run. The program must carry exactly the files that
-  produced those records, which is why they're committed to git (plan 02,
-  item 3.6).
+  produced those records. Whether they go into git is decided in plan 03's
+  last phase, which took over plan 02's item 3.6.
 
 ## What plan 02 already does for this
 
@@ -81,6 +84,7 @@ way `Stashy.bat` does it today (back up, then migrate).
   needs a small extra library.
 - **Q5: Updates:** check for a new version, or only update by hand?
 - **Q6: Migrations, keep the history or start fresh?** Open since
-  02/10/2026, and it belongs to plan 02 item 3.6. Starting fresh (one new
+  02/10/2026, and it belongs to plan 03's last phase (moved there from plan
+  02's item 3.6 on 10/10/2026). Starting fresh (one new
   `0001_initial` per app) would leave every older backup with no automatic
   upgrade path.

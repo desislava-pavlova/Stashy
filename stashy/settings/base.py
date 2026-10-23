@@ -14,7 +14,7 @@ from django.contrib.messages import constants as message_constants
 
 # --- Folders --------------------------------------------------------------------------------
 # Every folder Stashy reads or writes is named here and nowhere else, so moving the data out
-# of the program folder (plan 04, the .exe) only changes these lines.
+# of the program folder (plan 05, the .exe) only changes these lines.
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 STASHES_DIR = BASE_DIR / "stashes"
 STATIC_ROOT = BASE_DIR / "staticfiles"
