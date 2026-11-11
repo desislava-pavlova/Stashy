@@ -4719,3 +4719,103 @@ after it can redefine them all, and Django's own CSS does the rest.
 `plans/04_fixes_and_changes_plan.md`, `plans/03_structure_review.md`,
 `plans/02_architecture_cleanup.md`, `plans/README.md`, `CLAUDE.md`, this
 log.
+
+---
+
+## 24/10/2026 — A browser for /visual-check only (no code changes)
+
+**What changed:** No application code. `CLAUDE.md` now fits Claude's new
+setup: review agents check each change, and one agent, started only by
+your `/visual-check` command, can open pages in a real browser.
+- The Verification section no longer says there is no browser at all.
+  Claude's main session still has none and still never claims a visual
+  result. `/visual-check` is the one way in, and only you start it.
+- How that check runs on Stashy: its own server on port 8765 with
+  `DEBUG=True` set for that one process, never `Stashy.bat`, and only the
+  `test` stash. The `test` stash's PIN is to go in `CLAUDE.local.md`.
+- "What to check" gets a last line for changes that affect how pages
+  look: `Worth a visual check: <pages> - run /visual-check <pages>`.
+
+**Why these rules:**
+- Not `Stashy.bat`: it's the launcher for real use. It backs up and
+  migrates every stash and takes the quarterly backup. Looking at a page
+  needs none of that.
+- `DEBUG=True`: with DEBUG off, pages use the fingerprinted copies that
+  `collectstatic` last put in `staticfiles/`, so a check right after a CSS
+  change would show the old CSS. With DEBUG on, `runserver` serves the
+  files straight from the code.
+- `--noreload`: Django's auto-reloader runs the real server in a second
+  process. Stopping the first one can leave the second still holding the
+  port.
+- Only the `test` stash, and a PIN typed only there: every wrong PIN
+  counts toward a stash's lockout, so a guess at the real stash could lock
+  you out of it.
+
+**Teaching note — why an environment variable beats `.env`.**
+python-decouple's `config("DEBUG")` looks at the process's environment
+variables first, and opens `.env` only for names it doesn't find there.
+So `DEBUG=True python manage.py runserver` turns DEBUG on for that one
+command, while every other process (your own Stashy included) still reads
+`.env` as before. It's the usual pattern for "this one run is different":
+nothing gets edited, so there's nothing to remember to undo. Checked on
+24/10/2026: `settings.DEBUG` is `False` normally and `True` with the
+variable set.
+
+**Files touched:** `CLAUDE.md`, this log.
+
+---
+
+## 24/10/2026 — Plan 03, S22 and S23: audit log times to the second; a test PyCharm misread
+
+**What changed:** The audit log's **Time** (in the list and on each
+entry's page) was `2026-09-15 15:06:48.930 +03:00` and is now
+`2026-09-15 15:06:48`. You asked for it while reading `audit/` file by
+file: the milliseconds were more than you need, and the `+03:00` kept
+confusing you. It's still in your own time zone and still year first; you
+chose the database-log look over the stash's date format. This overrules
+part of plan 01's A3 (15/09/2026), which now carries a revision note.
+Both fixes were made straight away, and filed afterwards in plan 03's
+"Your additions" as S22 and S23. From now on, anything that comes up
+during your read is only filed there, until you say to start.
+
+**Why the code looks like this:**
+- `format_timestamp()` is now just "convert to the viewer's time zone,
+  print year to second". The offset arithmetic (`utcoffset()`, `divmod`
+  into hours and minutes, the sign) went with the offset, and so did the
+  `timedelta` import it needed.
+- Dropping the offset loses information only one night a year: when the
+  clocks go back on the last Sunday of October, 03:30 happens twice, and
+  two entries an hour apart can show the same time. The order is still
+  right, because the list sorts by the stored timestamp (kept in UTC) and
+  by id, never by the text on screen.
+- The milliseconds weren't needed to tell clicks apart: every row from
+  one click already shares an operation id, which the "Same operation"
+  link on the entry's page uses.
+- The tests now check the exact text, and the old negative-offset test
+  became "shown in the viewer's time zone" (12:00 UTC in New York in
+  January is `07:00:00`), so the time-zone conversion is still tested.
+
+**Also: the red error PyCharm showed in `audit/tests.py`.** The test that
+checks the after-commit step patched `"audit.signals.router.db_for_write"`
+as a dotted string. PyCharm reads such a string as a path and tries to
+follow it, but `router` is an object (`ConnectionRouter()`, created in
+`django/db/__init__.py`), and Django builds its `db_for_write` method with
+a small helper function, `_router_func()`. PyCharm can't follow that, so it
+marked an error in a test that runs fine. The test now uses
+`mock.patch.object(audit_signals.router, "db_for_write", …)`, and the
+`on_commit` patch next to it reads the same way.
+
+**Teaching note — `mock.patch` vs. `mock.patch.object`.** Both swap
+something out for the length of the `with` block and put it back
+afterwards. `mock.patch("a.b.c")` takes a dotted path: it imports `a.b`
+and replaces its `c`. `mock.patch.object(obj, "c")` takes the object
+itself, which you already hold. Here both reach the same thing: `from
+django.db import router` in `audit/signals.py` binds a second name to the
+one shared router object, so patching it there patches it for everyone.
+`patch.object` suits the case where you already hold the object (the
+test imports `audit.signals` anyway). A dotted string suits the case where
+you'd otherwise have to import a module only to patch it.
+
+**Files touched:** `audit/admin.py`, `audit/tests.py`,
+`plans/03_structure_review.md`, `plans/01_upgrade_plan.md`, `CLAUDE.md`,
+this log.

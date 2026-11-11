@@ -283,7 +283,10 @@ terms.
     Q1 (S7) is answered yes; Q2 (S9, Content-Security-Policy) is open, and
     the user asked for more detail first. "Add to 03: …" (something odd in
     the code) means file it as the next S number, check it against the code
-    and propose a phase, but don't start it. **Phase 6 (migrations in git
+    and propose a phase, but don't start it. While the user reads the code
+    file by file (since 24/10/2026), everything they ask for during that
+    read goes into 03 the same way, even a change they'd see on screen, and
+    nothing gets fixed until they say so. **Phase 6 (migrations in git
     and the user's `git rm -r --cached staticfiles .idea`) always stays the
     last phase:** new phases go before it.
   - **04, fixes and changes plan** (the user's side: what they see and
@@ -321,7 +324,9 @@ terms.
   - Report, and let the user choose what comes next. The report ends with
     **"What to check"**: every change the user can see or should try
     themselves (page, what to do, what they should see). Write "nothing
-    visible" when that's true. (Asked for 03/10/2026.)
+    visible" when that's true. (Asked for 03/10/2026.) When the change
+    affects how pages look, its last line is
+    `Worth a visual check: <pages> - run /visual-check <pages>` (24/10/2026).
   - Suggest a commit: a short **Summary** line and a short **Description**
     (Copilot-style: one sentence or a few short bullets). The description
     starts with "Plan N, Phase M:", plus ", Part X" only when the phase
@@ -330,7 +335,7 @@ terms.
     `git` only after the user says "go commit" (see the git rule above).
 - **The user writes dates as DD/MM/YYYY**, and so should plans and DEVLOG.
 
-## Verification (there is no browser here)
+## Verification (no browser, except /visual-check)
 
 - Run the full suite and report its real result, and keep `ruff check .`
   and `ruff format --check .` clean.
@@ -340,9 +345,24 @@ terms.
 - For front-end work, fetch the rendered HTML with the test client and read
   it. Look for leaked `{#`, `#}`, `{%` or `%}` (Django's `{# #}` comments
   are single-line only; a multi-line one renders as visible text). Never
-  claim a visual result: say it's untested visually and ask the user to
-  look. Bootstrap's table-cell background beats a lone class, so scope
-  rules like `.table td.x`.
+  claim a visual result: say it's untested visually, and end "What to
+  check" with the visual-check line. Bootstrap's table-cell background
+  beats a lone class, so scope rules like `.table td.x`.
+- **A browser only through `/visual-check`,** which only the user starts.
+  It runs the visual-checker agent, the one agent with a browser (it needs
+  Node.js). On Stashy it must:
+  - never run `Stashy.bat` (it backs up and migrates every stash), and
+    never touch the user's own Stashy on `PORT`;
+  - start its own throwaway server, with DEBUG on so pages use the current
+    static files rather than the last `collectstatic` build:
+    `DEBUG=True .venv/Scripts/python.exe manage.py runserver 127.0.0.1:8765 --noreload`
+    (Git Bash syntax). The variable beats `.env` for that one process only,
+    and `--noreload` keeps the server to one process, so stopping it is
+    clean;
+  - choose only the `test` stash in the picker, and type a PIN only there:
+    wrong PINs count toward a stash's lockout. The `test` stash's PIN
+    belongs in `CLAUDE.local.md`; without it, stop at the PIN screen and
+    say so.
 - "Everywhere" claims need a grep for the raw pattern (e.g.
   `Category.objects`), not just for callers of the shared helper.
 - Line numbers in plans drift. Search by function name.

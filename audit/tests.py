@@ -258,8 +258,8 @@ class OnCommitUsesTheStashTests(LoggedInWithAccountTestCase):
         payee = Payee.objects.create(name="Corner shop")
         Transaction.objects.create(account=self.account, date=date(2026, 9, 1), payee=payee, amount=Decimal("-5"))
         with (
-            mock.patch("audit.signals.router.db_for_write", return_value=settings.TEST_STASH) as db_for_write,
-            mock.patch("audit.signals.transaction.on_commit") as on_commit,
+            mock.patch.object(audit_signals.router, "db_for_write", return_value=settings.TEST_STASH) as db_for_write,
+            mock.patch.object(audit_signals.transaction, "on_commit") as on_commit,
         ):
             payee.delete()
         db_for_write.assert_called()
@@ -313,10 +313,10 @@ class AuditSuspendedTests(StashTestCase):
 
 
 class AuditTimestampFormatTests(SimpleTestCase):
-    def test_iso_style_with_milliseconds_and_offset(self):
+    def test_year_first_to_the_second_without_the_offset(self):
         value = datetime(2026, 9, 15, 12, 6, 48, 930000, tzinfo=UTC)
         with regional.activate(regional.Preferences(time_zone="Europe/Sofia")):
-            self.assertEqual(format_timestamp(value), "2026-09-15 15:06:48.930 +03:00")
+            self.assertEqual(format_timestamp(value), "2026-09-15 15:06:48")
 
     def test_never_follows_the_date_format_preference(self):
         value = datetime(2026, 9, 15, 12, 6, 48, tzinfo=UTC)
@@ -324,11 +324,10 @@ class AuditTimestampFormatTests(SimpleTestCase):
         with regional.activate(preferences):
             self.assertTrue(format_timestamp(value).startswith("2026-09-15"))
 
-    def test_negative_offset(self):
+    def test_shown_in_the_viewers_time_zone(self):
         value = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
         with regional.activate(regional.Preferences(time_zone="America/New_York")):
-            formatted = format_timestamp(value)
-        self.assertTrue(formatted.endswith("-05:00"), formatted)
+            self.assertEqual(format_timestamp(value), "2026-01-15 07:00:00")
 
     def test_blank_for_missing_value(self):
         self.assertEqual(format_timestamp(None), "")

@@ -2293,6 +2293,8 @@ the user's request). **Not started.** Doesn't depend on Phase 13.
     (`44 (Groceries)`).
   - Times in the user's own time zone, with milliseconds and the offset:
     `2026-09-15 15:06:48.930 +03:00`.
+    **Revised 24/10/2026** (plan 03 S22): to the second, with no
+    milliseconds or offset: `2026-09-15 15:06:48`.
   - Every row also carries: table (`finance_transaction`), source (user or
     system), reason, request (`POST /transactions/781/edit/`) and an
     operation id shared by every row from the same click.

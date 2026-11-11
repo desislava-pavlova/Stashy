@@ -302,11 +302,24 @@ Checked, so nobody has to check again:
   - **Shared page frame:** seven pages (the 5 picker and PIN pages, the
     welcome wizard, the error page) each repeat the same 25-line frame:
     head, mascot panel, wordmark, theme button. One shared base template.
+    *12/11/2026 (you, reading `registration/`): one base for the left side,
+    so changing the image means changing one file. This is that item: the
+    mascot image is in all 7 files today.*
   - **Generic form:** `generic_form.html` carries Reminder-only and
     Category-only scripts. Two of them are the same code with different
     field names. Move them into one static `forms.js`, driven by
     `data-` attributes on the fields, the way `data-range-date` already
     works.
+    *12/11/2026 (you, reading templates): "generic forms seems really
+    random", maybe the name, maybe what's inside. Both: the name says how
+    it's used, not what it is, and 100 of its 143 lines are five scripts for
+    one form each (one for categories, four for reminders), plus the
+    reminder-only "whole series" banner. Claude's additions to this item:
+    rename it `form_page.html` (and `generic_confirm_delete.html` to
+    `delete_page.html`), and give reminders a small `reminder_form.html`
+    that extends it and adds the series banner, so the shared page holds
+    only what every form has: title, fields, Save/Cancel, tips. You
+    accepted these the same day.*
   - **Auto-submit:** `onchange="this.form.submit()"` (5 places) becomes
     a `data-auto-submit` attribute handled in `stashy.js`.
   - **Cancel button:** it becomes a real link back to the list instead
@@ -355,17 +368,26 @@ Things you find strange while reading the code yourself go here. Write
 them in yourself, or tell Claude "add to 03: …" in chat. Claude files each
 one as the next S number (S22, S23, …), checks it against the code, and
 then proposes which phase it joins. A new item doesn't start on its own.
-This plan is the developer's side. Something you'd want changed on screen
-or in how a page behaves goes to plan 04 instead ("add to 04: …").
+Anything you ask for while reading the code goes here, even a change you'd
+see on screen (your call, 24/10/2026). Claude fixes nothing from it until
+you say so. Plan 04 ("add to 04: …") stays for what you notice while using
+Stashy.
 
 | # | Added | Where | What | Status |
 |---|-------|-------|------|--------|
+| S22 | 24/10/2026 | `audit/admin.py`, `format_timestamp()` | The audit log's time showed milliseconds and the offset (`2026-09-15 15:06:48.930 +03:00`): more than you need, and the `+03:00` kept confusing you. Now `2026-09-15 15:06:48`, still in your own time zone and year first (you chose that over the stash's date format). Overrules part of plan 01's A3 (15/09/2026). | **done 24/10/2026**, fixed before it was filed. |
+| S23 | 24/10/2026 | `audit/tests.py`, `OnCommitUsesTheStashTests` | PyCharm showed a red "Unresolved reference 'db_for_write'" in a test that runs fine: `mock.patch("audit.signals.router.db_for_write")` names a path PyCharm can't follow. Now `mock.patch.object(audit_signals.router, "db_for_write", …)`. | **done 24/10/2026**, fixed before it was filed. |
+| S24 | 11/11/2026 | `finance/management/commands/reset_pin.py`, `handle()` and the `--pin` help text | Without `--pin`, the command asks for the new PIN with `getpass`, which shows nothing at all while you type ("Omit to be prompted (input is hidden)"). You'd like a `*` for each digit, so you can see how many you've typed. Python 3.14's `getpass` can do that (`echo_char="*"`), but Stashy runs on 3.12. Fix: a small helper that reads one key at a time on the Windows console (`msvcrt.getwch()`), prints `*` per key, takes Backspace back, finishes on Enter and stops on Ctrl+C; anywhere else (input piped in, or not Windows) it falls back to plain `getpass`. The help text becomes "Leave it out to be asked (each digit shows as *)". A test feeds it keys. Proposed phase: 1, next to S7, the other PIN-entry item. Note: plan 04's R9 (the same command crashing when the owner name's case differs from the folder's) is in this file too. *11/11/2026 (you): do them together. Both are Phase 1, item 1.10.* | open (Phase 1) |
+| S25 | 11/11/2026 | `finance/services/importing.py`, `_detect_date_format()` and the comment above it | You'd like date detection to cover the whole file: one date like `1/13/2022` means every date in it is month-first. **It already works that way (Claude checked the code):** every row's date is looked at before any row is read, and the first date that can only be read one way settles the whole file, so with `1/13/2022` anywhere, `03/04/2022` is read as 4 March. Two things make it look otherwise. The comment says "Ambiguous rows … are skipped", which means skipped *while guessing*, not left out of the import. And today's tests have only one row each, so nothing proves an earlier ambiguous row follows a later deciding one. Fix: reword the comment, and add a test with ambiguous rows before the deciding one. Claude's find: a file mixing both ways (`13/01/2022` and `01/13/2022`) trusts whichever comes first. Under plan 04's R3 (a date Stashy can't read fails the import, listing the rows), such a file will fail and say which rows, which is enough. Proposed phase: 2 (documentation and tests). | open |
+| S26 | 11/11/2026 | `finance/templates/finance/account_reconcile_review.html`, the reconcile page | **Mark all** sits on its own line above the two tables, on the right, while **Finish reconciling** and **Cancel** are at the very bottom, on the left. You'd like one line: Mark all on the left, Finish reconciling and Cancel on the right, on the line where Mark all is now. Proposed phase: 5 (templates). | open |
+| S27 | 12/11/2026 | `finance/templates/finance/account_reconcile_start.html`, the reconcile page's first step | Today only **Opening balance** is a row with its label on the left and the amount on the right. The two statement boxes have their labels above them, fill the card's width, and the balance box has the hint "The ending balance shown on your bank or card statement." under it. You'd like all three as rows, labels on the left and values on the right, with the hint centred below. **Claude's suggestion (your choice):** the three rows as you describe, with the two boxes only as wide as a date or an amount, right-aligned, so the three values line up under each other like on a statement. The hint goes under its own label, on the left, small and grey, instead of centred below: it stays next to what it explains, and the right side stays a clean column of values. Start reconciling and Cancel go on the right, the same side as on the next page after S26. On a phone the rows fall back to the label above its box. Proposed phase: 5, with S26. *12/11/2026 (you): the hint under its label, on the left, on one line, not two. So the wording stays short ("as shown on your bank or card statement") and the label side is wide enough to hold it on one line on a normal screen; only a phone may wrap it.* | open (decided 12/11/2026) |
+| S28 | 12/11/2026 | `finance/templates/finance/` (34 pages and an `includes/` folder, all side by side) | You're uneasy that every template sits in one folder; you'd usually split them by area (transactions, reminders, …). **Claude:** both are normal in Django. One flat folder named `<thing>_<action>.html` is Django's own default (its generic views look for `finance/transaction_list.html`), and it's fine for small apps. At Stashy's size, folders per area are clearer, and the code is already split that way: `views/` has one module per area and the tests one file per area. So the templates follow the same map: `accounts/` (list, detail, delete, transfer, both reconcile steps), `categories/`, `payees/`, `transactions/`, `reminders/`, `imports/`, `reports/` (with its three report-only pieces from `includes/`), `settings/`, `dashboard/`, `welcome/`. Shared pages stay at the top of `finance/`: `base.html`, `error_page.html`, and S19's `form_page.html` and `delete_page.html`; `includes/` keeps only pieces several areas use. Two folders stay where they are, because Django looks for them by name: `registration/` (the picker and PIN pages; Django's login view looks there) and `404.html`/`500.html` at the top. Claude's call: files keep their full names (`transactions/transaction_list.html`, not `transactions/list.html`), so PyCharm's tabs and search results never show five files all called `list.html`. The work is mechanical: move the files, update each view's `template_name`, the `{% extends %}`/`{% include %}` paths and the tests that name a template. Proposed phase: 5, as its first step, so S19's new files land straight in their folders. *12/11/2026 (you): "folders it is", and you accept Claude's other suggestions here and in S19, S25 and S27.* | open (decided 12/11/2026) |
 
-<!-- Next number: S22 -->
+<!-- Next number: S29 -->
 
 ---
 
-## Phase 1 — Bugs and quick security fixes  (S1–S8, S10)
+## Phase 1 — Bugs and quick security fixes  (S1–S8, S10, S24 with plan 04's R9)
 
 - [ ] **1.1** S1: `min_value=CENT` on the transfer amount; test with 0.01.
 - [ ] **1.2** S2: both bad URLs answer 404 or show a message; a test each.
@@ -381,6 +403,9 @@ or in how a page behaves goes to plan 04 instead ("add to 04: …").
   last-stash cookie.
 - [ ] **1.9** S7 (Q1, yes): current PIN for a new recovery code; wrong
   current-PINs on both pages count toward the lockout; a lockout logs out.
+- [ ] **1.10** S24 and plan 04's R9, together (your call, 11/11/2026), both in
+  `manage.py reset_pin`: a `*` for each typed digit, and the owner name
+  works in any upper/lower case. A test each.
 
 **Done when:** each fix has a test that fails on today's code, the suite is
 green, and the render check of the changed pages shows no leaked template

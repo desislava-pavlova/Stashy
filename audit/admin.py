@@ -1,4 +1,3 @@
-from datetime import timedelta
 from urllib.parse import urlencode
 
 from django.contrib import admin
@@ -15,17 +14,13 @@ def _text(value):
 
 
 def format_timestamp(value):
-    """The audit log's own timestamp column: always ISO-style, with milliseconds and the
-    offset, in the active time zone (the viewer's own) - unlike every other date/time in the
-    app, it never follows a date-format preference, since it reads like a database log."""
+    """The audit log's own timestamp column: year first and to the second, in the active time
+    zone (the viewer's own), with no milliseconds or offset. Unlike every other date/time in
+    the app, it never follows a date-format preference, since it reads like a database log."""
     if value is None or value == "":
         return ""
     local = timezone.localtime(value) if timezone.is_aware(value) else value
-    offset = local.utcoffset() if timezone.is_aware(local) else None
-    minutes = int((offset or timedelta()).total_seconds() // 60)
-    sign = "+" if minutes >= 0 else "-"
-    hours, minutes = divmod(abs(minutes), 60)
-    return f"{local:%Y-%m-%d %H:%M:%S}.{local.microsecond // 1000:03d} {sign}{hours:02d}:{minutes:02d}"
+    return f"{local:%Y-%m-%d %H:%M:%S}"
 
 
 @admin.register(AuditLogEntry)
