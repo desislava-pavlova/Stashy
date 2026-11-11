@@ -54,7 +54,7 @@ class StashCreateForm(PinConfirmMixin, forms.Form):
         max_length=60,
         label="Whose stash?",
         widget=forms.TextInput(
-            attrs={"class": "form-control", "autofocus": True, "placeholder": "Alex, Acme Ltd, The Smiths…"}
+            attrs={"class": "form-control", "autofocus": True, "placeholder": "Alex, Biz Ltd, The Smiths…"}
         ),
         help_text="A person, a business or a family - shown everywhere instead of an internal name.",
     )
