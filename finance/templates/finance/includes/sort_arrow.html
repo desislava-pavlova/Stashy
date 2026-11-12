@@ -1,1 +1,5 @@
-{% if sort == column %}<i class="bi bi-caret-up-fill sort-arrow" aria-hidden="true"></i>{% elif sort == "-"|add:column %}<i class="bi bi-caret-down-fill sort-arrow" aria-hidden="true"></i>{% endif %}
+{% if sort == column %}
+    <i class="bi bi-caret-up-fill sort-arrow" aria-hidden="true"></i>
+{% elif sort == "-"|add:column %}
+    <i class="bi bi-caret-down-fill sort-arrow" aria-hidden="true"></i>
+{% endif %}

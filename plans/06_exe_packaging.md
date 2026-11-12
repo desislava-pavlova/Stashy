@@ -61,6 +61,10 @@ way `Stashy.bat` does it today (back up, then migrate).
 - **Moving your current data.** The real stash lives in this project's
   `stashes/` folder today. Moving it into the new data folder needs a
   backup, a copy and a check, done once and by hand, not by the program.
+- **The 500 page names the log file by hand.** It says the details are in
+  `logs\stashy.log` in the Stashy folder, typed into `500.html`, because
+  Django gives that page no settings to read. When the logs move to the new
+  data folder, that sentence must change too (found 12/11/2026).
 - **Tests.** The suite keeps running from source as today. The program
   itself gets a short smoke test after each build: it starts, the picker
   loads, and a test stash opens.

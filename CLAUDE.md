@@ -240,8 +240,12 @@ terms.
   `10 000.50`, and the time zone is Europe/Sofia. These are defaults: each
   stash's Profile can override them, so always format through `regional` or
   the template filters (`sdate`, `moneyc`), never with a hard-coded
-  `strftime`. Show times only where they matter (import history, audit
-  log). "Today" is `timezone.localdate()` (the stash's time zone), never
+  `strftime`. That rule is for complete dates (day, month and year, as
+  on Transactions). Short, decorative dates chosen for a page's look may
+  keep a fixed style: the dashboard's "Thursday, 12 November", "Since 1
+  November" and Due-soon tiles, and Reports' weekly columns ("28 Sep")
+  (the user, 12/11/2026). Show times only where they matter (import
+  history, audit log). "Today" is `timezone.localdate()` (the stash's time zone), never
   `date.today()`; only `backup.py` uses the computer's clock (a test
   checks).
 - **Each page keeps its own agreed filter defaults.**
