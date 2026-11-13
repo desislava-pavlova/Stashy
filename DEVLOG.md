@@ -4819,3 +4819,47 @@ you'd otherwise have to import a module only to patch it.
 **Files touched:** `audit/admin.py`, `audit/tests.py`,
 `plans/03_structure_review.md`, `plans/01_upgrade_plan.md`, `CLAUDE.md`,
 this log.
+
+---
+
+## 13/11/2026 — `exports.py`: one item per line, and named report exports
+
+**What changed:** Nothing you'd see in a downloaded file. While reading
+`finance/views/exports.py` you rewrote its rows and calls so that each
+item sits on its own line, because the same kind of code was laid out
+differently from one function to the next. The four list exports' rows,
+`_vs_average_rows()` and `_net_worth()` now read the same way as
+`_category_rows()` and `_watched_expenses()` already did. You also asked
+for `REPORT_EXPORTS`, whose entries ran up to the 119-character line
+limit, to be broken up the same way, and Claude did that.
+
+**Why the code looks like this:**
+- Each export row lists one value per line, in the same order as its
+  `headers` list, so you can read a row against its column headings, and a
+  new column is a one-line change.
+- Every `REPORT_EXPORTS` entry now names its arguments (`build=`,
+  `layout=`, `filename=`, `amount_label=`). Before, a bare `"Spending"` at
+  the end of a line didn't say what it was; you had to look up the order of
+  the fields in `ReportExport` to know it was the amount column's heading.
+  The Watched-expenses entry already named its last argument
+  (`empty_message=`), so now all eight entries read the same. A
+  `NamedTuple` accepts names and positions alike, so nothing else changed.
+- Each multi-line list and call ends with a comma after its last item.
+  That comma is what keeps the layout (see the teaching note).
+- The comment above the registry and CLAUDE.md said a new report export
+  is "one line" in `REPORT_EXPORTS`. It's one entry now, of several
+  lines, so both say "entry".
+
+**Teaching note — the "magic trailing comma".** `ruff format` (like the
+Black formatter it copies) decides the layout for you: a list or call that
+fits within the line limit goes on one line. There is one way to overrule
+it: a comma after the last item. When ruff sees that comma, it keeps one
+item per line, even if the whole thing would fit on one line. That's why
+your new layout in `export_accounts` and `export_payees` would have been
+joined back up by `ruff format`. Their last items had no comma, while
+`export_transactions` and `export_categories`, which had one, were left
+alone. Python accepts the comma everywhere, even after `**kind` in a call.
+The comma has a second benefit: adding an item later changes one line in
+the diff, not two (without it, the previous last line has to change too).
+
+**Files touched:** `finance/views/exports.py`, `CLAUDE.md`, this log.

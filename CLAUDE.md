@@ -119,7 +119,8 @@ terms.
     Transactions has "All dates" (`range=""`, ignores the date boxes)
     instead of Reports' "Earliest to date".
   - Report exports: one view, `exports.export_report`, at
-    `reports/export/<slug>/`. A new one is one line in `REPORT_EXPORTS`.
+    `reports/export/<slug>/`. A new one is one entry in `REPORT_EXPORTS`
+    (named arguments, one per line).
   - Settings: the page saves preferences; `check_rates`, `create_backup`
     and `save_watched_expenses` are their own POST URLs.
   - `content.py`: the help-card tips (`*_TIPS`).

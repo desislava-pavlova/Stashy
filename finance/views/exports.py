@@ -65,7 +65,14 @@ def export_transactions(request):
 def export_accounts(request):
     headers = ["Name", "Type", "Currency", "Institution", "Active", "Balance"]
     rows = [
-        [a.name, a.get_account_type_display(), a.currency, a.institution, "Y" if a.is_active else "N", a.balance]
+        [
+            a.name,
+            a.get_account_type_display(),
+            a.currency,
+            a.institution,
+            "Y" if a.is_active else "N",
+            a.balance,
+        ]
         for a in Account.objects.with_balances()
     ]
     return _export_response(_requested_format(request), _filename("accounts"), headers, rows)
@@ -93,7 +100,14 @@ def export_payees(request):
     # A full export: system payees are included too, marked as such.
     payees = Payee.objects.all()
     headers = ["Name", "Active", "System-managed"]
-    rows = [[p.name, "Y" if p.is_active else "N", "Y" if p.name in Payee.SYSTEM_NAMES else "N"] for p in payees]
+    rows = [
+        [
+            p.name,
+            "Y" if p.is_active else "N",
+            "Y" if p.name in Payee.SYSTEM_NAMES else "N",
+        ]
+        for p in payees
+    ]
     return _export_response(_requested_format(request), _filename("payees"), headers, rows)
 
 
@@ -103,7 +117,7 @@ def export_payees(request):
 #
 # Each report's builder makes the same table the Reports page shows, from the same filters.
 # A builder takes (filters, rates, profile) and returns the table, or None when there is
-# nothing to export. Adding a report export means adding one line to REPORT_EXPORTS.
+# nothing to export. Adding a report export means adding one entry to REPORT_EXPORTS.
 
 
 def _category_rows(**kind):
@@ -128,14 +142,24 @@ def _vs_average_rows(**kind):
 
     def build(filters, rates, profile):
         return category_vs_average_report_rows(
-            filters["start"], filters["end"], filters["periods"], account=filters["account"], rates=rates, **kind
+            filters["start"],
+            filters["end"],
+            filters["periods"],
+            account=filters["account"],
+            rates=rates,
+            **kind,
         )
 
     return build
 
 
 def _net_worth(filters, rates, profile):
-    return net_worth_by_account(filters["start"], filters["end"], filters["subtotal"] or "month", rates=rates)
+    return net_worth_by_account(
+        filters["start"],
+        filters["end"],
+        filters["subtotal"] or "month",
+        rates=rates,
+    )
 
 
 def _watched_expenses(filters, rates, profile):
@@ -203,20 +227,49 @@ class ReportExport(NamedTuple):
 
 # The keys are the URL slugs: reports/export/<slug>/.
 REPORT_EXPORTS = {
-    "spending": ReportExport(_category_rows(expense_only=True), _category_layout, "spending-by-category", "Spending"),
-    "spending-vs-average": ReportExport(
-        _vs_average_rows(expense_only=True), _vs_average_layout, "spending-vs-average"
+    "spending": ReportExport(
+        build=_category_rows(expense_only=True),
+        layout=_category_layout,
+        filename="spending-by-category",
+        amount_label="Spending",
     ),
-    "income": ReportExport(_category_rows(income_only=True), _category_layout, "income-by-category", "Income"),
-    "income-vs-average": ReportExport(_vs_average_rows(income_only=True), _vs_average_layout, "income-vs-average"),
-    "income-expense": ReportExport(_category_rows(), _category_layout, "income-expense-by-category", "Amount"),
-    "income-expense-vs-average": ReportExport(_vs_average_rows(), _vs_average_layout, "income-expense-vs-average"),
-    "net-worth": ReportExport(_net_worth, _net_worth_layout, "net-worth"),
+    "spending-vs-average": ReportExport(
+        build=_vs_average_rows(expense_only=True),
+        layout=_vs_average_layout,
+        filename="spending-vs-average",
+    ),
+    "income": ReportExport(
+        build=_category_rows(income_only=True),
+        layout=_category_layout,
+        filename="income-by-category",
+        amount_label="Income",
+    ),
+    "income-vs-average": ReportExport(
+        build=_vs_average_rows(income_only=True),
+        layout=_vs_average_layout,
+        filename="income-vs-average",
+    ),
+    "income-expense": ReportExport(
+        build=_category_rows(),
+        layout=_category_layout,
+        filename="income-expense-by-category",
+        amount_label="Amount",
+    ),
+    "income-expense-vs-average": ReportExport(
+        build=_vs_average_rows(),
+        layout=_vs_average_layout,
+        filename="income-expense-vs-average",
+    ),
+    "net-worth": ReportExport(
+        build=_net_worth,
+        layout=_net_worth_layout,
+        filename="net-worth",
+    ),
     "watched-expenses": ReportExport(
-        _watched_expenses,
-        _category_layout,
-        "watched-expenses",
-        "Spending",
+        build=_watched_expenses,
+        layout=_category_layout,
+        filename="watched-expenses",
+        amount_label="Spending",
         empty_message="No Watched expenses categories are chosen yet - add some in Settings.",
     ),
 }
