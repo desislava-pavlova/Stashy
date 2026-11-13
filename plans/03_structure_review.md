@@ -20,7 +20,8 @@ findings (see "Your additions"). A phase starts when you name it.
 *13/11/2026:* your read added S22–S49, and a whole-code review added
 S50–S67 (section G); every one is in its phase's checklist. S68 and S69 (section
 H) came from the visual check the same day, and S70 from your wish for a
-tidier project folder.
+tidier project folder. S71–S74 (section I) came from the dependency
+upgrade, plan 07, on 14/11/2026.
 
 **Baseline (10/10/2026):** 723 tests green. `ruff check .` and
 `ruff format --check .` are clean, `manage.py check` finds nothing, and
@@ -685,7 +686,45 @@ here, by phase. Findings that extend an older item are notes at the end.
   follow. The file is in git, so the commit also records the old path's
   removal. Proposed phase: 2.
 
-<!-- Next number: S71 -->
+### I. Found by the dependency upgrade (plan 07, 14/11/2026)
+
+- **S71 — The OFX importer depends on an abandoned library.** ofxparse
+  0.21 hasn't had a release since 31/05/2021 and calls Beautiful Soup's
+  deprecated `findAll` throughout. Plan 07 pinned Beautiful Soup, so a
+  fresh install can't break today. But no later upgrade can move Beautiful
+  Soup past the version that removes `findAll`, or OFX imports stop
+  working with no change to Stashy's code. **Fix (a question for you when
+  the phase starts):** replace ofxparse with another OFX reader, or keep a
+  copy of it inside Stashy with `findAll` renamed to `find_all`. Either
+  way, the import tests that read OFX files must pass unchanged. Proposed
+  phase: 3.
+- **S72 — The test run leaves its temporary folder to chance.**
+  `stashy/settings/test.py` makes a `tempfile.TemporaryDirectory` for the
+  test stashes and never cleans it up itself. Python still deletes it, but
+  every run with warnings shown (`-Wa`) ends with a `ResourceWarning`, and
+  that noise could hide a real warning. **Fix:**
+  `atexit.register(_test_run_folder.cleanup)` right after it. Proposed
+  phase: 2.
+- **S73 — `Stashy.bat` has Unix line endings.** Windows runs a batch
+  file with LF endings, but its `goto` and `call` can miss a label that
+  crosses a 512-byte boundary in the file, with no warning. The labels
+  are safe today; a later edit could move one. **Fix:** add
+  `*.bat text eol=crlf` to `.gitattributes`, and save `Stashy.bat` (and
+  `check.bat`, already CRLF) with CRLF. Git already stores every text file
+  with LF (`* text=auto`), so what's in git doesn't change and no git step
+  is needed. Proposed phase: 2.
+- **S74 — The first-run instructions describe an installer that's going
+  away.** `README.md` and `Stashy.bat`'s "Stashy needs Python" message
+  tell new users to tick "Add python.exe to PATH". python.org now points
+  Windows users to the Python install manager, which has no such box, and
+  stops making the classic installer after 3.15. Plan 07 found it on this
+  computer: the manager and the old launcher each brought a `py` command.
+  **Fix:** both texts describe the install manager: download it from
+  python.org, run it, then start `Stashy.bat` again (its search already
+  tries `py -3.15` and `py -3.14`). Plan 06 makes Python unnecessary in
+  the end, but that's far off. Proposed phase: 2.
+
+<!-- Next number: S75 -->
 
 ---
 
@@ -740,7 +779,7 @@ here, by phase. Findings that extend an older item are notes at the end.
 green, and the render check of the changed pages shows no leaked template
 syntax.
 
-## Phase 2 — Leftovers and documentation  (S11, S12, S13, S21, S44, S43's comments, S25, S34, S56–S62, S68, S70)
+## Phase 2 — Leftovers and documentation  (S11, S12, S13, S21, S44, S43's comments, S25, S34, S56–S62, S68, S70, S72–S74)
 
 - [ ] **2.1** S11: delete the 21 history-only tests, trim three, rename the
   kept classes; plus the seven more from G's note.
@@ -769,12 +808,18 @@ syntax.
 - [ ] **2.10** S68: `.playwright-mcp/` in `.gitignore`.
 - [ ] **2.11** S70: `starter_categories.xlsx` moves into `finance/`, and
   the code, the welcome page's message, README and CLAUDE.md follow.
+- [ ] **2.12** S72: the test settings clean up their temporary folder at
+  exit; a `-Wa` run ends with no `ResourceWarning`.
+- [ ] **2.13** S73: `*.bat text eol=crlf` in `.gitattributes`, and
+  `Stashy.bat` saved with CRLF.
+- [ ] **2.14** S74: README and `Stashy.bat`'s message describe the Python
+  install manager.
 
 **Done when:** the suite is green (fewer tests than 723, since history-only
 tests and duplicates go, and a few new ones come), and a grep for the
 history patterns finds nothing outside `plans/` and `DEVLOG.md`.
 
-## Phase 3 — Python structure  (S40, S43, S15, S16, S17, S18, S20, S42, S45, S47, S48, S63–S66, S49)
+## Phase 3 — Python structure  (S40, S43, S15, S16, S17, S18, S20, S42, S45, S47, S48, S63–S66, S49, S71)
 
 - [ ] **3.0** First, the two tool settings, each as its own commit:
   S40, Django gets its own import group and `lines-after-imports = 2` in
@@ -817,6 +862,10 @@ history patterns finds nothing outside `plans/` and `DEVLOG.md`.
 - [ ] **3.14** S49: section banners in `models.py` (Names, Profile,
   Accounts, Categories, Payees, Transactions, Imports, Reminders, Exchange
   rates, Reconciliations). Last, once nothing else moves code in or out.
+- [ ] **3.15** S71: OFX files read without ofxparse's deprecated calls
+  (another reader, or a copy kept inside Stashy: your choice). The OFX
+  import tests pass unchanged. It doesn't touch `models.py`, so 3.14
+  doesn't have to wait for it.
 
 **Done when:** the suite is green with no test edited except for moved
 imports, and every page renders the same as before.

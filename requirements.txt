@@ -1,9 +1,20 @@
-Django==6.1
+Django==6.1.3
 python-decouple==3.8
-python-dateutil==2.9.0.post0
+python-dateutil==4.0.0
 ofxparse==0.21
 waitress==3.0.2
 whitenoise==6.12.0
-tzdata==2026.4
-tzlocal==5.4.4
+tzdata==2026.6
+tzlocal==5.4.5
 openpyxl==3.1.5
+
+# Pulled in by the libraries above, not imported by Stashy itself. Pinned too, so a fresh
+# install gets the versions the tests ran with, not whatever is newest that day.
+asgiref==3.13.0  # Django
+sqlparse==0.6.1  # Django
+beautifulsoup4==4.15.0  # ofxparse
+soupsieve==4.1  # beautifulsoup4
+typing_extensions==4.16.0  # beautifulsoup4
+lxml==6.1.3  # ofxparse
+six==1.17.0  # ofxparse
+et_xmlfile==2.0.0  # openpyxl

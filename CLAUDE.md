@@ -10,7 +10,7 @@ user's computer: which stash holds real data, and the port. Read it too.
 ## What Stashy is
 
 A local, single-user personal finance app, a simplified Quicken with a
-squirrel mascot, aimed at younger users. It uses Django 6.1 on Python 3.12
+squirrel mascot, aimed at younger users. It uses Django 6.1 on Python 3.14
 with SQLite, and Waitress serves it (started by `Stashy.bat`). Each
 **stash** is a fully separate database with its own 4-digit PIN and owner
 name. The user is learning from this project, so explain the "why" in plain
@@ -63,6 +63,10 @@ check.bat                                                        # ruff check + 
   that calls the server itself uses `127.0.0.1`.
 - Waitress doesn't auto-reload, so remind the user to restart Stashy.bat
   after code changes.
+- `requirements.txt` pins every library in `.venv`, also the ones other
+  libraries pull in (its commented group, plan 07), so a fresh install gets
+  the versions the tests ran with. `requirements-dev.txt` adds ruff and
+  coverage. Stashy.bat reinstalls whenever `requirements.txt` changes.
 - A plain `manage.py shell` sees the empty placeholder database. To reach a
   stash, run first: `from finance import db_router; from finance.stashes import
   registry; registry.ensure_registered('test');
@@ -308,6 +312,10 @@ check.bat                                                        # ruff check + 
   - **06, Windows .exe packaging:** idea stage, starts after 05. Don't
     start it, but keep new folder paths (data, logs) defined in one place
     in the settings, so moving them out of the program folder stays easy.
+  - **07, dependency upgrade:** Python 3.12 → 3.14, Django 6.1 → 6.1.3,
+    every library pinned; done 14/11/2026. It ran before 03, so its number
+    is out of order. The old environment waits in `venv.bak` (gitignored)
+    until Stashy has run fine for a couple of weeks.
 - **Big requests:** fold them into the plan first, and ask genuine forks
   as a short numbered list. Implement only once the user names the phase.
   When the user hands a technical choice back ("your call"), decide it, mark
@@ -372,3 +380,5 @@ check.bat                                                        # ruff check + 
 - "Everywhere" claims need a grep for the raw pattern (e.g.
   `Category.objects`), not just for callers of the shared helper.
 - Line numbers in plans drift. Search by function name.
+
+Last upgrade check: 14/11/2026

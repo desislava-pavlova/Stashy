@@ -4957,3 +4957,74 @@ a read of the CSS that styles it, not just the markup.
 `plans/README.md`, `CLAUDE.md`, this log. New:
 `check.bat`, written by the front-end checker (ruff and the full test
 suite in one double-click).
+
+## 14/11/2026 — Plan 07: Python 3.14, Django 6.1.3, and every library pinned
+
+**What changed:** Nothing you'd see on Stashy's pages. The upgrade check
+(`/upgrade`, 13/11/2026) found Stashy on Python 3.12.7 and Django 6.1, and
+you approved its plan. It ran in six steps, each checked before the next:
+- Both stashes backed up first (`tag="before_upgrade"`), and each backup
+  checked with SQLite's `PRAGMA integrity_check`.
+- Django 6.1 → 6.1.3: three bug-fix and security releases. Two of the
+  security fixes reach Stashy: slow parsing of crafted request headers,
+  and base64 file uploads held whole in memory (the import page). With it
+  came tzdata 2026.6, tzlocal 5.4.5, and Django's own helpers asgiref
+  3.13.0 and sqlparse 0.6.1.
+- python-dateutil 2.9 → 4.0 and soupsieve 2.9 → 4.1.
+- ruff 0.17.5, coverage 7.17.3 and pip 26.3, the tools for working on
+  Stashy.
+- Python 3.12.7 → 3.14.10, in a new `.venv`. The old one stays as
+  `venv.bak` until Stashy has run fine for a couple of weeks.
+- `Stashy.bat` now looks for Python 3.15 first when it builds a new
+  environment.
+
+725 tests passed after every step, with no new warnings, and no step
+needed a migration.
+
+**Why the code looks like this:**
+- `requirements.txt` now pins the eight libraries that come in through
+  others, in a commented group that names the library needing each one.
+  Before, only the nine that Stashy imports were pinned, so a brand-new
+  install took whatever version of the other eight was newest that day,
+  untested. The case that made it worth doing: ofxparse (last released in
+  2021) calls Beautiful Soup's `findAll`, which Beautiful Soup has
+  deprecated. The day a release removes it, a fresh install would break
+  OFX imports with no change to Stashy's code. With the pin, that release
+  can only arrive through an upgrade check, which runs the tests first.
+- One step at a time, the new Python last. When something breaks, you
+  know which change did it, and the undo is one step. The Python step was
+  built to change only Python: before the old environment was set aside,
+  `pip freeze` wrote its exact versions into a constraints file, and the
+  new one was installed with `-c` pointing at that file.
+- python-dateutil jumped two major versions in ten days (3.0 on 21/10,
+  4.0 on 01/11/2026), which sounds risky. Stashy uses only its
+  `relativedelta`, and the release notes list one change there,
+  `relativedelta(yearday=366)` in leap years, which Stashy never calls (a
+  grep checked). The reminder and report tests, which do the date
+  arithmetic, passed unchanged.
+- Python 3.14 rather than the newest, 3.15 (your choice): 3.14 has had a
+  year of fixes, every library Stashy uses has had a year on it, and the
+  .exe tools of plan 06 usually lag the newest Python.
+- `pyproject.toml` still says `target-version = "py312"` (Claude's call).
+  That setting tells ruff which Python's syntax it may suggest, and
+  `Stashy.bat` still accepts 3.12 for a new install.
+- The checks ran `manage.py check` and `makemigrations --check` under
+  `stashy.settings.test`, the settings `manage.py test` uses. Those point
+  at a temporary folder with only a throwaway stash, so no check opened
+  the real stash's database. The tests never run waitress (they use
+  Django's test client), so waitress got its own check: it served
+  Stashy's real app on a spare port.
+
+**Teaching note — why a new Python means a new virtualenv.** A virtualenv
+isn't a copy of Python. It's a small folder that points at one installed
+Python (its `pyvenv.cfg` names it), plus the libraries installed for that
+Python. Some of those libraries, like lxml, contain compiled code built
+for one Python version only (the file names say `cp312`), so they can't
+move to 3.14. That's why the upgrade built a new `.venv` from the new
+Python and installed everything again, instead of changing the old one.
+Renaming the old folder instead of deleting it kept the way back down to
+one rename.
+
+**Files touched:** `requirements.txt`, `requirements-dev.txt`,
+`Stashy.bat`, `CLAUDE.md`, `plans/README.md`, this log. New:
+`plans/07_dependency_upgrade.md`.

@@ -28,7 +28,7 @@ exit /b 0
 
 :find_python
 set "BASE_PY="
-for %%C in ("py -3.14" "py -3.13" "py -3.12" "python") do (
+for %%C in ("py -3.15" "py -3.14" "py -3.13" "py -3.12" "python") do (
     if not defined BASE_PY (
         %%~C -c "import sys; sys.exit(0 if sys.version_info >= (3, 12) else 1)" >nul 2>&1 && set "BASE_PY=%%~C"
     )
