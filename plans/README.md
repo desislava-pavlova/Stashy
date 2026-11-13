@@ -9,8 +9,8 @@ plans get the next number. Reasoning and day-by-day progress live in
 |---|------|---------|--------|
 | 01 | [Upgrade plan](01_upgrade_plan.md) — Quicken-style features, phases 1–15 | 12/09/2026 | Phases 1–15 done |
 | 02 | [Architecture cleanup](02_architecture_cleanup.md) — data safety, constraints, tooling, service layer, views split, tests | 25/09/2026 | All 8 phases done (05/10/2026); the migrations question (3.6) moved to plan 03's last phase on 10/10/2026 |
-| 03 | [Structure review](03_structure_review.md) — the developer's side: bugs, dead tests, history notes, SOLID, docs, security | 10/10/2026 | Planned (S1–S21, 6 phases), plus S22–S49 from your code read (S22–S23 done) and S50–S67 from a whole-code review (13/11/2026); Q1 answered, Q2 open; waiting for a phase to start |
-| 04 | [Fixes and changes plan](04_fixes_and_changes_plan.md) — the user's side: your bugs and change requests, planned into phases after 03 | 27/09/2026 | Collecting items (R1–R20 so far) |
+| 03 | [Structure review](03_structure_review.md) — the developer's side: bugs, dead tests, history notes, SOLID, docs, security | 10/10/2026 | Planned (S1–S21, 6 phases), plus S22–S49 from your code read (S22–S23 done) and S50–S67 from a whole-code review and S68–S70 from a visual check and a folder tidy-up (13/11/2026); Q1 answered, Q2 open; waiting for a phase to start |
+| 04 | [Fixes and changes plan](04_fixes_and_changes_plan.md) — the user's side: your bugs and change requests, planned into phases after 03 | 27/09/2026 | Collecting items (R1–R30 so far; R22–R24 and R30 done 13/11/2026) |
 | 05 | [The admin's look](05_admin_look.md) — Stashy's fonts and colours for the admin, still recognisable as the admin; one light/dark switch for both | 23/10/2026 | Planned (2 phases), plus AD1 (dropdown filters, 13/11/2026); waiting for a phase to start |
 | 06 | [Stashy as a Windows .exe](06_exe_packaging.md) — runs without installing Python; data kept outside the program | 02/10/2026 | Idea stage, starts after 05 |
 

@@ -264,6 +264,11 @@ class PayeeListFilterAndSortTests(LoggedInWithAccountTestCase):
         names = [r["payee"].name for r in self.rows()]
         self.assertEqual(names, ["Ikea", "Lidl"])
 
+    def test_the_payee_header_shows_the_arrow_without_a_sort_in_the_url(self):
+        # The list is sorted by name even without ?sort=, so "Payee" shows the arrow from the start.
+        response = self.client.get(reverse("finance:payee_list"))
+        self.assertRegex(response.content.decode(), r"Payee\s*<i [^>]*caret-up-fill")
+
     def test_search_by_name(self):
         names = [r["payee"].name for r in self.rows(q="lid")]
         self.assertEqual(names, ["Lidl"])

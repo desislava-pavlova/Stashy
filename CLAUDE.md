@@ -46,12 +46,13 @@ terms.
 ## Commands
 
 ```
-.venv\Scripts\python.exe manage.py test                          # full suite, ~25 s (723 tests on 05/10/2026)
+.venv\Scripts\python.exe manage.py test                          # full suite, ~25 s (725 tests on 13/11/2026)
 .venv\Scripts\python.exe manage.py test finance.tests.test_reminders  # one module (audit: `test audit`)
 .venv\Scripts\python.exe manage.py migrate --database <stash>    # one stash (Stashy.bat does all, with backups)
 .venv\Scripts\python.exe manage.py reset_pin <owner name>        # real, visible action - ask first
 .venv\Scripts\ruff.exe check .  /  ruff.exe format .      # must stay clean (pyproject.toml)
 .venv\Scripts\coverage.exe run manage.py test; .venv\Scripts\coverage.exe report
+check.bat                                                        # ruff check + format check + full suite in one go (the user double-clicks it)
 ```
 
 - `Stashy.bat` → `scripts/bootstrap.py`: install requirements, create
@@ -352,7 +353,7 @@ terms.
   are single-line only; a multi-line one renders as visible text). Never
   claim a visual result: say it's untested visually, and end "What to
   check" with the visual-check line. Bootstrap's table-cell background
-  beats a lone class, so scope rules like `.table td.x`.
+  and text colour beat a lone class, so scope rules like `.table td.x`.
 - **A browser only through `/visual-check`,** which only the user starts.
   It runs the visual-checker agent, the one agent with a browser (it needs
   Node.js). On Stashy it must:

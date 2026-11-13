@@ -27,9 +27,11 @@ way `Stashy.bat` does it today (back up, then migrate).
   hashed file names from plan 02 item 3.8 are produced once, by the build.
 - **Data lives outside the program.** Inside a PyInstaller program the
   code's own folder is temporary, and every update replaces it. So
-  `stashes/`, `backups/`, `logs/` and the settings file (today's `.env`) go to
+  `stashes/`, `backups/`, `logs/`, the picker's empty placeholder database
+  (`_picker.sqlite3`) and the settings file (today's `.env`) go to
   one stable data folder (see Q1). The program finds that folder in one
-  place in the settings.
+  place in the settings. *13/11/2026:* this also tidies the project
+  folder, which you asked for; plan 03's S70 has the rest of that check.
 - **The first launch** creates the data folder and the settings file (a new
   `SECRET_KEY`, `DEBUG=False`), then opens the stash picker.
 - **Every launch** backs up and migrates each stash that needs it, takes the

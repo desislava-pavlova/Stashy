@@ -220,6 +220,13 @@ class SortingTests(LoggedInWithAccountTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["sort"], "")
 
+    def test_payment_and_deposit_both_show_the_ascending_arrow(self):
+        # The two headers share the "amount" sort, so both are marked, and no other one is.
+        html = self.client.get(reverse("finance:transaction_list"), {"range": "", "sort": "amount"}).content.decode()
+        self.assertRegex(html, r"Payment\s*<i [^>]*caret-up-fill")
+        self.assertRegex(html, r"Deposit\s*<i [^>]*caret-up-fill")
+        self.assertEqual(html.count("sort-arrow"), 2)
+
     def test_account_register_sorts_within_one_account_too(self):
         older = Transaction.objects.create(account=self.account, date=date(2025, 1, 1), amount=Decimal("-1.00"))
         response = self.client.get(reverse("finance:account_detail", args=[self.account.pk]), {"sort": "date"})

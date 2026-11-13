@@ -419,17 +419,47 @@ h1, h2, h3, h4, h5, h6,
 .register td, .register th { padding-top: .22rem; padding-bottom: .22rem; }
 .register thead th { position: sticky; top: 0; z-index: 2; background-color: var(--stashy-surface); }
 .register .btn-icon { padding: 0 .35rem; font-size: .8rem; line-height: 1.5; }
+/* Bootstrap sets the text color on every table cell with a stronger selector than a lone
+   .amount-* class, so these cells need "td" in the selector to show red and green. Only the
+   register tables for now; the other tables wait on a decision (plan 04, R25). */
+.register td.amount-positive { color: var(--stashy-positive); }
+.register td.amount-negative { color: var(--stashy-negative); }
 /* A reconciled row fades slightly so an unreconciled one (still needing attention) stands
    out more at a glance - opacity dims everything proportionally, including the red/green
    payment-deposit coloring, rather than fighting its color with a flat muted text color. */
-.row-reconciled { opacity: .6; }
+.row-reconciled { opacity: .7; }
+/* The Rec. column's check mark, a little heavier. It's an icon-font glyph, and Bootstrap Icons
+   forces font-weight: normal on it, so a thin outline in its own color thickens the strokes. */
+#transactions-table [data-view="reconciled"] .bi { -webkit-text-stroke: .6px currentColor; }
 
 /* The Transactions page's Edit mode (transaction-quick-edit.js). A row's controls sit next to
    its text once they're built (.quick-edit-ready), and one class on the table decides which
    of the two shows, so switching modes changes one class instead of thousands. */
-.register .quick-edit-cell { min-width: 6rem; }
 #transactions-table:not(.editing) .quick-edit-cell { display: none; }
 #transactions-table.editing tr.quick-edit-ready .quick-edit-view { display: none; }
+/* Edit mode's box widths. The boxes whose contents have a known length (date, number,
+   amounts) get a fixed width, so a wide screen doesn't stretch them. The four text boxes
+   (account, payee, category, memo) keep a minimum and share the room that's left; the
+   browser gives more of it to a column whose content is wider, and Category's long names
+   usually win it the most. Category's minimum is the biggest too, since a subcategory's
+   indent takes some of the box. The cells' side padding shrinks while editing (the table's
+   outer edges to .5rem, from 1rem), so the whole table still fits a 1280 px screen. */
+#transactions-table.editing td,
+#transactions-table.editing th { padding-left: .25rem; padding-right: .25rem; }
+#transactions-table.editing tr > :first-child { padding-left: .5rem; }
+#transactions-table.editing tr > :last-child { padding-right: .5rem; }
+#transactions-table .quick-edit-cell[data-cell="date"] { width: 6rem; }
+#transactions-table .quick-edit-cell[data-cell="transaction_number"] { width: 4.5rem; }
+#transactions-table .quick-edit-cell[data-cell="payment"],
+#transactions-table .quick-edit-cell[data-cell="deposit"] { width: 5.5rem; }
+#transactions-table .quick-edit-cell[data-cell="account_name"],
+#transactions-table .quick-edit-cell[data-cell="payee"],
+#transactions-table .quick-edit-cell[data-cell="memo"] { min-width: 6rem; }
+#transactions-table .quick-edit-cell[data-cell="category_name"] { min-width: 10rem; }
+/* A refused box keeps its red border and its message on hover, but not Bootstrap's warning
+   icon, whose padding would hide most of a short box's value. Text boxes only: on a select
+   or the checkbox, "background-image: none" would also remove the arrow or the tick. */
+#transactions-table .form-control.quick-edit-cell.is-invalid { padding-right: .5rem; background-image: none; }
 /* Links that would leave the page while Edit mode is on (sort headers, page links, "Clear
    all filters"): dimmed and unclickable until editing is finished. */
 .edit-locked { opacity: .5; pointer-events: none; }

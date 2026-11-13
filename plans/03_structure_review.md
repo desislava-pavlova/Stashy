@@ -18,7 +18,9 @@ plan 03 (fixes and changes) is now 04, and the old plan 04 (.exe) is now 06
 detail, which is below. You're reading the code yourself and may add
 findings (see "Your additions"). A phase starts when you name it.
 *13/11/2026:* your read added S22–S49, and a whole-code review added
-S50–S67 (section G); every one is in its phase's checklist.
+S50–S67 (section G); every one is in its phase's checklist. S68 and S69 (section
+H) came from the visual check the same day, and S70 from your wish for a
+tidier project folder.
 
 **Baseline (10/10/2026):** 723 tests green. `ruff check .` and
 `ruff format --check .` are clean, `manage.py check` finds nothing, and
@@ -643,11 +645,51 @@ here, by phase. Findings that extend an older item are notes at the end.
 - **Phase 6.1:** `test_backup.py` migrates to `finance` 0016/0017, which
   aren't in git, so a fresh copy from GitHub fails that test.
 
-<!-- Next number: S68 -->
+### H. Found while checking (13/11/2026)
+
+- **S68 — `.gitignore` misses the browser tool's folder.** The browser
+  tool that `/visual-check` uses (Playwright) can save its screenshots and
+  page snapshots only into a `.playwright-mcp/` folder inside the project,
+  and `.gitignore` doesn't list it. The visual-checker moves its files to
+  the scratchpad when it finishes, so nothing is there today. A run that
+  stops halfway would leave the folder behind, and a `git add .` would
+  commit its screenshots, which show the test stash's data. **Fix:** one
+  line, `.playwright-mcp/`, in `.gitignore`. Proposed phase: 2, with S13's
+  `.gitignore` trim.
+- **S69 — Payees keeps a sort it doesn't know.** `payee_list` sorts its
+  rows in Python (the totals are worked out per row, so `_sorted()`, which
+  sorts a query, doesn't fit). An unknown `?sort=` value (a hand-typed or
+  old link, e.g. `?sort=nonsense`) sorts by name, as it should, but stays
+  in `sort`. So no header shows an arrow, and the first click on "Payee"
+  seems to do nothing: it asks for `sort=name`, which looks the same.
+  Transactions and the register reset an unknown value to `""`.
+  **Fix:** `payee_list` falls back to `"name"` when the column isn't in
+  `PAYEE_SORT_KEYS`, with a test in `test_payees.py`. Found by the
+  qa-tester while checking R21. Proposed phase: 1.
+- **S70 — The starter categories file sits at the project's top level.**
+  You asked on 13/11/2026 for fewer items at the top of the project
+  folder. Most of them have to stay there, because the tools look for
+  them there: git, the virtual environment, PyCharm, Claude Code (`.claude`,
+  `CLAUDE.md`, `CLAUDE.local.md`), `.env` with its example, `manage.py`,
+  `pyproject.toml`, the requirements files, `README.md`, `LICENSE`,
+  `Stashy.bat`, the three Django packages, and `check.bat` (the
+  frontend-checker recreates it there). The runtime folders (`stashes/`,
+  `logs/`, `_picker.sqlite3`) move to one data folder in plan 06; moving
+  them now would move the real stash twice. That leaves
+  `starter_categories.xlsx`: only `finance/starter_categories.py` (the
+  welcome wizard's Categories step) reads it. **Fix:** move it to
+  `finance/starter_categories.xlsx`, next to the code that reads it.
+  `starter_categories_path()` looks beside its own module, not in
+  `BASE_DIR`. The module docstring, the welcome page's "wasn't found"
+  message, README (its text and the structure tree) and CLAUDE.md's map
+  follow. The file is in git, so the commit also records the old path's
+  removal. Proposed phase: 2.
+
+<!-- Next number: S71 -->
 
 ---
 
-## Phase 1 — Bugs and quick security fixes  (S1–S8, S10, S24 with plan 04's R9, S31–S33, S38, S39, S41, S46, S50–S55)
+## Phase 1 — Bugs and quick security fixes  (S1–S8, S10, S24 with plan 04's R9, S31–S33, S38, S39, S41, S46, S50–S55, S69)
 
 - [ ] **1.1** S1: `min_value=CENT` on the transfer amount; test with 0.01.
 - [ ] **1.2** S2: both bad URLs answer 404 or show a message; a test each.
@@ -691,12 +733,14 @@ here, by phase. Findings that extend an older item are notes at the end.
 - [ ] **1.22** S54: the time zone is a `ChoiceField`.
 - [ ] **1.23** S55: Edit mode saves a row's changes in order, and an empty
   amount is refused.
+- [ ] **1.24** S69: Payees falls back to sorting by name for an unknown
+  sort, so the Payee header shows its arrow.
 
 **Done when:** each fix has a test that fails on today's code, the suite is
 green, and the render check of the changed pages shows no leaked template
 syntax.
 
-## Phase 2 — Leftovers and documentation  (S11, S12, S13, S21, S44, S43's comments, S25, S34, S56–S62)
+## Phase 2 — Leftovers and documentation  (S11, S12, S13, S21, S44, S43's comments, S25, S34, S56–S62, S68, S70)
 
 - [ ] **2.1** S11: delete the 21 history-only tests, trim three, rename the
   kept classes; plus the seven more from G's note.
@@ -722,6 +766,9 @@ syntax.
   rules, shared set-up in `base.py`.
 - [ ] **2.9** S62: tests for fetching exchange rates and for typed-in
   rates beating fetched ones.
+- [ ] **2.10** S68: `.playwright-mcp/` in `.gitignore`.
+- [ ] **2.11** S70: `starter_categories.xlsx` moves into `finance/`, and
+  the code, the welcome page's message, README and CLAUDE.md follow.
 
 **Done when:** the suite is green (fewer tests than 723, since history-only
 tests and duplicates go, and a few new ones come), and a grep for the

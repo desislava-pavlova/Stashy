@@ -4863,3 +4863,97 @@ The comma has a second benefit: adding an item later changes one line in
 the diff, not two (without it, the previous last line has to change too).
 
 **Files touched:** `finance/views/exports.py`, `CLAUDE.md`, this log.
+
+## 13/11/2026 — Transactions: red and green amounts, the reconciled fade, Edit mode widths (plan 04, R21–R24 and R30)
+
+**What changed:** The visual check of the Transactions page
+(`/visual-check transactions`) was mainly for your edit of
+`sort_arrow.html`, and it found a dozen other things.
+- **R21 (your question):** the arrow sits as close to the header word as
+  before your edit. Nothing needed changing (see below).
+- **R22:** payments and deposits are red and green again on
+  Transactions, an account's register and a category's usage page.
+- **R23:** reconciled rows fade to 70% instead of 60% (your choice).
+- **R24:** Edit mode fits a 1280 px screen. The Number box is smaller,
+  Category is bigger, and the Reconciled checkbox is back to its normal
+  size. A box the server refuses keeps its red border and its message,
+  without Bootstrap's warning icon.
+- **R30 (you asked, later the same day):** the Rec. column's check mark is
+  a little bolder.
+
+The rest are filed: R25–R29 in plan 04 (the phone-size ones on hold, your
+call), and S68–S70 in plan 03.
+
+**Why the code looks like this:**
+- R21: Claude first took your if/else on separate lines for the cause of a
+  gap, since in ordinary text HTML shows a line break plus its indent as
+  one space, and wrapped the file in `{% spaceless %}`. The front-end check
+  then pointed out that the header link is a flex box
+  (`.sort-link { display: inline-flex; gap: .25rem }`). Inside a flex box
+  the browser drops the whitespace at the end of a word, so the line
+  breaks never showed. That change was undone the same day, and your file
+  is exactly as you wrote it. The gap you see is `gap: .25rem`. Two new
+  tests check that the right headers carry the arrow: Payment and Deposit
+  together, since they share one sort, and Payee on the Payees page before
+  any click. They accept any whitespace before the arrow, because
+  whitespace isn't what they're about.
+- R22: the red/green rules name the cell, `.register td.amount-negative`
+  (see the teaching note). They're scoped to `.register`, the three
+  transaction lists, because the other tables (R25) need your answer
+  first: turning it on there changes how Reports looks.
+- R24: one `min-width: 6rem` for every box meant nine boxes of at least
+  96 px each, more than the card has room for. Now each box is sized by
+  what it holds, picked by its `data-cell` attribute, which the template
+  already had, so no markup changed. Date, number and amounts have a known
+  length, so they get a fixed `width`, and the table can't stretch them on
+  a wide screen. The four text boxes (account, payee, category, memo) get
+  only a `min-width` and share the rest. The browser shares spare room
+  roughly in proportion to how wide each column's content wants to be, and
+  Category's long names usually win it the most. The cells' side padding
+  shrinks while editing, which wins back about 70 px. All of Edit mode's
+  rules start with `#transactions-table`, the one page that has it.
+- R24's error state: when the server refuses a value, Bootstrap adds a
+  warning icon inside the box and makes room for it with about 33 px of
+  padding. In a 4.5 rem Number box that would hide most of the value you
+  need to correct. The red border and the message on hover (the box's
+  `title`) stay. The rule covers text boxes only: on a dropdown,
+  `background-image: none` would also remove its arrow, and on the
+  checkbox its tick.
+- Speed (you asked for no slowdown): these are a few stylesheet rules.
+  Edit mode's script builds the same controls as before, and the browser
+  applies the rules while it lays out the table anyway.
+- R30: the check mark is a Bootstrap Icons glyph, a character drawn from
+  an icon font, and that font's stylesheet sets
+  `font-weight: normal !important` on every icon, so `bold` can't
+  change it. Instead, `-webkit-text-stroke: .6px currentColor` draws a
+  thin outline around the glyph in its own colour, which makes its
+  strokes look thicker. Every current browser supports it despite the
+  `-webkit-` prefix. The rule picks the mark by its `data-view` attribute,
+  so both the server's HTML and the HTML Edit mode writes after a save
+  get it without a markup change.
+
+**Teaching note — why a class can lose to Bootstrap.** When two CSS rules
+set the same property on an element, the more *specific* selector wins,
+whatever order they come in. Specificity counts IDs first, then classes
+(with attributes and pseudo-classes), then element names. Bootstrap 5.3
+colours every table cell with `.table > :not(caption) > * > *`: one class
+plus one element name (`caption`, inside `:not()`). `.amount-negative` is
+one class alone, so Bootstrap's rule wins and the cell gets the normal
+text colour. `.register td.amount-negative` has two classes and an element
+name, so it wins back. That's the "scope it like `.table td.x`" rule in
+CLAUDE.md. The `.amount-*` classes still work on a `<span>` or a `<div>`,
+which Bootstrap doesn't colour, and that's why the Total line stayed
+green all along.
+
+**A smaller lesson from R21:** reading the HTML isn't the same as seeing
+the page. Whether whitespace shows depends on the CSS around it (here a
+flex box), so a claim about how something looks needs either a browser or
+a read of the CSS that styles it, not just the markup.
+
+**Files touched:** `finance/static/finance/css/stashy.css`,
+`finance/tests/test_transactions.py` and `finance/tests/test_payees.py`
+(one new test each), `plans/04_fixes_and_changes_plan.md`,
+`plans/03_structure_review.md`, `plans/06_exe_packaging.md`,
+`plans/README.md`, `CLAUDE.md`, this log. New:
+`check.bat`, written by the front-end checker (ruff and the full test
+suite in one double-click).
