@@ -1,8 +1,10 @@
 """Money and regional formats: reading typed amounts, the money filter, date formats, and
 each stash's own preferences."""
 
+import zoneinfo
 from datetime import date
 from decimal import Decimal
+from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase
@@ -85,6 +87,74 @@ class RegionalPreferencesTests(SimpleTestCase):
         self.assertEqual(regional.number_format_from_separators(",", "."), "comma_dot")
         self.assertEqual(regional.number_format_from_separators(".", ","), "dot_comma")
 
+    def test_an_older_zone_name_becomes_the_one_the_list_has(self):
+        """Plan 03, S77: the time zone database keeps old names as links to the current one."""
+        cases = [
+            ("Europe/Kiev", "Europe/Kyiv"),
+            ("Asia/Calcutta", "Asia/Kolkata"),
+            ("Etc/UTC", "UTC"),
+            ("Europe/Sofia", "Europe/Sofia"),
+        ]
+        for name, listed in cases:
+            with self.subTest(zone=name):
+                self.assertEqual(regional.listed_zone(name), listed)
+        self.assertIsNone(regional.listed_zone("Mars/Olympus_Mons"))
+
+    def test_the_zone_detected_on_this_computer_is_always_one_the_list_has(self):
+        """An English (US) Windows on Sofia's clock: tzlocal says Europe/Kiev, and the US has
+        no zone on that clock, so before S77 the old name was saved as it was."""
+        for country, expected in [("US", "Europe/Kyiv"), ("BG", "Europe/Sofia")]:
+            with (
+                self.subTest(country=country),
+                mock.patch.object(regional, "_read_windows_settings", return_value=({}, country)),
+                mock.patch.object(regional.tzlocal, "get_localzone_name", return_value="Europe/Kiev"),
+            ):
+                self.assertEqual(regional.detect_from_computer().time_zone, expected)
+
+    def test_a_stashs_own_zone_joins_the_list_only_when_it_is_a_real_zone(self):
+        self.assertNotIn("Europe/Kiev", regional.time_zone_choices())
+        self.assertIn("Europe/Kiev", regional.time_zone_choices(keep="Europe/Kiev"))
+        self.assertNotIn("Mars/Olympus_Mons", regional.time_zone_choices(keep="Mars/Olympus_Mons"))
+
+    def test_text_that_is_no_zone_never_joins_the_list_and_never_raises(self):
+        """The stored zone is plain text, so a hand-edited stash can hold anything: a path, the
+        name of a folder or of another file in the time zone database."""
+        listed = regional.time_zone_choices()
+        for text in ("../../etc/passwd", "/etc/passwd", "Europe", "zone.tab", "tzdata.zi", "", None):
+            with self.subTest(text=text):
+                self.assertEqual(regional.time_zone_choices(keep=text), listed)
+                self.assertIsNone(regional.listed_zone(text))
+
+    def test_the_list_is_sorted_has_each_zone_once_and_gains_only_the_stashs_own_zone(self):
+        listed = regional.time_zone_choices()
+        self.assertEqual(listed, sorted(set(listed)))
+        self.assertEqual(regional.time_zone_choices(keep="Europe/Sofia"), listed)
+        with_old_name = regional.time_zone_choices(keep="Europe/Kiev")
+        self.assertEqual(with_old_name, sorted(with_old_name))
+        self.assertEqual(set(with_old_name) - set(listed), {"Europe/Kiev"})
+
+    def test_without_the_zone_table_every_zone_the_system_knows_is_offered(self):
+        with mock.patch.object(regional, "_zone_table", return_value=()):
+            self.assertEqual(regional.time_zone_choices(), sorted(zoneinfo.available_timezones()))
+
+    def detect_with(self, **tzlocal_gives):
+        """What this computer's settings give when tzlocal answers with `return_value=` a zone
+        name, or fails with `side_effect=` an error."""
+        with (
+            mock.patch.object(regional, "_read_windows_settings", return_value=({}, "BG")),
+            mock.patch.object(regional.tzlocal, "get_localzone_name", **tzlocal_gives),
+        ):
+            return regional.detect_from_computer()
+
+    def test_a_computer_zone_the_list_cannot_name_falls_back_to_the_default_zone(self):
+        for name in ("Mars/Olympus_Mons", "", None):
+            with self.subTest(name=name):
+                self.assertEqual(self.detect_with(return_value=name).time_zone, regional.DEFAULTS.time_zone)
+
+    def test_a_computer_whose_zone_cannot_be_read_falls_back_to_the_default_zone(self):
+        detected = self.detect_with(side_effect=RuntimeError("the zone setting is unreadable"))
+        self.assertEqual(detected.time_zone, regional.DEFAULTS.time_zone)
+
 
 class ProfileTests(StashTestCase):
     def test_profile_is_created_once_and_then_left_alone(self):
@@ -95,3 +165,14 @@ class ProfileTests(StashTestCase):
         second = Profile.for_user(user)
         self.assertEqual(second.date_format, "ymd")
         self.assertEqual(Profile.objects.filter(user=user).count(), 1)
+
+    def test_a_profile_made_on_first_use_gets_the_listed_name_of_the_computers_zone(self):
+        """Plan 03, S77: a stash that gets its Profile when its user first logs in (not when it
+        was created) takes the same translated name."""
+        user = get_user_model().objects.create_user("tester", password="not-a-real-password-123")
+        with (
+            mock.patch.object(regional, "_read_windows_settings", return_value=({}, "US")),
+            mock.patch.object(regional.tzlocal, "get_localzone_name", return_value="Europe/Kiev"),
+        ):
+            profile = Profile.for_user(user)
+        self.assertEqual(profile.time_zone, "Europe/Kyiv")

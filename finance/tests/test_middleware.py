@@ -1,8 +1,11 @@
 """The middleware and the stash router: which stash a request uses, its transaction, and
 the gates in front of every page (choose a stash, then finish the welcome wizard)."""
 
+import tempfile
 import threading
+from pathlib import Path
 from unittest import mock
+from urllib.parse import urlsplit
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -99,7 +102,7 @@ class RememberedStashCookieTests(SimpleTestCase):
         self.factory = RequestFactory()
 
     def test_a_remembered_stash_that_still_exists_is_selected_and_the_request_redirected(self):
-        with mock.patch.object(registry, "stash_exists", return_value=True):
+        with mock.patch.object(registry, "list_stashes", return_value=["alex"]):
             middleware = RequireStashMiddleware(get_response=lambda r: "should not be reached")
             request = self.factory.get("/accounts/login/")
             request.session = {}
@@ -110,7 +113,7 @@ class RememberedStashCookieTests(SimpleTestCase):
         self.assertEqual(request.session["stash"], "alex")
 
     def test_a_remembered_stash_that_no_longer_exists_falls_back_to_the_picker(self):
-        with mock.patch.object(registry, "stash_exists", return_value=False):
+        with mock.patch.object(registry, "list_stashes", return_value=["alex"]):
             middleware = RequireStashMiddleware(get_response=lambda r: "should not be reached")
             request = self.factory.get("/accounts/login/")
             request.session = {}
@@ -119,6 +122,87 @@ class RememberedStashCookieTests(SimpleTestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.url, reverse("stash_picker"))
         self.assertNotIn("stash", request.session)
+
+    def test_a_cookie_naming_a_database_outside_the_stashes_folder_falls_back_to_the_picker(self):
+        """Plan 03, S10: the cookie isn't signed, so anything could be in it. A path to any
+        folder holding a db.sqlite3 used to pass, because the stashes folder joined with an
+        absolute path is that path."""
+        elsewhere = tempfile.TemporaryDirectory()
+        self.addCleanup(elsewhere.cleanup)
+        (Path(elsewhere.name) / "db.sqlite3").touch()
+        middleware = RequireStashMiddleware(get_response=lambda r: "should not be reached")
+        request = self.factory.get("/accounts/login/")
+        request.session = {}
+        request.COOKIES = {registry.LAST_STASH_COOKIE: elsewhere.name}
+        response = middleware(request)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse("stash_picker"))
+        self.assertNotIn("stash", request.session)
+
+    def test_a_path_starting_with_two_slashes_never_sends_the_browser_to_another_site(self):
+        """Security review, 14/11/2026: a browser reads "//evil.example/" as a link to
+        evil.example, so "back to the same page" would have sent it there. A raw PATH_INFO,
+        because the test client would read the // as a host name."""
+        with mock.patch.object(registry, "list_stashes", return_value=["alex"]):
+            middleware = RequireStashMiddleware(get_response=lambda r: "should not be reached")
+            request = self.factory.get("/", PATH_INFO="//evil.example/")
+            request.session = {}
+            request.COOKIES = {registry.LAST_STASH_COOKIE: "alex"}
+            response = middleware(request)
+        self.assertEqual(request.path, "//evil.example/")
+        self.assertEqual(response.url, reverse("login"))
+        self.assertEqual(request.session["stash"], "alex")
+
+    def test_no_way_of_writing_a_link_to_another_site_gets_the_browser_there(self):
+        """The same check for other spellings, with and without a query string. What comes back
+        is either the PIN screen or a path on this site (a backslash is escaped, so a browser
+        can't read it as a slash)."""
+        cases = [
+            {"PATH_INFO": "///evil.example/"},
+            {"PATH_INFO": "//evil.example/", "QUERY_STRING": "next=/"},
+            {"PATH_INFO": "//evil.example@localhost/"},
+            {"PATH_INFO": "/\\evil.example/"},
+        ]
+        for extra in cases:
+            with self.subTest(**extra), mock.patch.object(registry, "list_stashes", return_value=["alex"]):
+                middleware = RequireStashMiddleware(get_response=lambda r: "should not be reached")
+                request = self.factory.get("/", **extra)
+                request.session = {}
+                request.COOKIES = {registry.LAST_STASH_COOKIE: "alex"}
+                response = middleware(request)
+                self.assertEqual(response.status_code, 302)
+                self.assertEqual(urlsplit(response.url).netloc, "")
+                self.assertFalse(response.url.startswith("//"))
+                self.assertEqual(request.session["stash"], "alex")
+
+    def test_an_ordinary_page_comes_back_with_its_query_string(self):
+        with mock.patch.object(registry, "list_stashes", return_value=["alex"]):
+            middleware = RequireStashMiddleware(get_response=lambda r: "should not be reached")
+            request = self.factory.get("/reports/", {"range": "ytd", "subtotal": "month"})
+            request.session = {}
+            request.COOKIES = {registry.LAST_STASH_COOKIE: "alex"}
+            response = middleware(request)
+        self.assertEqual(response.url, "/reports/?range=ytd&subtotal=month")
+
+    def test_only_the_exact_stash_name_counts(self):
+        """Plan 03, S10: Windows finds the test stash's folder under each of these names too,
+        but the stash's user is named after the folder's exact spelling (plan 04, R9), so
+        the PIN screen could never log in to the stash these would open."""
+        here = Path(settings.STASHES_DIR)
+        for value in (
+            settings.TEST_STASH.upper(),
+            f"{settings.TEST_STASH}/",
+            f"../{here.name}/{settings.TEST_STASH}",
+        ):
+            with self.subTest(cookie=value):
+                self.assertTrue(registry.stash_exists(value))
+                middleware = RequireStashMiddleware(get_response=lambda r: "should not be reached")
+                request = self.factory.get("/accounts/login/")
+                request.session = {}
+                request.COOKIES = {registry.LAST_STASH_COOKIE: value}
+                response = middleware(request)
+                self.assertEqual(response.url, reverse("stash_picker"))
+                self.assertNotIn("stash", request.session)
 
     def test_no_cookie_falls_back_to_the_picker_as_before(self):
         middleware = RequireStashMiddleware(get_response=lambda r: "should not be reached")
@@ -133,7 +217,7 @@ class RememberedStashCookieTests(SimpleTestCase):
         # A cookie doesn't force-select a stash on the picker's own pages - picking one there
         # is still an explicit action, per stash_picker()'s "already selected -> redirect to
         # login" guard, not something this middleware should short-circuit.
-        with mock.patch.object(registry, "stash_exists", return_value=True):
+        with mock.patch.object(registry, "list_stashes", return_value=["alex"]):
             middleware = RequireStashMiddleware(get_response=lambda r: "ok")
             request = self.factory.get("/stashes/")
             request.session = {}
@@ -309,7 +393,10 @@ class MiddlewareChainTests(StashTestCase):
         response = browser.post(reverse("login"), {"username": settings.TEST_STASH, "password": "1234"}, follow=True)
         self.assertEqual(response.redirect_chain, [(reverse("finance:dashboard"), 302)])
         self.assertTemplateUsed(response, "finance/dashboard.html")
-        self.assertEqual(browser.cookies[registry.LAST_STASH_COOKIE].value, settings.TEST_STASH)
+        cookie = browser.cookies[registry.LAST_STASH_COOKIE]
+        self.assertEqual(cookie.value, settings.TEST_STASH)
+        # Plan 03, S10: page scripts can't read it.
+        self.assertTrue(cookie["httponly"])
 
     def test_an_unfinished_welcome_wizard_comes_before_every_page(self):
         user = get_user_model().objects.create_user(settings.TEST_STASH)

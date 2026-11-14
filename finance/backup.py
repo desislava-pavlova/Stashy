@@ -71,10 +71,31 @@ def backup_now(db_path, project_root, tag="manual"):
         return None
     backups_dir = Path(project_root) / BACKUP_DIR_NAME
     backups_dir.mkdir(exist_ok=True)
-    stamp = datetime.now().strftime(_TIMESTAMP_FORMAT)
-    destination = backups_dir / f"{_stash_label(project_root)}_backup_{tag}_{stamp}.sqlite3"
-    _sqlite_copy(db_path, destination)
+    destination = _claim_new_backup_name(backups_dir, _stash_label(project_root), tag)
+    try:
+        _sqlite_copy(db_path, destination)
+    except BaseException:
+        destination.unlink(missing_ok=True)  # an empty file must not pass for a backup
+        raise
     return destination
+
+
+def _claim_new_backup_name(backups_dir, label, tag):
+    """An empty file with a name no other backup has. Names are stamped to the second, so two
+    backups in the same second (a double-clicked Restore takes a safety copy for each click)
+    would have one overwrite the other, and the first held the data from before. The file is
+    created exclusively ("x"): one of two requests at the same moment gets FileExistsError
+    and takes the next second's name instead."""
+    moment = datetime.now()
+    while True:
+        stamp = moment.strftime(_TIMESTAMP_FORMAT)
+        destination = backups_dir / f"{label}_backup_{tag}_{stamp}.sqlite3"
+        try:
+            destination.open("x").close()
+        except FileExistsError:
+            moment += timedelta(seconds=1)
+        else:
+            return destination
 
 
 def _sqlite_copy(source, destination):

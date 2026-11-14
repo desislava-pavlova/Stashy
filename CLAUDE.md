@@ -46,7 +46,7 @@ terms.
 ## Commands
 
 ```
-.venv\Scripts\python.exe manage.py test                          # full suite, ~25 s (725 tests on 13/11/2026)
+.venv\Scripts\python.exe manage.py test                          # full suite, ~60 s (868 tests on 14/11/2026)
 .venv\Scripts\python.exe manage.py test finance.tests.test_reminders  # one module (audit: `test audit`)
 .venv\Scripts\python.exe manage.py migrate --database <stash>    # one stash (Stashy.bat does all, with backups)
 .venv\Scripts\python.exe manage.py reset_pin <owner name>        # real, visible action - ask first
@@ -56,7 +56,8 @@ check.bat                                                        # ruff check + 
 ```
 
 - `Stashy.bat` → `scripts/bootstrap.py`: install requirements, create
-  `.env`, back up and migrate every stash, run `collectstatic`, take the
+  `.env` (a copy of `.env.example` with a new `SECRET_KEY`; an empty key
+  stops Stashy), back up and migrate every stash, run `collectstatic`, take the
   quarterly backup, then serve with Waitress. It opens the browser at
   `http://stashy.localhost:<PORT>/` (browsers resolve `*.localhost` themselves,
   and `base.py` always allows that name). Python can't resolve it, so code
@@ -130,14 +131,24 @@ check.bat                                                        # ruff check + 
     and `save_watched_expenses` are their own POST URLs.
   - `content.py`: the help-card tips (`*_TIPS`).
   - `forms.py`, `auth_forms.py` (`PinField` and `PinConfirmMixin`: every
-    PIN box uses `stashes.security.pin_validator`).
+    PIN box uses `stashes.security.pin_validator`). A page that asks for
+    the PIN again while logged in uses `CurrentPinForm`, which checks it
+    through `security.check_pin()`, so wrong PINs count toward the lockout;
+    reaching it logs out (`views/settings.py`, `_log_out_after_lockout()`).
+    `check_pin()` takes its own write lock and re-reads the lockout, PIN and
+    recovery code first (`request.stashy_profile` is read before the request's
+    lock), and checks through `_check()`, which never re-saves the hash (a
+    re-save would log you out). `backup_now()` never overwrites a backup. For the same reason, forms that
+    edit the Profile save only their own columns (`ProfileColumnsOnlyMixin`).
   - `reporting.py`: all report maths. `currency.py`: RateTable,
     Frankfurter. `money.py`: Decimal helpers, `parse_amount`.
     `regional.py`: date and number formats per user.
   - `stashes/` package: `registry.py` (stash folders, aliases,
-    `create_stash()`, `restore_stash()` = restore + migrate, owner names,
+    `create_stash()`, `restore_stash()` = restore + migrate, keeping
+    today's PIN, recovery code and lockout (the user's call) and refusing an
+    empty or damaged backup before anything is replaced, owner names,
     `reset_pin_directly()`) and `security.py` (PIN rule, lockout, recovery
-    codes). `StashError` is in `stashes/__init__.py`. `registry` imports
+    codes; a right recovery code works during a lockout). `StashError` is in `stashes/__init__.py`. `registry` imports
     `security`, never the reverse. `text.py`: `possessive()`.
     `db_router.py`, `middleware.py`,
     `backup.py` (standard library only, since bootstrap imports it before
@@ -159,7 +170,8 @@ check.bat                                                        # ruff check + 
   - `default` is `_picker.sqlite3`, an empty placeholder.
   - Every stash is its own connection alias named after its folder.
   - Sessions are signed cookies, because they must work before a stash is
-    chosen.
+    chosen. A login ends when the browser closes
+    (`SESSION_EXPIRE_AT_BROWSER_CLOSE`, the user's call, 14/11/2026).
   - `transaction.atomic()` and `on_commit()` go to `default` unless given
     `using=<stash alias>`; use `router.db_for_write(Model)`. The router
     doesn't choose a transaction's connection.
@@ -174,15 +186,17 @@ check.bat                                                        # ruff check + 
   mark its parent had, so give it again with `method_decorator`. A new view
   needs no login decorator.
 - Middleware chain: StashSelection → Auth → LoginRequired → RequireStash (picker or the
-  last-stash cookie) → AuditContext → RegionalPreferences (sets
+  last-stash cookie, which is unsigned, so it counts only if `list_stashes()` has its
+  name) → AuditContext → RegionalPreferences (sets
   `request.stashy_profile`) → RequireSetup (welcome wizard) → … →
   StashAtomicRequest.
 - Exports: pass real values (`Decimal`, `date`, `None`) to
   `_export_response()`, never `str()`. The writers format them, escape
   formula-like text in CSV and keep text as text in XLSX.
 - `/admin/login/` redirects to the stash PIN login (`admin_login`), so the
-  lockout covers every login. Secrets shown once (a new recovery code) go in
-  the local-memory cache, never the signed-cookie session.
+  lockout covers every login, and `/admin/password_change/` to Change PIN.
+- Secrets shown once (a new recovery code) go in the local-memory cache,
+  never the signed-cookie session.
 - Tests: `finance/tests/test_<area>.py`, one module per area, named after the
   code they test (`views/<area>.py`; `reporting.py` → `test_reporting.py`,
   while the Reports page is `test_reports.py`; Django settings, logging and
@@ -196,7 +210,9 @@ check.bat                                                        # ruff check + 
     `AlexsStashTestCase`). Its queries go to the test stash and its client
     starts with that stash chosen, so requests run the real middleware.
     `default` is off limits unless a class adds it to `databases`, so a test's
-    own `atomic()` needs `using=settings.TEST_STASH`.
+    own `atomic()` needs `using=settings.TEST_STASH`. Shared test constants
+    live there too (`LEAKED_TEMPLATE_SYNTAX`): a test module never imports
+    from another test module.
   - Build shared data in `setUpTestData`; log in (and anything about the
     client, mocks or temp files) in `setUp`.
   - `TemporaryStashesMixin` gives a test extra real stash aliases in a temp

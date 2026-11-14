@@ -481,8 +481,29 @@ class DateRangeFilterForm(forms.Form):
         return cleaned
 
 
-class ProfileForm(BootstrapFormMixin, forms.ModelForm):
+class ProfileColumnsOnlyMixin:
+    """For forms that edit the stash's one Profile: save() writes only this form's own
+    columns. The Profile comes from request.stashy_profile, read before the request took the
+    stash's write lock, so saving the whole row could put back old lockout or recovery-code
+    values another request had just changed (plan 03, S75)."""
+
+    def save(self, commit=True):
+        profile = super().save(commit=False)
+        if commit:
+            # The form's own fields, not Meta.fields, which is None for a form written with exclude.
+            columns = [name for name in self.fields if not profile._meta.get_field(name).many_to_many]
+            profile.save(update_fields=columns)
+            self.save_m2m()
+        return profile
+
+
+class ProfileForm(ProfileColumnsOnlyMixin, BootstrapFormMixin, forms.ModelForm):
     """The Settings page: regional preferences + main currency (D2, D10)."""
+
+    # The model stores the zone as plain text. A ChoiceField refuses any zone that isn't in
+    # the list, which a dropdown on a text field wouldn't: a hand-made request could still
+    # save any text there.
+    time_zone = forms.ChoiceField()
 
     class Meta:
         model = Profile
@@ -490,15 +511,17 @@ class ProfileForm(BootstrapFormMixin, forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["time_zone"].widget = forms.Select(choices=[(z, z) for z in regional.time_zone_choices()])
-        self.fields["time_zone"].widget.attrs["class"] = "form-select"
+        # The stash's own zone stays a choice even when the list doesn't have it, so the
+        # dropdown shows it and a save keeps it, instead of quietly taking the first zone.
+        zones = regional.time_zone_choices(keep=self.instance.time_zone)
+        self.fields["time_zone"].choices = [(zone, zone) for zone in zones]
 
 
 class CheckRatesForm(forms.Form):
     """No fields — just the button that triggers a Frankfurter fetch; needs an internet connection."""
 
 
-class WatchedExpensesForm(BootstrapFormMixin, forms.ModelForm):
+class WatchedExpensesForm(ProfileColumnsOnlyMixin, BootstrapFormMixin, forms.ModelForm):
     """Settings: which expense categories the "Watched expenses" report tracks (R8), replacing
     the old hardcoded "Bills & Utilities" report. Categories are rendered by hand in
     includes/category_checkbox_filter.html (same tick-the-subcategories widget the Transactions

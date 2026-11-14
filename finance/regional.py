@@ -221,7 +221,7 @@ def _local_time_zone(country):
         name = tzlocal.get_localzone_name()
     except Exception:  # tzlocal raises its own error types for unreadable configurations
         return None
-    return zone_for_country(name, country) if name else None
+    return listed_zone(zone_for_country(name, country)) if name else None
 
 
 def zone_for_country(zone_name, country):
@@ -254,23 +254,60 @@ def zones_in_country(country):
     return [name for code, name in _zone_table() if code == country.upper()]
 
 
-def time_zone_choices():
+def time_zone_choices(keep=None):
+    """The zones Settings offers: every zone in zone.tab, plus UTC. `keep`, a stash's own zone,
+    is added when the list doesn't have it but it's a real zone: a stash saved under an older
+    name keeps it until its owner picks another (plan 03, S77)."""
     names = sorted({name for _, name in _zone_table()} | {"UTC"})
-    return names if len(names) > 1 else sorted(zoneinfo.available_timezones())
+    if len(names) <= 1:
+        names = sorted(zoneinfo.available_timezones())
+    if keep and keep not in names and _zone(keep) is not None:
+        names = sorted([*names, keep])
+    return names
+
+
+def listed_zone(name):
+    """`name` as the zone list spells it, or None. tzlocal can give an older name the list
+    doesn't have (Europe/Kiev, now Europe/Kyiv; Etc/UTC, listed as UTC), and the Settings
+    dropdown only shows listed zones. The time zone database keeps each old name as a link to
+    the current one, so this follows the links, either way round."""
+    choices = set(time_zone_choices())
+    if name in choices:
+        return name
+    links = _zone_links()
+    current = links.get(name, name)
+    same_zone = [current, *sorted(old for old, new in links.items() if new == current)]
+    return next((zone for zone in same_zone if zone in choices), None)
+
+
+def _time_zone_database_file(name):
+    """The text of one file from the time zone database: the tzdata package's copy, or the
+    operating system's (Linux and macOS keep one in zoneinfo.TZPATH). "" when neither has it."""
+    try:
+        return (resources.files("tzdata") / "zoneinfo" / name).read_text(encoding="utf-8")
+    except (ModuleNotFoundError, OSError):
+        for folder in zoneinfo.TZPATH:
+            path = Path(folder) / name
+            if path.is_file():
+                return path.read_text(encoding="utf-8")
+    return ""
+
+
+@functools.cache
+def _zone_links():
+    """{old name: current name}, from tzdata.zi's link lines ("L Europe/Kyiv Europe/Kiev")."""
+    links = {}
+    for line in _time_zone_database_file("tzdata.zi").splitlines():
+        parts = line.split()
+        if len(parts) == 3 and parts[0] == "L":
+            links[parts[2]] = parts[1]
+    return links
 
 
 @functools.cache
 def _zone_table():
     """(country code, zone name) pairs from the time zone database's zone.tab."""
-    text = ""
-    try:
-        text = (resources.files("tzdata") / "zoneinfo" / "zone.tab").read_text(encoding="utf-8")
-    except (ModuleNotFoundError, OSError):
-        for folder in zoneinfo.TZPATH:
-            table = Path(folder) / "zone.tab"
-            if table.is_file():
-                text = table.read_text(encoding="utf-8")
-                break
+    text = _time_zone_database_file("zone.tab")
     rows = []
     for line in text.splitlines():
         parts = line.split("\t")

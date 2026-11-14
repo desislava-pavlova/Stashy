@@ -11,6 +11,7 @@ from pathlib import Path
 
 from decouple import config
 from django.contrib.messages import constants as message_constants
+from django.core.exceptions import ImproperlyConfigured
 
 # --- Folders --------------------------------------------------------------------------------
 # Every folder Stashy reads or writes is named here and nowhere else, so moving the data out
@@ -22,8 +23,15 @@ LOG_DIR = BASE_DIR / "logs"
 
 
 # No fallback: Stashy.bat writes a random key into .env on first run, and a missing key
-# should stop Stashy rather than quietly use a key that's public in the source code.
+# should stop Stashy rather than quietly use a key that's public in the source code. An empty
+# one stops it too (Django itself would only notice at the first page, as an error page), and
+# so does the placeholder .env.example shipped until 14/11/2026, which is public on GitHub.
 SECRET_KEY = config("SECRET_KEY")
+if SECRET_KEY.strip() in ("", "change-me-to-a-long-random-string"):
+    raise ImproperlyConfigured(
+        "SECRET_KEY in .env is empty or still the example's placeholder. Set it to a long random "
+        'string, for example what this prints: python -c "import secrets; print(secrets.token_urlsafe(50))"'
+    )
 
 # Off unless .env turns it on. With DEBUG on, an error shows the code and settings to
 # anyone who sees the page, so it's for working on Stashy, not for using it.
@@ -32,6 +40,16 @@ DEBUG = config("DEBUG", default=False, cast=bool)
 # stashy.localhost is the address Stashy.bat opens: browsers send every *.localhost name to
 # this computer by themselves. It's always allowed, whatever .env lists.
 ALLOWED_HOSTS = [*config("ALLOWED_HOSTS", default="localhost,127.0.0.1").split(","), "stashy.localhost"]
+
+# `manage.py check --deploy` warns about these four HTTPS settings. Stashy runs only on this
+# computer, over plain http://, so none of them can apply. They're silenced by name, so that
+# any other warning still stands out (a test runs the check).
+SILENCED_SYSTEM_CHECKS = [
+    "security.W004",  # SECURE_HSTS_SECONDS: tell browsers to use only HTTPS
+    "security.W008",  # SECURE_SSL_REDIRECT: send every http:// request to https://
+    "security.W012",  # SESSION_COOKIE_SECURE: send the session cookie only over HTTPS
+    "security.W016",  # CSRF_COOKIE_SECURE: send the CSRF cookie only over HTTPS
+]
 
 
 # Application definition
@@ -120,6 +138,12 @@ DATABASE_ROUTERS = ["finance.db_router.StashRouter"]
 # hold the picker's own "which stash did you pick" state. Fine for a local, single-user app;
 # session data here is small (a user id, the stash name, an auth hash).
 SESSION_ENGINE = "django.contrib.sessions.backends.signed_cookies"
+
+# A login ends when the browser closes (the user's call, 14/11/2026, plan 03 Q4; may change
+# later). Django's default kept it for two weeks, so anyone who opened the browser on this
+# computer in that time was in without the PIN. A browser set to reopen its last tabs may keep
+# the login too, because it keeps such cookies on purpose.
+SESSION_EXPIRE_AT_BROWSER_CLOSE = True
 
 # Django's default, spelled out because Stashy relies on it: a signed cookie can be read by
 # anyone holding it, so a secret shown once (a new recovery code) waits here, in this one

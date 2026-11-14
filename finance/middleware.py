@@ -2,6 +2,7 @@ from django.conf import settings
 from django.db import DEFAULT_DB_ALIAS, transaction
 from django.shortcuts import redirect
 from django.urls import reverse
+from django.utils.http import url_has_allowed_host_and_scheme
 
 from . import db_router, regional
 from .models import Profile
@@ -86,7 +87,10 @@ class RequireStashMiddleware:
     back to the same URL rather than just setting the session and carrying on, so the *next*
     request is the one StashSelectionMiddleware (which runs before this one) sees with the
     session already populated - otherwise this request's own queries would still be routed to
-    the stash it chose before the fallback (none)."""
+    the stash it chose before the fallback (none).
+
+    The cookie isn't signed, so its value counts only if it's one of the stash names
+    registry.list_stashes() finds: never a path to a database somewhere else."""
 
     def __init__(self, get_response):
         self.get_response = get_response
@@ -97,12 +101,22 @@ class RequireStashMiddleware:
         renaming a URL can't silently lock its page behind the picker."""
         return (reverse("stash_picker"), settings.STATIC_URL, reverse("admin:index"))
 
+    @staticmethod
+    def _same_page(request):
+        """The URL this request asked for, unless it leads to another site: a path starting
+        with // ("//example.com/") is a link to example.com, so a crafted link to Stashy would
+        otherwise bounce the browser there. Then the PIN screen instead."""
+        path = request.get_full_path()
+        if url_has_allowed_host_and_scheme(path, allowed_hosts={request.get_host()}):
+            return path
+        return reverse("login")
+
     def __call__(self, request):
         if not request.session.get("stash") and not request.path.startswith(self.exempt_prefixes()):
             remembered = request.COOKIES.get(registry.LAST_STASH_COOKIE)
-            if remembered and registry.stash_exists(remembered):
+            if remembered and remembered in registry.list_stashes():
                 request.session["stash"] = remembered
-                return redirect(request.get_full_path())
+                return redirect(self._same_page(request))
             return redirect("stash_picker")
         return self.get_response(request)
 

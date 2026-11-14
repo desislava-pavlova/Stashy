@@ -8,14 +8,25 @@ from pathlib import Path
 from unittest import mock
 
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.db import connections
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
+from django.utils.http import urlencode
 
 from .. import backup as finance_backup
-from ..stashes import registry
-from .base import LoggedInWithAccountTestCase, TemporaryStashesMixin
+from .. import db_router
+from ..models import Payee, Profile
+from ..stashes import StashError, registry, security
+from .base import (
+    LEAKED_TEMPLATE_SYNTAX,
+    REHASHING_PASSWORD_HASHERS,
+    LoggedInWithAccountTestCase,
+    StashClient,
+    TemporaryStashesMixin,
+)
 
 
 def write_db(path, content):
@@ -60,6 +71,31 @@ class BackupHelperTests(SimpleTestCase):
     def test_backup_now_returns_none_when_theres_no_database_yet(self):
         missing = self.root / "no-such-file.sqlite3"
         self.assertIsNone(finance_backup.backup_now(missing, self.root))
+
+    def test_two_backups_in_the_same_second_keep_both_files(self):
+        """Plan 03, S86: a double-clicked Restore takes a safety copy for each click. The name
+        is stamped to the second, and the second copy used to overwrite the first, which held
+        the data from before the restore."""
+        the_moment = datetime(2026, 11, 14, 12, 0, 0)
+        with mock.patch.object(finance_backup, "datetime") as clock:
+            clock.now.return_value = the_moment
+            first = finance_backup.backup_now(self.db, self.root, tag="before_restore")
+            write_db(self.db, "changed content")
+            second = finance_backup.backup_now(self.db, self.root, tag="before_restore")
+        self.assertNotEqual(first, second)
+        self.assertTrue(first.name.endswith("_2026-11-14_12-00-00.sqlite3"))
+        self.assertTrue(second.name.endswith("_2026-11-14_12-00-01.sqlite3"))
+        self.assertEqual(read_db(first), "current content")
+        self.assertEqual(read_db(second), "changed content")
+
+    def test_a_failed_copy_leaves_no_empty_file_that_passes_for_a_backup(self):
+        with (
+            mock.patch.object(finance_backup, "_sqlite_copy", side_effect=sqlite3.OperationalError("disk full")),
+            self.assertRaises(sqlite3.OperationalError),
+        ):
+            finance_backup.backup_now(self.db, self.root, tag="manual")
+        self.assertEqual(finance_backup.list_backups(self.root), [])
+        self.assertEqual(list((self.root / "backups").iterdir()), [])
 
     def test_quarterly_backup_runs_when_none_exists_yet(self):
         result = finance_backup.quarterly_backup_if_due(self.db, self.root)
@@ -160,6 +196,16 @@ class ManualBackupButtonTests(LoggedInWithAccountTestCase):
 
 
 class RestoreBackupTests(LoggedInWithAccountTestCase):
+    PIN = "1234"
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        # The confirm page asks for the PIN (plan 03, Q3).
+        cls.user.set_password(cls.PIN)
+        cls.user.save()
+        Profile.for_user(cls.user)  # the lockout is kept on it
+
     def existing_backup(self):
         backups_dir = registry.stash_backups_dir(settings.TEST_STASH)
         backups_dir.mkdir(exist_ok=True)
@@ -168,10 +214,12 @@ class RestoreBackupTests(LoggedInWithAccountTestCase):
         self.addCleanup(path.unlink, missing_ok=True)
         return path
 
-    def test_confirm_page_shows_the_chosen_backups_name(self):
+    def test_confirm_page_shows_the_chosen_backups_name_and_asks_for_the_pin(self):
         backup = self.existing_backup()
         response = self.client.get(reverse("finance:backup_restore"), {"name": backup.name})
         self.assertContains(response, backup.name)
+        self.assertContains(response, 'name="current_pin"')
+        self.assertContains(response, "your PIN and recovery code stay as they are now")
 
     def test_unknown_filename_is_not_found(self):
         response = self.client.get(reverse("finance:backup_restore"), {"name": "does-not-exist.sqlite3"})
@@ -181,13 +229,145 @@ class RestoreBackupTests(LoggedInWithAccountTestCase):
         response = self.client.get(reverse("finance:backup_restore"), {"name": "../../db.sqlite3"})
         self.assertEqual(response.status_code, 404)
 
-    def test_posting_confirms_and_performs_the_restore(self):
+    def test_posting_the_pin_confirms_and_performs_the_restore(self):
         backup = self.existing_backup()
-        with mock.patch("finance.backup.restore_from") as restore_from:
-            response = self.client.post(reverse("finance:backup_restore"), {"name": backup.name}, follow=True)
-        restore_from.assert_called_once()
-        self.assertEqual(restore_from.call_args.args[0], backup)
+        data = {"name": backup.name, "current_pin": self.PIN}
+        with mock.patch("finance.stashes.registry.restore_stash") as restore_stash:
+            response = self.client.post(reverse("finance:backup_restore"), data, follow=True)
+        restore_stash.assert_called_once()
+        self.assertEqual(restore_stash.call_args.args[1], backup)
         self.assertContains(response, "Restored from")
+
+    def test_a_backup_the_restore_refuses_says_why_and_the_page_carries_on(self):
+        """Plan 03, S88: the check of the file raises StashError, and the user reads it on Settings
+        instead of getting an error page."""
+        backup = self.existing_backup()
+        data = {"name": backup.name, "current_pin": self.PIN}
+        with mock.patch("finance.stashes.registry.restore_stash", side_effect=StashError("It is damaged.")):
+            response = self.client.post(reverse("finance:backup_restore"), data, follow=True)
+        self.assertContains(response, "It is damaged.")
+        self.assertNotContains(response, "Restored from")
+        self.assertTemplateUsed(response, "finance/settings.html")
+
+    def test_a_wrong_pin_restores_nothing_and_counts_toward_the_lockout(self):
+        backup = self.existing_backup()
+        data = {"name": backup.name, "current_pin": "0000"}
+        with mock.patch("finance.stashes.registry.restore_stash") as restore_stash:
+            response = self.client.post(reverse("finance:backup_restore"), data)
+        restore_stash.assert_not_called()
+        self.assertContains(response, "That&#x27;s not your current PIN.")
+        self.assertEqual(Profile.for_user(self.user).failed_pin_attempts, 1)
+
+    def test_the_last_wrong_pin_logs_out_to_the_pin_screen(self):
+        backup = self.existing_backup()
+        data = {"name": backup.name, "current_pin": "0000"}
+        with mock.patch("finance.stashes.registry.restore_stash") as restore_stash:
+            for _ in range(security.LOCKOUT_THRESHOLD - 1):
+                self.client.post(reverse("finance:backup_restore"), data)
+            response = self.client.post(reverse("finance:backup_restore"), data)
+        restore_stash.assert_not_called()
+        self.assertRedirects(response, reverse("login"), fetch_redirect_response=False)
+        self.assertNotIn("_auth_user_id", self.client.session)
+
+    def restore_url(self, backup):
+        """The page's form has no action and no name field, so a browser posts to the same URL
+        and the backup's name only ever travels in the query string."""
+        return f"{reverse('finance:backup_restore')}?{urlencode({'name': backup.name})}"
+
+    def test_a_browser_style_post_finds_the_backup_in_the_query_string(self):
+        backup = self.existing_backup()
+        with mock.patch("finance.stashes.registry.restore_stash") as restore_stash:
+            response = self.client.post(self.restore_url(backup), {"current_pin": self.PIN})
+        self.assertRedirects(response, reverse("finance:settings"), fetch_redirect_response=False)
+        self.assertEqual(restore_stash.call_args.args[1], backup)
+
+    def test_the_pin_box_has_a_label_a_token_and_no_leaked_template_syntax(self):
+        response = self.client.get(self.restore_url(self.existing_backup()))
+        self.assertContains(response, '<label class="form-label" for="id_current_pin">Current PIN</label>', html=True)
+        self.assertContains(response, 'id="id_current_pin"')
+        self.assertContains(response, "csrfmiddlewaretoken")
+        for leaked in LEAKED_TEMPLATE_SYNTAX:
+            with self.subTest(leaked=leaked):
+                self.assertNotContains(response, leaked)
+
+    def test_a_wrong_pin_shows_the_page_again_without_echoing_the_pin(self):
+        backup = self.existing_backup()
+        response = self.client.post(self.restore_url(backup), {"current_pin": "0000"})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, backup.name)
+        self.assertContains(response, 'name="current_pin"')
+        self.assertContains(response, "Yes, restore this backup")
+        self.assertNotContains(response, 'value="0000"')
+
+    def test_a_missing_or_malformed_pin_restores_nothing_and_says_why(self):
+        backup = self.existing_backup()
+        cases = {
+            "": "This field is required.",
+            "12": "PIN must be exactly 4 digits.",
+            "abcd": "PIN must be exactly 4 digits.",
+        }
+        with mock.patch("finance.stashes.registry.restore_stash") as restore_stash:
+            for pin, message in cases.items():
+                with self.subTest(pin=pin):
+                    response = self.client.post(self.restore_url(backup), {"current_pin": pin})
+                    self.assertContains(response, message)
+        restore_stash.assert_not_called()
+
+    def test_a_locked_stash_logs_out_even_with_the_right_pin_and_restores_nothing(self):
+        backup = self.existing_backup()
+        locked_until = timezone.now() + timedelta(minutes=security.LOCKOUT_MINUTES)
+        Profile.objects.filter(user=self.user).update(locked_until=locked_until)
+        with mock.patch("finance.stashes.registry.restore_stash") as restore_stash:
+            response = self.client.post(self.restore_url(backup), {"current_pin": self.PIN})
+        restore_stash.assert_not_called()
+        self.assertRedirects(response, reverse("login"), fetch_redirect_response=False)
+        self.assertNotIn("_auth_user_id", self.client.session)
+        self.assertEqual(Profile.for_user(self.user).locked_until, locked_until)
+
+    def test_the_right_pin_forgets_earlier_wrong_tries(self):
+        backup = self.existing_backup()
+        Profile.objects.filter(user=self.user).update(failed_pin_attempts=security.LOCKOUT_THRESHOLD - 1)
+        with mock.patch("finance.stashes.registry.restore_stash"):
+            self.client.post(self.restore_url(backup), {"current_pin": self.PIN})
+        self.assertEqual(Profile.for_user(self.user).failed_pin_attempts, 0)
+
+    def test_no_filename_at_all_is_not_found(self):
+        for method in (self.client.get, self.client.post):
+            with self.subTest(method=method.__name__):
+                self.assertEqual(method(reverse("finance:backup_restore"), {"current_pin": self.PIN}).status_code, 404)
+
+    def test_an_unknown_filename_is_not_found_before_the_pin_is_looked_at(self):
+        """So this page can't be used to try PINs: nothing is counted for a backup that isn't there."""
+        response = self.client.post(self.restore_url(Path("no-such-backup.sqlite3")), {"current_pin": "0000"})
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(Profile.for_user(self.user).failed_pin_attempts, 0)
+
+    def test_a_request_with_an_old_copy_of_the_profile_still_counts_toward_the_lockout(self):
+        """Plan 03, S75 on this page, whose request holds no transaction of its own while the
+        PIN is checked: the saved row is one try short of the lockout, the request's copy is not."""
+        backup = self.existing_backup()
+        old_copy = Profile.objects.get(user=self.user)
+        Profile.objects.filter(user=self.user).update(failed_pin_attempts=security.LOCKOUT_THRESHOLD - 1)
+        with (
+            mock.patch.object(Profile, "for_user", return_value=old_copy),
+            mock.patch("finance.stashes.registry.restore_stash"),
+        ):
+            response = self.client.post(self.restore_url(backup), {"current_pin": "0000"})
+        self.assertRedirects(response, reverse("login"), fetch_redirect_response=False)
+        self.assertTrue(security.is_locked_out(Profile.objects.get(user=self.user)))
+
+    def test_after_a_django_update_checking_the_pin_does_not_log_you_out_of_the_restore(self):
+        """Plan 03, S87: Django would re-save the PIN's hash in a newer format when it is
+        checked, and the login is tied to that hash, so the page after the restore would be the
+        PIN screen. The PIN checks no longer save it (security.check_pin)."""
+        backup = self.existing_backup()
+        with (
+            override_settings(PASSWORD_HASHERS=REHASHING_PASSWORD_HASHERS),
+            mock.patch("finance.stashes.registry.restore_stash"),
+        ):
+            response = self.client.post(self.restore_url(backup), {"current_pin": self.PIN}, follow=True)
+        self.assertContains(response, "Restored from")
+        self.assertTemplateUsed(response, "finance/settings.html")
 
 
 class BackupNamesCarryTheStashTests(SimpleTestCase):
@@ -267,18 +447,62 @@ class RestoreBringsBackTodaysSchemaTests(TemporaryStashesMixin, SimpleTestCase):
     """1.3 (F44): a backup taken before an update is migrated as soon as it's restored."""
 
     def test_restoring_a_pre_update_backup_migrates_it(self):
-        self.make_stashes("restorecheck")
-        call_command("migrate", "finance", "0016", database="restorecheck", verbosity=0)
+        self.make_stashes()
+        type(self).databases |= {"alex"}
+        folder, _ = registry.create_stash("Alex", "1234")  # a stash with its user and Profile, as a backup needs
+        self.addCleanup(self._unregister, folder)
+        call_command("migrate", "finance", "0016", database=folder, verbosity=0)
         old_backup = finance_backup.backup_now(
-            registry.stash_db_path("restorecheck"), registry.stash_path("restorecheck"), tag="before_update"
+            registry.stash_db_path(folder), registry.stash_path(folder), tag="before_update"
         )
-        call_command("migrate", database="restorecheck", verbosity=0)
+        call_command("migrate", database=folder, verbosity=0)
 
-        registry.restore_stash("restorecheck", old_backup)
+        registry.restore_stash(folder, old_backup)
 
-        with connections["restorecheck"].cursor() as cursor:
+        with connections[folder].cursor() as cursor:
             columns = [
-                c.name
-                for c in connections["restorecheck"].introspection.get_table_description(cursor, "finance_profile")
+                c.name for c in connections[folder].introspection.get_table_description(cursor, "finance_profile")
             ]
         self.assertIn("owner_name", columns)  # added by migration 0017, after the backup
+
+
+class RestoreThroughThePageTests(TemporaryStashesMixin, SimpleTestCase):
+    """The whole path with nothing mocked: the page's form, the PIN check, the restore itself and
+    the page after it. The restore rewrites a real stash file, so this uses a temporary stash (as
+    RestoreKeepsTodaysLoginTests does) instead of the test stash's in-memory database."""
+
+    client_class = StashClient
+
+    def test_the_data_goes_back_and_you_stay_logged_in_with_todays_pin(self):
+        self.make_stashes()
+        type(self).databases |= {"alex"}
+        folder, _ = registry.create_stash("Alex", "1234")
+        self.addCleanup(self._unregister, folder)
+        with db_router.use_stash(folder):
+            profile = security.profile_for_current_stash()
+            profile.welcome_step = Profile.WELCOME_STEPS_DONE
+            profile.save(update_fields=["welcome_step"])
+        backup_path = finance_backup.backup_now(
+            registry.stash_db_path(folder), registry.stash_path(folder), tag="test"
+        )
+        with db_router.use_stash(folder):
+            Payee.objects.create(name="Lidl")
+            user = get_user_model().objects.get(username=folder)
+            user.set_password("5678")
+            user.save()
+            self.client.choose_stash(folder)
+            self.client.force_login(user)
+
+        url = f"{reverse('finance:backup_restore')}?{urlencode({'name': backup_path.name})}"
+        page = self.client.get(url)
+        self.assertContains(page, "your PIN and recovery code stay as they are now")
+        response = self.client.post(url, {"current_pin": "5678"})
+        self.assertRedirects(response, reverse("finance:settings"), fetch_redirect_response=False)
+
+        # Still logged in: the backup's old PIN was not brought back with the data.
+        settings_page = self.client.get(reverse("finance:settings"))
+        self.assertEqual(settings_page.status_code, 200)
+        self.assertContains(settings_page, "Restored from")
+        with db_router.use_stash(folder):
+            self.assertFalse(Payee.objects.filter(name="Lidl").exists())
+            self.assertTrue(get_user_model().objects.get(username=folder).check_password("5678"))

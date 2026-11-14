@@ -70,15 +70,31 @@ toggle switches it (your choice is remembered).
   first ("Choose a different stash" on the PIN screen, or Log out from the
   sidebar) — Stashy remembers which stash you used last and opens straight
   on its PIN screen next time, so this is rarely more than one click.
+- **You stay logged in until you close the browser.** Opening Stashy
+  again asks for the PIN. (A browser set to reopen its last tabs may keep
+  you logged in.)
 - **Wrong PINs**: after 5 wrong tries in a row, that stash locks for 5 minutes.
+  Wrong PINs typed on **Change PIN**, **Get a new recovery code** or a
+  backup's **Restore** page count too, and the fifth one logs you out to the
+  PIN screen. A locked stash can still be opened with your recovery code
+  ("Forgot PIN?" on the login screen); a right code ends the lockout.
 - **Forgot your PIN?** Use "Forgot PIN?" on the login screen with your
   recovery code. Setting a new PIN gives you a **new** recovery code (the old
   one stops working). You can also change your PIN any time in **Settings**.
 - **Lost the recovery code, but not your PIN?** **Settings** has "Get a new
-  recovery code" — confirms once, then shows a fresh code (the old one stops
-  working, same as using "Forgot PIN?" does).
-- **Lost the recovery code too?** From the Stashy folder run
-  `python manage.py reset_pin <owner name>` (optionally `--pin 1234`).
+  recovery code" — it asks for your PIN, then shows a fresh code (the old one
+  stops working, same as using "Forgot PIN?" does).
+- **Lost the recovery code too?** Open a terminal in the Stashy folder and
+  run one of these (the owner name works in any upper/lower case):
+  - `.venv\Scripts\python.exe manage.py reset_pin Alex` asks for the new
+    PIN twice, showing a `*` for each digit you type (with Python 3.14 or
+    newer).
+  - `.venv\Scripts\python.exe manage.py reset_pin Alex --pin 1234` sets it
+    straight away. The terminal keeps what you typed in its history, PIN
+    included.
+
+  Either way the stash's lockout ends too, and the command says which
+  stash it changed.
 - The PIN locks the **app**, not the data: each stash is a plain SQLite file
   (`stashes/<internal name>/db.sqlite3`) that anyone with access to your
   Windows account could open with another tool. Protect the computer itself
@@ -96,7 +112,8 @@ cp .env.example .env
 ```
 
 Edit `.env` and set `SECRET_KEY` to any long random string. Stashy won't
-start without one.
+start while it's empty. This prints one:
+`python -c "import secrets; print(secrets.token_urlsafe(50))"`
 
 ### 2. Prepare the database and run it
 
@@ -184,9 +201,12 @@ every stash automatically).
   report to see its table; once expanded, **Show all/Hide all** opens or
   closes every subcategory row, and you can export it.
 - **Backups** — **Settings** has **Back up now**, the list of recent backups
-  and **Restore** (which takes a safety backup of the current state first).
-  Stashy also makes an automatic backup once a quarter, checked when it
-  starts.
+  and **Restore**, which asks for your PIN and takes a safety backup of the
+  current state first. A restore brings back your data only: your PIN and
+  recovery code stay as they are. A backup that is empty or damaged (say,
+  one that was cut short) is refused with a message, before anything is
+  replaced. Stashy also makes an automatic backup once a quarter, checked
+  when it starts.
 - **Admin** — the full Django admin is available at `/admin/` (while logged in
   to a stash) for bulk edits, data cleanup, or anything the UI doesn't cover
   yet. Users and Groups are hidden (there's one shared login per stash, no

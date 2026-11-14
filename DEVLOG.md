@@ -5028,3 +5028,325 @@ one rename.
 **Files touched:** `requirements.txt`, `requirements-dev.txt`,
 `Stashy.bat`, `CLAUDE.md`, `plans/README.md`, this log. New:
 `plans/07_dependency_upgrade.md`.
+
+## 14/11/2026 — Plan 03, Phase 1, part A: the PIN asked again, a safer `.env`, and `reset_pin`'s fixes
+
+**What changed:** Phase 1 of plan 03 is built in four parts, and this is
+the first one: security and the PIN.
+- **S7:** "Get a new recovery code" asks for your PIN, as Change PIN
+  does. A wrong PIN on either page counts toward the same 5-tries
+  lockout as the PIN screen, and the fifth one logs you out to the PIN
+  screen, which says how long to wait.
+- **S8:** `.env.example` no longer ships a secret key that works.
+  Stashy won't start while the key is empty, and `Stashy.bat` makes `.env`
+  from `.env.example` on a first run.
+- **S10:** `manage.py check --deploy` is quiet: the four HTTPS warnings
+  are silenced by name. The "last stash" cookie is `httponly` and only
+  counts if it names a real stash.
+- **S24 and plan 04's R9:** `manage.py reset_pin` shows a `*` for each
+  digit you type, takes the name in any upper/lower case, and its reset
+  shows up in the audit log.
+- **S54:** Settings (and the welcome wizard) refuse a time zone that
+  isn't in the list.
+
+**Why the code looks like this:**
+- S7: the check lives in `security.check_pin()`, next to the lockout
+  rules, and the form only calls it. The form's job is to say whether the
+  input is acceptable; what a wrong PIN does to the lockout is a rule
+  about the stash, so it belongs with the other lockout rules. A right PIN
+  also clears earlier wrong tries, as logging in does, and a locked stash
+  refuses even the right PIN, so the lockout can't be waited out on these
+  pages.
+- S7: the shared box is `CurrentPinForm`, and `ChangePinForm` builds on
+  it. It has to be a real form class, not a plain mixin like
+  `PinConfirmMixin`, because Django only collects form fields from form
+  classes (see the teaching note).
+- S7: `register_successful_login()` is now `clear_failed_attempts()`. It
+  has three callers (the PIN screen, `check_pin()` and `reset_pin`), and
+  two of them aren't logins.
+- S7: the wrong try is saved even though the page shows an error. Each
+  request runs in one transaction that rolls back only when the code
+  raises an exception, and a form error is a normal page.
+- S7: when the lockout logs you out, `logout()` empties the whole
+  session, the stash's name included. `_log_out_after_lockout()` puts the
+  name back, so the PIN screen knows which stash is locked. The "last
+  stash" cookie would usually do it too, but only if the browser still has
+  it.
+- S8: plan 03 said an empty key makes "Django refuse to start". It
+  doesn't: Django only checks the key when a page first needs it, so
+  Stashy would start and then show an error page. `settings/base.py` now
+  stops at the start with a message that says how to make a key.
+- S8: `bootstrap.py` copies `.env.example` and fills in only the key, so
+  there's one template and the two files can't drift apart. With no `.env`
+  yet, the port is always 8000, which the example already says.
+- S10: silencing four warnings by name keeps every other warning
+  visible, and a new test runs `check --deploy` and fails on any warning
+  at all.
+- S10: the cookie is checked against `registry.list_stashes()`, the
+  folder names Stashy found itself. Before, any folder holding a
+  `db.sqlite3` passed, anywhere on the disk (see the second note).
+- S24: plan 07 moved Stashy to Python 3.14, whose `getpass` can print a
+  `*` per key (`echo_char`), so the hand-made key reader the plan
+  described isn't needed. `Stashy.bat` still installs on 3.12 and 3.13,
+  which don't have `echo_char`, so `GETPASS_SHOWS_STARS` checks the
+  version, and older Pythons ask as before, showing nothing.
+- R9: on Windows, "Alex" and "alex" are the same folder, so asking the
+  file system whether "Alex" exists said yes. The stash's user is named
+  after the folder's exact spelling, "alex", so the next lookup crashed.
+  The name is now compared with the folder names `list_stashes()` returns.
+- S24's note: `reset_pin` cleared the lockout with `.update()`, which
+  skips the audit log's signals. It now saves the Profile with `save()`.
+  A `manage.py` command has no current stash, and the audit log writes
+  to the current one, so the reset runs inside `use_stash()`, in one
+  transaction, and as a `system_action()` that names it.
+- S54: the time zone was a free-text field with a dropdown on top. A
+  dropdown only limits what the browser offers; a hand-made request can
+  still send any text. A `ChoiceField` checks the value on the server.
+
+**Teaching note — where a Django form finds its fields.** A form's fields
+are written as class attributes, and Django gathers them once, when the
+class is created, into `declared_fields`. It also takes the
+`declared_fields` of every parent class that has one, and only form
+classes do. A plain mixin's attributes are never gathered, so a
+`current_pin` field written on a mixin would silently not exist. That's
+why `PinConfirmMixin` holds only a `clean()` method, and the shared PIN
+box sits on `CurrentPinForm`, a real form.
+
+**After the reviews:** five reviewers read part A (code, security,
+database, front end, QA), and 29 tests came out of the round (773 in all,
+one of them an expected failure). Fixed the same day:
+- A slip in part A itself: `getpass` has `echo_char` only from Python
+  3.14, and `Stashy.bat` still installs on 3.12 and 3.13, where the
+  prompt would have crashed. `GETPASS_SHOWS_STARS` checks the version.
+- An open redirect, older than part A, in the code S10 touched. After
+  logging out, a crafted link like `http://stashy.localhost:8001//other.site/`
+  sent the browser to `other.site`, because "back to the page you asked
+  for" was the path `//other.site/`, and a browser reads a path that
+  starts with `//` as a link to another site. The middleware now asks
+  Django's `url_has_allowed_host_and_scheme()` first, and goes to the PIN
+  screen otherwise.
+- The recovery-code page could lose the new code. Checking a PIN can
+  re-save its hash in a newer format after a Django update, and a login
+  is tied to that hash, so the next page logged you out before it
+  showed the code. The view renews the login, as Change PIN already did.
+- `reset_pin` on a stash missing its user or Profile now ends with a
+  message, or still resets the PIN; part A's `.get()` would have crashed
+  where the old `.update()` quietly skipped. It also says which stash it
+  changed ("PIN reset for Alex's stash (folder "alex")"), since a name
+  could match one stash's folder and another stash's owner.
+- Owner names are compared through `name_key()`, the casefold rule
+  payees and categories already use.
+- The placeholder key the old `.env.example` shipped is refused too, as
+  it's public on GitHub.
+- The PIN screen's own lockout is now tested through real requests; only
+  the `security` functions were before.
+
+Three Critical findings wait for your OK (your rule): the PIN pages count
+from a copy of the Profile read before the request's lock (S75), the
+admin's own change-password page skips the lockout (S76), and a time zone
+saved under an old name is replaced by the list's first zone (S77). The
+rest are filed as S78–S85 in plan 03, with two questions, Q3 and Q4.
+
+**A second note — joining a path with an absolute one.** In Python,
+`Path("stashes") / "alex"` is `stashes/alex`, but
+`Path("stashes") / "C:/somewhere"` is `C:/somewhere`: an absolute path on
+the right throws the left side away. That's how a hand-edited cookie
+could point Stashy at a database outside its stashes folder. Comparing
+with a list of known names avoids the question.
+
+**Files touched:** `finance/stashes/security.py`,
+`finance/stashes/registry.py`, `finance/auth_forms.py`,
+`finance/views/settings.py`, `finance/views/auth.py`,
+`finance/middleware.py`, `finance/forms.py`, `finance/models.py` (the
+`name_key()` docstring), `finance/management/commands/reset_pin.py`,
+`finance/templates/finance/recovery_code.html`,
+`stashy/settings/base.py`, `scripts/bootstrap.py`, `.env.example`,
+`README.md`, `finance/tests/base.py` and the tests in `test_auth.py`,
+`test_settings.py`, `test_stashes.py`, `test_middleware.py`,
+`test_project.py`, `test_pages.py` and `test_welcome.py`,
+`plans/03_structure_review.md`, `plans/04_fixes_and_changes_plan.md`,
+`plans/README.md`, `CLAUDE.md`, this log.
+
+## 14/11/2026 — Plan 03, Phase 1, part A, second round: the reviews' Critical fixes and your answers
+
+**What changed:** You said yes to the three Critical review findings and
+answered Q3, Q4 and S83, so they're done:
+- **S75:** wrong PINs are counted from the saved number, even when
+  several arrive at the same moment, and saving Settings can't put back
+  an old lockout or recovery code.
+- **S76:** the admin's own "change password" page sends you to Change
+  PIN.
+- **S77:** a time zone saved under an old name (Europe/Kiev) stays as it
+  is instead of becoming Africa/Abidjan on the next save, and a new stash
+  only ever gets a zone the list has (Europe/Kyiv).
+- **Q3:** a restore brings back your data only. Your PIN, your recovery
+  code and the lockout stay as they are, and the restore page asks for
+  your PIN first.
+- **Q4:** a login ends when the browser closes. You said this may change
+  later.
+- **S83:** `reset_pin` asks for the new PIN twice, and `--pin`'s help
+  says the terminal keeps it in its history. README shows both ways to
+  run it.
+- You also asked for R31 (plan 04): after editing, deleting or skipping
+  a reminder, come back to the filter you were on. Filed, not started.
+
+**Why the code looks like this:**
+- S75: `request.stashy_profile` is read by middleware before the request
+  takes the stash's write lock. Two requests could both read "2 tries",
+  and both save "3". `check_pin()` and the recovery-code reset now read
+  the two lockout fields again first. By then the request holds the
+  stash's write lock (SQLite's `BEGIN IMMEDIATE`), so the number is
+  current and nobody else can change it until this request ends.
+- S75: the Settings forms edit that same early copy, and Django's
+  `ModelForm.save()` writes every column of the row. `ProfileColumnsOnlyMixin`
+  saves only the form's own columns (`update_fields`), then its
+  many-to-many field (the watched categories), which lives in another
+  table and so can't be in `update_fields`.
+- S76: the same trick as `admin/login/`. A URL pattern placed before
+  `admin.site.urls` wins, because Django tries the patterns in order. The
+  admin's own "Change password" link still points at that address, so it
+  lands on Change PIN too.
+- S77: the time zone database keeps every renamed zone as a link from the
+  old name to the new one (`L Europe/Kyiv Europe/Kiev` in `tzdata.zi`).
+  `regional.listed_zone()` follows those links, so detection picks the
+  same place under its new name. Matching by clock alone would have
+  turned Kyiv into Cairo, which has the same offsets. A stash that
+  already holds an old name keeps it: the form adds that one zone to its
+  choices, and no other unlisted zone gets in.
+- Q3: `restore_stash()` reads today's PIN hash, recovery-code hash and
+  lockout before the restore and writes them back after it, inside one
+  transaction and as a `system_action()`, so the audit log says why they
+  changed. Because the PIN hash stays the same, your login survives the
+  restore too.
+- Q3: the restore page runs without the request's transaction, because
+  the restore needs the write lock itself. So the PIN check gets its own
+  short transaction, and the wrong-try count is still kept inside the lock
+  (S75's rule).
+- Q4: `SESSION_EXPIRE_AT_BROWSER_CLOSE = True` sends the login cookie
+  without an expiry date, and a browser drops such cookies when it
+  closes. The "last stash" cookie keeps its 400 days: it only remembers
+  which stash's PIN screen to open.
+
+**After the second round of reviews** (five reviewers again; QA added
+about 65 tests, 863 in all, two of them expected failures):
+- **A right PIN could log you out** (S87). Checking a PIN with
+  `user.check_password()` also re-saves the PIN's hash in Django's newest
+  format when the saved one is older, which happens after a Django
+  update. The login is tied to that hash, so the next page found a login
+  that no longer matched and sent you to the PIN screen. The recovery-code
+  page worked around it, but Change PIN (with a mistyped confirmation)
+  and Restore didn't. Now `check_pin()` checks through `_check()`, which
+  never saves, so none of the three pages can touch the hash. Only
+  logging in re-hashes, and it stores the matching login in the same
+  step. The tests use a fast hasher that never re-hashes, so none of this
+  showed; a test hasher that always asks for an upgrade reproduces it.
+- **Two restores at the same moment** (S86). A backup's name is stamped to
+  the second, and `backup_now()` wrote over a file with the same name. A
+  double-clicked Restore takes a safety copy for each click, so the second
+  could replace the first, which held the data from before. Now the file
+  is created exclusively (`open(..., "x")` fails if the name exists) and
+  the stamp moves on by a second until a name is free. Creating it
+  exclusively, rather than checking whether it exists first, matters when
+  two requests are at it together: the check-then-write has a gap, the
+  exclusive create doesn't. A copy that fails removes its empty file, so
+  it can't pass for a backup.
+- **The PIN checks take their own lock.** `check_pin()` and the
+  recovery-code reset now open the write lock themselves instead of relying
+  on the view to have done it. Inside a request it's a savepoint and
+  changes nothing; the restore page, which runs without the request's
+  transaction, gets its lock from here. They also re-read the PIN's hash
+  and the recovery code, not only the lockout, so a PIN or code replaced a
+  moment earlier in another tab isn't accepted from an old copy.
+- **The restore puts the PIN back first.** The backup's PIN is the live one
+  from the moment its file replaces the database, and `migrate` can take
+  seconds on an old backup, or fail. So today's PIN goes back right after
+  the copy, with one `UPDATE` of the password column: nothing else is read,
+  so it works on an older schema, and the user isn't an audited model, so
+  nothing is hidden from the audit log. The recovery code and the lockout
+  go back after `migrate` (they need the current schema), even if
+  `migrate` fails.
+- A small helper, `_system_change()`, now opens "this stash, one
+  transaction, named in the audit log" for both the restore and
+  `reset_pin`, which had the same three lines.
+- `reset_pin` checks the stash name before asking for a PIN, so a typo
+  costs no prompts. Owner names also go through `name_key()` now.
+- Filed, not built: S88 (the restore of an empty or cut-short backup file
+  wipes the stash: QA rates it Critical, so it waits for you, with two
+  smaller restore edges), S89 and S90 (tidying), and S91 (the PIN screen
+  says a recovery code unlocks a locked stash, and it doesn't).
+
+**Teaching note — a "lost update".** Two people read the same number,
+each adds one, and each writes back their own result, so one of the
+additions disappears. Databases prevent it with locks: whoever holds the
+lock reads, changes and writes, and the others wait. A lock only helps if
+you *read after* taking it. Stashy's requests took the lock at the right
+moment, but the Profile had been read just before, by middleware. Reading
+it again inside the lock fixes that, without any new locking code.
+
+**Files touched:** `finance/stashes/security.py`,
+`finance/stashes/registry.py`, `finance/views/settings.py`,
+`finance/forms.py`, `finance/regional.py`, `finance/backup.py`,
+`finance/management/commands/reset_pin.py`,
+`finance/templates/finance/backup_restore_confirm.html`, `stashy/urls.py`,
+`stashy/settings/base.py`, `README.md`, the tests in `test_auth.py`,
+`test_settings.py`, `test_stashes.py`, `test_backup.py`,
+`test_formatting.py` and `test_welcome.py`,
+`plans/03_structure_review.md`, `plans/04_fixes_and_changes_plan.md`,
+`plans/README.md`, `CLAUDE.md`, this log.
+
+## 14/11/2026 — Plan 03, Phase 1, part A, third round: a bad backup is refused, and a recovery code opens a locked stash (S88, S91)
+
+**What changed (you said yes to both):**
+- **Restoring a backup is checked first.** An empty or cut-short backup
+  file used to replace the live database and leave the stash with no user,
+  so every page gave an error. Now `restore_stash()` opens the backup
+  read-only before anything is replaced and refuses it, with a message on
+  Settings, when it is damaged, empty, has no user for this stash, or has no
+  Profile while today's stash has one. The safety copy isn't even taken for
+  a refused backup.
+- **A right recovery code works during a lockout.** The locked PIN screen
+  said "…or reset it with your recovery code", and Forgot PIN refused the
+  right code and hid the form. Now the form stays, with a notice, and a
+  right code resets the PIN and ends the lockout.
+
+**Why the code looks like this:**
+- S88: the check lives in `registry.py`, not `backup.py`. `backup.py` is
+  standard library only and knows nothing about Stashy's tables; "has the
+  stash's user, and a Profile" is Stashy knowledge.
+- S88: the file is opened with `?mode=ro`, through `Path.as_uri()`, which
+  also escapes a `?` or `#` in a folder name. `PRAGMA quick_check` reads the
+  whole file, so a backup cut short part way is caught too, not only a
+  0-byte one. Any `sqlite3.Error` while looking becomes "damaged".
+- S88: a backup without a Profile is refused only when today's stash has
+  one. The reason is the user's Q3 call: a restore keeps today's recovery
+  code, and with no Profile row in the restored file it would have nowhere
+  to go. A stash that has none has nothing to lose.
+- S88: the check raises `StashError`, the error type the registry already
+  uses for "this can't be done, here's why", and the view shows it as a
+  message. A restore that fails half way (the disk, a migration) still
+  shows the error page; the safety copy is in `backups/`.
+- S91: `reset_pin_with_recovery_code()` simply stopped refusing during a
+  lockout. A wrong code during a lockout counts for nothing, as a wrong PIN
+  does, because `register_failed_attempt()` leaves an active lockout alone.
+  A recovery code is 12 characters out of 32, so unlimited tries during a
+  lockout are no use to a guesser, and whoever has the code can reset the
+  PIN anyway.
+- `RestoreBackupTests` (the page) now mocks `registry.restore_stash`
+  instead of `backup.restore_from`. They used a text file as the "backup",
+  and the real `restore_stash()` now refuses that. Those tests are about
+  the page; the restore itself is covered by the registry tests and by
+  `RestoreThroughThePageTests`, which mock nothing.
+
+**Teaching note — check before you destroy.** The safety copy a restore
+takes first makes a mistake recoverable, but "recoverable by copying a
+file by hand" is not a feature. Whenever an action replaces something,
+look at what's replacing it first, and refuse cleanly, so the action
+either happens fully or not at all.
+
+**Files touched:** `finance/stashes/registry.py`,
+`finance/stashes/security.py`, `finance/views/settings.py`,
+`finance/views/auth.py`,
+`finance/templates/registration/forgot_pin.html`, `README.md`,
+`CLAUDE.md`, the tests in `test_stashes.py`, `test_backup.py` and
+`test_auth.py`, `plans/03_structure_review.md`, `plans/README.md`, this
+log.

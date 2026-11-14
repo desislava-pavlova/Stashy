@@ -19,6 +19,7 @@ from django.contrib import admin
 from django.contrib.auth import views as auth_views
 from django.contrib.auth.decorators import login_not_required
 from django.urls import include, path
+from django.views.generic import RedirectView
 
 from finance.views import auth as stash_auth_views
 
@@ -27,9 +28,12 @@ admin.site.site_title = "Stashy admin"
 admin.site.index_title = "Data, users & audit log"
 
 urlpatterns = [
-    # Before admin.site.urls, so it replaces the admin's own login page, which knows nothing
-    # about the PIN lockout.
+    # Before admin.site.urls, so they replace the admin's own login and change-password pages,
+    # which know nothing about the PIN lockout. The admin's change-password page would also take
+    # any password, even one the PIN screen can't accept, so it sends you to Change PIN.
     path("admin/login/", stash_auth_views.admin_login, name="admin_login"),
+    path("admin/password_change/", RedirectView.as_view(pattern_name="finance:change_pin")),
+    path("admin/password_change/done/", RedirectView.as_view(pattern_name="finance:change_pin")),
     path("admin/", admin.site.urls),
     path("accounts/login/", stash_auth_views.StashLoginView.as_view(), name="login"),
     # Logging out never needs a login: an expired session still lands on the PIN page.

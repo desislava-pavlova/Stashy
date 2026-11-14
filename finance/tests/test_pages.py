@@ -13,7 +13,7 @@ from django.urls import path as url_path
 from django.urls import reverse
 
 from ..models import Category, Profile, Transaction
-from .base import LoggedInWithAccountTestCase, StashTestCase
+from .base import LEAKED_TEMPLATE_SYNTAX, LoggedInWithAccountTestCase, StashTestCase
 
 
 # Public, so the crash happens for an anonymous client too: this URLconf has no login page
@@ -24,8 +24,6 @@ def _broken_view(request):
 
 
 urlpatterns = [url_path("broken/", _broken_view)]
-
-LEAKED_TEMPLATE_SYNTAX = ("{%", "%}", "{#", "#}")
 
 
 class ErrorPageTests(StashTestCase):

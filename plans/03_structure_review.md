@@ -22,6 +22,13 @@ S50–S67 (section G); every one is in its phase's checklist. S68 and S69 (secti
 H) came from the visual check the same day, and S70 from your wish for a
 tidier project folder. S71–S74 (section I) came from the dependency
 upgrade, plan 07, on 14/11/2026.
+*14/11/2026:* Phase 1 started with part A, security and the PIN (items
+1.7–1.10 and 1.22: S7, S8, S10, S24 with plan 04's R9, S54). Parts B–D
+are listed at the top of Phase 1. Part A's reviews added S75–S91
+(section J), with two new questions, Q3 and Q4, answered the same day.
+S75–S79, S83, S86, S87, S88 (the check of the backup file) and S91 are done;
+you said yes to both on 14/11/2026. S80–S82, S84, S85, S89, S90 and two
+small restore edges of S88 wait for their phases.
 
 **Baseline (10/10/2026):** 723 tests green. `ruff check .` and
 `ruff format --check .` are clean, `manage.py check` finds nothing, and
@@ -107,6 +114,29 @@ Checked, so nobody has to check again:
       switched to blocking.
     - **(c) No header.** Phase 5 still moves the scripts out, for
       structure.
+- ~~**Q3 (S78):** Restoring a backup brings back the PIN, the recovery code
+  and the lockout state saved in it. Should a restore keep **today's**
+  PIN, recovery code and lockout instead, and bring back only your data?~~
+  **Answered 14/11/2026 (you): (a), bring back only data.** Done the same
+  day (item 1.28).
+  - **(a) Keep today's. Recommended.** A restore is for getting data
+    back, not old secrets: a recovery code you replaced because someone
+    saw it would otherwise work again.
+  - **(b) Restore everything, as today,** with a warning on the confirm
+    page that the PIN and recovery code go back to that date.
+
+  Either way, the restore's confirm page asks for your PIN, like Change
+  PIN.
+- ~~**Q4 (S79):** How long should you stay logged in? Today a login lasts
+  two weeks, even after the browser is closed, so anyone who opens the
+  browser on this computer in that time is in without the PIN.~~
+  **Answered 14/11/2026 (you): (a), until the browser closes, "but we may
+  change it later".** Done the same day (item 1.28).
+  - **(a) Until the browser closes. Recommended.** Opening Stashy again
+    means typing the PIN once.
+  - **(b) Until a set time without using Stashy** (say 2 hours), even
+    with the browser open.
+  - **(c) As today:** two weeks.
 
 ---
 
@@ -171,6 +201,11 @@ Checked, so nobody has to check again:
     the PIN screen.
   - Reaching the lockout logs you out to the PIN screen, which shows the
     usual "try again in about N minutes" message.
+
+  *Done 14/11/2026 (item 1.9).* One check, `security.check_pin()`, serves
+  both pages through `CurrentPinForm` (Change PIN's form builds on it). A
+  right PIN also clears earlier wrong tries, as the PIN screen does, and a
+  locked stash refuses even the right PIN.
 - **S8 — `.env.example` ships a usable secret key.** It says
   `SECRET_KEY=change-me-to-a-long-random-string`. README's manual setup
   copies it, and Stashy then runs with a key that's public on GitHub. The
@@ -182,6 +217,13 @@ Checked, so nobody has to check again:
   Fix (Claude's call): `bootstrap.py` copies `.env.example` and fills in a
   new key and the port. One template, and README becomes true. Your own
   `.env` is never touched: this only runs when there's no `.env` at all.
+
+  *Done 14/11/2026 (item 1.7), with two corrections (Claude's call):*
+  - "Django refuses to start" wasn't true. With an empty key Django starts,
+    and only the first page fails, as an error page. So `settings/base.py`
+    stops Stashy itself, with a message that says how to make a key.
+  - Only the key is filled in. With no `.env` yet, the port is always
+    8000, which `.env.example` already says.
 - **S9 — Inline scripts block a Content-Security-Policy.** There are 8
   inline `<script>` blocks, 6 `onchange=`/`onclick=` attributes and one
   `javascript:history.back()` link. See Q2 and S19.
@@ -194,6 +236,9 @@ Checked, so nobody has to check again:
     comment, so a real new warning stands out.
   - The "last stash" cookie can be read by page scripts. Nothing secret
     is in it, but `httponly` costs nothing.
+
+  *Done 14/11/2026 (item 1.8), with G's note on the cookie. A test runs
+  `check --deploy` and fails on any warning, so a new one can't hide.*
 
 ### C. Leftovers: dead tests, dead code, history notes
 
@@ -413,7 +458,7 @@ Stashy.
 |---|-------|-------|------|--------|
 | S22 | 24/10/2026 | `audit/admin.py`, `format_timestamp()` | The audit log's time showed milliseconds and the offset (`2026-09-15 15:06:48.930 +03:00`): more than you need, and the `+03:00` kept confusing you. Now `2026-09-15 15:06:48`, still in your own time zone and year first (you chose that over the stash's date format). Overrules part of plan 01's A3 (15/09/2026). | **done 24/10/2026**, fixed before it was filed. |
 | S23 | 24/10/2026 | `audit/tests.py`, `OnCommitUsesTheStashTests` | PyCharm showed a red "Unresolved reference 'db_for_write'" in a test that runs fine: `mock.patch("audit.signals.router.db_for_write")` names a path PyCharm can't follow. Now `mock.patch.object(audit_signals.router, "db_for_write", …)`. | **done 24/10/2026**, fixed before it was filed. |
-| S24 | 11/11/2026 | `finance/management/commands/reset_pin.py`, `handle()` and the `--pin` help text | Without `--pin`, the command asks for the new PIN with `getpass`, which shows nothing at all while you type ("Omit to be prompted (input is hidden)"). You'd like a `*` for each digit, so you can see how many you've typed. Python 3.14's `getpass` can do that (`echo_char="*"`), but Stashy runs on 3.12. Fix: a small helper that reads one key at a time on the Windows console (`msvcrt.getwch()`), prints `*` per key, takes Backspace back, finishes on Enter and stops on Ctrl+C; anywhere else (input piped in, or not Windows) it falls back to plain `getpass`. The help text becomes "Leave it out to be asked (each digit shows as *)". A test feeds it keys. Proposed phase: 1, next to S7, the other PIN-entry item. Note: plan 04's R9 (the same command crashing when the owner name's case differs from the folder's) is in this file too. *11/11/2026 (you): do them together. Both are Phase 1, item 1.10.* | open (Phase 1) |
+| S24 | 11/11/2026 | `finance/management/commands/reset_pin.py`, `handle()` and the `--pin` help text | Without `--pin`, the command asks for the new PIN with `getpass`, which shows nothing at all while you type ("Omit to be prompted (input is hidden)"). You'd like a `*` for each digit, so you can see how many you've typed. Python 3.14's `getpass` can do that (`echo_char="*"`), but Stashy runs on 3.12. Fix: a small helper that reads one key at a time on the Windows console (`msvcrt.getwch()`), prints `*` per key, takes Backspace back, finishes on Enter and stops on Ctrl+C; anywhere else (input piped in, or not Windows) it falls back to plain `getpass`. The help text becomes "Leave it out to be asked (each digit shows as *)". A test feeds it keys. Proposed phase: 1, next to S7, the other PIN-entry item. Note: plan 04's R9 (the same command crashing when the owner name's case differs from the folder's) is in this file too. *11/11/2026 (you): do them together. Both are Phase 1, item 1.10.* *14/11/2026: plan 07 moved Stashy to Python 3.14, so the command uses `getpass`'s own `echo_char="*"` and needs no key reader of its own (Claude's call). `Stashy.bat` still installs on 3.12 and 3.13, which have no `echo_char`; there it asks as before, with nothing shown.* | **done 14/11/2026** (item 1.10) |
 | S25 | 11/11/2026 | `finance/services/importing.py`, `_detect_date_format()` and the comment above it | You'd like date detection to cover the whole file: one date like `1/13/2022` means every date in it is month-first. **It already works that way (Claude checked the code):** every row's date is looked at before any row is read, and the first date that can only be read one way settles the whole file, so with `1/13/2022` anywhere, `03/04/2022` is read as 4 March. Two things make it look otherwise. The comment says "Ambiguous rows … are skipped", which means skipped *while guessing*, not left out of the import. And today's tests have only one row each, so nothing proves an earlier ambiguous row follows a later deciding one. Fix: reword the comment, and add a test with ambiguous rows before the deciding one. Claude's find: a file mixing both ways (`13/01/2022` and `01/13/2022`) trusts whichever comes first. Under plan 04's R3 (a date Stashy can't read fails the import, listing the rows), such a file will fail and say which rows, which is enough. Proposed phase: 2 (documentation and tests). | open |
 | S26 | 11/11/2026 | `finance/templates/finance/account_reconcile_review.html`, the reconcile page | **Mark all** sits on its own line above the two tables, on the right, while **Finish reconciling** and **Cancel** are at the very bottom, on the left. You'd like one line: Mark all on the left, Finish reconciling and Cancel on the right, on the line where Mark all is now. Proposed phase: 5 (templates). | open |
 | S27 | 12/11/2026 | `finance/templates/finance/account_reconcile_start.html`, the reconcile page's first step | Today only **Opening balance** is a row with its label on the left and the amount on the right. The two statement boxes have their labels above them, fill the card's width, and the balance box has the hint "The ending balance shown on your bank or card statement." under it. You'd like all three as rows, labels on the left and values on the right, with the hint centred below. **Claude's suggestion (your choice):** the three rows as you describe, with the two boxes only as wide as a date or an amount, right-aligned, so the three values line up under each other like on a statement. The hint goes under its own label, on the left, small and grey, instead of centred below: it stays next to what it explains, and the right side stays a clean column of values. Start reconciling and Cancel go on the right, the same side as on the next page after S26. On a phone the rows fall back to the label above its box. Proposed phase: 5, with S26. *12/11/2026 (you): the hint under its label, on the left, on one line, not two. So the wording stays short ("as shown on your bank or card statement") and the label side is wide enough to hold it on one line on a normal screen; only a phone may wrap it.* | open (decided 12/11/2026) |
@@ -496,6 +541,8 @@ here, by phase. Findings that extend an older item are notes at the end.
   `time_zone` is a `CharField` with a `Select` widget, so a hand-made
   POST saves anything, and `regional` quietly falls back to the default
   zone. **Fix:** a `ChoiceField` over the same list. A test.
+  *Done 14/11/2026 (item 1.22). The welcome wizard uses the same form, so
+  it's covered too.*
 - **S55 — Two Edit-mode slips on Transactions**
   (`transaction-quick-edit.js`, `saveRow()`). Each change posts the whole
   row with no queue. Waitress runs 8 threads, so two quick changes to one
@@ -623,6 +670,7 @@ here, by phase. Findings that extend an older item are notes at the end.
 - **S10:** the last-stash cookie isn't signed, and any folder holding a
   `db.sqlite3` is accepted, absolute paths included. Accept only names
   from `registry.list_stashes()`, with a test in `test_middleware.py`.
+  *Done 14/11/2026 (item 1.8).*
 - **S11:** seven more history-only checks: three in `test_reports.py`,
   two in `test_reminders.py`, the old admin label in `test_pages.py`, and
   "same as before the merge" in `test_exports.py`.
@@ -638,7 +686,8 @@ here, by phase. Findings that extend an older item are notes at the end.
   make it required.
 - **S24 (item 1.10):** `reset_pin_directly()` changes the audited Profile
   with `.update()`, so no audit row is written. Use `save()` inside
-  `use_stash()` and `system_action()`.
+  `use_stash()` and `system_action()`. *Done 14/11/2026 (item 1.10), in
+  one transaction on that stash.*
 - **S34:** `date.today()` in about 40 lines of eight more test modules
   (not `test_backup.py`, which is right to use the computer's clock).
 - **S35:** `.usage-empty` colours its "0" with the border token, about
@@ -724,11 +773,207 @@ here, by phase. Findings that extend an older item are notes at the end.
   tries `py -3.15` and `py -3.14`). Plan 06 makes Python unnecessary in
   the end, but that's far off. Proposed phase: 2.
 
-<!-- Next number: S75 -->
+### J. Found by the reviews of Phase 1, part A (14/11/2026)
+
+Five reviewers (code, security, database, front end, QA) read part A.
+These were fixed the same day, with a test each: an open redirect (after
+logging out, a link to `//other-site/` on Stashy's address sent the
+browser to that site), the PIN screen's lockout tested through real
+requests, `reset_pin` on a stash without its user or Profile, the
+recovery-code page losing the new code after a PIN re-hash, the old
+`.env.example` placeholder key refused, and owner names compared through
+`name_key()`. The rest:
+
+**Critical (you said yes on 14/11/2026; all three done the same day):**
+- **S75 — The PIN pages count from an old copy of the Profile.**
+  `request.stashy_profile` is loaded by middleware before the request
+  takes the stash's write lock. Several requests sent at once all start
+  from the same count, so most wrong PINs aren't counted, and one that
+  started before a lockout can erase it with a right PIN. The Settings
+  and Watched-expenses saves write the whole Profile row, lockout fields
+  and recovery-code hash included, from that same early copy. **Fix:**
+  `check_pin()` and the recovery-code reset re-read the two lockout fields
+  first (inside the write lock, so the read is current), and the Profile
+  forms save only their own fields. A test with two copies of the Profile.
+  Found by the code, database and security reviewers. *Done 14/11/2026.*
+- **S76 — The admin's own "change password" page skips the lockout.**
+  `/admin/password_change/` is Django's page, not Stashy's: a logged-in
+  browser can guess the PIN there with no limit, and set any password,
+  even one the PIN screen can't accept (checked: it set "a"). Older than
+  part A, but it undoes S7. **Fix:** like `admin/login/`, send
+  `admin/password_change/` (and its "done" page) to Stashy's Change PIN. A
+  test. Found by the security reviewer. *Done 14/11/2026.*
+- **S77 — A time zone saved under an old name is replaced without a
+  word.** The zone detected when a stash is created can be an old name
+  (`Europe/Kiev`, `Etc/UTC`) that the dropdown's list doesn't have. The
+  dropdown then shows its first zone, Africa/Abidjan, and the next save
+  of Settings or the welcome wizard's step 1 stores it. Older than S54.
+  The real stash's zone is in the list. **Fix:** detection only ever
+  saves a listed zone, and the form keeps a stash's saved zone as a choice
+  even when it isn't listed. The test is in `test_welcome.py`, marked as
+  an expected failure until then. Found by QA and the code reviewer.
+  *Done 14/11/2026. Old names are translated through the time zone
+  database's own list of renamed zones (tzdata.zi), so Europe/Kiev
+  becomes Europe/Kyiv, not just any zone on the same clock.*
+
+**Questions:**
+- **S78 — Restoring a backup brings back its PIN, recovery code and
+  lockout,** and asks for no PIN. Q3 above. *Done 14/11/2026: today's PIN,
+  recovery code and lockout are put back after the restore, and the
+  confirm page asks for the PIN.*
+- **S79 — A login lasts two weeks.** Q4 above. *Done 14/11/2026:
+  `SESSION_EXPIRE_AT_BROWSER_CLOSE`. A browser set to reopen its last tabs
+  may keep the login, since it keeps such cookies on purpose.*
+
+**Later:**
+- **S80 — Pages showing a new recovery code may be cached by the
+  browser.** `never_cache` on `recovery_code_view`, `stash_create` and
+  `forgot_pin`, so Back doesn't show the code again. Proposed: Phase 1,
+  part D.
+- **S81 — The session's stash is still checked as a path.**
+  `StashSelectionMiddleware` uses `stash_exists()`. The session is
+  signed, so only someone with the secret key could use it, but checking
+  `list_stashes()` like the cookie costs little. Proposed: Phase 1,
+  part D.
+- **S82 — The PIN is saved in three places** (`views/settings.py`,
+  `security.reset_pin_with_recovery_code()`, `registry.reset_pin_directly()`).
+  One `security.set_pin()`. Proposed: Phase 3.
+- **S83 — `reset_pin` follow-ups** (you agreed on 14/11/2026; done the
+  same day):
+  ask for the new PIN twice, as every PIN box on the website does; say in
+  `--pin`'s help that the shell saves it in its history. A reset with no
+  lockout to clear leaves no audit row, since passwords aren't audited;
+  that stays.
+- **S84 — Error messages aren't tied to their boxes for screen readers.**
+  Django gives a box with an error `aria-describedby="<id>_error"`, but no
+  template gives the error that id. The same label-box-errors block is
+  copied in about 14 templates. **Fix:** one `includes/form_field.html`
+  that gives the error its id, used everywhere. Looks the same. Proposed:
+  Phase 5.
+- **S85 — The leaked-template-syntax tuple is typed out in three test
+  modules** (`test_auth.py`, `test_imports.py`, `test_transactions.py`).
+  Part A moved the shared one to `tests/base.py`; those three use it.
+  Proposed: Phase 2.
+
+- **S86 — Two restores at the same moment can destroy the safety copy.**
+  A backup's file name is stamped to the second, and `backup_now()`
+  writes over a file that already exists. A double-click on "Yes, restore
+  this backup" sends two requests; if the two safety copies get the same
+  second, the second (already restored data) replaces the first (your
+  data from before). **Fix:** `backup_now()` never overwrites: it moves
+  the stamp on by a second until the name is free. A test with a frozen
+  clock. Found by the database reviewer, older than part A. *Done
+  14/11/2026 (item 1.31).*
+- **S87 — A right PIN on Change PIN or Restore can log you out after a
+  Django update.** Checking a PIN with `user.check_password()` re-saves
+  the hash in a newer format when Django's preferred hasher has changed,
+  and the login is tied to that hash. The recovery-code page already
+  renewed the login after its check; Change PIN (a mistyped confirmation)
+  and Restore did not. **Fix:** `check_pin()` checks through
+  `security._check()`, which never saves, so the PIN pages can't change
+  the hash. Only logging in does, and it stores the new session hash in
+  the same step. The workaround on the recovery-code page goes. Found by
+  the code, database and security reviewers. *Done 14/11/2026 (item
+  1.31).*
+- **S88 — The restore's edges** (found by the database, security and QA
+  reviewers; **Critical item 1: you said yes on 14/11/2026, done the same
+  day, item 1.32**). The PIN,
+  the recovery code and the lockout are put back in two steps now (the PIN
+  right after the copy, the rest after `migrate`), and a failed `migrate`
+  still tries the second step.
+  - **Critical (QA): a restore of an empty or cut-short backup file wipes
+    the stash.** An interrupted backup can leave a 0-byte `*_backup_*.sqlite3`
+    in the list. One click plus the PIN replaces the live database with it,
+    the put-back finds no `auth_user` table, and every page gives a 500.
+    Nothing is lost for good (the safety copy `before_restore` is taken
+    first), but getting it back means copying a file by hand. **Fix:**
+    before touching the live database, open the backup read-only and check
+    that it's a SQLite database with a user, and refuse with a message
+    otherwise. Part A's `backup_now()` no longer leaves an empty file when
+    a copy fails (S86), but older ones and power cuts can. *Done:*
+    `registry._check_backup_can_be_restored()` runs first in
+    `restore_stash()`. It opens the file read-only, runs SQLite's
+    `quick_check` (which also catches a file cut short part way), and needs
+    the stash's own user in it. The tests that were expected failures are
+    real tests now, with more: a text file, an empty file, a half file, a
+    database without the stash's user.
+  - **A backup with no Profile row** (very old, from before a first login)
+    would keep the PIN, but today's recovery code and lockout would have no
+    Profile to go back into. *Done:* the same check refuses it, with a
+    message, but only when today's stash has a Profile (a stash with none
+    has nothing to lose).
+  - A failed restore showed a 500 page. *Done for a refused backup:* the
+    page says why on Settings. A restore that fails half way (the disk, a
+    migration) still shows the error page, with the safety copy in
+    `backups/`.
+  - **Left open (checklist 3.18, with S89):** `restore_stash()` hangs if some
+    day it's called inside a transaction (SQLite's backup waits for the
+    lock), so it should refuse with a clear error. The Profile's
+    recovery code stays the backup's for the seconds `migrate` takes;
+    closing that fully means writing today's login state into a copy of
+    the backup before it replaces the live file. And two restores at the
+    same moment (a double click, on two server threads): the second can read
+    "today's login" after the first has copied the backup in, and write the
+    backup's old PIN and recovery code back. Older than part A, found by
+    the third round's security review by reading the code, not by running
+    it. A module-level `threading.Lock` around `restore_stash()` is enough
+    (Stashy is one process).
+  Checklist item 1.32.
+- **S91 — The locked-out PIN screen promised a way out that didn't
+  exist** (found by QA, older than part A). While the stash was locked, the
+  PIN screen said "…or reset it with your recovery code", but Forgot PIN
+  refused even the right code until the lockout ended, and showed no form.
+  **You said yes on 14/11/2026: a right recovery code works during a
+  lockout** (the recommended choice). A recovery code has 12 characters of
+  32, so it can't be guessed the way a 4-digit PIN can, and whoever has it
+  can reset the PIN anyway. This also stops anyone from keeping you locked
+  out by guessing wrong PINs. *Done 14/11/2026 (item 1.33):* a right code
+  resets the PIN and ends the lockout; a wrong one is refused and, during a
+  lockout, counts for nothing (as a wrong PIN doesn't), so the lockout is
+  never extended. The page shows the form with a notice instead of hiding
+  it.
+- **S89 — Small duplication around the PIN pages** (found by the code
+  reviewer; proposed: Phase 3). `lockout_seconds_remaining(...) // 60 + 1`
+  is typed twice in `views/auth.py` (`security.lockout_minutes_remaining()`,
+  with a comment on the round-up); the PIN pages repeat "invalid form,
+  then if locked, log out"; `recovery_code_view` does two jobs; the PIN
+  pages and the restore could be a `views/pin.py` (check against the
+  Settings split in Phase 3 first); `RequireStashMiddleware` imports its
+  "stays on this site" check's twin from `views/_helpers.py`, and a
+  middleware shouldn't import from `views`, so both move to one neutral
+  module; `put_back_login_state` and `reset_pin_directly` share one
+  "system change in a stash" context manager (done 14/11/2026, with S86).
+  Checklist item 3.17.
+- **S90 — Test scaffolding** (found by the code reviewer; extends S85;
+  proposed: Phase 2). `type(self).databases |= {...}`, `create_stash()`
+  and `addCleanup(self._unregister, ...)` appear five times: one
+  `TemporaryStashesMixin.create_stash(owner, pin)`, which also makes
+  `_unregister` public. `ResetPinCommandTests` builds and migrates a stash
+  for each of its ten tests, which is part of why the suite grew from 25 s
+  to 40 s. `RenderCheckTests.LEAKS` in `test_pages.py` is one more copy of
+  `LEAKED_TEMPLATE_SYNTAX`, and the login-lasts-until-the-browser-closes
+  test sits in the lockout class, not `test_project.py`. Checklist item
+  2.16, with 2.15.
+
+<!-- Next number: S92 -->
 
 ---
 
-## Phase 1 — Bugs and quick security fixes  (S1–S8, S10, S24 with plan 04's R9, S31–S33, S38, S39, S41, S46, S50–S55, S69)
+## Phase 1 — Bugs and quick security fixes  (S1–S8, S10, S24 with plan 04's R9, S31–S33, S38, S39, S41, S46, S50–S55, S69, S75–S81, S83, S86–S88, S91)
+
+Built in four parts (Claude's proposal, 14/11/2026), each one a commit:
+- **A, security and the PIN:** S7, S8, S10, S24 with R9, S54 (items 1.7–1.10,
+  1.22). **Done 14/11/2026.** Its reviews found three Critical items,
+  S75–S77 (1.25–1.27), and two questions, Q3 and Q4 (1.28). With your
+  answers they were done the same day, with S83 (1.30). A second round of
+  reviews found S86–S91; S86, S87, S88 and S91 (1.31–1.33) are done, with
+  your yes on 14/11/2026.
+- **B, money and reports:** S1, S3, S33, S50 (1.1, 1.3, 1.13, 1.18).
+- **C, reminders and transactions:** S38, S39, S51, S52, S55 (1.14, 1.15,
+  1.19, 1.20, 1.23).
+- **D, small fixes:** S2, S4, S5, S6, S31, S32, S41, S53, S69, S80, S81,
+  and S46, the phase's one migration, so the real stash is backed up
+  first (1.2, 1.4–1.6, 1.11, 1.12, 1.16, 1.17, 1.21, 1.24, 1.29).
 
 - [ ] **1.1** S1: `min_value=CENT` on the transfer amount; test with 0.01.
 - [ ] **1.2** S2: both bad URLs answer 404 or show a message; a test each.
@@ -741,14 +986,14 @@ here, by phase. Findings that extend an older item are notes at the end.
 - [ ] **1.5** S5: the unused Number help text (with its "D9") out of the
   form.
 - [ ] **1.6** S6: the saved flash uses `--stashy-positive-soft`.
-- [ ] **1.7** S8: empty `SECRET_KEY` in `.env.example`; `bootstrap.py`
-  creates `.env` from it.
-- [ ] **1.8** S10: silence the four HTTPS checks by name; `httponly` on the
+- [x] **1.7** S8: empty `SECRET_KEY` in `.env.example`; `bootstrap.py`
+  creates `.env` from it. Settings stop Stashy on an empty key.
+- [x] **1.8** S10: silence the four HTTPS checks by name; `httponly` on the
   last-stash cookie, which also accepts only a real stash name (G's
   note).
-- [ ] **1.9** S7 (Q1, yes): current PIN for a new recovery code; wrong
+- [x] **1.9** S7 (Q1, yes): current PIN for a new recovery code; wrong
   current-PINs on both pages count toward the lockout; a lockout logs out.
-- [ ] **1.10** S24 and plan 04's R9, together (your call, 11/11/2026), both in
+- [x] **1.10** S24 and plan 04's R9, together (your call, 11/11/2026), both in
   `manage.py reset_pin`: a `*` for each typed digit, and the owner name
   works in any upper/lower case. A test each. Also `reset_pin_directly()`
   saves the Profile through `save()`, so the audit log sees it (G's note).
@@ -769,18 +1014,40 @@ here, by phase. Findings that extend an older item are notes at the end.
 - [ ] **1.19** S51: an unpaid reminder period survives regeneration.
 - [ ] **1.20** S52: the reminder message shows the date it was due.
 - [ ] **1.21** S53: system payees recognised through `name_key`.
-- [ ] **1.22** S54: the time zone is a `ChoiceField`.
+- [x] **1.22** S54: the time zone is a `ChoiceField`.
 - [ ] **1.23** S55: Edit mode saves a row's changes in order, and an empty
   amount is refused.
 - [ ] **1.24** S69: Payees falls back to sorting by name for an unknown
   sort, so the Payee header shows its arrow.
+- [x] **1.25** S75 (Critical): the lockout counts from
+  the current database row, and the Profile forms save only their own
+  fields.
+- [x] **1.26** S76 (Critical): the admin's change
+  password page sends you to Stashy's Change PIN.
+- [x] **1.27** S77 (Critical): a saved time zone the
+  list doesn't have is kept, and detection saves only listed zones.
+- [x] **1.28** S78 and S79 (Q3 and Q4): a restore keeps today's PIN,
+  recovery code and lockout and asks for the PIN; a login ends when the
+  browser closes.
+- [ ] **1.29** S80 and S81: `never_cache` on the three recovery-code
+  pages; the session's stash checked against `list_stashes()`.
+- [x] **1.30** S83: `reset_pin` asks twice, and `--pin`'s
+  help mentions the shell's history.
 
 **Done when:** each fix has a test that fails on today's code, the suite is
 green, and the render check of the changed pages shows no leaked template
 syntax.
 
-## Phase 2 — Leftovers and documentation  (S11, S12, S13, S21, S44, S43's comments, S25, S34, S56–S62, S68, S70, S72–S74)
+## Phase 2 — Leftovers and documentation  (S11, S12, S13, S21, S44, S43's comments, S25, S34, S56–S62, S68, S70, S72–S74, S85, S90)
 
+- [x] **1.31** S86 and S87: `backup_now()` never overwrites a file; the PIN
+  pages check through `_check()`, so they never re-save the hash.
+- [x] **1.32** S88: a check of the backup file before anything is replaced
+  (empty, damaged, cut short, no user, no Profile), and a message on
+  Settings instead of an error page. (The guard against a transaction and
+  the recovery code's gap during `migrate` are 3.18.)
+- [x] **1.33** S91: a right recovery code works during a lockout (your
+  call, yes).
 - [ ] **2.1** S11: delete the 21 history-only tests, trim three, rename the
   kept classes; plus the seven more from G's note.
 - [ ] **2.2** S12: remove the dead bits.
@@ -814,12 +1081,17 @@ syntax.
   `Stashy.bat` saved with CRLF.
 - [ ] **2.14** S74: README and `Stashy.bat`'s message describe the Python
   install manager.
+- [ ] **2.15** S85: the three test modules use `tests/base.py`'s
+  `LEAKED_TEMPLATE_SYNTAX`, and `test_pages.py`'s own copy too.
+- [ ] **2.16** S90: one `TemporaryStashesMixin.create_stash()`, the
+  `ResetPinCommandTests` stash built once per class, and the browser-close
+  test moved to `test_project.py`.
 
 **Done when:** the suite is green (fewer tests than 723, since history-only
 tests and duplicates go, and a few new ones come), and a grep for the
 history patterns finds nothing outside `plans/` and `DEVLOG.md`.
 
-## Phase 3 — Python structure  (S40, S43, S15, S16, S17, S18, S20, S42, S45, S47, S48, S63–S66, S49, S71)
+## Phase 3 — Python structure  (S40, S43, S15, S16, S17, S18, S20, S42, S45, S47, S48, S63–S66, S49, S71, S82, S89)
 
 - [ ] **3.0** First, the two tool settings, each as its own commit:
   S40, Django gets its own import group and `lines-after-imports = 2` in
@@ -866,6 +1138,14 @@ history patterns finds nothing outside `plans/` and `DEVLOG.md`.
   (another reader, or a copy kept inside Stashy: your choice). The OFX
   import tests pass unchanged. It doesn't touch `models.py`, so 3.14
   doesn't have to wait for it.
+- [ ] **3.16** S82: one `security.set_pin()` for the three places that
+  save a PIN.
+- [ ] **3.17** S89: the PIN pages' small duplication, and one "stays on this
+  site" check outside `views/`.
+- [ ] **3.18** S88's small edges: `restore_stash()` refuses to run inside
+  a transaction (it would wait forever for the lock), today's recovery
+  code goes into a copy of the backup before it replaces the live file, and
+  one lock keeps two restores at the same moment apart.
 
 **Done when:** the suite is green with no test edited except for moved
 imports, and every page renders the same as before.
@@ -880,7 +1160,7 @@ imports, and every page renders the same as before.
 set, before and after, and compares them; the only difference is S3's
 rows, which Phase 1 already added.
 
-## Phase 5 — Templates and JavaScript  (S28, S19, S18's JavaScript part, S26, S27, S29, S30, S35–S37, S67; S9 last, if Q2 is yes)
+## Phase 5 — Templates and JavaScript  (S28, S19, S18's JavaScript part, S26, S27, S29, S30, S35–S37, S67, S84; S9 last, if Q2 is yes)
 
 - [ ] **5.0** S28 first: the templates move into folders per area, so
   S19's new files land straight in their folders.
@@ -902,6 +1182,8 @@ rows, which Phase 1 already added.
 - [ ] **5.8** S36 and S37: the small on-screen slips and the template
   leftovers.
 - [ ] **5.9** S67: the JavaScript and CSS tidy-ups.
+- [ ] **5.11** S84: one `includes/form_field.html`, whose error box has
+  the id the box's `aria-describedby` names. Before 5.10.
 - [ ] **5.10** S9 (only if Q2 is yes), last: the Content-Security-Policy
   header, then you check each page once with the console open. (It was
   5.5 until 13/11/2026; it stays last because it needs every inline script
@@ -950,6 +1232,24 @@ item 3.6 was closed as saved for later.
   expense from the amount's sign. That's a reasonable first guess for a
   category Stashy didn't know. The rule that the type decides is about
   reports, not about this.
-- Owner names are compared with `lower()`, not `casefold()`. Python's
-  `lower()` already handles Cyrillic; they differ only for letters like
-  "ß".
+- Owner names are compared with `casefold()` since 14/11/2026, through
+  `name_key()`, like payees and categories.
+- From part A's security review (14/11/2026), design choices, not bugs:
+  - A login "until the browser closes" is only a request to the browser.
+    With signed-cookie sessions the server still accepts a copied cookie
+    for `SESSION_COOKIE_AGE`, two weeks by default, and a browser set to
+    "continue where you left off" keeps it. Setting `SESSION_COOKIE_AGE`
+    to, say, 12 hours limits the time since login; adding
+    `SESSION_SAVE_EVERY_REQUEST = True` makes it an idle timeout (Q4's
+    option b). You said Q4 may change later; this is where.
+  - The lockout never grows: 5 tries per 5 minutes is about 1,440 guesses
+    a day, so all 10,000 PINs fall in about a week. Only programs on this
+    computer can try, since Stashy listens on 127.0.0.1 only. Longer
+    lockouts after repeated lockouts would change that.
+  - `pip-audit` isn't installed. Adding it to `requirements-dev.txt` would
+    let you check the pinned libraries for known holes.
+  - The PIN protects the website, not the files: the stashes and their
+    backups aren't encrypted and hold the PIN's hash, which a 4-digit PIN
+    can't resist. Keep the `stashes/` folder out of cloud-synced folders.
+  - A reset by `manage.py reset_pin` on a stash with no lockout to clear
+    leaves no audit row (passwords aren't audited).

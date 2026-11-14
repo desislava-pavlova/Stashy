@@ -1,12 +1,14 @@
 """The welcome wizard a new stash goes through: its four steps and the order they come in."""
 
 import tempfile
+from datetime import timedelta
 from pathlib import Path
 from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase
 from django.urls import reverse
+from django.utils import timezone
 from openpyxl import Workbook
 
 from .. import starter_categories
@@ -66,21 +68,49 @@ class WelcomeStepOrderTests(WelcomeWizardTestCase):
 
 
 class WelcomeStepOneTests(WelcomeWizardTestCase):
-    def test_saving_preferences_advances_to_step_two(self):
-        response = self.client.post(
+    def save_step_one(self, time_zone):
+        return self.client.post(
             reverse("finance:welcome_step", args=[1]),
             {
                 "main_currency": "USD",
-                "time_zone": "Europe/Sofia",
+                "time_zone": time_zone,
                 "date_format": "dmy",
                 "number_format": "space_dot",
                 "first_day_of_week": "1",
             },
         )
+
+    def show_step_one_with_time_zone(self, time_zone):
+        self.profile.time_zone = time_zone
+        self.profile.save(update_fields=["time_zone"])
+        return self.client.get(reverse("finance:welcome_step", args=[1]))
+
+    def test_saving_preferences_advances_to_step_two(self):
+        response = self.save_step_one("Europe/Sofia")
         self.assertRedirects(response, reverse("finance:welcome_step", args=[2]))
         self.profile.refresh_from_db()
         self.assertEqual(self.profile.main_currency, "USD")
         self.assertEqual(self.profile.welcome_step, 1)
+
+    def test_a_time_zone_that_is_not_in_the_list_is_refused_here_too(self):
+        """Plan 03, S54: step 1 uses Settings' ProfileForm, so the same list applies."""
+        before = (self.profile.time_zone, self.profile.main_currency)
+        response = self.save_step_one("Mars/Olympus_Mons")
+        self.assertContains(response, "Select a valid choice. Mars/Olympus_Mons is not one of the available choices.")
+        self.profile.refresh_from_db()
+        self.assertEqual((self.profile.time_zone, self.profile.main_currency), before)
+        self.assertEqual(self.profile.welcome_step, 0)
+
+    def test_the_time_zone_read_from_this_computer_is_the_one_selected(self):
+        response = self.show_step_one_with_time_zone("Europe/Lisbon")
+        self.assertContains(response, '<option value="Europe/Lisbon" selected>Europe/Lisbon</option>', html=True)
+
+    def test_a_time_zone_read_from_this_computer_but_not_in_the_list_is_still_the_one_selected(self):
+        """Plan 03, S77: tzlocal gives some Windows zones names that zone.tab doesn't list
+        ("FLE Standard Time" is "Europe/Kiev"), and stashes made before detection translated
+        them hold that name. The dropdown showed Africa/Abidjan instead, and Next saved it."""
+        response = self.show_step_one_with_time_zone("Europe/Kiev")
+        self.assertContains(response, '<option value="Europe/Kiev" selected>Europe/Kiev</option>', html=True)
 
 
 class WelcomeStepTwoTests(WelcomeWizardTestCase):
@@ -158,6 +188,22 @@ class WelcomeStepThreeTests(WelcomeWizardTestCase):
         self.assertEqual(self.profile.welcome_step, 3)
         self.assertIn(self.category, self.profile.watched_expenses_categories.all())
 
+    def test_coming_back_and_saving_again_replaces_or_clears_the_chosen_categories(self):
+        """Step 3 saves only the Profile's own columns now (plan 03, S75), and its categories
+        (a many-to-many) still have to be saved with them."""
+        power = Category.objects.create(name="Power", category_type=Category.CategoryType.EXPENSE)
+        self.profile.welcome_step = 3
+        self.profile.save(update_fields=["welcome_step"])
+        self.profile.watched_expenses_categories.set([self.category])
+        steps = [([power.pk], [power]), ([self.category.pk, power.pk], [self.category, power]), ([], [])]
+        for chosen, expected in steps:
+            with self.subTest(chosen=chosen):
+                self.client.post(
+                    reverse("finance:welcome_step", args=[3]),
+                    {"watched_expenses_title": "Bills", "watched_expenses_categories": chosen},
+                )
+                self.assertCountEqual(self.profile.watched_expenses_categories.all(), expected)
+
     def test_title_starts_empty_and_the_dropdown_has_bootstrap_js(self):
         response = self.client.get(reverse("finance:welcome_step", args=[3]))
         title = response.context["form"]["watched_expenses_title"]
@@ -171,6 +217,43 @@ class WelcomeStepThreeTests(WelcomeWizardTestCase):
         self.profile.save(update_fields=["welcome_step", "watched_expenses_title"])
         response = self.client.get(reverse("finance:welcome_step", args=[3]))
         self.assertContains(response, 'value="My bills"')
+
+
+class WelcomeStepsKeepTheLoginStateTests(WelcomeWizardTestCase):
+    """Plan 03, S75: a step saved from the request's older copy of the Profile must not put
+    back an old lockout or recovery code, and still moves the wizard on."""
+
+    def test_steps_one_and_three_keep_the_lockout_and_the_recovery_code(self):
+        posts = {
+            1: {
+                "main_currency": "USD",
+                "time_zone": self.profile.time_zone,
+                "date_format": "dmy",
+                "number_format": "space_dot",
+                "first_day_of_week": "1",
+            },
+            3: {"watched_expenses_title": "Bills"},
+        }
+        for step, data in posts.items():
+            with self.subTest(step=step):
+                Profile.objects.filter(pk=self.profile.pk).update(
+                    welcome_step=step - 1, failed_pin_attempts=0, locked_until=None, recovery_code_hash="old hash"
+                )
+                old_copy = Profile.objects.get(pk=self.profile.pk)
+                locked_until = timezone.now() + timedelta(minutes=5)
+                Profile.objects.filter(pk=self.profile.pk).update(
+                    failed_pin_attempts=3, locked_until=locked_until, recovery_code_hash="today's hash"
+                )
+                with mock.patch.object(Profile, "for_user", return_value=old_copy):
+                    response = self.client.post(reverse("finance:welcome_step", args=[step]), data)
+                self.assertRedirects(
+                    response, reverse("finance:welcome_step", args=[step + 1]), fetch_redirect_response=False
+                )
+                saved = Profile.objects.get(pk=self.profile.pk)
+                self.assertEqual(
+                    (saved.welcome_step, saved.failed_pin_attempts, saved.locked_until, saved.recovery_code_hash),
+                    (step, 3, locked_until, "today's hash"),
+                )
 
 
 class WelcomeStepFourTests(WelcomeWizardTestCase):

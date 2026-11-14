@@ -4,16 +4,24 @@ and rules the code itself follows (imports at the top, the audit app on its own)
 import ast
 import copy
 import logging.config
+import os
 import re
+import runpy
+import secrets
+import shutil
 import tempfile
+from io import StringIO
 from pathlib import Path
+from unittest import mock
 
 from django.conf import settings
 from django.contrib.staticfiles import finders
 from django.contrib.staticfiles.storage import staticfiles_storage
+from django.core.exceptions import ImproperlyConfigured
 from django.core.management import call_command
 from django.test import SimpleTestCase, override_settings
 
+from scripts import bootstrap
 from stashy.settings import base
 
 from ..stashes import registry
@@ -115,6 +123,65 @@ class TestSettingsTests(SimpleTestCase):
         self.assertIn('SECRET_KEY = config("SECRET_KEY")\n', source)
         self.assertIn('DEBUG = config("DEBUG", default=False, cast=bool)', source)
         self.assertFalse(hasattr(base, "AUTH_PASSWORD_VALIDATORS"))
+
+    def test_an_empty_secret_key_stops_stashy_at_the_start(self):
+        """Plan 03, S8: Django alone would start, then show an error page on the first visit.
+        "" is the line .env.example ships; only spaces count as empty too. The last value is
+        the placeholder the old .env.example shipped, public on GitHub."""
+        for value in ("", " ", "change-me-to-a-long-random-string"):
+            with (
+                self.subTest(value=value),
+                mock.patch.dict(os.environ, {"SECRET_KEY": value}),
+                self.assertRaisesMessage(ImproperlyConfigured, "SECRET_KEY in .env is empty or still the example's"),
+            ):
+                runpy.run_path(base.__file__)
+
+    def test_the_deploy_check_only_finds_what_it_was_told_to_skip(self):
+        """Plan 03, S10: the four HTTPS warnings can't apply to Stashy and are silenced by name,
+        so a new warning fails this test."""
+        with override_settings(SECRET_KEY=secrets.token_urlsafe(50)):
+            call_command("check", deploy=True, fail_level="WARNING", stdout=StringIO(), stderr=StringIO())
+
+
+class EnvFileTests(SimpleTestCase):
+    """Plan 03, S8: .env.example ships no usable secret key, and Stashy.bat's first run
+    (scripts/bootstrap.py) makes .env from it."""
+
+    EXAMPLE = Path(settings.BASE_DIR) / ".env.example"
+
+    def setUp(self):
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        self.root = Path(folder.name)
+        for name, value in [("ROOT", self.root), ("step", mock.Mock())]:
+            patcher = mock.patch.object(bootstrap, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def test_the_example_leaves_the_secret_key_empty(self):
+        lines = self.EXAMPLE.read_text(encoding="utf-8").splitlines()
+        self.assertIn("SECRET_KEY=", lines)
+
+    def test_the_first_run_copies_the_example_with_a_new_secret_key(self):
+        shutil.copy(self.EXAMPLE, self.root / ".env.example")
+        bootstrap.ensure_env_file()
+
+        example = self.EXAMPLE.read_text(encoding="utf-8").splitlines()
+        created = (self.root / ".env").read_text(encoding="utf-8").splitlines()
+        key_line = example.index("SECRET_KEY=")
+        self.assertRegex(created[key_line], r"^SECRET_KEY=[\w-]{60,}$")
+        self.assertEqual(created[:key_line] + created[key_line + 1 :], example[:key_line] + example[key_line + 1 :])
+
+    def test_without_the_example_the_first_run_stops_with_a_message_and_makes_no_env(self):
+        with self.assertRaisesMessage(bootstrap.SetupError, ".env.example is missing"):
+            bootstrap.ensure_env_file()
+        self.assertFalse((self.root / ".env").exists())
+
+    def test_an_existing_env_file_is_never_touched(self):
+        shutil.copy(self.EXAMPLE, self.root / ".env.example")
+        (self.root / ".env").write_text("SECRET_KEY=mine\nPORT=8001\n", encoding="utf-8")
+        bootstrap.ensure_env_file()
+        self.assertEqual((self.root / ".env").read_text(encoding="utf-8"), "SECRET_KEY=mine\nPORT=8001\n")
 
 
 class StashyLocalhostTests(StashTestCase):

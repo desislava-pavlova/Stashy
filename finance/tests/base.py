@@ -13,12 +13,32 @@ from unittest import mock
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.contrib.auth.hashers import MD5PasswordHasher
 from django.db import connections
 from django.test import Client, TestCase
 
 from .. import db_router
 from ..models import Account, Profile
 from ..stashes import registry
+
+# Django template syntax that shows up as visible text when a tag or comment goes wrong (a
+# {# #} comment is one line only). A rendered page must contain none of it.
+LEAKED_TEMPLATE_SYNTAX = ("{%", "%}", "{#", "#}")
+
+
+class NewerMD5PasswordHasher(MD5PasswordHasher):
+    """Stands in for the stronger hasher a Django update brings."""
+
+    algorithm = "md5_newer"
+
+
+# For override_settings(PASSWORD_HASHERS=...): with the newer hasher listed first, Django re-saves
+# an MD5-hashed PIN in the newer format the next time the PIN is checked - which changes the
+# hash the login is tied to.
+REHASHING_PASSWORD_HASHERS = [
+    f"{__name__}.NewerMD5PasswordHasher",
+    "django.contrib.auth.hashers.MD5PasswordHasher",
+]
 
 
 class StashClient(Client):

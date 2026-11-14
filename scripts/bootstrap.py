@@ -100,22 +100,25 @@ def install_requirements():
     marker.write_text(digest)
 
 
+def env_text_from_example(example_text, secret_key):
+    """.env.example's text with `secret_key` filled in. Every other line stays as it is, so
+    .env.example is the one template for .env, and the two can't drift apart."""
+    lines = example_text.splitlines(keepends=True)
+    return "".join(f"SECRET_KEY={secret_key}\n" if line.startswith("SECRET_KEY=") else line for line in lines)
+
+
 def ensure_env_file():
+    """Creates .env from .env.example, with a new secret key, on the first run. An .env that
+    already exists is never touched."""
     env_file = ROOT / ".env"
     if env_file.exists():
         return
     step("Creating your private settings file (.env)...")
-    env_file.write_text(
-        "# Created automatically by Stashy.bat. Keep this file private.\n\n"
-        f"SECRET_KEY={secrets.token_urlsafe(50)}\n"
-        "# True shows Django's detailed error pages - only for working on Stashy itself.\n"
-        "DEBUG=False\n"
-        "ALLOWED_HOSTS=localhost,127.0.0.1\n"
-        f"PORT={PORT}\n"
-        "# Change PORT above (then run Stashy.bat again) if you want Stashy to run\n"
-        "# alongside something else already using port 8000 on this computer.\n",
-        encoding="utf-8",
-    )
+    example = ROOT / ".env.example"
+    if not example.exists():
+        raise SetupError(".env.example is missing, so Stashy can't create its settings file. Download Stashy again.")
+    env_text = env_text_from_example(example.read_text(encoding="utf-8"), secrets.token_urlsafe(50))
+    env_file.write_text(env_text, encoding="utf-8")
 
 
 def migrate_database():

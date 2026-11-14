@@ -20,9 +20,10 @@ from .text import possessive
 
 
 def name_key(name):
-    """How Stashy compares payee and category names: names that differ only in upper/lower
-    case are the same one. Python's casefold() knows every alphabet. SQLite's own lower() and
-    LIKE only fold A-Z, so to the database "ЛИДЛ" and "лидл" would be two different names."""
+    """How Stashy compares payee, category and stash owner names: names that differ only in
+    upper/lower case are the same one. Python's casefold() knows every alphabet. SQLite's own
+    lower() and LIKE only fold A-Z, so to the database "ЛИДЛ" and "лидл" would be two
+    different names."""
     return (name or "").strip().casefold()
 
 

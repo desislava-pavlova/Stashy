@@ -9,7 +9,7 @@ import secrets
 from pathlib import Path
 
 from django.contrib import messages
-from django.contrib.auth import update_session_auth_hash
+from django.contrib.auth import logout, update_session_auth_hash
 from django.core.cache import cache
 from django.db import transaction
 from django.http import Http404
@@ -17,7 +17,7 @@ from django.shortcuts import redirect, render
 from django.views.decorators.http import require_POST
 
 from .. import backup as finance_backup
-from ..auth_forms import ChangePinForm
+from ..auth_forms import ChangePinForm, CurrentPinForm
 from ..currency import RateFetchError, RateTable, fetch_latest_rates
 from ..forms import (
     CheckRatesForm,
@@ -27,7 +27,7 @@ from ..forms import (
     watched_expenses_picker_context,
 )
 from ..models import Account
-from ..stashes import registry, security
+from ..stashes import StashError, registry, security
 
 
 def _stash_backup_root(request):
@@ -129,18 +129,31 @@ def save_watched_expenses(request):
     return _render_settings(request, profile, watched_form=watched_form)
 
 
+def _log_out_after_lockout(request):
+    """Too many wrong PINs on a page that asks for it again: out to the PIN screen, which says
+    how long the lockout lasts. logout() empties the session, so the stash's name goes back in
+    for the PIN screen to know which stash it is."""
+    stash = request.session["stash"]
+    logout(request)
+    request.session["stash"] = stash
+    return redirect("login")
+
+
 def change_pin_view(request):
     """Its own page, reached from Settings: current PIN, new PIN, confirm."""
+    profile = request.stashy_profile
     if request.method == "POST":
-        form = ChangePinForm(request.POST, user=request.user)
+        form = ChangePinForm(request.POST, profile=profile)
         if form.is_valid():
             request.user.set_password(form.cleaned_data["new_pin"])
             request.user.save(update_fields=["password"])
             update_session_auth_hash(request, request.user)
             messages.success(request, "PIN changed.")
             return redirect("finance:settings")
+        if security.is_locked_out(profile):
+            return _log_out_after_lockout(request)
     else:
-        form = ChangePinForm(user=request.user)
+        form = ChangePinForm(profile=profile)
     return render(request, "finance/change_pin.html", {"form": form})
 
 
@@ -152,28 +165,36 @@ def _recovery_code_cache_key(token):
 
 
 def recovery_code_view(request):
-    """Its own page: a warning with Generate/Back first; Generate mints a new code and
-    redirects back to this same URL - a real page reload, so refreshing afterward can't
+    """Its own page: a warning, the current PIN, and Generate/Back. Generate mints a new code
+    and redirects back to this same URL - a real page reload, so refreshing afterward can't
     regenerate a second code by resubmitting a form.
 
     The code itself waits in the server's memory cache, and the session (a signed but readable
     cookie) only carries a random one-time key to it. The page shows it once and deletes it.
     Stashy is one process, so the local-memory cache is shared by every request."""
+    profile = request.stashy_profile
     if request.method == "POST":
-        profile = request.stashy_profile
-        token = secrets.token_urlsafe(16)
-        cache.set(
-            _recovery_code_cache_key(token), security.regenerate_recovery_code(profile), RECOVERY_CODE_CACHE_SECONDS
-        )
-        request.session["new_recovery_code_token"] = token
-        return redirect("finance:recovery_code")
+        form = CurrentPinForm(request.POST, profile=profile)
+        if form.is_valid():
+            token = secrets.token_urlsafe(16)
+            cache.set(
+                _recovery_code_cache_key(token),
+                security.regenerate_recovery_code(profile),
+                RECOVERY_CODE_CACHE_SECONDS,
+            )
+            request.session["new_recovery_code_token"] = token
+            return redirect("finance:recovery_code")
+        if security.is_locked_out(profile):
+            return _log_out_after_lockout(request)
+        return render(request, "finance/recovery_code.html", {"form": form})
     new_code = None
     token = request.session.pop("new_recovery_code_token", None)
     if token:
         key = _recovery_code_cache_key(token)
         new_code = cache.get(key)
         cache.delete(key)
-    return render(request, "finance/recovery_code.html", {"new_code": new_code})
+    context = {"new_code": new_code, "form": CurrentPinForm(profile=profile)}
+    return render(request, "finance/recovery_code.html", context)
 
 
 def _backup_path_or_404(request, name):
@@ -191,17 +212,33 @@ def _backup_path_or_404(request, name):
 def backup_restore(request):
     """Restoring overwrites the live database, so this is a confirm-then-act page (like a
     delete) rather than a one-click button on Settings - a wrong pick here is far more costly
-    than a wrong pick almost anywhere else in the app. Runs without the per-request
-    transaction: the restore needs the stash's write lock itself."""
+    than a wrong pick almost anywhere else in the app. It asks for the PIN first, like Change
+    PIN (plan 03, Q3). Runs without the per-request transaction: the restore needs the stash's
+    write lock itself."""
     name = request.POST.get("name") or request.GET.get("name", "")
     backup_path = _backup_path_or_404(request, name)
+    stash = request.session["stash"]
+    profile = request.stashy_profile
 
     if request.method == "POST":
-        registry.restore_stash(request.session["stash"], backup_path)
-        messages.success(
-            request,
-            f"Restored from {backup_path.name}. A safety backup of what was there before is in backups/ too.",
-        )
-        return redirect("finance:settings")
+        form = CurrentPinForm(request.POST, profile=profile)
+        # This view runs without the request's transaction, but the PIN check takes its own
+        # lock (security.check_pin), so the wrong try is counted either way.
+        if form.is_valid():
+            try:
+                registry.restore_stash(stash, backup_path)
+            except StashError as error:
+                messages.error(request, str(error))
+            else:
+                messages.success(
+                    request,
+                    f"Restored from {backup_path.name}. A safety backup of what was there before is in backups/ too.",
+                )
+            return redirect("finance:settings")
+        if security.is_locked_out(profile):
+            return _log_out_after_lockout(request)
+    else:
+        form = CurrentPinForm(profile=profile)
 
-    return render(request, "finance/backup_restore_confirm.html", {"backup": backup_path.name})
+    context = {"backup": backup_path.name, "form": form}
+    return render(request, "finance/backup_restore_confirm.html", context)

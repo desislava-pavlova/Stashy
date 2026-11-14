@@ -138,9 +138,12 @@ class StashLoginView(LoginView):
 
     def form_valid(self, form):
         if self.profile:
-            security.register_successful_login(self.profile)
+            security.clear_failed_attempts(self.profile)
         response = super().form_valid(form)
-        response.set_cookie(LAST_STASH_COOKIE, self.stash_name, max_age=LAST_STASH_COOKIE_AGE, samesite="Lax")
+        # httponly: no page script needs it, so none can read it.
+        response.set_cookie(
+            LAST_STASH_COOKIE, self.stash_name, max_age=LAST_STASH_COOKIE_AGE, samesite="Lax", httponly=True
+        )
         return response
 
     def form_invalid(self, form):
@@ -158,9 +161,8 @@ def forgot_pin(request):
     if profile is None:
         return redirect("login")
 
-    locked_out = security.is_locked_out(profile)
     form = ForgotPinForm()
-    if request.method == "POST" and not locked_out:
+    if request.method == "POST":
         form = ForgotPinForm(request.POST)
         if form.is_valid():
             ok, new_recovery_code = security.reset_pin_with_recovery_code(
@@ -178,8 +180,10 @@ def forgot_pin(request):
                     },
                 )
             form.add_error("recovery_code", "That recovery code isn't right.")
-            locked_out = security.is_locked_out(profile)
 
+    # After the try above, so the last wrong code shows the lockout at once. The form stays: a
+    # right recovery code still works during one (plan 03, S91).
+    locked_out = security.is_locked_out(profile)
     return render(
         request,
         "registration/forgot_pin.html",

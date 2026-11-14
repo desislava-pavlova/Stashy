@@ -10,12 +10,22 @@
         </div>
     </div>
     <p class="text-muted small mb-0">Stashy saves what's currently in the database as its own backup first, so this
-        can itself be undone by restoring again. After this finishes, restart Stashy so every open page picks up
-        the restored data.</p>
-    <form method="post" class="d-flex gap-2 mt-3">
+        can itself be undone by restoring again.
+        Only your data goes back: your PIN and recovery code stay as they are now.
+        After this finishes, restart Stashy so every open page picks up the restored data.</p>
+    <form method="post" class="mt-3">
         {% csrf_token %}
-        <button type="submit" class="btn btn-danger">Yes, restore this backup</button>
-        <a href="{% url 'finance:settings' %}" class="btn btn-outline-secondary">Cancel</a>
+        {% with field=form.current_pin %}
+        <div class="mb-3">
+            <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+            {{ field }}
+            {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+        </div>
+        {% endwith %}
+        <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-danger">Yes, restore this backup</button>
+            <a href="{% url 'finance:settings' %}" class="btn btn-outline-secondary">Cancel</a>
+        </div>
     </form>
 </div>
 {% endblock %}

@@ -97,20 +97,27 @@ class ForgotPinForm(PinConfirmMixin, forms.Form):
         return self.cleaned_data["recovery_code"].strip().upper()
 
 
-class ChangePinForm(PinConfirmMixin, forms.Form):
-    """Settings page: change the PIN while already logged in, without needing the recovery
-    code - that's reserved for when the current PIN itself is what's been forgotten."""
+class CurrentPinForm(forms.Form):
+    """The PIN asked again before a change only the stash's owner should make (a new
+    recovery code, and Change PIN below). A wrong PIN counts toward the same lockout as the
+    PIN screen (security.check_pin), so these boxes can't be used to guess it."""
 
     current_pin = PinField(label="Current PIN")
-    new_pin = PinField(label="New PIN")
-    new_pin_confirm = PinField(label="Confirm new PIN")
 
-    def __init__(self, *args, user=None, **kwargs):
-        self.user = user
+    def __init__(self, *args, profile, **kwargs):
+        self.profile = profile
         super().__init__(*args, **kwargs)
 
     def clean_current_pin(self):
-        pin = self.cleaned_data.get("current_pin", "")
-        if not self.user or not self.user.check_password(pin):
+        pin = self.cleaned_data["current_pin"]
+        if not security.check_pin(self.profile, pin):
             raise ValidationError("That's not your current PIN.")
         return pin
+
+
+class ChangePinForm(PinConfirmMixin, CurrentPinForm):
+    """Settings page: change the PIN while already logged in, without needing the recovery
+    code - that's reserved for when the current PIN itself is what's been forgotten."""
+
+    new_pin = PinField(label="New PIN")
+    new_pin_confirm = PinField(label="Confirm new PIN")

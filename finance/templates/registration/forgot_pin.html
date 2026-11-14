@@ -20,8 +20,8 @@
             <p class="text-body-secondary mb-4">For {{ owner_possessive }} stash — enter the recovery code you saved when this stash was created.</p>
 
             {% if locked_out %}
-            <div class="alert alert-danger py-2">Too many wrong attempts. Try again in about {{ lockout_minutes }} minute{{ lockout_minutes|pluralize }}.</div>
-            {% else %}
+            <div class="alert alert-danger py-2">Too many wrong attempts. The PIN screen is locked for about {{ lockout_minutes }} minute{{ lockout_minutes|pluralize }}, but your recovery code still works here.</div>
+            {% endif %}
             {% for error in form.non_field_errors %}<div class="alert alert-danger py-2">{{ error }}</div>{% endfor %}
             <form method="post">
                 {% csrf_token %}
@@ -34,7 +34,6 @@
                 {% endfor %}
                 <button type="submit" class="btn btn-primary btn-lg w-100">Reset PIN</button>
             </form>
-            {% endif %}
             <div class="text-center mt-3"><a href="{% url 'login' %}">Back to login</a></div>
         </div>
     </section>

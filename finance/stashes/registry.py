@@ -10,21 +10,37 @@ directories, since before one is chosen there's no database to query a "list of 
 """
 
 import re
+import sqlite3
+from contextlib import closing, contextmanager
 from copy import deepcopy
 from pathlib import Path
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
-from django.db import connections
+from django.db import connections, transaction
 
-from audit.context import audit_suspended
+from audit.context import audit_suspended, system_action
 
-from .. import backup, regional
-from ..models import Profile
+from .. import backup, db_router, regional
+from ..models import Profile, name_key
 from . import StashError, security
 
 BACKUPS_DIR_NAME = "backups"
+
+# What a refused restore says (plan 03, S88). Each ends with the reassurance: the refusal comes
+# before anything is replaced.
+BACKUP_DAMAGED = (
+    "That backup file couldn't be read, so it may be damaged. Nothing was restored. Your stash is just as it was."
+)
+BACKUP_EMPTY = (
+    "That backup has no one who can log in to this stash: it is empty, was cut short, or belongs to "
+    "another stash. Nothing was restored. Your stash is just as it was."
+)
+BACKUP_WITHOUT_SETTINGS = (
+    "That backup is missing your settings and recovery code, so restoring it would lose them. "
+    "Nothing was restored. Your stash is just as it was."
+)
 
 # A browser cookie remembering only which stash was last used (never the PIN). It's separate
 # from the Django session, which logout() flushes, so Stashy can still land back on the right
@@ -81,19 +97,97 @@ def ensure_registered(name):
     connections.databases[name] = template
 
 
+@contextmanager
+def _system_change(name, reason):
+    """For changes to stash `name` made outside a request (manage.py, a restore). Outside a
+    request nothing is the "current stash", and the audit log writes to the current one, so
+    this makes `name` current. The changes are one transaction on that stash, and the audit
+    log names them as automatic, with `reason`."""
+    with db_router.use_stash(name), transaction.atomic(using=name), system_action(reason):
+        yield
+
+
+def _problem_with_backup(connection, name, needs_a_profile):
+    """Why the backup behind `connection` can't be restored, in plain words, or None."""
+    if connection.execute("PRAGMA quick_check").fetchone()[0] != "ok":
+        return BACKUP_DAMAGED
+    tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    if "auth_user" not in tables:
+        return BACKUP_EMPTY
+    row = connection.execute("SELECT id FROM auth_user WHERE username = ?", (name,)).fetchone()
+    if row is None:
+        return BACKUP_EMPTY
+    if needs_a_profile and not _has_profile(connection, tables, user_id=row[0]):
+        return BACKUP_WITHOUT_SETTINGS
+    return None
+
+
+def _has_profile(connection, tables, user_id):
+    if "finance_profile" not in tables:  # a backup from before the table existed
+        return False
+    found = connection.execute("SELECT 1 FROM finance_profile WHERE user_id = ?", (user_id,)).fetchone()
+    return found is not None
+
+
+def _check_backup_can_be_restored(name, backup_path, needs_a_profile):
+    """Raises StashError, before anything is replaced, for a backup that would leave the stash
+    unusable (plan 03, S88). A backup cut short (a crash while it was written leaves a file
+    with no tables, often a 0-byte one) replaces the live database with nothing: no user is
+    left to log in, and today's PIN has nowhere to go back to. The only way out would be
+    copying the safety backup over it by hand.
+
+    The file is opened read-only, so a damaged one can't be changed by looking at it. A backup
+    with no Profile row is refused only if today's stash has one: the recovery code and the
+    lockout would have no row to go back into, against what a restore promises.
+
+    This is raw SQL on purpose: the backup isn't a registered connection, and an old backup's
+    tables can differ from today's models, so the ORM can't be pointed at it."""
+    uri = f"{Path(backup_path).resolve().as_uri()}?mode=ro"
+    try:
+        with closing(sqlite3.connect(uri, uri=True)) as connection:
+            problem = _problem_with_backup(connection, name, needs_a_profile)
+    except sqlite3.Error:
+        problem = BACKUP_DAMAGED
+    if problem:
+        raise StashError(problem)
+
+
 def restore_stash(name, backup_path):
     """Restore stash `name` from one of its backups and bring it onto today's schema.
 
     A backup taken before an update has fewer migrations applied, and the running server only
     migrates at launch - so the restore migrates straight away instead of leaving pages to
     crash until the next start. The caller must not hold a transaction on this stash
-    (backup_restore is non-atomic for that reason)."""
+    (backup_restore is non-atomic for that reason).
+
+    A backup that is empty, damaged, from another stash, or without the settings that today's
+    stash has is refused with a StashError before the live database is touched.
+
+    A restore brings back data, not old secrets (the user's call, 14/11/2026, plan 03 Q3): the
+    PIN, the recovery code and the lockout stay as they are today. Otherwise a recovery code
+    replaced because someone saw it would work again, and a lockout or try count saved inside
+    the backup would come back too.
+
+    The backup's PIN is the live one from the moment its file replaces the database, so today's
+    PIN goes back first, before migrate (which takes a while on an old backup, and can fail).
+    The recovery code and lockout go back after it, even if migrate fails; they need the
+    current schema, which an old backup doesn't have until migrate has run."""
     ensure_registered(name)
+    with db_router.use_stash(name):
+        todays_login = security.current_login_state(name)
+    needs_a_profile = todays_login is not None and todays_login.has_profile
+    _check_backup_can_be_restored(name, backup_path, needs_a_profile)
     backup.restore_from(backup_path, stash_db_path(name), stash_path(name))
     # This thread's connection reopens on its next query; other threads' connections are still
     # valid, because SQLite's backup API rewrites the file in a way they notice.
     connections[name].close()
-    call_command("migrate", database=name, interactive=False, verbosity=0)
+    with db_router.use_stash(name):
+        security.put_back_pin(todays_login)
+    try:
+        call_command("migrate", database=name, interactive=False, verbosity=0)
+    finally:
+        with _system_change(name, "Kept today's PIN, recovery code and lockout after a restore"):
+            security.put_back_recovery_code_and_lockout(todays_login)
 
 
 def stash_choices():
@@ -114,13 +208,13 @@ def owner_name_taken(owner_name, exclude_folder=None):
     """True if another stash already has this owner name (case-insensitive) - checked by
     opening each stash's own Profile, since owner names live one-per-database, not in a single
     table a normal unique constraint could cover."""
-    target = owner_name.strip().lower()
+    target = name_key(owner_name)
     for name in list_stashes():
         if name == exclude_folder:
             continue
         ensure_registered(name)
         profile = Profile.objects.using(name).first()
-        if profile and profile.owner_name.strip().lower() == target:
+        if profile and name_key(profile.owner_name) == target:
             return True
     return False
 
@@ -195,32 +289,49 @@ def create_stash(owner_name, pin):
 def resolve_stash_name(name_or_owner):
     """The manage.py reset_pin command accepts either the internal folder name or the owner
     name (the folder name is never shown on screen, so someone using it may only know the owner
-    name). Tries the folder name first, since that's a plain existence check with no need to
-    open every stash; falls back to a case-insensitive owner-name match."""
-    if stash_exists(name_or_owner):
-        return name_or_owner
-    target = (name_or_owner or "").strip().lower()
+    name), either one in any upper/lower case. The folder names come from list_stashes(), not
+    from asking Windows whether a folder exists: Windows would find "Alex" for the folder
+    "alex", and the stash's user is named after the folder's exact spelling."""
+    target = name_key(name_or_owner)
+    for folder_name in list_stashes():
+        if name_key(folder_name) == target:
+            return folder_name
     for folder_name, owner_name in stash_choices():
-        if owner_name.strip().lower() == target:
+        if name_key(owner_name) == target:
             return folder_name
     return None
+
+
+def require_stash_name(name_or_owner):
+    """The folder name of the stash `name_or_owner` means, or a StashError saying there's none."""
+    name = resolve_stash_name(name_or_owner)
+    if name is None:
+        raise StashError(f'No stash named "{name_or_owner}".')
+    return name
 
 
 def reset_pin_directly(name_or_owner, new_pin):
     """The manage.py reset_pin last resort, for when the recovery code is lost too - works on
     the named stash directly rather than whatever a session might have selected, since the
     locked-out stash isn't necessarily that one. Running this already requires file-level
-    access to the stash, so it needs no authentication of its own."""
+    access to the stash, so it needs no authentication of its own.
+
+    Returns (folder name, owner name), so the command can say which stash it changed."""
     security.validate_pin(new_pin)
-    name = resolve_stash_name(name_or_owner)
-    if name is None:
-        raise StashError(f'No stash named "{name_or_owner}".')
+    name = require_stash_name(name_or_owner)
 
     ensure_registered(name)
-    # User isn't a finance model (not audited) and .update() sends no signals at all, so
-    # neither of these needs the audit log suspended the way create_stash() does. This command
-    # only runs standalone (manage.py), so it can't race a request's own audit entries either.
-    user = get_user_model().objects.db_manager(name).get(username=name)
-    user.set_password(new_pin)
-    user.save(using=name, update_fields=["password"])
-    Profile.objects.using(name).filter(user=user).update(failed_pin_attempts=0, locked_until=None)
+    # The PIN is the user's password, which isn't audited. The lockout lives on the audited
+    # Profile, so it's cleared through save(), as an automatic change the log can name.
+    with _system_change(name, "PIN reset with manage.py reset_pin"):
+        user = get_user_model().objects.filter(username=name).first()
+        if user is None:
+            raise StashError(f'The stash in the folder "{name}" has no user of that name, so its PIN cannot be reset.')
+        user.set_password(new_pin)
+        user.save(update_fields=["password"])
+        # Every stash create_stash() makes has a Profile, but one copied in by hand may not.
+        # The PIN is what this command is for, so a missing Profile only skips the lockout.
+        profile = Profile.objects.filter(user=user).first()
+        if profile is not None:
+            security.clear_failed_attempts(profile)
+    return name, (profile.owner_name if profile else "") or name
