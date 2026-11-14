@@ -1,6 +1,7 @@
 """The dashboard: the savings rate, the spending tree and donut, reminders due soon, account
 groups, the welcome for an empty stash, and converting into the main currency."""
 
+import re
 from datetime import date
 from decimal import Decimal
 from unittest import mock
@@ -11,7 +12,7 @@ from django.test import SimpleTestCase
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
-from ..models import Account, Category, ExchangeRate, Payee, Reminder, Transaction
+from ..models import Account, Category, ExchangeRate, Payee, Profile, Reminder, Transaction
 from ..reporting import income_and_spending, savings_rate, spending_tree
 from .base import LoggedInWithAccountTestCase, StashTestCase
 
@@ -96,6 +97,27 @@ class DashboardTests(LoggedInWithAccountTestCase):
         self.assertContains(response, "Saved in August")
         self.assertContains(response, "75.0%")
 
+    def test_a_month_with_only_a_refund_shows_negative_spending(self, _):
+        groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
+        Transaction.objects.create(
+            account=self.account, date=date(2026, 9, 3), category=groceries, amount=Decimal("50.00")
+        )
+        response = self.client.get(reverse("finance:dashboard"))
+        self.assertEqual(response.context["month_spending"], Decimal("-50.00"))
+
+    def test_the_savings_rate_follows_the_stashs_number_format(self, _):
+        """S33: 10.000,50 stashes see "71,2%", not "71.2%"."""
+        profile = Profile.for_user(self.user)
+        profile.number_format = "dot_comma"
+        profile.save()
+        salary = Category.objects.create(name="Salary", category_type=Category.CategoryType.INCOME)
+        rent = Category.objects.create(name="Rent", category_type=Category.CategoryType.EXPENSE)
+        for on, amount, category in [(date(2026, 8, 1), "2000.00", salary), (date(2026, 8, 20), "-576.00", rent)]:
+            Transaction.objects.create(account=self.account, date=on, amount=Decimal(amount), category=category)
+        response = self.client.get(reverse("finance:dashboard"))
+        self.assertContains(response, "71,2%")
+        self.assertNotContains(response, "71.2%")
+
     def test_lists_reminders_due_within_a_week_including_overdue(self, _):
         def reminder(label, due):
             payee = Payee.objects.create(name=label)
@@ -115,6 +137,79 @@ class DashboardTests(LoggedInWithAccountTestCase):
         response = self.client.get(reverse("finance:dashboard"))
         self.assertContains(response, "start your stash")
         self.assertNotContains(response, 'id="spending-donut"')
+
+
+@mock.patch("django.utils.timezone.localdate", return_value=TODAY_12_SEPT)
+class DashboardRefundAndSavingsRateEdgeTests(LoggedInWithAccountTestCase):
+    """S33 and S50 on the dashboard: the "Saved in" tile for a negative rate and one over 100 (a
+    refund makes that possible) in every number format, the bar that must stop at both ends, the
+    Spent tile when only a refund came in, and a refund in another currency."""
+
+    # number format -> the rate as shown for -25.0 and for 105.0
+    EXPECTED = {
+        "space_dot": ("-25.0%", "105.0%"),
+        "comma_dot": ("-25.0%", "105.0%"),
+        "dot_comma": ("-25,0%", "105,0%"),
+        "space_comma": ("-25,0%", "105,0%"),
+    }
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.salary = Category.objects.create(name="Salary", category_type=Category.CategoryType.INCOME)
+        cls.groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
+
+    def add(self, on, amount, category, account=None):
+        Transaction.objects.create(account=account or self.account, date=on, category=category, amount=Decimal(amount))
+
+    def saved_tile(self, number_format):
+        """The "Saved in August" tile as (its value's extra classes, its text, the bar's width)."""
+        profile = Profile.for_user(self.user)
+        profile.number_format = number_format
+        profile.save()
+        page = self.client.get(reverse("finance:dashboard")).content.decode()
+        tile = re.search(
+            r'Saved in August</div>\s*<div class="stat-value([^"]*)">([^<]*)</div>'
+            r'\s*<div class="savings-bar" aria-hidden="true"><span style="width: (\d+)%">',
+            page,
+        )
+        return tile.groups()
+
+    def test_a_negative_rate_is_red_and_its_bar_is_empty_in_every_number_format(self, _):
+        self.add(date(2026, 8, 1), "1000.00", self.salary)
+        self.add(date(2026, 8, 20), "-1250.00", self.groceries)
+
+        for number_format, shown in self.EXPECTED.items():
+            with self.subTest(number_format=number_format):
+                self.assertEqual(self.saved_tile(number_format), (" amount-negative", shown[0], "0"))
+
+    def test_a_rate_over_100_is_not_red_and_its_bar_stops_at_full(self, _):
+        self.add(date(2026, 8, 1), "1000.00", self.salary)
+        self.add(date(2026, 8, 20), "50.00", self.groceries)  # a refund and nothing spent
+
+        for number_format, shown in self.EXPECTED.items():
+            with self.subTest(number_format=number_format):
+                self.assertEqual(self.saved_tile(number_format), ("", shown[1], "100"))
+
+    def test_a_month_with_only_a_refund_shows_the_spent_tile_as_a_negative_amount(self, _):
+        self.add(date(2026, 9, 3), "50.00", self.groceries)
+
+        page = self.client.get(reverse("finance:dashboard")).content.decode()
+
+        tile = re.search(r'Spent this month</div>\s*<div class="stat-value amount-negative">([^<]*)</div>', page)
+        self.assertTrue(tile.group(1).startswith("-50.00"), tile.group(1))
+
+    def test_a_refund_in_another_currency_nets_in_the_tile_and_the_donut(self, _):
+        usd = Account.objects.create(name="US card", currency="USD")
+        ExchangeRate.objects.create(base_currency="USD", quote_currency="EUR", rate=Decimal("0.5"), date=TODAY_12_SEPT)
+        self.add(date(2026, 9, 5), "-100.00", self.groceries, account=usd)  # 50.00 in euro
+        self.add(date(2026, 9, 6), "30.00", self.groceries, account=usd)  # 15.00 in euro
+        self.add(date(2026, 9, 7), "-20.00", self.groceries)
+
+        response = self.client.get(reverse("finance:dashboard"))
+
+        self.assertEqual(response.context["month_spending"], Decimal("55.00"))
+        self.assertEqual([group["total"] for group in response.context["spending_tree"]], [55.0])
 
 
 class DashboardExcludesResolvedRemindersTests(LoggedInWithAccountTestCase):

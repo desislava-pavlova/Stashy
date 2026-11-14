@@ -16,6 +16,7 @@ from ..models import Account, Category, Payee
 from ..reporting import (
     category_report_rows,
     category_vs_average_report_rows,
+    income_expense_vs_average_report_rows,
     net_worth_by_account,
     watched_expenses_category_ids,
 )
@@ -138,7 +139,8 @@ def _category_rows(**kind):
 
 
 def _vs_average_rows(**kind):
-    """A builder for a "current vs. average" report; `kind` as in _category_rows()."""
+    """A builder for a "current vs. average" report; `kind` is expense_only=True or
+    income_only=True (income and expense together is _income_expense_vs_average())."""
 
     def build(filters, rates, profile):
         return category_vs_average_report_rows(
@@ -151,6 +153,18 @@ def _vs_average_rows(**kind):
         )
 
     return build
+
+
+def _income_expense_vs_average(filters, rates, profile):
+    """The category rows plus the Summary rows (Income total, Expense total), the same table
+    the page builds through the same function."""
+    return income_expense_vs_average_report_rows(
+        filters["start"],
+        filters["end"],
+        filters["periods"],
+        account=filters["account"],
+        rates=rates,
+    )
 
 
 def _net_worth(filters, rates, profile):
@@ -256,7 +270,7 @@ REPORT_EXPORTS = {
         amount_label="Amount",
     ),
     "income-expense-vs-average": ReportExport(
-        build=_vs_average_rows(),
+        build=_income_expense_vs_average,
         layout=_vs_average_layout,
         filename="income-expense-vs-average",
     ),

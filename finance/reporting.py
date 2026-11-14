@@ -2,8 +2,9 @@
 (start, end, interval) tuple, and for bucketing/aggregating transactions for the Reports page.
 
 The rule everywhere in this file: a category's own type decides income vs.
-spending, never the sign of its amount (R1) - an expense category that nets positive (a refund
-exceeding spend) just nets against its own total, no special handling. Every total also passes
+spending, never the sign of its amount (R1). Amounts are added up signed, so a refund (a
+positive amount in an expense category) shrinks its category, and an expense report flips the
+sign once, on the net total (_as_shown(), S50). Every total also passes
 through an optional `rates` (a currency.RateTable) so multi-currency accounts convert into the
 main currency the same way net worth already does (D2: latest known rate, not historical).
 """
@@ -110,6 +111,17 @@ def _convert(amount, currency, rates):
     return converted if converted is not None else ZERO
 
 
+def _as_shown(amount, expense_only):
+    """A signed net total the way a report shows it. Expenses are stored negative, so an expense
+    report flips the sign once, on the net: spending reads positive, and a category whose
+    refunds beat its spending reads negative (spent 40, refunded 100 -> -60), which is also the
+    dashboard donut's rule. Income reports keep the sign they have. Never abs(): that would
+    turn a refund into spending. An average that doesn't exist (None) stays None."""
+    if amount is None:
+        return None
+    return -amount if expense_only else amount
+
+
 def income_and_spending(start, end, account=None, rates=None):
     qs = _reportable(start, end, account)
     income, spending = ZERO, ZERO
@@ -119,7 +131,7 @@ def income_and_spending(start, end, account=None, rates=None):
             income += amount
         elif row["category__category_type"] == Category.CategoryType.EXPENSE:
             spending += amount
-    return {"income": to_cent(income), "spending": abs(to_cent(spending))}
+    return {"income": to_cent(income), "spending": _as_shown(to_cent(spending), expense_only=True)}
 
 
 def savings_rate(income, spending):
@@ -177,7 +189,9 @@ def trimmed_average_periods(start, end, lookback, account=None, range_key=None):
 def income_and_spending_vs_average(start, end, periods, account=None, rates=None):
     """This period's income/spending/savings-rate vs. the average of the given trailing
     `periods` (see trimmed_average_periods()) - the same comparison category_totals_vs_average()
-    makes per category, but for the overall totals the Income & expense vs average card shows."""
+    makes per category, but for the overall totals the Income & expense vs average card shows.
+    With no earlier periods there is nothing to average, so every average is None, as it is
+    per category."""
     current = income_and_spending(start, end, account=account, rates=rates)
     current_net = current["income"] - current["spending"]
     result = {
@@ -188,7 +202,7 @@ def income_and_spending_vs_average(start, end, periods, account=None, rates=None
         "average_periods": len(periods),
     }
     if not periods:
-        result.update(average_income=ZERO, average_spending=ZERO, average_net=ZERO, average_rate=None)
+        result.update(average_income=None, average_spending=None, average_net=None, average_rate=None)
         return result
 
     incomes, spendings = [], []
@@ -210,9 +224,9 @@ def income_and_spending_vs_average(start, end, periods, account=None, rates=None
 def category_totals_top_level(start, end, expense_only=False, income_only=False, account=None, rates=None):
     """Per-main-category totals for the period, transfers excluded (R1: the category's type
     decides, not the amount's sign). A subcategory's amount is rolled into its main category's,
-    since charts show one bar per main category (R2). expense_only/income_only return positive
-    magnitudes sorted biggest-first (for the "by category" charts); otherwise totals stay
-    signed (income positive, expense negative), sorted low-to-high."""
+    since charts show one bar per main category (R2). expense_only/income_only return each
+    net total as _as_shown() has it, sorted biggest-first (for the "by category" charts);
+    otherwise totals stay signed (income positive, expense negative), sorted low-to-high."""
     qs = _reportable(start, end, account, expense_only, income_only)
 
     raw = {}
@@ -233,7 +247,7 @@ def category_totals_top_level(start, end, expense_only=False, income_only=False,
     rows = [{"category_id": cid, "name": top_names[cid], "total": to_cent(total)} for cid, total in top_totals.items()]
     if expense_only or income_only:
         for r in rows:
-            r["total"] = abs(r["total"])
+            r["total"] = _as_shown(r["total"], expense_only)
         rows.sort(key=lambda r: r["total"], reverse=True)
     else:
         rows.sort(key=lambda r: r["total"])
@@ -286,10 +300,8 @@ def category_totals_vs_average(
         average = (
             to_cent(sum((pt.get(cid, ZERO) for pt in period_totals_list), ZERO) / len(periods)) if periods else None
         )
-        if expense_only or income_only:
-            current = abs(current)
-            if average is not None:
-                average = abs(average)
+        current = _as_shown(current, expense_only)
+        average = _as_shown(average, expense_only)
         result.append(
             {
                 "category_id": cid,
@@ -372,9 +384,11 @@ def category_report_rows(
     (grouped_categories(): Income group then Expense group, a parent immediately followed by
     its own subcategories) - a parent row is rolled up to include its subcategories' amounts
     on top of its own, matching how the category list page already treats a category as
-    "itself and what's under it". When `subtotal` is a period granularity, each row gets one
-    value per period bucket across the range plus a row-level total; otherwise each row just
-    gets its one total for the whole range (as a single-element values list).
+    "itself and what's under it". Amounts are added up signed, so a refund shrinks its
+    category, and an expense report flips the sign once at the end (_as_shown()). When
+    `subtotal` is a period granularity, each row gets one value per period bucket across the
+    range plus a row-level total; otherwise each row just gets its one total for the whole
+    range (as a single-element values list).
 
     Returns {"periods": [labels...], "groups": [{"name", "rows": [{"name", "is_child",
     "values", "total"}]}], "totals": {"values": [...], "total": Decimal} or None if empty,
@@ -396,8 +410,6 @@ def category_report_rows(
     for row in qs.values("category_id", "amount", "date", "account__currency"):
         values = totals.setdefault(row["category_id"], [ZERO] * width)
         amount = _convert(row["amount"], row["account__currency"], rates)
-        if expense_only or income_only:
-            amount = abs(amount)
         if subtotal:
             key, _label = period_bucket(row["date"], subtotal)
             values[period_index[key]] += amount
@@ -407,6 +419,7 @@ def category_report_rows(
     if not totals:
         return {"periods": [p["label"] for p in periods], "groups": [], "totals": None, "overflow": None}
 
+    totals = {cid: [_as_shown(value, expense_only) for value in values] for cid, values in totals.items()}
     categories = _with_parents(totals)
     totals = _rollup_to_parents(totals, categories, width)
 
@@ -513,10 +526,8 @@ def category_vs_average_report_rows(
             if category.pk not in have_a_row:
                 continue
             cur, avg = current.get(category.pk, ZERO), average_of(category.pk)
-            if expense_only or income_only:
-                cur = abs(cur)
-                if avg is not None:
-                    avg = abs(avg)
+            cur = _as_shown(cur, expense_only)
+            avg = _as_shown(avg, expense_only)
             rows.append(
                 {
                     "id": category.pk,
@@ -539,6 +550,50 @@ def category_vs_average_report_rows(
 
     totals["difference"] = None if totals["average"] is None else totals["current"] - totals["average"]
     return {"groups": result_groups, "totals": totals, "average_periods": len(periods)}
+
+
+def _summary_row(row_id, name, current, average, **extra):
+    """One row of the Income & expense vs average table's Summary group, shaped like a category
+    row of category_vs_average_report_rows()."""
+    return {
+        "id": row_id,
+        "parent_id": None,
+        "name": name,
+        "is_child": False,
+        "has_children": False,
+        "current": current,
+        "average": average,
+        "difference": None if average is None else current - average,
+        **extra,
+    }
+
+
+def income_expense_vs_average_report_rows(start, end, periods, account=None, rates=None, vs_average_totals=None):
+    """The Income & expense vs average table: every category's row, and a closing "Summary"
+    group with the Income total and Expense total rows. Built here once, so the page and the
+    export hold the same rows. `vs_average_totals` is income_and_spending_vs_average()'s result
+    for the same arguments when the caller already has it (the page needs it for its stat
+    row); otherwise it is worked out here."""
+    table = category_vs_average_report_rows(start, end, periods, account=account, rates=rates)
+    if vs_average_totals is None:
+        vs_average_totals = income_and_spending_vs_average(start, end, periods, account=account, rates=rates)
+    summary_rows = [
+        _summary_row(
+            "summary_income",
+            "Income total",
+            vs_average_totals["current_income"],
+            vs_average_totals["average_income"],
+        ),
+        _summary_row(
+            "summary_expense",
+            "Expense total",
+            vs_average_totals["current_spending"],
+            vs_average_totals["average_spending"],
+            lower_is_good=True,
+        ),
+    ]
+    table["groups"].append({"key": "summary", "name": "Summary", "rows": summary_rows})
+    return table
 
 
 def _with_parents(category_ids):
@@ -656,7 +711,10 @@ def watched_expenses_totals(start, end, category_ids, account=None, rates=None):
         amount = _convert(row["amount"], row["account__currency"], rates)
         totals[row["category_id"]] = totals.get(row["category_id"], ZERO) + amount
         names[row["category_id"]] = row["category__name"]
-    rows = [{"category_id": cid, "name": names[cid], "total": abs(to_cent(total))} for cid, total in totals.items()]
+    rows = [
+        {"category_id": cid, "name": names[cid], "total": _as_shown(to_cent(total), expense_only=True)}
+        for cid, total in totals.items()
+    ]
     rows.sort(key=lambda r: r["total"], reverse=True)
     return rows
 
@@ -679,7 +737,10 @@ def watched_expenses_series(start, end, category_ids, granularity="month", accou
         {
             "category_id": cid,
             "name": names.get(cid, ""),
-            "points": [{"period": p["label"], "total": abs(to_cent(totals[cid][i]))} for i, p in enumerate(periods)],
+            "points": [
+                {"period": p["label"], "total": _as_shown(to_cent(totals[cid][i]), expense_only=True)}
+                for i, p in enumerate(periods)
+            ],
         }
         for cid in category_ids
     ]
@@ -711,7 +772,7 @@ def spending_tree(start, end, rates=None):
     rows = _reportable(start, end, expense_only=True).values("category_id", "amount", "account__currency")
     for row in rows:
         # Spending is stored negative, so a refund (positive) reduces what was spent.
-        amount = -_convert(row["amount"], row["account__currency"], rates)
+        amount = _as_shown(_convert(row["amount"], row["account__currency"], rates), expense_only=True)
         spent[row["category_id"]] = spent.get(row["category_id"], ZERO) + amount
 
     groups = {}

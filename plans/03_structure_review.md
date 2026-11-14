@@ -29,6 +29,9 @@ are listed at the top of Phase 1. Part A's reviews added S75–S91
 S75–S79, S83, S86, S87, S88 (the check of the backup file) and S91 are done;
 you said yes to both on 14/11/2026. S80–S82, S84, S85, S89, S90 and two
 small restore edges of S88 wait for their phases.
+*14/11/2026 (later):* Phase 1 part B (money and reports: S1, S3, S33, S50)
+is done. Its reviews added S92–S96 (section K): S92, S93 and S95 go into
+part D, S94 and S96 into Phase 4.
 
 **Baseline (10/10/2026):** 723 tests green. `ruff check .` and
 `ruff format --check .` are clean, `manage.py check` finds nothing, and
@@ -150,6 +153,8 @@ Checked, so nobody has to check again:
   `Decimal("0.01")` counts as smaller. Checked: the form answers "Ensure
   this value is greater than or equal to 0.01." Fix: `min_value=CENT` (a
   `Decimal`).
+  *Done 14/11/2026 (item 1.1).* A test posts 0.01 through the page, in all
+  four number formats (the number box still sends a dot, `min="0.01"`).
 - **S2 — Two hand-edited URLs crash with "Something went wrong"**
   instead of "page not found":
   - `transactions/add/?reminder=abc`;
@@ -168,6 +173,12 @@ Checked, so nobody has to check again:
   matches what's on screen". Fix: `reporting.py` builds those two rows
   once, and both the page and the export use that. S14 then does this for
   every report.
+  *Done 14/11/2026 (item 1.3).*
+  `reporting.income_expense_vs_average_report_rows()` builds the table and
+  its Summary group once; the page passes in the totals it already has.
+  With no earlier periods the Summary rows now have no average, like the
+  category rows beside them (the totals used to say 0.00; the page hides
+  the table then, but the export doesn't).
 - **S4 — Name sorting ignores case only for A-Z.**
   - **Dropdowns** (`categories_alphabetical()`) sort with SQLite's
     `LOWER()`, which folds only A-Z. Checked: "Аптека, Вода, бензин, яйца"
@@ -467,7 +478,7 @@ Stashy.
 | S30 | 12/11/2026 | `finance/templates/404.html`, `500.html` and their shared `finance/error_page.html` (`error_base.html` beside them after S28) | You like how the two error pages look, but they're hard to tell apart from the PIN login page: same squirrel, same card, nothing that says "error". You chose a small coloured tag above the heading, with a warning icon (`bi-exclamation-triangle-fill`, from the Bootstrap Icons Stashy already ships): **Error 404** in soft gold (a missing page is a mild problem, usually an old link) and **Error 500** in soft red (something really broke). Everything else stays as it is: the squirrel, the wordmark, the headings, the text and the button. How: `error_page.html` gets a block for the tag and each page fills in its code and colour. The 500 page gets no context, and the tag needs none (plain HTML and a class). Claude's call: the colours come from the tokens the reminders' Overdue and Today badges already use (`--stashy-negative(-soft)`, `--stashy-gold-soft`/`--stashy-gold-ink`), as one shared pair of pill classes that those badges switch to as well, so the colours are defined once and dark mode comes for free. A test checks that each page shows its tag. Proposed phase: 5 (templates). | open (decided 12/11/2026) |
 | S31 | 12/11/2026 | `finance/views/dashboard.py`, `dashboard.html` (Net worth tile) | Found by the template review you asked for (12/11/2026), like S32-S37. The dashboard's net worth quietly leaves out every account whose currency has no known exchange rate. The Accounts page warns about this ("No known rate for USD — not included above"), and the dashboard view gets the same list (`missing_rates` from `convert_balances()`) but the page never shows it, so the total is simply lower, with no hint why. Fix: the same warning under the Net worth tile, from one small include that the Accounts page uses too (no copy-paste). A test with a USD account and no USD rate. Proposed phase: 1. | open |
 | S32 | 12/11/2026 | `finance/templates/finance/settings.html`, the Exchange rates table | The "As of" date is `{{ known.date }}` without `sdate`, so it ignores the stash's date format (a month-first stash still sees day-first). "Source" shows the stored code (`manual`, `Frankfurter`) instead of its label from `ExchangeRate.Source` ("Typed in", "Frankfurter (ECB)"): the same kind of slip as S5. Fix: `sdate`, and the label instead of the code. A test with a month-first stash and a typed-in rate. Proposed phase: 1. | open |
-| S33 | 12/11/2026 | `dashboard.html` ("Saved in" tile), `reports.html` (report 5's "Savings rate"), `percent_fmt()` in `finance/views/reports.py` | The savings rate is printed the Python way, so a stash with the `10.000,50` number format sees "71.2%" next to "1.200,00 €". Fix: through the stash's number format (`money:1` in the templates, the same `regional` formatting in `percent_fmt()`). A test with the `10.000,50` format. Proposed phase: 1. | open |
+| S33 | 12/11/2026 | `dashboard.html` ("Saved in" tile), `reports.html` (report 5's "Savings rate"), `percent_fmt()` in `finance/views/reports.py` | The savings rate is printed the Python way, so a stash with the `10.000,50` number format sees "71.2%" next to "1.200,00 €". Fix: through the stash's number format (`money:1` in the templates, the same `regional` formatting in `percent_fmt()`). A test with the `10.000,50` format. Proposed phase: 1. | **done 14/11/2026** (item 1.13) |
 | S34 | 12/11/2026 | `finance/tests/test_pages.py`, `RenderCheckTests` | The test that catches leaked template code renders only 14 pages and looks only for `{#`, `#}`, `{%`, `%}`. Not covered: the transfer page, both reconcile steps, every add/edit/delete page, category usage, payee detail, the reminder scope page, backup restore, the welcome steps, login, picker, create stash, forgot PIN, 404 and 500. The review rendered all of them and none leaks today, so this is a safety gap, not a bug. Your call (12/11/2026): "fix whatever you need here", so Claude's call on the details: every page Stashy has, plus a check that fails when a new page in `finance/urls.py` is missing from the list (with a short, commented skip list for POST-only URLs and exports), so a new page can't be forgotten; it also looks for `{{`/`}}` outside `<script>` blocks; and the test's `date.today()` becomes `timezone.localdate()`, as the rules say. Proposed phase: 2. | open |
 | S35 | 12/11/2026 | Templates across `finance/` and `registration/`; `transaction-quick-edit.js`, `reports.js` | Things a screen reader or keyboard user trips over; nothing changes on screen except that clicking a label now puts you in its box. **Labels not linked to their box** (the S29 kind): Import (Account, File, Date format), the Reports filters (Date range, Subtotal by, Average interval, Account, Start, End); on Reports the "?" icon moves out of the label, so clicking it doesn't jump into the box. **Controls with no name:** the login PIN box, the reconcile tick boxes ("Reconcile Lidl 05/11/2026"), Edit mode's controls in `<template id="quick-edit-controls">`, and the pencil and bin buttons on the Accounts, Categories, Payees and Reminders lists (`aria-label="Edit"`/`"Delete"`, as Transactions already has). **Not reachable with Tab:** Reports' show/hide-subcategories arrow (`report-toggle-icon`, in both report tables and the Net worth table) becomes a real button that says whether it's open, looking the same; the "?" help icons get a name ("About Date range"). **Headings:** 15 pages use `<h3>` for their page title; they get `<h1 class="h3">` like the rest (same look). **Charts:** the 8 report charts and the dashboard donut get `role="img"` and a short description. **Transactions' Rec. tick** gets hidden "Reconciled" text. Your call (12/11/2026): none of this is yours to decide. Proposed phase: 5. | open |
 | S36 | 12/11/2026 | `account_list.html`, `transaction_form.html`, `reports.html`, `includes/sidebar_contents.html`, the transaction counts | Small on-screen slips, Claude's to fix (polish): Accounts' warning repeats a currency once per left-out account ("No known rate for USD, USD"), so each shows once (with S31's shared warning); the transaction form's browser tab says "New transaction" while its heading says "Enter reminder" (the title gets the same if/elif); Reports' error box uses internal field names ("Interval: Select a valid choice…" for the box labelled "Average interval"), so it uses the labels; the sidebar highlights Settings on Change PIN, New recovery code and Restore backup too; counts like "2500 transactions · showing 1001–2000" get the stash's thousands separator (worked out from the code, check when building). Proposed phase: 5. | open |
@@ -518,6 +529,18 @@ here, by phase. Findings that extend an older item are notes at the end.
     a refund-only period's spending is −50, not 50.
   - **Tests:** a refund in `CategoryReportRowsTests`, a category that
     nets to a refund, and a refund-only period in `income_and_spending()`.
+  - *Done 14/11/2026 (item 1.18).* One helper, `reporting._as_shown()`,
+    replaces every `abs()` in the report maths: amounts are added up
+    signed, and an expense report flips the sign once at the end. It
+    covers the tables, the flat and stacked charts (`_stacked_series()`
+    keeps signs, so a category that nets to a refund draws below the
+    axis), the vs-average reports, Watched expenses, the exports and the
+    dashboard's Spending tile (a refund-only month shows −50). Income keeps
+    its sign: a returned salary payment is negative income. **Seen on
+    screen:** a category refunded in full stays listed at 0.00 (the old
+    table showed 200 for it), and with refunds beating spending the savings
+    rate can pass 100% (income 1 000, a net refund of 60: 106,0%). Both are
+    in plan 04 as R32, for your call.
 - **S51 — An unpaid reminder period can vanish.** Delete the transaction
   that paid an occurrence of a recurring reminder, and the occurrence
   correctly turns overdue. But the next Enter, Skip or full save of the
@@ -955,11 +978,76 @@ recovery-code page losing the new code after a PIN re-hash, the old
   test sits in the lockout class, not `test_project.py`. Checklist item
   2.16, with 2.15.
 
-<!-- Next number: S92 -->
+### K. Found by the reviews of Phase 1, part B (14/11/2026)
+
+Four reviewers (code, security, front end, QA) read part B. The code
+reviewer's "should fix" items were done the same day: the Summary rows
+follow the category rows' rule (no earlier periods, so no average, where
+the totals used to say 0.00), `_as_shown()` passes `None` through and the
+dashboard donut uses it too, the stale docstrings say what is true, and
+`totals=` became `vs_average_totals=`. QA added 44 tests: refunds across
+currencies and accounts, the exports as CSV and XLSX, and savings rates
+below 0 and above 100 in all four number formats. Nothing was Critical.
+The rest:
+
+- **S92 — A subcategory's name reaches the CSV writer already indented**
+  (security reviewer; proposed: Phase 1, part D). The layouts put two
+  spaces before a subcategory's name, so a name that starts with `=`,
+  `+`, `-` or `@` doesn't get the `'` that stops a spreadsheet reading it
+  as a formula. It is safe only because a leading space makes the cell
+  plain text. A main category's name is escaped correctly, and XLSX keeps
+  all text as text. **Fix:** escape first and indent afterwards (or look
+  past the indent in the writer). A test with a formula-like main category
+  and subcategory, in the CSV and XLSX of one category report and one
+  vs-average report. Checklist item 1.34.
+- **S93 — Extreme custom dates make Reports crash or crawl** (security
+  reviewer; an older problem on the paths part B touched; proposed:
+  Phase 1, part D). `/reports/?range=custom&start=0001-01-01&end=0002-01-01`
+  overflows `start - timedelta(days=1)` (an error, so the friendly 500
+  page), `end=9999-12-31` overflows in `_period_columns()`, and a
+  century-wide range makes Net worth walk every day. Only the logged-in
+  user can do it. **Fix:** `DateRangeFilterForm.clean()` refuses a custom
+  range outside a sane window (say 1900 to 2100) or longer than about 100
+  years; the page already turns an invalid form into its warning banner
+  with the default filters. A test each. Same family as S2. Checklist
+  item 1.35.
+- **S94 — The export's footer row says "Total", the page's says "Net"**
+  (code reviewer; proposed: Phase 4). The Income & expense vs average card
+  passes `total_label="Net"` to its table; `_vs_average_layout()` always
+  writes "Total". Pass the label through `ReportExport`, with the
+  builders. Checklist item 4.3.
+- **S95 — `to_cent()` can return `-0.00`** (code reviewer; proposed:
+  Phase 1, part D). Checked: `to_cent(Decimal("-0.0033"))` is
+  `Decimal('-0.00')`, and the CSV writer prints it as `-0.00`. It shows
+  only in the signed combined reports, with one-cent amounts; part B's
+  `_as_shown()` already avoids it for expense-only reports. **Fix:** give
+  back zero without its sign (`result or ZERO`). A test. Checklist item
+  1.36.
+- **S96 — The report maths repeats a few shapes** (code reviewer;
+  proposed: Phase 4). "Add the converted, signed amounts per category" is
+  written five times (`category_totals_top_level`, both `totals_for`
+  helpers, `category_report_rows`, `watched_expenses_totals`), and the
+  `child_ids_by_parent` block twice. One small helper for each, so the
+  next change to a sign rule touches one place. It goes with S14's
+  builders. Checklist item 4.4.
+- **Noted, not filed as items:**
+  - How refunds look on screen is yours to judge, so it went into plan 04
+    as R32 (a fully refunded category stays listed at 0.00, the savings
+    rate can pass 100%, a refund draws in the spending colour, and
+    Reports' savings rate isn't red when negative).
+  - The Reports filter labels and charts that have no names are S35 (item
+    5.6).
+  - Posting `0,01` to a transfer in a stash that uses the decimal comma is
+    refused with "Enter a number.". Only a hand-made request does that
+    (the number box always sends a dot) and every amount form behaves the
+    same, so nothing to do unless typed commas should ever work; then the
+    forms read amounts through `money.parse_amount`.
+
+<!-- Next number: S97 -->
 
 ---
 
-## Phase 1 — Bugs and quick security fixes  (S1–S8, S10, S24 with plan 04's R9, S31–S33, S38, S39, S41, S46, S50–S55, S69, S75–S81, S83, S86–S88, S91)
+## Phase 1 — Bugs and quick security fixes  (S1–S8, S10, S24 with plan 04's R9, S31–S33, S38, S39, S41, S46, S50–S55, S69, S75–S81, S83, S86–S88, S91–S93, S95)
 
 Built in four parts (Claude's proposal, 14/11/2026), each one a commit:
 - **A, security and the PIN:** S7, S8, S10, S24 with R9, S54 (items 1.7–1.10,
@@ -969,16 +1057,20 @@ Built in four parts (Claude's proposal, 14/11/2026), each one a commit:
   reviews found S86–S91; S86, S87, S88 and S91 (1.31–1.33) are done, with
   your yes on 14/11/2026.
 - **B, money and reports:** S1, S3, S33, S50 (1.1, 1.3, 1.13, 1.18).
+  **Done 14/11/2026.** Its reviews found nothing Critical; their findings
+  are S92–S96 (section K), and the code reviewer's "should fix" items were
+  done the same day.
 - **C, reminders and transactions:** S38, S39, S51, S52, S55 (1.14, 1.15,
   1.19, 1.20, 1.23).
 - **D, small fixes:** S2, S4, S5, S6, S31, S32, S41, S53, S69, S80, S81,
-  and S46, the phase's one migration, so the real stash is backed up
-  first (1.2, 1.4–1.6, 1.11, 1.12, 1.16, 1.17, 1.21, 1.24, 1.29).
+  S92, S93, S95, and S46, the phase's one migration, so the real stash is
+  backed up first (1.2, 1.4–1.6, 1.11, 1.12, 1.16, 1.17, 1.21, 1.24, 1.29,
+  1.34–1.36).
 
-- [ ] **1.1** S1: `min_value=CENT` on the transfer amount; test with 0.01.
+- [x] **1.1** S1: `min_value=CENT` on the transfer amount; test with 0.01.
 - [ ] **1.2** S2: both bad URLs answer 404 or show a message; a test each.
   Also category usage's `transaction_id=abc` (G's note).
-- [ ] **1.3** S3: the two summary rows built once in `reporting.py`, used by
+- [x] **1.3** S3: the two summary rows built once in `reporting.py`, used by
   the page and the export; a test that the export has them.
 - [ ] **1.4** S4: dropdowns and the Payee/Category columns sort by
   `name_key`; a test with Cyrillic names in mixed case. Also
@@ -1001,7 +1093,7 @@ Built in four parts (Claude's proposal, 14/11/2026), each one a commit:
   worth, from one include shared with the Accounts page.
 - [ ] **1.12** S32: Settings' rate date through `sdate`, and Source shows
   its label.
-- [ ] **1.13** S33: the savings rate in the stash's number format.
+- [x] **1.13** S33: the savings rate in the stash's number format.
 - [ ] **1.14** S38: the register's "—" without the pill.
 - [ ] **1.15** S39: Payment and Deposit sort separately, each biggest
   first.
@@ -1009,7 +1101,7 @@ Built in four parts (Claude's proposal, 14/11/2026), each one a commit:
   not reconciled; a test.
 - [ ] **1.17** S46: "Watched expenses" as the default title. A migration:
   the real stash is backed up first.
-- [ ] **1.18** S50: refunds net against their own category in Reports and
+- [x] **1.18** S50: refunds net against their own category in Reports and
   on the dashboard; a category that nets to a refund shows negative.
 - [ ] **1.19** S51: an unpaid reminder period survives regeneration.
 - [ ] **1.20** S52: the reminder message shows the date it was due.
@@ -1033,6 +1125,13 @@ Built in four parts (Claude's proposal, 14/11/2026), each one a commit:
   pages; the session's stash checked against `list_stashes()`.
 - [x] **1.30** S83: `reset_pin` asks twice, and `--pin`'s
   help mentions the shell's history.
+- [ ] **1.34** S92: a subcategory's name is escaped before it is indented,
+  so a formula-like name gets its `'` in the CSV; a test for the CSV and
+  the XLSX.
+- [ ] **1.35** S93: a custom range outside a sane window or longer than
+  about 100 years is refused with the warning banner, not a 500 page; a
+  test each.
+- [ ] **1.36** S95: `to_cent()` gives zero without a sign; a test.
 
 **Done when:** each fix has a test that fails on today's code, the suite is
 green, and the render check of the changed pages shows no leaked template
@@ -1150,11 +1249,16 @@ history patterns finds nothing outside `plans/` and `DEVLOG.md`.
 **Done when:** the suite is green with no test edited except for moved
 imports, and every page renders the same as before.
 
-## Phase 4 — One builder per report  (S14)
+## Phase 4 — One builder per report  (S14, S94, S96)
 
 - [ ] **4.1** One builder per report, shared by the page and the export
   registry.
 - [ ] **4.2** `reports_view` becomes a short loop.
+- [ ] **4.3** S94: the export's footer row carries the page's label ("Net"
+  on the Income & expense vs average card), through `ReportExport`.
+- [ ] **4.4** S96: one helper for "add the converted, signed amounts per
+  category" and one for `child_ids_by_parent`, in place of the copies in
+  `reporting.py`.
 
 **Done when:** a test renders Reports and every export on a varied data
 set, before and after, and compares them; the only difference is S3's

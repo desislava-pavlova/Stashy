@@ -46,7 +46,7 @@ terms.
 ## Commands
 
 ```
-.venv\Scripts\python.exe manage.py test                          # full suite, ~60 s (868 tests on 14/11/2026)
+.venv\Scripts\python.exe manage.py test                          # full suite, ~75 s (936 tests on 14/11/2026)
 .venv\Scripts\python.exe manage.py test finance.tests.test_reminders  # one module (audit: `test audit`)
 .venv\Scripts\python.exe manage.py migrate --database <stash>    # one stash (Stashy.bat does all, with backups)
 .venv\Scripts\python.exe manage.py reset_pin <owner name>        # real, visible action - ask first
@@ -126,7 +126,10 @@ check.bat                                                        # ruff check + 
     instead of Reports' "Earliest to date".
   - Report exports: one view, `exports.export_report`, at
     `reports/export/<slug>/`. A new one is one entry in `REPORT_EXPORTS`
-    (named arguments, one per line).
+    (named arguments, one per line). The Income & expense vs average
+    table, Summary rows included, comes from
+    `reporting.income_expense_vs_average_report_rows()` for the page and
+    the export alike.
   - Settings: the page saves preferences; `check_rates`, `create_backup`
     and `save_watched_expenses` are their own POST URLs.
   - `content.py`: the help-card tips (`*_TIPS`).
@@ -228,6 +231,12 @@ check.bat                                                        # ruff check + 
 - Transfers and opening balances never count as income or spending. **A
   category's type decides income vs. spending, never the amount's sign**
   (R1).
+- Report maths adds a category's amounts **signed** and flips the sign
+  once at the end, through `reporting._as_shown()`: a refund shrinks its
+  category, one that beats the spending shows negative (spent 40, refunded
+  100 = -60, the dashboard's rule), and a refund-only month's spending is
+  -50 (S50, 14/11/2026). Never `abs()` in report maths; income keeps its
+  sign.
 - Transaction numbers are one sequence shared by every account and restart
   each year (D9). They are editable, and duplicates are allowed.
 - Payees and categories that differ only in upper/lower case are the same

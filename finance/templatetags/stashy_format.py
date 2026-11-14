@@ -49,9 +49,10 @@ def moneyc(value, currency):
 @register.filter
 def amount_class(value, signed=True):
     """CSS class for a signed amount ("amount-negative"/"amount-positive"). Pass signed=False
-    for an already-abs'd magnitude that should always read as spending (negative-styled) -
-    used by the report tables, where an expense-only column's values are magnitudes, not
-    signed amounts, but a mixed income/expense or plain-difference column still needs its own
+    for a column that should always be styled as spending (negative-styled), whatever the
+    sign - used by the report tables, where an expense-only column holds spending as a
+    positive number (and a category that netted to a refund as a negative one, which keeps the
+    same colour), but a mixed income/expense or plain-difference column still needs its own
     sign to decide the color. None (R4: no earlier data to average) is neither - a plain muted
     class, same as the "—" placeholder text shown for it."""
     if value is None:

@@ -452,6 +452,365 @@ class CategoryVsAverageReportRowsTests(LoggedInWithAccountTestCase):
         self.assertEqual(table["totals"]["average"], Decimal("335.50"))
 
 
+class RefundsNetAgainstTheirCategoryTests(LoggedInWithAccountTestCase):
+    """S50: every report adds a category's amounts signed, so a refund shrinks its category,
+    and flips the sign once at the end. A category whose refunds beat its spending reads
+    negative, the way the dashboard's donut already shows it."""
+
+    JANUARY = (date(2026, 1, 1), date(2026, 1, 31))
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.groceries = Category.objects.create(name="Groceries", category_type=EXPENSE)
+        cls.organic = Category.objects.create(name="Organic", parent=cls.groceries, category_type=EXPENSE)
+        cls.salary = Category.objects.create(name="Salary", category_type=INCOME)
+
+    def add(self, amount, category, on=date(2026, 1, 10)):
+        Transaction.objects.create(account=self.account, date=on, category=category, amount=Decimal(amount))
+
+    def spending_rows(self, start=None, end=None, **kwargs):
+        start, end = start or self.JANUARY[0], end or self.JANUARY[1]
+        table = reporting.category_report_rows(start, end, expense_only=True, **kwargs)
+        return {row["name"]: row for group in table["groups"] for row in group["rows"]}, table
+
+    def test_a_refund_shrinks_its_category_in_the_table_and_the_chart(self):
+        self.add("-100.00", self.groceries)
+        self.add("30.00", self.groceries)
+
+        rows, table = self.spending_rows()
+        chart = reporting.category_totals_top_level(*self.JANUARY, expense_only=True)
+
+        self.assertEqual(rows["Groceries"]["total"], Decimal("70.00"))
+        self.assertEqual(table["totals"]["total"], Decimal("70.00"))
+        self.assertEqual([r["total"] for r in chart], [Decimal("70.00")])
+
+    def test_a_category_that_nets_to_a_refund_is_negative_in_the_table_and_the_chart(self):
+        self.add("-40.00", self.groceries)
+        self.add("100.00", self.groceries)
+
+        rows, table = self.spending_rows()
+        chart = reporting.category_totals_top_level(*self.JANUARY, expense_only=True)
+
+        self.assertEqual(rows["Groceries"]["values"], [Decimal("-60.00")])
+        self.assertEqual(table["totals"]["total"], Decimal("-60.00"))
+        self.assertEqual([r["total"] for r in chart], [Decimal("-60.00")])
+
+    def test_a_subcategorys_refund_nets_inside_its_parent_row(self):
+        self.add("-30.00", self.groceries)
+        self.add("10.00", self.organic)
+
+        rows, table = self.spending_rows()
+
+        self.assertEqual(rows["Groceries"]["total"], Decimal("20.00"))
+        self.assertEqual(rows["Organic"]["total"], Decimal("-10.00"))
+        self.assertEqual(table["totals"]["total"], Decimal("20.00"))
+
+    def test_each_subtotal_period_nets_on_its_own(self):
+        self.add("-100.00", self.groceries, on=date(2026, 1, 10))
+        self.add("30.00", self.groceries, on=date(2026, 2, 10))
+
+        rows, _table = self.spending_rows(date(2026, 1, 1), date(2026, 2, 28), subtotal="month")
+
+        self.assertEqual(rows["Groceries"]["values"], [Decimal("100.00"), Decimal("-30.00")])
+        self.assertEqual(rows["Groceries"]["total"], Decimal("70.00"))
+
+    def test_income_keeps_its_sign_when_it_nets_below_zero(self):
+        """A returned salary payment is negative income, not income."""
+        self.add("-300.00", self.salary)
+
+        table = reporting.category_report_rows(*self.JANUARY, income_only=True)
+        chart = reporting.category_totals_top_level(*self.JANUARY, income_only=True)
+
+        self.assertEqual(table["groups"][0]["rows"][0]["total"], Decimal("-300.00"))
+        self.assertEqual([r["total"] for r in chart], [Decimal("-300.00")])
+
+    def test_a_period_with_only_a_refund_has_negative_spending(self):
+        self.add("50.00", self.groceries)
+
+        totals = income_and_spending(*self.JANUARY)
+
+        self.assertEqual(totals["spending"], Decimal("-50.00"))
+        self.assertEqual(totals["income"], Decimal("0.00"))
+
+    def test_a_period_with_nothing_in_it_has_spending_of_plain_zero_not_negative_zero(self):
+        totals = income_and_spending(*self.JANUARY)
+
+        self.assertEqual(str(totals["spending"]), "0.00")
+
+    def test_the_vs_average_reports_net_refunds_too(self):
+        self.add("-50.00", self.groceries, on=date(2025, 12, 10))
+        self.add("-40.00", self.groceries)
+        self.add("100.00", self.groceries)
+        earlier = [(date(2025, 12, 1), date(2025, 12, 31))]
+
+        chart = reporting.category_totals_vs_average(*self.JANUARY, earlier, expense_only=True, top_level=True)
+        table = reporting.category_vs_average_report_rows(*self.JANUARY, earlier, expense_only=True)
+
+        self.assertEqual((chart[0]["current"], chart[0]["average"]), (Decimal("-60.00"), Decimal("50.00")))
+        row = table["groups"][0]["rows"][0]
+        self.assertEqual(
+            (row["current"], row["average"], row["difference"]),
+            (Decimal("-60.00"), Decimal("50.00"), Decimal("-110.00")),
+        )
+
+    def test_watched_expenses_net_refunds_too(self):
+        self.add("-40.00", self.groceries)
+        self.add("100.00", self.groceries)
+        chosen = [self.groceries.pk]
+
+        totals = reporting.watched_expenses_totals(*self.JANUARY, chosen)
+        series = reporting.watched_expenses_series(*self.JANUARY, chosen, granularity="month")
+
+        self.assertEqual([r["total"] for r in totals], [Decimal("-60.00")])
+        self.assertEqual([p["total"] for p in series[0]["points"]], [Decimal("-60.00")])
+
+
+class RefundsAcrossCurrenciesAndAccountsTests(LoggedInWithAccountTestCase):
+    """S50 meets the report filters: a refund nets the same way once every amount is in the main
+    currency, and inside one account when the Account filter is on."""
+
+    JANUARY = (date(2026, 1, 1), date(2026, 1, 31))
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.groceries = Category.objects.create(name="Groceries", category_type=EXPENSE)
+        cls.savings = Account.objects.create(name="Savings")
+        cls.us_card = Account.objects.create(name="US card", currency="USD")
+        cls.uk_card = Account.objects.create(name="UK card", currency="GBP")
+        ExchangeRate.objects.create(
+            base_currency="USD", quote_currency="EUR", rate=Decimal("0.5"), date=date(2026, 1, 1)
+        )
+
+    def add(self, account, amount):
+        Transaction.objects.create(
+            account=account, date=date(2026, 1, 10), category=self.groceries, amount=Decimal(amount)
+        )
+
+    def spending_everywhere(self, **kwargs):
+        """What every spending report says about Groceries, as one number each."""
+        table = reporting.category_report_rows(*self.JANUARY, expense_only=True, **kwargs)
+        chart = reporting.category_totals_top_level(*self.JANUARY, expense_only=True, **kwargs)
+        watched = reporting.watched_expenses_totals(*self.JANUARY, [self.groceries.pk], **kwargs)
+        return {
+            "table": table["groups"][0]["rows"][0]["total"],
+            "table total": table["totals"]["total"],
+            "chart": chart[0]["total"],
+            "watched": watched[0]["total"],
+            "tile": income_and_spending(*self.JANUARY, **kwargs)["spending"],
+        }
+
+    def test_a_refund_in_another_currency_nets_after_conversion(self):
+        self.add(self.us_card, "-100.00")  # 50.00 in euro
+        self.add(self.us_card, "30.00")  # 15.00 in euro
+        self.add(self.account, "-20.00")
+
+        shown = self.spending_everywhere(rates=RateTable("EUR"))
+
+        self.assertEqual(shown, dict.fromkeys(shown, Decimal("55.00")))
+
+    def test_a_refund_in_another_currency_can_beat_the_spending_in_the_main_one(self):
+        self.add(self.account, "-10.00")
+        self.add(self.us_card, "100.00")  # 50.00 in euro
+
+        shown = self.spending_everywhere(rates=RateTable("EUR"))
+
+        self.assertEqual(shown, dict.fromkeys(shown, Decimal("-40.00")))
+
+    def test_a_currency_with_no_known_rate_leaves_its_spending_and_its_refund_out_together(self):
+        self.add(self.uk_card, "-100.00")
+        self.add(self.uk_card, "30.00")
+        self.add(self.account, "-20.00")
+
+        shown = self.spending_everywhere(rates=RateTable("EUR"))
+
+        self.assertEqual(shown, dict.fromkeys(shown, Decimal("20.00")))
+
+    def test_the_account_filter_nets_each_accounts_own_refunds(self):
+        self.add(self.account, "-100.00")
+        self.add(self.account, "30.00")
+        self.add(self.savings, "-50.00")
+        self.add(self.savings, "80.00")
+
+        for account, expected in [(self.account, "70.00"), (self.savings, "-30.00"), (None, "40.00")]:
+            with self.subTest(account=account):
+                shown = self.spending_everywhere(account=account)
+                self.assertEqual(shown, dict.fromkeys(shown, Decimal(expected)))
+
+    def test_the_vs_average_reports_respect_the_account_filter_too(self):
+        self.add(self.account, "-40.00")
+        self.add(self.account, "100.00")
+        self.add(self.savings, "-500.00")
+        earlier = [(date(2025, 12, 1), date(2025, 12, 31))]
+
+        rows = reporting.category_totals_vs_average(
+            *self.JANUARY, earlier, expense_only=True, account=self.account, top_level=True
+        )
+
+        self.assertEqual([(r["name"], r["current"]) for r in rows], [("Groceries", Decimal("-60.00"))])
+
+
+class RefundsEdgeCasesTests(LoggedInWithAccountTestCase):
+    """S50's corners: a purchase refunded in full, the combined income/expense table, and the
+    vs-average totals when a period holds only a refund."""
+
+    JANUARY = (date(2026, 1, 1), date(2026, 1, 31))
+    DECEMBER = [(date(2025, 12, 1), date(2025, 12, 31))]
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.groceries = Category.objects.create(name="Groceries", category_type=EXPENSE)
+        cls.salary = Category.objects.create(name="Salary", category_type=INCOME)
+
+    def add(self, amount, category, on=date(2026, 1, 10)):
+        Transaction.objects.create(account=self.account, date=on, category=category, amount=Decimal(amount))
+
+    def test_a_purchase_refunded_in_full_stays_listed_at_a_plain_zero(self):
+        """Locks in today's behaviour: the category is still listed, at 0.00 (never "-0.00")."""
+        self.add("-100.00", self.groceries)
+        self.add("100.00", self.groceries)
+
+        table = reporting.category_report_rows(*self.JANUARY, expense_only=True)
+        chart = reporting.category_totals_top_level(*self.JANUARY, expense_only=True)
+
+        self.assertEqual([str(row["total"]) for row in table["groups"][0]["rows"]], ["0.00"])
+        self.assertEqual(str(table["totals"]["total"]), "0.00")
+        self.assertEqual([str(row["total"]) for row in chart], ["0.00"])
+        self.assertEqual(str(income_and_spending(*self.JANUARY)["spending"]), "0.00")
+
+    def test_the_combined_table_keeps_expenses_negative_and_nets_a_refund_into_them(self):
+        self.add("-100.00", self.groceries)
+        self.add("30.00", self.groceries)
+        self.add("1000.00", self.salary)
+
+        table = reporting.category_report_rows(*self.JANUARY)
+        rows = {row["name"]: row for group in table["groups"] for row in group["rows"]}
+
+        self.assertEqual(rows["Groceries"]["total"], Decimal("-70.00"))
+        self.assertEqual(rows["Salary"]["total"], Decimal("1000.00"))
+        self.assertEqual(table["totals"]["total"], Decimal("930.00"))
+
+    def test_a_refund_only_earlier_period_has_negative_average_spending(self):
+        self.add("-40.00", self.groceries)
+        self.add("50.00", self.groceries, on=date(2025, 12, 10))
+
+        rows = reporting.category_totals_vs_average(*self.JANUARY, self.DECEMBER, expense_only=True, top_level=True)
+        table = reporting.category_vs_average_report_rows(*self.JANUARY, self.DECEMBER, expense_only=True)
+
+        row = table["groups"][0]["rows"][0]
+        self.assertEqual((rows[0]["current"], rows[0]["average"]), (Decimal("40.00"), Decimal("-50.00")))
+        self.assertEqual(
+            (row["current"], row["average"], row["difference"]),
+            (Decimal("40.00"), Decimal("-50.00"), Decimal("90.00")),
+        )
+        self.assertEqual(table["totals"]["average"], Decimal("-50.00"))
+
+    def test_the_vs_average_totals_with_a_refund_only_current_period(self):
+        """Income 1000 and a refund of 50 and nothing spent: spending is -50, so the net is 1050
+        and the savings rate is over 100."""
+        self.add("1000.00", self.salary)
+        self.add("50.00", self.groceries)
+        self.add("800.00", self.salary, on=date(2025, 12, 5))
+        self.add("-200.00", self.groceries, on=date(2025, 12, 6))
+        november = [(date(2025, 11, 1), date(2025, 11, 30))]
+        self.add("600.00", self.salary, on=date(2025, 11, 5))
+        self.add("-100.00", self.groceries, on=date(2025, 11, 6))
+
+        totals = reporting.income_and_spending_vs_average(*self.JANUARY, [*self.DECEMBER, *november])
+
+        self.assertEqual(totals["current_income"], Decimal("1000.00"))
+        self.assertEqual(totals["current_spending"], Decimal("-50.00"))
+        self.assertEqual(totals["current_net"], Decimal("1050.00"))
+        self.assertEqual(totals["current_rate"], Decimal("105.0"))
+        self.assertEqual(totals["average_income"], Decimal("700.00"))
+        self.assertEqual(totals["average_spending"], Decimal("150.00"))
+        self.assertEqual(totals["average_net"], Decimal("550.00"))
+        self.assertEqual(totals["average_rate"], Decimal("78.6"))
+
+    def test_the_summary_rows_show_a_refund_only_periods_expense_total_as_negative(self):
+        self.add("1000.00", self.salary)
+        self.add("50.00", self.groceries)
+        self.add("-200.00", self.groceries, on=date(2025, 12, 6))
+
+        table = reporting.income_expense_vs_average_report_rows(*self.JANUARY, self.DECEMBER)
+        income, expense = table["groups"][-1]["rows"]
+
+        self.assertEqual(expense["name"], "Expense total")
+        self.assertEqual(
+            (expense["current"], expense["average"], expense["difference"]),
+            (Decimal("-50.00"), Decimal("200.00"), Decimal("-250.00")),
+        )
+        self.assertEqual(income["current"], Decimal("1000.00"))
+
+
+class IncomeExpenseVsAverageTableTests(LoggedInWithAccountTestCase):
+    """S3: one builder makes the Income & expense vs average table, so the page and its export
+    hold the same Summary rows."""
+
+    JANUARY = (date(2026, 1, 1), date(2026, 1, 31))
+    DECEMBER = [(date(2025, 12, 1), date(2025, 12, 31))]
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.salary = Category.objects.create(name="Salary", category_type=INCOME)
+        cls.groceries = Category.objects.create(name="Groceries", category_type=EXPENSE)
+        for on, category, amount in [
+            (date(2026, 1, 5), cls.salary, "1000.00"),
+            (date(2026, 1, 6), cls.groceries, "-250.00"),
+            (date(2025, 12, 5), cls.salary, "800.00"),
+            (date(2025, 12, 6), cls.groceries, "-200.00"),
+        ]:
+            Transaction.objects.create(account=cls.account, date=on, category=category, amount=Decimal(amount))
+
+    def summary_rows(self, periods=DECEMBER, **kwargs):
+        table = reporting.income_expense_vs_average_report_rows(*self.JANUARY, periods, **kwargs)
+        return table, table["groups"][-1]
+
+    def test_a_summary_group_closes_the_table_with_the_income_and_expense_totals(self):
+        _table, summary = self.summary_rows()
+        income, expense = summary["rows"]
+
+        self.assertEqual((summary["key"], summary["name"]), ("summary", "Summary"))
+        self.assertEqual(
+            (income["name"], income["current"], income["average"], income["difference"]),
+            ("Income total", Decimal("1000.00"), Decimal("800.00"), Decimal("200.00")),
+        )
+        self.assertEqual(
+            (expense["name"], expense["current"], expense["average"], expense["difference"]),
+            ("Expense total", Decimal("250.00"), Decimal("200.00"), Decimal("50.00")),
+        )
+        self.assertTrue(expense["lower_is_good"])
+
+    def test_the_category_rows_come_before_the_summary(self):
+        table, _summary = self.summary_rows()
+
+        names = [row["name"] for group in table["groups"] for row in group["rows"]]
+
+        self.assertEqual(names, ["Salary", "Groceries", "Income total", "Expense total"])
+
+    def test_totals_the_caller_already_has_give_the_same_table(self):
+        totals = reporting.income_and_spending_vs_average(*self.JANUARY, self.DECEMBER)
+
+        table_with, _summary = self.summary_rows(vs_average_totals=totals)
+        table_without, _summary = self.summary_rows()
+
+        self.assertEqual(table_with, table_without)
+
+    def test_with_no_earlier_periods_the_summary_has_no_average_and_no_difference(self):
+        """Like the category rows beside them: with no earlier periods at all, the average is
+        None. The page hides this table then, but the export doesn't."""
+        table, summary = self.summary_rows(periods=[])
+
+        for row in summary["rows"]:
+            self.assertIsNone(row["average"])
+            self.assertIsNone(row["difference"])
+        category_rows = [row for group in table["groups"][:-1] for row in group["rows"]]
+        self.assertTrue(all(row["average"] is None for row in category_rows))
+
+
 class NetWorthByAccountTests(LoggedInWithAccountTestCase):
     def test_each_account_gets_its_own_running_balance_per_period(self):
         savings = Account.objects.create(name="Savings")

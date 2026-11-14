@@ -1,5 +1,6 @@
 from django.shortcuts import render
 
+from .. import regional
 from ..currency import RateTable, format_money
 from ..forms import DateRangeFilterForm
 from ..models import Account
@@ -12,6 +13,7 @@ from ..reporting import (
     category_vs_average_report_rows,
     income_and_spending,
     income_and_spending_vs_average,
+    income_expense_vs_average_report_rows,
     net_worth_by_account,
     resolve_range,
     savings_rate,
@@ -67,19 +69,24 @@ def _float_rows(rows, *decimal_keys):
     return [{**row, **{key: float(row[key]) for key in decimal_keys}} for row in rows]
 
 
-def _stacked_series(periods, rows):
+def _stacked_series(periods, rows, spending_is_negative=False):
     """Transpose category_report_rows()' per-row-per-period shape into per-period lists of
-    {name, value} - top-level categories only, magnitudes only (a stack's height is never
-    negative) - what the split-by-category column charts (reports 1/2 with a subtotal, and 5)
-    draw from."""
+    {name, value} - top-level categories only - what the split-by-category column charts
+    (reports 1/2 with a subtotal, and 5) draw from.
+
+    Values keep their meaning: spending reads positive, and a category that netted to a refund
+    in a period reads negative, so Chart.js stacks it below the axis instead of passing it off
+    as spending. `spending_is_negative` is for report 5's expense rows, which come from the
+    signed table (spending stored negative) and are flipped here."""
     labels = periods or ["Total"]
+    sign = -1 if spending_is_negative else 1
     return [
         {
             "period": labels[i],
             "categories": [
-                {"name": r["name"], "value": abs(float(r["values"][i]))}
+                {"name": r["name"], "value": sign * float(r["values"][i])}
                 for r in rows
-                if not r["is_child"] and abs(r["values"][i]) > 0
+                if not r["is_child"] and r["values"][i] != 0
             ],
         }
         for i in range(len(labels))
@@ -118,6 +125,7 @@ def _vs_average_stat(label, current, average, higher_is_better, formatter):
             "good": None,
         }
     diff = current - average
+    # The arrow already says which way it moved, so the amount beside it is a plain magnitude.
     if diff == 0:
         return {
             "label": label,
@@ -193,7 +201,9 @@ def reports_view(request):
         income_expense_table["periods"], _top_level_rows(income_expense_table, "income")
     )
     income_expense_expense_series = _stacked_series(
-        income_expense_table["periods"], _top_level_rows(income_expense_table, "expense")
+        income_expense_table["periods"],
+        _top_level_rows(income_expense_table, "expense"),
+        spending_is_negative=True,
     )
 
     # --- 6. Income & expense vs. average: Income/Expense (split by category, current period
@@ -204,7 +214,7 @@ def reports_view(request):
         return format_money(value, main_currency)
 
     def percent_fmt(value):
-        return f"{value}%"
+        return f"{regional.format_number(value, decimals=1)}%"
 
     vs_average_stats = [
         _vs_average_stat(
@@ -218,44 +228,12 @@ def reports_view(request):
             "Savings rate", vs_average_totals["current_rate"], vs_average_totals["average_rate"], True, percent_fmt
         ),
     ]
-    # The table keeps the same per-category breakdown as report 5's, plus Income total/Expense
-    # total/Net summary rows (already computed above) so the whole picture is in one table.
-    income_expense_vs_average_table = category_vs_average_report_rows(
-        start, end, periods, account=account, rates=rates
+    # The table keeps the same per-category breakdown as report 5's, plus the Income total and
+    # Expense total summary rows, so the whole picture is in one table. The totals computed
+    # above are passed in rather than worked out a second time.
+    income_expense_vs_average_table = income_expense_vs_average_report_rows(
+        start, end, periods, account=account, rates=rates, vs_average_totals=vs_average_totals
     )
-    income_expense_vs_average_table["groups"] = income_expense_vs_average_table["groups"] + [
-        {
-            "key": "summary",
-            "name": "Summary",
-            "rows": [
-                {
-                    "id": "summary_income",
-                    "parent_id": None,
-                    "name": "Income total",
-                    "is_child": False,
-                    "has_children": False,
-                    "current": vs_average_totals["current_income"],
-                    "average": vs_average_totals["average_income"],
-                    "difference": None
-                    if vs_average_totals["average_income"] is None
-                    else vs_average_totals["current_income"] - vs_average_totals["average_income"],
-                },
-                {
-                    "id": "summary_expense",
-                    "parent_id": None,
-                    "name": "Expense total",
-                    "is_child": False,
-                    "has_children": False,
-                    "lower_is_good": True,
-                    "current": vs_average_totals["current_spending"],
-                    "average": vs_average_totals["average_spending"],
-                    "difference": None
-                    if vs_average_totals["average_spending"] is None
-                    else vs_average_totals["current_spending"] - vs_average_totals["average_spending"],
-                },
-            ],
-        }
-    ]
 
     # --- 7. Net worth over time - the chart plots the table's own Total row, so both follow
     # the Subtotal filter (month when none is chosen) ---

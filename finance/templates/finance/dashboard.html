@@ -52,7 +52,7 @@
                 <div class="stat-value">—</div>
                 <div class="stat-hint">No income recorded that month</div>
                 {% else %}
-                <div class="stat-value{% if savings_rate < 0 %} amount-negative{% endif %}">{{ savings_rate }}%</div>
+                <div class="stat-value{% if savings_rate < 0 %} amount-negative{% endif %}">{{ savings_rate|money:1 }}%</div>
                 <div class="savings-bar" aria-hidden="true"><span style="width: {{ savings_bar }}%"></span></div>
                 {% endif %}
             </div>

@@ -2,14 +2,15 @@
 grouping, inactive accounts, the account register's columns, the account forms, and saving
 and deleting an account."""
 
+import re
 from datetime import date
 from decimal import Decimal
 from unittest import mock
 
 from django.urls import reverse
 
-from ..forms import AccountCreateForm, AccountForm, CategoryForm
-from ..models import Account, Category, Payee, Reminder, Transaction, grouped_accounts
+from ..forms import AccountCreateForm, AccountForm, CategoryForm, TransferForm
+from ..models import Account, Category, Payee, Profile, Reminder, Transaction, grouped_accounts
 from .base import LoggedInTestCase, LoggedInWithAccountTestCase, StashTestCase
 
 
@@ -145,10 +146,93 @@ class TransferButtonTests(LoggedInTestCase):
         self.assertIn("Savings", out.memo)
         self.assertIn("Checking", into.memo)
 
+    def test_a_transfer_of_one_cent_goes_through(self):
+        """S1: the amount's minimum was the float 0.01, which is a hair more than a cent, so
+        exactly 0.01 was refused."""
+        response = self.client.post(
+            reverse("finance:account_transfer", args=[self.checking.pk]),
+            {"to_account": self.savings.pk, "amount": "0.01", "date": "05/01/2026"},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(Transaction.objects.get(account=self.checking).amount, Decimal("-0.01"))
+        self.assertEqual(Transaction.objects.get(account=self.savings).amount, Decimal("0.01"))
+
+    def test_a_transfer_of_one_cent_goes_through_in_every_number_format(self):
+        """S1 with a stash's number style: the style changes how amounts are shown, but the box
+        still asks for 0.01 with a dot (a number box needs that) and still takes it."""
+        url = reverse("finance:account_transfer", args=[self.checking.pk])
+        for number_format in ("space_dot", "comma_dot", "dot_comma", "space_comma"):
+            with self.subTest(number_format=number_format):
+                profile = Profile.for_user(self.user)
+                profile.number_format = number_format
+                profile.save()
+
+                page = self.client.get(url).content.decode()
+                amount_box = re.search(r'<input[^>]*name="amount"[^>]*>', page).group(0)
+                response = self.client.post(
+                    url, {"to_account": self.savings.pk, "amount": "0.01", "date": "05/01/2026"}
+                )
+
+                self.assertIn('min="0.01"', amount_box)
+                self.assertEqual(response.status_code, 302)
+        self.assertEqual(Transaction.objects.filter(account=self.checking, amount=Decimal("-0.01")).count(), 4)
+
+    def test_a_transfer_below_one_cent_is_refused_and_moves_no_money(self):
+        for amount in ("0.009", "-0.01"):
+            with self.subTest(amount=amount):
+                response = self.client.post(
+                    reverse("finance:account_transfer", args=[self.checking.pk]),
+                    {"to_account": self.savings.pk, "amount": amount, "date": "05/01/2026"},
+                )
+                self.assertEqual(response.status_code, 200)
+                self.assertIn("amount", response.context["form"].errors)
+        self.assertFalse(Transaction.objects.exists())
+
+    def test_a_transfer_of_nothing_is_refused(self):
+        response = self.client.post(
+            reverse("finance:account_transfer", args=[self.checking.pk]),
+            {"to_account": self.savings.pk, "amount": "0.00", "date": "05/01/2026"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("amount", response.context["form"].errors)
+        self.assertFalse(Transaction.objects.exists())
+
     def test_cannot_transfer_to_the_same_account(self):
         form_response = self.client.get(reverse("finance:account_transfer", args=[self.checking.pk]))
         options = form_response.context["form"].fields["to_account"].queryset
         self.assertNotIn(self.checking, options)
+
+
+class TransferAmountLimitTests(StashTestCase):
+    """The transfer form's amount: exactly one cent is the smallest amount (S1), and nothing under
+    it, at it or below zero gets through."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.checking = Account.objects.create(name="Checking")
+        cls.savings = Account.objects.create(name="Savings")
+
+    def form(self, amount):
+        data = {"to_account": self.savings.pk, "amount": amount, "date": "05/01/2026"}
+        return TransferForm(data, from_account=self.checking)
+
+    def test_one_cent_and_anything_above_it_is_accepted(self):
+        for amount in ("0.01", "0.02", "1", "9999999999.99"):
+            with self.subTest(amount=amount):
+                form = self.form(amount)
+                self.assertTrue(form.is_valid(), form.errors)
+
+    def test_zero_a_negative_amount_and_fractions_of_a_cent_are_refused(self):
+        for amount in ("0", "0.00", "-0.01", "0.009", "0.001"):
+            with self.subTest(amount=amount):
+                self.assertIn("amount", self.form(amount).errors)
+
+    def test_an_amount_with_too_many_digits_is_refused(self):
+        self.assertIn("amount", self.form("10000000000.00").errors)
+
+    def test_the_message_for_too_little_names_the_limit_as_a_clean_cent(self):
+        """Not 0.01000000000000000020..., which is what the float limit used to print."""
+        self.assertEqual(self.form("0.00").errors["amount"], ["Ensure this value is greater than or equal to 0.01."])
 
 
 class AccountGroupingTests(StashTestCase):

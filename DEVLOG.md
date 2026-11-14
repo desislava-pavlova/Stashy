@@ -5350,3 +5350,100 @@ either happens fully or not at all.
 `CLAUDE.md`, the tests in `test_stashes.py`, `test_backup.py` and
 `test_auth.py`, `plans/03_structure_review.md`, `plans/README.md`, this
 log.
+
+## 14/11/2026 — Plan 03, Phase 1, part B: refunds net against their category, the export gets its Summary rows, the savings rate follows your number format (S1, S3, S33, S50)
+
+**What changed:** the second of Phase 1's four parts, money and reports.
+- **S50:** a refund (a positive amount in an expense category) now
+  shrinks that category's spending, everywhere. Spent 100, refunded 30
+  shows 70 in the Spending table, as the chart already did (the table said
+  130). A category whose refunds beat its spending shows negative: spent
+  40, refunded 100 is −60, as on the dashboard's donut since 27/09/2026.
+  A month with only a +50 refund has spending of −50 on the dashboard's
+  tile, the net and the savings rate. This covers the Spending, Income and
+  Watched expenses tables, all the charts, the vs-average reports and
+  their exports.
+- **S3:** the Income & expense vs average export has the Income total and
+  Expense total rows the page shows.
+- **S33:** the savings rate (dashboard, Reports' card and its vs-average
+  stat) is written in your number format: "71,2%" if your stash uses the
+  decimal comma.
+- **S1:** a transfer of exactly 0.01 is accepted.
+- **From the reviews:** with no earlier periods the Summary rows' average
+  is blank, like the category rows beside them (they said 0.00). Four
+  things about how refunds look are yours to judge: they are plan 04's R32.
+
+**Why the code looks like this:**
+- S50: the old code made each transaction positive (`abs()`) *before*
+  adding them up, so the table added a refund to the spending (100 + 30).
+  The charts added first and took `abs()` after, so the page disagreed
+  with itself. Now every report adds the signed amounts, and one helper,
+  `reporting._as_shown()`, flips the sign once on the net. Because adding
+  is order-free, it doesn't matter whether the flip comes before or after
+  a subcategory is rolled into its parent; `category_report_rows()` flips
+  first, the vs-average rows after.
+- S50: the helper is `_as_shown(amount, expense_only)` and leaves income
+  alone. An income category can net below zero too (a returned salary
+  payment), and it should read as that, not as income. It passes `None`
+  through, so the average lines (`None` means "nothing to compare with")
+  need no `if` of their own, and `spending_tree()` uses it instead of its
+  own minus sign, so the rule has one home.
+- S50: a stacked column can't have a negative height, so the old chart
+  code used magnitudes. It now keeps the sign, and Chart.js stacks a
+  negative piece below the axis, which is the truth: that category came
+  out ahead. Report 5's expense rows come from the signed table (spending
+  stored negative), so `_stacked_series()` takes `spending_is_negative`
+  for them. `reports.js` didn't change: it never looked at the sign.
+- S3: the two rows are built once, in
+  `reporting.income_expense_vs_average_report_rows()`, from a small
+  `_summary_row()`. The page passes in the totals it already worked out
+  for its stat row; the export lets the function work them out. The
+  parameter is called `vs_average_totals` because the table already has a
+  `totals` (its footer row), and two things with one name is how bugs hide.
+- S3: with no earlier periods `income_and_spending_vs_average()` now
+  returns `None` averages, not `ZERO`. CLAUDE.md says "only with no
+  earlier periods at all is the average None", and the category rows
+  already follow it. Nobody saw the zeros before because the page hides
+  that card when there are fewer than two earlier periods; the export has
+  no such guard, which is how the mismatch showed up.
+- S33: `money:1` in the two templates and
+  `regional.format_number(value, decimals=1)` in `percent_fmt()`, the same
+  function every other number uses. The rate is already rounded to one
+  decimal, so the digits don't change, only the decimal mark and the
+  thousands separator.
+- S1: `min_value=0.01` was a `float`. A float can't hold 0.01 exactly (it
+  is 0.01000000000000000020…), and Python compares a `Decimal` with a
+  `float` exactly, so `Decimal("0.01")` counted as smaller. `CENT` is a
+  `Decimal`, so the comparison is exact.
+- The new tests were checked against the old behaviour (I put it back for
+  a minute): every behaviour test fails on it. The one that didn't at
+  first only passed by accident, because the Net stat also shows −60.00;
+  it now looks at the Spending table's own cell.
+
+**Teaching note — don't fix a sign problem with `abs()`.** `abs()` throws
+away direction, which is exactly what a refund *is*: money going the
+other way. The safe habit is to keep the sign through the maths, add
+everything up, and convert to the shape you want to show once, at the
+end. Then a refund is just a negative spend, and every report agrees
+with every other without a special case. The second lesson is smaller:
+money is `Decimal` all the way, and one stray float (here a 0.01 in a
+form) is enough to make an exact comparison lie.
+
+**Reviews:** code, security, front end and QA read it; nothing was
+Critical. Their "should fix" items were done the same day (the Summary
+rows' averages, two stale docstrings, the helper's `None` handling, the
+`spending_tree()` minus sign, the parameter's name); QA added 44 tests
+(refunds across currencies and accounts, the exports as CSV and XLSX,
+savings rates below 0 and above 100 in all four number formats). Five
+smaller findings are in plan 03 as S92–S96 (section K) and four questions
+about how refunds look are in plan 04 as R32. The suite went from 868 to
+936 tests.
+
+**Files touched:** `finance/forms.py`, `finance/reporting.py`,
+`finance/views/reports.py`, `finance/views/exports.py`,
+`finance/templatetags/stashy_format.py` (a docstring),
+`finance/templates/finance/dashboard.html`,
+`finance/templates/finance/reports.html`, `README.md`, `CLAUDE.md`, the
+tests in `test_reporting.py`, `test_reports.py`, `test_dashboard.py`,
+`test_exports.py` and `test_accounts.py`, `plans/03_structure_review.md`,
+`plans/04_fixes_and_changes_plan.md`, `plans/README.md`, this log.

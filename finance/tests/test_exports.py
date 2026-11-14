@@ -228,6 +228,31 @@ class ReportExportRegistryTests(LoggedInWithAccountTestCase):
         self.assertEqual(rows[0][0], "Account")
         self.assertEqual(rows[-1][0], "Total")
 
+    def test_income_expense_vs_average_export_has_the_summary_rows_the_page_shows(self):
+        """S3: the page adds an Income total and an Expense total row; the export used to lack them."""
+        salary = Category.objects.create(name="Salary", category_type=Category.CategoryType.INCOME)
+        Transaction.objects.create(account=self.account, date=date.today(), category=salary, amount=Decimal("100.00"))
+
+        _response, rows = self._csv("income-expense-vs-average")
+        by_name = {row[0]: row for row in rows[1:]}
+        page_table = self.client.get(reverse("finance:reports")).context["income_expense_vs_average_table"]
+
+        self.assertEqual(by_name["Income total"][1], "100.00")
+        self.assertEqual(by_name["Expense total"][1], "42.00")
+        page_names = [row["name"] for group in page_table["groups"] for row in group["rows"]]
+        self.assertEqual([row[0].strip() for row in rows[1:] if row[0] != "Total"], page_names)
+
+    def test_income_expense_vs_average_export_leaves_every_average_blank_with_no_earlier_periods(self):
+        """ "Earliest to date" has nothing earlier to average: the Summary rows say so like the
+        category rows do, instead of an average of 0.00."""
+        _response, rows = self._csv("income-expense-vs-average", range="earliest")
+        by_name = {row[0].strip(): row for row in rows[1:]}
+
+        self.assertEqual(by_name["Expense total"][1], "42.00")
+        for name in ("Groceries", "Income total", "Expense total"):
+            with self.subTest(name=name):
+                self.assertEqual(by_name[name][2:], ["", ""])  # Average, Difference
+
     def test_every_export_link_on_the_reports_page_works(self):
         Profile.for_user(self.user).watched_expenses_categories.add(self.groceries)
         page = self.client.get(reverse("finance:reports"), {"subtotal": "month"}).content.decode()
@@ -239,6 +264,165 @@ class ReportExportRegistryTests(LoggedInWithAccountTestCase):
                 response = self.client.get(link.replace("&amp;", "&"))
                 self.assertEqual(response.status_code, 200)
                 self.assertIn("subtotal=month", link)
+
+
+class RefundExportTests(LoggedInWithAccountTestCase):
+    """S50 and S3 in the files: a refund nets against its category in the CSV and the Excel file,
+    a category that nets to a refund is a real negative number (never text), and the Income &
+    expense vs average file holds the same rows and numbers as the page."""
+
+    JANUARY = {"range": "custom", "start": "01/01/2026", "end": "31/01/2026"}
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
+        cls.organic = Category.objects.create(
+            name="Organic", parent=cls.groceries, category_type=Category.CategoryType.EXPENSE
+        )
+        cls.salary = Category.objects.create(name="Salary", category_type=Category.CategoryType.INCOME)
+
+    def add(self, amount, category=None, on=date(2026, 1, 10)):
+        Transaction.objects.create(
+            account=self.account, date=on, category=category or self.groceries, amount=Decimal(amount)
+        )
+
+    def get_export(self, slug, fmt="csv", **params):
+        return self.client.get(
+            reverse("finance:export_report", args=[slug]), {"format": fmt, **self.JANUARY, **params}
+        )
+
+    def csv_rows(self, slug, **params):
+        response = self.get_export(slug, **params)
+        return list(csv.reader(io.StringIO(response.content.decode("utf-8-sig"))))
+
+    def test_a_refund_shrinks_its_category_in_the_spending_csv(self):
+        self.add("-100.00")
+        self.add("30.00")
+
+        rows = self.csv_rows("spending")
+
+        self.assertEqual(rows, [["Category", "Spending"], ["Groceries", "70.00"], ["Total", "70.00"]])
+
+    def test_a_category_that_nets_to_a_refund_is_a_negative_number_in_the_csv_not_escaped_text(self):
+        self.add("-40.00")
+        self.add("100.00")
+
+        rows = self.csv_rows("spending")
+
+        self.assertEqual(rows[1:], [["Groceries", "-60.00"], ["Total", "-60.00"]])  # no leading apostrophe
+
+    def test_a_category_that_nets_to_a_refund_is_a_real_negative_number_in_excel(self):
+        self.add("-40.00")
+        self.add("100.00")
+
+        sheet = load_workbook(io.BytesIO(self.get_export("spending", "xlsx").content)).active
+
+        for cell in (sheet["B2"], sheet["B3"]):  # the Groceries row and the Total row
+            self.assertEqual(cell.value, -60)
+            self.assertEqual(cell.data_type, "n")
+            self.assertEqual(cell.number_format, "0.00")
+
+    def test_a_subcategorys_refund_is_indented_under_its_parent_and_nets_inside_it(self):
+        self.add("-30.00")
+        self.add("10.00", self.organic)
+
+        rows = self.csv_rows("spending")
+
+        self.assertEqual(rows[1:], [["Groceries", "20.00"], ["  Organic", "-10.00"], ["Total", "20.00"]])
+
+    def test_a_subtotaled_export_nets_each_period_on_its_own(self):
+        self.add("-100.00", on=date(2026, 1, 10))
+        self.add("30.00", on=date(2026, 2, 10))
+
+        rows = self.csv_rows("spending", range="custom", start="01/01/2026", end="28/02/2026", subtotal="month")
+
+        self.assertEqual(rows[0], ["Category", "Jan 2026", "Feb 2026", "Total"])
+        self.assertEqual(rows[1], ["Groceries", "100.00", "-30.00", "70.00"])
+        self.assertEqual(rows[2], ["Total", "100.00", "-30.00", "70.00"])
+
+    def test_a_category_refunded_in_full_exports_as_plain_zero_not_minus_zero(self):
+        self.add("-100.00")
+        self.add("100.00")
+
+        rows = self.csv_rows("spending")
+
+        self.assertEqual(rows[1:], [["Groceries", "0.00"], ["Total", "0.00"]])
+
+    def test_the_watched_expenses_file_nets_a_refund_too(self):
+        Profile.for_user(self.user).watched_expenses_categories.set([self.groceries])
+        self.add("-40.00")
+        self.add("100.00")
+
+        rows = self.csv_rows("watched-expenses")
+
+        self.assertEqual(rows[1:], [["Groceries", "-60.00"], ["Total", "-60.00"]])
+
+    def test_the_combined_file_keeps_expenses_negative_and_nets_a_refund_into_them(self):
+        self.add("-100.00")
+        self.add("30.00")
+        self.add("1000.00", self.salary)
+
+        rows = self.csv_rows("income-expense")
+
+        self.assertEqual(rows[1:], [["Salary", "1000.00"], ["Groceries", "-70.00"], ["Total", "930.00"]])
+
+    def test_the_spending_vs_average_file_nets_a_refund_in_the_current_and_the_average_columns(self):
+        self.add("-40.00")
+        self.add("100.00")
+        self.add("-50.00", on=date(2025, 12, 10))
+
+        rows = self.csv_rows("spending-vs-average")
+
+        self.assertEqual(rows[0], ["Category", "Current", "Average", "Difference"])
+        self.assertEqual(rows[1], ["Groceries", "-60.00", "50.00", "-110.00"])
+
+    def add_two_months_for_the_vs_average_tables(self):
+        self.add("1000.00", self.salary)
+        self.add("-250.00")
+        self.add("30.00")  # a refund this month
+        self.add("800.00", self.salary, on=date(2025, 12, 5))
+        self.add("-200.00", on=date(2025, 12, 6))
+
+    def test_the_income_and_expense_vs_average_file_has_the_same_rows_and_numbers_as_the_page(self):
+        self.add_two_months_for_the_vs_average_tables()
+
+        table = self.client.get(reverse("finance:reports"), self.JANUARY).context["income_expense_vs_average_table"]
+        rows = self.csv_rows("income-expense-vs-average")
+
+        def cells(row):
+            average, difference = row["average"], row["difference"]
+            return [
+                f"{row['current']:.2f}",
+                "" if average is None else f"{average:.2f}",
+                "" if difference is None else f"{difference:.2f}",
+            ]
+
+        page_rows = [(row["name"], cells(row)) for group in table["groups"] for row in group["rows"]]
+        file_rows = [(row[0].strip(), row[1:]) for row in rows[1:] if row[0] != "Total"]
+        self.assertEqual(file_rows, page_rows)
+        self.assertEqual(dict(file_rows)["Income total"], ["1000.00", "800.00", "200.00"])
+        self.assertEqual(dict(file_rows)["Expense total"], ["220.00", "200.00", "20.00"])  # 250 less the refund
+
+    def test_the_income_and_expense_vs_average_excel_file_has_the_summary_rows_as_numbers(self):
+        self.add_two_months_for_the_vs_average_tables()
+
+        sheet = load_workbook(io.BytesIO(self.get_export("income-expense-vs-average", "xlsx").content)).active
+
+        by_name = {row[0].value.strip(): row[1:] for row in sheet.iter_rows(min_row=2)}
+        self.assertEqual([cell.value for cell in by_name["Income total"]], [1000, 800, 200])
+        self.assertEqual([cell.value for cell in by_name["Expense total"]], [220, 200, 20])
+        for cell in by_name["Expense total"]:
+            self.assertEqual((cell.data_type, cell.number_format), ("n", "0.00"))
+
+    def test_a_refund_only_periods_expense_total_is_a_negative_number_in_the_file(self):
+        self.add("1000.00", self.salary)
+        self.add("50.00")
+        self.add("-200.00", on=date(2025, 12, 6))
+
+        rows = {row[0]: row[1:] for row in self.csv_rows("income-expense-vs-average")}
+
+        self.assertEqual(rows["Expense total"], ["-50.00", "200.00", "-250.00"])
 
 
 class ExportNamesCarryTheTimeTests(LoggedInWithAccountTestCase):

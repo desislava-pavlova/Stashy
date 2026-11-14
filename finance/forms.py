@@ -17,7 +17,7 @@ from .models import (
     categories_alphabetical,
     grouped_categories,
 )
-from .money import ZERO
+from .money import CENT, ZERO
 from .services.importing import SUPPORTED_EXTENSIONS, UNSUPPORTED_FILE_MESSAGE
 
 
@@ -139,7 +139,7 @@ class TransferForm(forms.Form):
     """Backs the account page's Transfer button (D7): creates the paired transactions."""
 
     to_account = forms.ModelChoiceField(queryset=Account.objects.none(), label="Transfer to")
-    amount = forms.DecimalField(max_digits=12, decimal_places=2, min_value=0.01, help_text="Enter a positive amount.")
+    amount = forms.DecimalField(max_digits=12, decimal_places=2, min_value=CENT, help_text="Enter a positive amount.")
     date = forms.DateField(widget=DateInput(), initial=timezone.localdate)
 
     def __init__(self, *args, from_account=None, **kwargs):

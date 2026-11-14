@@ -19,10 +19,22 @@ from django.utils import timezone
 from .. import reporting
 from ..forms import DateRangeFilterForm, WatchedExpensesForm, watched_expenses_picker_context
 from ..models import Account, Category, Profile, Transaction
+from ..regional import NBSP
 from ..templatetags.stashy_format import diff_tint
-from .base import LoggedInTestCase, LoggedInWithAccountTestCase, StashTestCase
+from .base import LEAKED_TEMPLATE_SYNTAX, LoggedInTestCase, LoggedInWithAccountTestCase, StashTestCase
 
 EXPENSE, INCOME = Category.CategoryType.EXPENSE, Category.CategoryType.INCOME
+
+
+def _row_html(page, opening_tag):
+    """The inside of the table row of the rendered `page` that starts with `opening_tag`."""
+    return re.search(re.escape(opening_tag) + r"(.*?)</tr>", page, re.S).group(1)
+
+
+def _amount_cells(row_html):
+    """The text of a table row's amount cells, without the currency symbol."""
+    cells = re.findall(r'<td class="text-end[^"]*">([^<]*)</td>', row_html)
+    return [cell.strip().removesuffix("€").strip() for cell in cells]
 
 
 class ReportsViewTests(LoggedInWithAccountTestCase):
@@ -268,6 +280,301 @@ class ReportFixesAfterFirstLookTests(LoggedInWithAccountTestCase):
         labels = [point["label"] for point in response.context["net_worth_chart"]]
         self.assertEqual(labels, response.context["net_worth_table"]["periods"])
         self.assertTrue(all(label.startswith("Q") for label in labels))
+
+
+class RefundsOnTheReportsPageTests(LoggedInWithAccountTestCase):
+    """S50: the page's tables and charts agree about a refund."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.groceries = Category.objects.create(name="Groceries", category_type=EXPENSE)
+
+    def add(self, amount):
+        Transaction.objects.create(
+            account=self.account, date=date.today(), category=self.groceries, amount=Decimal(amount)
+        )
+
+    def get_page(self):
+        return self.client.get(reverse("finance:reports"), {"range": "this_month", "subtotal": "month"})
+
+    def test_a_refund_shrinks_the_category_in_the_table_and_in_every_chart(self):
+        self.add("-100.00")
+        self.add("30.00")
+
+        context = self.get_page().context
+
+        self.assertEqual(context["spending_table"]["groups"][0]["rows"][0]["total"], Decimal("70.00"))
+        self.assertEqual([r["total"] for r in context["spending_chart"]], [70.0])
+        self.assertEqual(context["spending_stacked_chart"][0]["categories"], [{"name": "Groceries", "value": 70.0}])
+        expense_series = context["income_expense_chart"]["expense"]
+        self.assertEqual(expense_series[0]["categories"], [{"name": "Groceries", "value": 70.0}])
+
+    def test_a_category_that_nets_to_a_refund_reads_negative_in_the_table_and_in_every_chart(self):
+        self.add("-40.00")
+        self.add("100.00")
+
+        context = self.get_page().context
+
+        self.assertEqual(context["spending_table"]["groups"][0]["rows"][0]["total"], Decimal("-60.00"))
+        self.assertEqual([r["total"] for r in context["spending_chart"]], [-60.0])
+        self.assertEqual(context["spending_stacked_chart"][0]["categories"], [{"name": "Groceries", "value": -60.0}])
+        expense_series = context["income_expense_chart"]["expense"]
+        self.assertEqual(expense_series[0]["categories"], [{"name": "Groceries", "value": -60.0}])
+
+    def test_the_spending_table_shows_the_refund_category_with_its_minus_sign(self):
+        self.add("-40.00")
+        self.add("100.00")
+
+        response = self.get_page()
+
+        # A table cell in the spending colour, not the Net or Expense stat above the tables.
+        self.assertContains(response, '<td class="text-end amount-negative">-60.00')
+        for leaked in LEAKED_TEMPLATE_SYNTAX:
+            self.assertNotContains(response, leaked)
+
+
+class RefundEdgeCasesOnTheReportsPageTests(LoggedInWithAccountTestCase):
+    """S50 on the page itself: table rows, the Watched expenses card, the Account filter and the
+    vs-average tables, read from the context and from the rendered HTML."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.groceries = Category.objects.create(name="Groceries", category_type=EXPENSE)
+        cls.organic = Category.objects.create(name="Organic", parent=cls.groceries, category_type=EXPENSE)
+        cls.salary = Category.objects.create(name="Salary", category_type=INCOME)
+        cls.savings = Account.objects.create(name="Savings")
+        cls.month_start = timezone.localdate().replace(day=1)
+
+    def add(self, amount, category=None, months_back=0, account=None):
+        Transaction.objects.create(
+            account=account or self.account,
+            date=self.month_start - relativedelta(months=months_back),
+            category=category or self.groceries,
+            amount=Decimal(amount),
+        )
+
+    def get_page(self, **params):
+        return self.client.get(reverse("finance:reports"), {"range": "this_month", **params})
+
+    def test_a_subcategorys_refund_reads_negative_in_its_row_and_nets_inside_the_parent_row(self):
+        self.add("-30.00")
+        self.add("10.00", self.organic)
+
+        response = self.get_page()
+        page = response.content.decode()
+
+        parent = _row_html(page, f'<tr data-cat-id="spend-{self.groceries.pk}">')
+        child = _row_html(page, f'<tr data-cat-parent="spend-{self.groceries.pk}" hidden>')
+        self.assertEqual(_amount_cells(parent), ["20.00"])
+        self.assertEqual(_amount_cells(child), ["-10.00"])
+        self.assertEqual(response.context["spending_table"]["totals"]["total"], Decimal("20.00"))
+        self.assertEqual([r["total"] for r in response.context["spending_chart"]], [20.0])
+
+    def test_the_watched_expenses_card_shrinks_a_partly_refunded_category(self):
+        Profile.for_user(self.user).watched_expenses_categories.set([self.groceries])
+        self.add("-100.00")
+        self.add("30.00")
+
+        response = self.get_page()
+
+        self.assertEqual([r["total"] for r in response.context["watched_totals"]], [Decimal("70.00")])
+        self.assertEqual([p["total"] for p in response.context["watched_chart"][0]["points"]], [70.0])
+        row = _row_html(response.content.decode(), f'<tr data-cat-id="watched-{self.groceries.pk}">')
+        self.assertEqual(_amount_cells(row), ["70.00"])
+
+    def test_the_watched_expenses_card_reads_negative_when_the_refunds_beat_the_spending(self):
+        Profile.for_user(self.user).watched_expenses_categories.set([self.groceries])
+        self.add("-40.00")
+        self.add("100.00")
+
+        response = self.get_page(subtotal="month")
+
+        self.assertEqual([r["total"] for r in response.context["watched_totals"]], [Decimal("-60.00")])
+        self.assertEqual(response.context["watched_table"]["groups"][0]["rows"][0]["values"], [Decimal("-60.00")])
+        self.assertEqual([p["total"] for p in response.context["watched_chart"][0]["points"]], [-60.0])
+        row = _row_html(response.content.decode(), f'<tr data-cat-id="watched-{self.groceries.pk}">')
+        self.assertEqual(_amount_cells(row), ["-60.00", "-60.00"])  # the month, then the row's total
+
+    def test_the_account_filter_applies_to_the_refund_totals_on_the_page(self):
+        self.add("-100.00")
+        self.add("30.00")
+        self.add("-50.00", account=self.savings)
+        self.add("80.00", account=self.savings)
+
+        for account, expected in [(self.account, "70.00"), (self.savings, "-30.00"), (None, "40.00")]:
+            with self.subTest(account=account):
+                context = self.get_page(**({"account": account.pk} if account else {})).context
+                self.assertEqual(context["expense_total"], Decimal(expected))
+                self.assertEqual(context["spending_table"]["totals"]["total"], Decimal(expected))
+                self.assertEqual([r["total"] for r in context["spending_by_category"]], [Decimal(expected)])
+
+    def test_a_month_with_only_a_refund_has_negative_expense_and_a_net_above_the_income(self):
+        self.add("1000.00", self.salary)
+        self.add("50.00")
+
+        response = self.get_page()
+
+        self.assertEqual(response.context["expense_total"], Decimal("-50.00"))
+        self.assertEqual(response.context["net_total"], Decimal("1050.00"))
+        self.assertEqual(response.context["savings_rate"], Decimal("105.0"))
+        self.assertContains(response, '<div class="stat-value amount-negative">-50.00')
+        self.assertContains(response, "105.0%")
+
+    def test_the_spending_vs_average_table_nets_refunds_in_the_current_and_the_average_columns(self):
+        for months_back in (1, 2, 3):
+            self.add("-30.00", months_back=months_back)
+        self.add("-40.00")
+        self.add("100.00")
+
+        response = self.client.get(reverse("finance:reports"))
+
+        self.assertTrue(response.context["has_average"])
+        row = _row_html(response.content.decode(), f'<tr data-cat-id="spendavg-{self.groceries.pk}">')
+        self.assertEqual(_amount_cells(row), ["-60.00", "30.00", "-90.00"])
+        self.assertIn("diff-good", row)  # spending fell by more than the average: a good change
+
+    def test_the_income_and_expense_vs_average_table_ends_with_the_summary_rows(self):
+        for months_back in (1, 2, 3):
+            self.add("400.00", self.salary, months_back=months_back)
+            self.add("-200.00", months_back=months_back)
+        self.add("500.00", self.salary)
+        self.add("50.00")
+
+        response = self.client.get(reverse("finance:reports"))
+        page = response.content.decode()
+
+        self.assertContains(response, 'fw-semibold pt-3">Summary</td>')
+        income = _row_html(page, '<tr data-cat-id="incexpavg-summary_income">')
+        expense = _row_html(page, '<tr data-cat-id="incexpavg-summary_expense">')
+        self.assertEqual(_amount_cells(income), ["500.00", "400.00", "100.00"])
+        self.assertEqual(_amount_cells(expense), ["-50.00", "200.00", "-250.00"])
+        self.assertIn("diff-good", expense)  # a falling expense is the good direction
+
+
+class SavingsRateNumberFormatTests(LoggedInWithAccountTestCase):
+    """S33: the savings rate follows the stash's number format, like every other number."""
+
+    def setUp(self):
+        super().setUp()
+        profile = Profile.for_user(self.user)
+        profile.number_format = "dot_comma"  # 10.000,50
+        profile.save()
+        salary = Category.objects.create(name="Salary", category_type=INCOME)
+        rent = Category.objects.create(name="Rent", category_type=EXPENSE)
+        this_month = date.today()
+        last_month = this_month.replace(day=1) - timedelta(days=1)
+        for on, category, amount in [
+            (this_month, salary, "2000.00"),
+            (this_month, rent, "-576.00"),
+            (last_month, salary, "1000.00"),
+            (last_month, rent, "-250.00"),
+        ]:
+            Transaction.objects.create(account=self.account, date=on, category=category, amount=Decimal(amount))
+
+    def test_the_savings_rate_card_uses_the_stashs_decimal_mark(self):
+        response = self.client.get(reverse("finance:reports"), {"range": "this_month"})
+
+        self.assertContains(response, "71,2%")
+        self.assertNotContains(response, "71.2%")
+
+    def test_the_income_and_expense_vs_average_stats_use_it_too(self):
+        response = self.client.get(reverse("finance:reports"), {"range": "this_month"})
+
+        stat = next(s for s in response.context["vs_average_stats"] if s["label"] == "Savings rate")
+
+        self.assertEqual(stat["current"], "71,2%")
+        self.assertEqual(stat["average"], "75,0%")
+        self.assertEqual(stat["diff_text"], "▼ 3,8%")
+
+
+class SavingsRateExtremesInEveryNumberFormatTests(LoggedInWithAccountTestCase):
+    """S33: a negative savings rate, one over 100 (refunds make that possible, S50) and one in the
+    thousands read right in every number format - the minus sign, the decimal mark and the
+    thousands separator all follow the stash's style."""
+
+    # number format -> the rate as shown for -25.0, 105.0 and 1000.0
+    EXPECTED = {
+        "space_dot": ("-25.0%", "105.0%", f"1{NBSP}000.0%"),
+        "comma_dot": ("-25.0%", "105.0%", "1,000.0%"),
+        "dot_comma": ("-25,0%", "105,0%", "1.000,0%"),
+        "space_comma": ("-25,0%", "105,0%", f"1{NBSP}000,0%"),
+    }
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.salary = Category.objects.create(name="Salary", category_type=INCOME)
+        cls.rent = Category.objects.create(name="Rent", category_type=EXPENSE)
+
+    def add(self, amount, category, months_back=0):
+        when = timezone.localdate().replace(day=1) - relativedelta(months=months_back)
+        Transaction.objects.create(account=self.account, date=when, category=category, amount=Decimal(amount))
+
+    def use_number_format(self, number_format):
+        profile = Profile.for_user(self.user)
+        profile.number_format = number_format
+        profile.save()
+
+    def savings_rate_card(self):
+        page = self.client.get(reverse("finance:reports"), {"range": "this_month"}).content.decode()
+        return re.search(r'Savings rate</div>\s*<div class="stat-value">([^<]*)</div>', page).group(1)
+
+    def check_every_format(self, which):
+        for number_format, shown in self.EXPECTED.items():
+            with self.subTest(number_format=number_format):
+                self.use_number_format(number_format)
+                self.assertEqual(self.savings_rate_card(), shown[which])
+
+    def test_a_negative_rate_keeps_its_minus_sign(self):
+        self.add("1000.00", self.salary)
+        self.add("-1250.00", self.rent)
+
+        self.check_every_format(0)
+
+    def test_a_rate_over_100_when_a_refund_is_the_only_spending(self):
+        self.add("1000.00", self.salary)
+        self.add("50.00", self.rent)
+
+        self.check_every_format(1)
+
+    def test_a_rate_in_the_thousands_gets_the_thousands_separator(self):
+        self.add("10.00", self.salary)
+        self.add("90.00", self.rent)
+
+        self.check_every_format(2)
+
+    def test_the_vs_average_stats_follow_the_style_for_a_negative_rate(self):
+        """This month saves -25.0%, last month 75.0%: the difference is the plain 100.0, no sign
+        (the arrow says which way it went)."""
+        self.add("1000.00", self.salary)
+        self.add("-1250.00", self.rent)
+        self.add("1000.00", self.salary, months_back=1)
+        self.add("-250.00", self.rent, months_back=1)
+        for number_format, mark in [("comma_dot", "."), ("dot_comma", ",")]:
+            with self.subTest(number_format=number_format):
+                self.use_number_format(number_format)
+
+                response = self.client.get(reverse("finance:reports"), {"range": "this_month"})
+                stat = next(s for s in response.context["vs_average_stats"] if s["label"] == "Savings rate")
+
+                self.assertEqual(stat["current"], f"-25{mark}0%")
+                self.assertEqual(stat["average"], f"75{mark}0%")
+                self.assertEqual(stat["diff_text"], f"▼ 100{mark}0%")
+                self.assertFalse(stat["good"])
+
+    def test_without_income_in_the_earlier_periods_the_average_rate_is_a_dash(self):
+        self.use_number_format("dot_comma")
+        self.add("1000.00", self.salary)
+        self.add("-250.00", self.rent)
+        self.add("-100.00", self.rent, months_back=1)
+
+        response = self.client.get(reverse("finance:reports"), {"range": "this_month"})
+        stat = next(s for s in response.context["vs_average_stats"] if s["label"] == "Savings rate")
+
+        self.assertEqual((stat["current"], stat["average"], stat["diff_text"]), ("75,0%", "—", ""))
+        self.assertIsNone(stat["good"])
 
 
 class AverageDisplayTests(LoggedInWithAccountTestCase):

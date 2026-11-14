@@ -155,7 +155,7 @@
                 </div>
                 <div class="col-3">
                     <div class="text-muted small">Savings rate</div>
-                    <div class="stat-value">{% if savings_rate is not None %}{{ savings_rate }}%{% else %}—{% endif %}</div>
+                    <div class="stat-value">{% if savings_rate is not None %}{{ savings_rate|money:1 }}%{% else %}—{% endif %}</div>
                 </div>
             </div>
             <div class="report-table mt-3" hidden>

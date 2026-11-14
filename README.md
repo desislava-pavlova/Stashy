@@ -187,8 +187,11 @@ every stash automatically).
   report, Net worth, and Watched expenses (any set of expense categories
   chosen in Settings, e.g. bills — the report's own title is editable
   there too). A category's own type decides income vs.
-  spending everywhere, never the sign of the amount. A vs.-average report
-  needs at least two earlier periods to exist at all (e.g. two full months
+  spending everywhere, never the sign of the amount. A refund (a positive
+  amount in an expense category) shrinks that category's spending, and a
+  category whose refunds beat its spending shows a negative number (spent
+  40, refunded 100: −60), on the dashboard and in every report.
+  A vs.-average report needs at least two earlier periods to exist at all (e.g. two full months
   before this one) and shows "No earlier data to compare with" otherwise;
   within that, a month without a category's spending counts as a real zero.
   A category with no activity in any of those periods averages 0: its
