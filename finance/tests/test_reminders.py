@@ -203,6 +203,63 @@ class EnterOpensAPrefilledFormTests(LoggedInWithAccountTestCase):
         self.assertNotEqual(self.reminder.status(), "paid")
         self.assertEqual(self.reminder.next_due_date, date(2026, 11, 1))
 
+    def _enter(self, reminder, on="01/10/2026"):
+        return self.client.post(
+            reverse("finance:transaction_add"),
+            {
+                "reminder": reminder.pk,
+                "account": self.account.pk,
+                "date": on,
+                "transaction_number": "",
+                "payee_name": "Landlord",
+                "category": self.category.pk,
+                "memo": "Rent",
+                "amount": "-500.00",
+            },
+            follow=True,
+        )
+
+    def test_the_message_names_the_date_it_was_due_and_the_date_it_moved_to(self):
+        # S52: the reminder is named before it moves on, so the two dates differ.
+        response = self._enter(self.reminder)
+        self.assertEqual(
+            [str(m) for m in response.context["messages"]],
+            ["Entered 01/10/2026 | Landlord | -500.00 and moved it to 01/11/2026."],
+        )
+
+    def test_the_message_for_a_one_time_reminder_has_no_move(self):
+        one_time = Reminder.objects.create(
+            account=self.account,
+            payee=self.payee,
+            category=self.category,
+            amount=Decimal("500.00"),
+            reminder_type=Category.CategoryType.EXPENSE,
+            next_due_date=date(2026, 10, 1),
+            frequency="one_time",
+        )
+        response = self._enter(one_time)
+        self.assertEqual([str(m) for m in response.context["messages"]], ["Entered 01/10/2026 | Landlord | -500.00."])
+
+    def test_entering_one_occurrence_names_it_and_leaves_the_series_where_it_is(self):
+        # An occurrence is a one-time reminder of its own: no "moved it to", and the series head stays put.
+        head = Reminder.objects.create(
+            account=self.account,
+            payee=self.payee,
+            category=self.category,
+            amount=Decimal("500.00"),
+            reminder_type=Category.CategoryType.EXPENSE,
+            next_due_date=date(2026, 10, 1),
+            frequency="monthly",
+            end_date=date(2026, 12, 1),
+        )
+        november = head.occurrences.get(next_due_date=date(2026, 11, 1))
+        response = self._enter(november, on="01/11/2026")
+        self.assertEqual([str(m) for m in response.context["messages"]], ["Entered 01/11/2026 | Landlord | -500.00."])
+        head.refresh_from_db()
+        november.refresh_from_db()
+        self.assertEqual(head.next_due_date, date(2026, 10, 1))
+        self.assertEqual(november.status(), "paid")
+
     def test_editing_an_existing_transaction_ignores_a_reminder_param(self):
         txn = Transaction.objects.create(account=self.account, date=date(2026, 1, 1), amount=Decimal("-1.00"))
         response = self.client.get(reverse("finance:transaction_edit", args=[txn.pk]), {"reminder": self.reminder.pk})
@@ -552,6 +609,241 @@ class AutoGenerateOccurrencesTests(LoggedInWithAccountTestCase):
         self.assertTrue(form.is_valid(), form.errors)
         form.save()
         self.assertTrue(Reminder.objects.filter(pk=october.pk).exists())
+
+    def _series_with_a_september_whose_payment_was_deleted(self):
+        """S51: September was entered (so it became a Paid record and the series moved on),
+        then the transaction that paid it was deleted, leaving it unpaid and in the past."""
+        root = Reminder.objects.create(
+            account=self.account,
+            amount=Decimal("10.00"),
+            next_due_date=date(2026, 9, 20),
+            frequency="monthly",
+            end_date=date(2026, 12, 20),
+        )
+        payment = Transaction.objects.create(account=self.account, date=date(2026, 9, 20), amount=Decimal("-10.00"))
+        root.mark_entered(payment)
+        payment.delete()
+        september = root.occurrences.get(next_due_date=date(2026, 9, 20))
+        self.assertIsNone(september.last_entered_transaction_id)
+        return root, september
+
+    def test_an_unpaid_earlier_period_survives_skipping_the_series(self, _):
+        root, september = self._series_with_a_september_whose_payment_was_deleted()
+        root.refresh_from_db()
+        root.skip()
+        # Kept, and still overdue: it's a bill nobody paid, so it stays where you'll see it.
+        kept = Reminder.objects.get(pk=september.pk)
+        self.assertEqual(kept.status(date(2026, 10, 1)), "overdue")
+
+    def test_an_unpaid_earlier_period_survives_a_full_save_of_the_series(self, _):
+        root, september = self._series_with_a_september_whose_payment_was_deleted()
+        root.refresh_from_db()
+        root.save()
+        self.assertTrue(Reminder.objects.filter(pk=september.pk).exists())
+
+    def _move_due_date(self, root, new_due_date):
+        form = ReminderForm(
+            instance=root,
+            data={
+                "reminder_type": "expense",
+                "account": self.account.pk,
+                "frequency": "monthly",
+                "next_due_date": new_due_date,
+                "end_date": "20/12/2026",
+            },
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        form.save()
+
+    def test_moving_the_due_date_later_removes_the_previews_it_skipped_over(self, _):
+        # The previews between the old and the new due date are no longer upcoming, and nobody
+        # owes them, so they go (the date you typed also stands for itself, so its preview goes).
+        root = Reminder.objects.create(
+            account=self.account,
+            amount=Decimal("10.00"),
+            next_due_date=date(2026, 9, 20),
+            frequency="monthly",
+            end_date=date(2026, 12, 20),
+        )
+        self.assertEqual(root.occurrences.count(), 3)  # Oct, Nov, Dec
+        self._move_due_date(root, "20/11/2026")
+        self.assertEqual(list(root.occurrences.values_list("next_due_date", flat=True)), [date(2026, 12, 20)])
+
+    def test_moving_the_due_date_later_keeps_an_unpaid_earlier_period(self, _):
+        # S51 still holds: the unpaid September is dated before where the due date used to be.
+        root, september = self._series_with_a_september_whose_payment_was_deleted()
+        root.refresh_from_db()
+        self._move_due_date(root, "20/12/2026")
+        self.assertTrue(Reminder.objects.filter(pk=september.pk).exists())
+        self.assertFalse(root.occurrences.filter(next_due_date__in=[date(2026, 11, 20)]).exists())
+
+    def _open_occurrence(self, root, on):
+        """An occurrence of `root` that nobody has paid or skipped, put on a date by hand."""
+        return Reminder.objects.create(
+            series=root,
+            frequency=Reminder.Frequency.ONE_TIME,
+            next_due_date=on,
+            account=root.account,
+            amount=root.amount,
+        )
+
+    def _occurrences(self, root):
+        """Every occurrence of `root`, oldest first, as (date, "open" | "paid" | "skipped")."""
+
+        def state(occurrence):
+            if occurrence.last_entered_transaction_id:
+                return "paid"
+            return "skipped" if occurrence.skipped else "open"
+
+        return [(o.next_due_date, state(o)) for o in root.occurrences.order_by("next_due_date")]
+
+    def test_moving_the_due_date_earlier_keeps_an_unpaid_earlier_period_and_redates_the_previews(self, _):
+        # Broken if the earlier-moving case dropped every open occurrence that is not on the new
+        # schedule (the pre-S51 rule): September would go. The previews must follow the new day (5th).
+        root, _september = self._series_with_a_september_whose_payment_was_deleted()
+        root.refresh_from_db()
+        self.assertEqual(root.next_due_date, date(2026, 10, 20))
+        self._move_due_date(root, "05/10/2026")
+        self.assertEqual(
+            self._occurrences(root),
+            [(date(2026, 9, 20), "open"), (date(2026, 11, 5), "open"), (date(2026, 12, 5), "open")],
+        )
+
+    def test_moving_the_due_date_back_before_an_unpaid_period_takes_it_in_as_a_preview(self, _):
+        # The rule is "on or after the earlier of the old and new due date". September 20th is
+        # after the 5th, so once the series starts on 5 September it is just a date that is not on
+        # the new schedule (5 October, 5 November, ...), like the old 20 November and 20 December.
+        root, _september = self._series_with_a_september_whose_payment_was_deleted()
+        root.refresh_from_db()
+        self._move_due_date(root, "05/09/2026")
+        self.assertEqual(
+            self._occurrences(root),
+            [(date(2026, 10, 5), "open"), (date(2026, 11, 5), "open"), (date(2026, 12, 5), "open")],
+        )
+
+    def test_occurrences_already_paid_or_skipped_survive_the_due_date_moving_past_them(self, _):
+        root = Reminder.objects.create(
+            account=self.account,
+            amount=Decimal("10.00"),
+            next_due_date=date(2026, 9, 20),
+            frequency="monthly",
+            end_date=date(2026, 12, 20),
+        )
+        october = root.occurrences.get(next_due_date=date(2026, 10, 20))
+        october.last_entered_transaction = Transaction.objects.create(
+            account=self.account, date=date(2026, 10, 20), amount=Decimal("-10.00")
+        )
+        october.save(update_fields=["last_entered_transaction"])
+        root.occurrences.get(next_due_date=date(2026, 11, 20)).skip()
+
+        self._move_due_date(root, "20/12/2026")
+
+        # October (paid) and November (skipped) lie between the old and the new due date but are
+        # records now; only the open December preview goes, because the series itself stands for it.
+        self.assertEqual(self._occurrences(root), [(date(2026, 10, 20), "paid"), (date(2026, 11, 20), "skipped")])
+
+    def test_regenerating_with_no_previous_due_date_only_drops_previews_from_the_due_date_on(self, _):
+        # The default argument: nothing is known about an earlier due date, so only the current one counts.
+        root, _september = self._series_with_a_september_whose_payment_was_deleted()
+        root.refresh_from_db()
+        self._open_occurrence(root, root.next_due_date)  # on the series' own date: the series stands for it
+        root.regenerate_occurrences()
+        self.assertEqual(
+            self._occurrences(root),
+            [(date(2026, 9, 20), "open"), (date(2026, 11, 20), "open"), (date(2026, 12, 20), "open")],
+        )
+
+    def test_entering_the_series_keeps_an_unpaid_earlier_period_and_creates_no_duplicates(self, _):
+        root, _september = self._series_with_a_september_whose_payment_was_deleted()
+        root.refresh_from_db()
+        payment = Transaction.objects.create(account=self.account, date=date(2026, 10, 20), amount=Decimal("-10.00"))
+        root.mark_entered(payment)
+        root.refresh_from_db()
+        self.assertEqual(root.next_due_date, date(2026, 11, 20))
+        # September still unpaid, October now a Paid record, November absorbed by the series itself.
+        self.assertEqual(
+            self._occurrences(root),
+            [(date(2026, 9, 20), "open"), (date(2026, 10, 20), "paid"), (date(2026, 12, 20), "open")],
+        )
+
+    def test_skipping_the_series_keeps_an_unpaid_earlier_period_and_creates_no_duplicates(self, _):
+        root, _september = self._series_with_a_september_whose_payment_was_deleted()
+        root.refresh_from_db()
+        root.skip()
+        root.refresh_from_db()
+        self.assertEqual(root.next_due_date, date(2026, 11, 20))
+        self.assertEqual(
+            self._occurrences(root),
+            [(date(2026, 9, 20), "open"), (date(2026, 10, 20), "skipped"), (date(2026, 12, 20), "open")],
+        )
+
+    def test_an_end_of_period_series_moves_on_and_keeps_an_unpaid_earlier_period(self, _):
+        # Last-day-of-month dates differ in length (30, 31): not the same arithmetic as a plain monthly series.
+        root = Reminder.objects.create(
+            account=self.account,
+            amount=Decimal("10.00"),
+            next_due_date=date(2026, 9, 30),
+            frequency="monthly",
+            end_of_period=True,
+            end_date=date(2026, 12, 31),
+        )
+        self.assertEqual(
+            [due for due, _state in self._occurrences(root)],
+            [date(2026, 10, 31), date(2026, 11, 30), date(2026, 12, 31)],
+        )
+        self._open_occurrence(root, date(2026, 8, 31))
+        payment = Transaction.objects.create(account=self.account, date=date(2026, 9, 30), amount=Decimal("-10.00"))
+        root.mark_entered(payment)
+        root.refresh_from_db()
+        self.assertEqual(root.next_due_date, date(2026, 10, 31))
+        self.assertEqual(
+            self._occurrences(root),
+            [
+                (date(2026, 8, 31), "open"),
+                (date(2026, 9, 30), "paid"),
+                (date(2026, 11, 30), "open"),
+                (date(2026, 12, 31), "open"),
+            ],
+        )
+
+    def test_moving_the_due_date_later_works_for_every_frequency(self, _):
+        earlier = date(2026, 1, 5)
+        cases = [
+            # frequency, interval, first due, end date, new due date, what is still open afterwards
+            ("weekly", 1, date(2026, 9, 21), date(2026, 10, 19), date(2026, 10, 12), [date(2026, 10, 19)]),
+            ("weekly", 2, date(2026, 9, 21), date(2026, 11, 2), date(2026, 10, 19), [date(2026, 11, 2)]),
+            (
+                "quarterly",
+                1,
+                date(2026, 9, 20),
+                date(2027, 9, 20),
+                date(2027, 3, 20),
+                [date(2027, 6, 20), date(2027, 9, 20)],
+            ),
+            (
+                "yearly",
+                1,
+                date(2026, 9, 20),
+                date(2030, 9, 20),
+                date(2028, 9, 20),
+                [date(2029, 9, 20), date(2030, 9, 20)],
+            ),
+        ]
+        for frequency, interval, first_due, end_date, new_due, still_open in cases:
+            with self.subTest(frequency=frequency, interval=interval):
+                root = Reminder.objects.create(
+                    account=self.account,
+                    amount=Decimal("10.00"),
+                    next_due_date=first_due,
+                    frequency=frequency,
+                    interval=interval,
+                    end_date=end_date,
+                )
+                self.assertGreater(root.occurrences.count(), len(still_open))  # there is something to remove
+                self._open_occurrence(root, earlier)
+                root.next_due_date = new_due
+                root.save()
+                self.assertEqual(self._occurrences(root), [(earlier, "open"), *((d, "open") for d in still_open)])
 
     def test_each_occurrence_can_be_entered_independently(self, _):
         root = Reminder.objects.create(
@@ -1135,6 +1427,24 @@ class ReminderEnterAndSkipTests(StashTestCase):
         self.assertEqual(open_amounts, {Decimal("9")})
 
 
+class ReminderSkipMessageTests(LoggedInWithAccountTestCase):
+    """The Skip message names the date that was skipped, taken before a recurring reminder moves on."""
+
+    def _skip(self, **fields):
+        reminder = Reminder.objects.create(
+            account=self.account, amount=Decimal("10.00"), next_due_date=date(2026, 10, 1), **fields
+        )
+        response = self.client.post(reverse("finance:reminder_skip", args=[reminder.pk]), follow=True)
+        return [str(m) for m in response.context["messages"]]
+
+    def test_a_recurring_reminder_names_the_date_skipped_and_the_date_it_moved_to(self):
+        messages = self._skip(frequency="monthly", end_date=date(2026, 12, 1))
+        self.assertEqual(messages, ["Skipped 01/10/2026 | Reminder | -10.00; moved it to 01/11/2026."])
+
+    def test_a_one_time_reminder_has_no_move(self):
+        self.assertEqual(self._skip(frequency="one_time"), ["Skipped 01/10/2026 | Reminder | -10.00."])
+
+
 class ReminderSaveTests(StashTestCase):
     """6.2 (F12): a save regenerates occurrences only when it can move a date."""
 
@@ -1165,6 +1475,28 @@ class ReminderSaveTests(StashTestCase):
     def test_a_one_time_reminder_never_regenerates(self):
         self.reminder.frequency = Reminder.Frequency.ONE_TIME
         self.assertFalse(self._saved())
+
+    def test_the_stored_due_date_of_a_reminder_not_saved_yet_is_none(self):
+        unsaved = Reminder(account=self.reminder.account, next_due_date=date(2027, 1, 1))
+        self.assertIsNone(unsaved._stored_due_date())
+
+    def test_the_stored_due_date_is_what_the_database_holds_not_an_unsaved_change(self):
+        reminder = Reminder.objects.get(pk=self.reminder.pk)
+        reminder.next_due_date = date(2027, 1, 1)
+        self.assertEqual(reminder._stored_due_date(), date(2026, 10, 15))
+
+    def test_save_hands_regenerate_the_due_date_from_before_the_save(self):
+        # Read after the save, it would be the new date and a due date moved later could not be told apart.
+        self.reminder.next_due_date = date(2027, 1, 1)
+        with mock.patch.object(Reminder, "regenerate_occurrences") as regenerate:
+            self.reminder.save()
+        regenerate.assert_called_once_with(previous_due_date=date(2026, 10, 15))
+
+    def test_a_new_recurring_reminder_has_no_previous_due_date(self):
+        new = Reminder(account=self.reminder.account, frequency="monthly", next_due_date=date(2027, 1, 1))
+        with mock.patch.object(Reminder, "regenerate_occurrences") as regenerate:
+            new.save()
+        regenerate.assert_called_once_with(previous_due_date=None)
 
 
 class ReminderListQueryTests(LoggedInWithAccountTestCase):

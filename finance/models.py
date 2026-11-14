@@ -736,7 +736,6 @@ class Reminder(models.Model):
         return f"{regional.format_date(self.next_due_date)} | {who} | {amount if amount is not None else 'varies'}"
 
     def save(self, *args, **kwargs):
-        super().save(*args, **kwargs)
         # A recurring reminder keeps its future occurrences in sync in save() itself, not just in
         # the form, so the admin, scripts and the shell get the same occurrences. A full save
         # (every form and admin edit) always regenerates: that's also what moves the
@@ -744,8 +743,18 @@ class Reminder(models.Model):
         # if one of them is part of the schedule - marking a period paid doesn't move any date.
         update_fields = kwargs.get("update_fields")
         schedule_saved = update_fields is None or not self.SCHEDULE_FIELDS.isdisjoint(update_fields)
-        if self.frequency != self.Frequency.ONE_TIME and schedule_saved:
-            self.regenerate_occurrences()
+        regenerate = self.frequency != self.Frequency.ONE_TIME and schedule_saved
+        # Read before the save overwrites it: regenerate_occurrences() must know if the due date moved.
+        previous_due_date = self._stored_due_date() if regenerate else None
+        super().save(*args, **kwargs)
+        if regenerate:
+            self.regenerate_occurrences(previous_due_date=previous_due_date)
+
+    def _stored_due_date(self):
+        """The due date saved in the database right now, or None for a reminder not saved yet."""
+        if self.pk is None:
+            return None
+        return Reminder.objects.filter(pk=self.pk).values_list("next_due_date", flat=True).first()
 
     def delete(self, *args, **kwargs):
         # Deleting a whole series takes its still-open occurrences with it (series is
@@ -906,20 +915,27 @@ class Reminder(models.Model):
             self.save(update_fields=["last_entered_transaction"])
         self.advance_due_date()
 
-    def regenerate_occurrences(self):
+    def regenerate_occurrences(self, previous_due_date=None):
         """Keep this recurring reminder's auto-generated future occurrences in sync with its
         own due date, frequency and end date (2026-09-14 follow-up) - one real `Reminder` row
         per future occurrence, so each can be entered/skipped/edited on its own, same as any
         other reminder. Only ever called on a series head (never on a one-time reminder or an
         occurrence itself, both of which have nothing to generate).
 
-        Already-resolved occurrences (paid or skipped) are never touched, even if a shortened
-        end date would otherwise drop them - and an occurrence that's still just a preview but
+        Only a preview can be dropped. Already-resolved occurrences (paid or skipped) are never
+        touched, even if a shortened end date would otherwise drop them, and a preview that
         already exists for a wanted date is left alone too, so hand-editing one instance (e.g.
         a higher amount one month) survives the next regeneration.
+
+        A preview is an open occurrence dated on or after this reminder's due date, or after
+        where it used to be (`previous_due_date`, when this save moved it later): the dates
+        between are ones you skipped over by hand. An open occurrence dated before both is an
+        earlier period nobody paid (its payment was deleted, S51): a real overdue bill, so it
+        stays.
         """
         if self.frequency == self.Frequency.ONE_TIME:
             return
+        first_preview_date = min(previous_due_date or self.next_due_date, self.next_due_date)
         horizon = self.end_date or self.default_generation_horizon()
         wanted_dates = []
         cursor = self.next_due_date
@@ -931,7 +947,9 @@ class Reminder(models.Model):
         existing = {o.next_due_date: o for o in self.occurrences.all()}
         with system_action(f"Auto-generated occurrences updated for recurring reminder ({self})"):
             for occ_date, occ in existing.items():
-                if occ_date not in wanted_dates and not occ.last_entered_transaction_id and not occ.skipped:
+                is_open = not occ.last_entered_transaction_id and not occ.skipped
+                is_preview = occ_date >= first_preview_date
+                if is_open and is_preview and occ_date not in wanted_dates:
                     occ.delete()
             for occ_date in wanted_dates:
                 if occ_date not in existing:

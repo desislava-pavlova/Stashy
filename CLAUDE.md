@@ -46,7 +46,7 @@ terms.
 ## Commands
 
 ```
-.venv\Scripts\python.exe manage.py test                          # full suite, ~75 s (936 tests on 14/11/2026)
+.venv\Scripts\python.exe manage.py test                          # full suite, ~75 s (978 tests on 14/11/2026)
 .venv\Scripts\python.exe manage.py test finance.tests.test_reminders  # one module (audit: `test audit`)
 .venv\Scripts\python.exe manage.py migrate --database <stash>    # one stash (Stashy.bat does all, with backups)
 .venv\Scripts\python.exe manage.py reset_pin <owner name>        # real, visible action - ask first
@@ -107,7 +107,15 @@ check.bat                                                        # ruff check + 
     `_paged()`, only when the range is longer than a year or open (the
     account register always is). The count and total cover every page;
     exports ignore `page`. `_paged()` ends every order with `-pk`, so tied
-    rows never repeat or vanish across pages.
+    rows never repeat or vanish across pages; the transactions export ends
+    its order the same way (`_ordered_with_ties_broken()`), so it matches
+    the page.
+  - Column sorting: `_sorted()` takes a dict of column key -> list of
+    field names, or of expressions. The Payment and Deposit headers sort
+    their own side (keys `payment` and `deposit`, `AMOUNT_SORT_COLUMNS`):
+    an expression that is NULL on the other side, written so ascending
+    puts the biggest first, which `_order_by()` sorts with NULLs last in
+    both directions. There is no shared `amount` key any more.
   - The Transactions page's Edit mode: rows carry raw values as `data-`
     attributes, and `transaction-quick-edit.js` builds a row's controls
     from the one `<template id="quick-edit-controls">` as the row comes near
@@ -117,7 +125,11 @@ check.bat                                                        # ruff check + 
     slowness). A date box added by script calls `window.stashyDatepicker()`
     (it returns the picker); Edit mode does that on first focus. While
     editing, the filters' `<fieldset>` is disabled and the links that
-    reload the page are locked (8.10b).
+    reload the page are locked (8.10b). A row saves when any control with
+    `.quick-edit-cell` changes (the Payment and Deposit boxes have no
+    `data-field`, so never key on that), one save at a time per row
+    (`queueSave()`), and an empty amount is sent as empty so the form
+    refuses it.
   - Date-range forms: a date box with `data-range-date` switches its
     form's `range` select to "custom" as you type (`stashy.js`), without
     submitting. Dates typed into a URL are read with
@@ -258,7 +270,10 @@ check.bat                                                        # ruff check + 
 - `save()` side effects run only when they matter: `Account.save()` syncs
   its transfer category for a new account or a changed name;
   `Reminder.save()` regenerates occurrences on a full save or when
-  `update_fields` includes a `SCHEDULE_FIELDS` name.
+  `update_fields` includes a `SCHEDULE_FIELDS` name. Regeneration drops
+  only previews: open occurrences dated from the earlier of the old and
+  the new due date (`save()` reads the stored one first). An open
+  occurrence before that is an unpaid earlier period and stays (S51).
 - Imports go at the top of the module. One that must stay inside a
   function gets a `# Imported here: <why>` comment (a test checks).
 - Code that changes audited data goes through model `save()`/`delete()`,

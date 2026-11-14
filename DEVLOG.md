@@ -5447,3 +5447,127 @@ about how refunds look are in plan 04 as R32. The suite went from 868 to
 tests in `test_reporting.py`, `test_reports.py`, `test_dashboard.py`,
 `test_exports.py` and `test_accounts.py`, `plans/03_structure_review.md`,
 `plans/04_fixes_and_changes_plan.md`, `plans/README.md`, this log.
+
+
+## 14/11/2026 — Plan 03, Phase 1, part C: Payment and Deposit sort separately, an unpaid reminder period survives, Edit mode saves safely (S38, S39, S51, S52, S55)
+
+**What changed:** the third of Phase 1's four parts, reminders and transactions.
+- **S39:** the **Payment** and **Deposit** headers each sort their own side,
+  on Transactions, on an account's register and in the export. The first
+  click puts the biggest first, the second the smallest, and rows with
+  nothing in that column (the other side, and 0.00 rows) stay at the bottom
+  both times. Only the clicked header shows its arrow. An old link with
+  `?sort=amount` shows the default order.
+- **S38:** the register's unreconciled "—" is plain muted text, not a
+  near-white pill that was barely readable in dark mode.
+- **S51:** delete the transaction that paid a past date of a recurring
+  reminder and that date turns overdue; it used to vanish at the next
+  Enter, Skip or save of the series. Now it stays.
+- **S52:** the green message after Enter names the date that was paid:
+  "Entered 01/10/2026 | Alex | -500.00 and moved it to 01/11/2026." (it
+  used to give the new date twice).
+- **S55:** in Edit mode, quick changes to one row are saved one after the
+  other (a slow save can no longer overwrite a newer one), and emptying
+  both amount boxes is refused ("This field is required", the boxes turn
+  red) instead of saving 0.00.
+- **From the reviews:** a change to only the Payment or Deposit box now
+  saves by itself (S97: it never did, see below). Moving a recurring
+  reminder's due date later by hand removes the previews it skipped over,
+  as before (S98, your call). The export orders ties like the page (S99).
+
+**Why the code looks like this:**
+- S39: every sort column used to be "field ascending, then descending",
+  and Payment and Deposit both pointed at `amount`. A payment is stored
+  negative, so "biggest payment first" is simply ascending; a deposit is
+  negated in the sort expression so the same is true. Both are `Case/When`
+  expressions that are NULL on the other side, so one rule gives the
+  order and NULL rows go last in both directions (`.asc(nulls_last=True)`,
+  `.desc(nulls_last=True)`). `_sorted()` still takes plain field names;
+  `_order_by()` treats anything that isn't a string as an expression. The
+  two columns live once, in `AMOUNT_SORT_COLUMNS`, and both pages spread
+  it into their dict. SQLite orders these exactly to the cent (the
+  database review sorted 24,000 random amounts and compared them with
+  Python's `Decimal`).
+- S51: the old rule deleted every open occurrence that wasn't a wanted
+  future date, so an open occurrence in the past (an unpaid period) went
+  with the stale previews. A preview is now an open occurrence dated from
+  the due date on. The plan said "after", but it has to be "on or after":
+  after an Enter, the preview that sits on the series' new due date is
+  redundant and must go, and an existing test pins that.
+- S98: that rule cannot tell an unpaid earlier period from previews a
+  hand edit skipped over (a due date of 20/09 edited to 20/11 left October
+  behind as overdue). Nothing in the data tells them apart, so `save()`
+  now reads the stored due date before overwriting it and passes it to
+  `regenerate_occurrences(previous_due_date=...)`; a preview is an open
+  occurrence dated from the *earlier* of the old and the new due date. An
+  unpaid period is dated before the old due date, so it stays. It costs one
+  extra query, only on a recurring reminder's schedule save. A column that
+  marks "created by recording a period" would be exact but needs a
+  migration, which isn't worth it for this.
+- S52: `str(reminder)` includes the due date, and `mark_entered()` moves
+  it on. The label is now taken first, as `reminder_skip` already did.
+- S55: the queue is "one save in flight per row, plus at most one more".
+  A change made while a save runs only marks the row; when the save ends
+  the row is saved once with whatever its boxes hold by then (each save
+  posts the whole row, so the last one is the truth). `WeakSet`s hold the
+  state, so no row object is kept alive. The empty amount is sent as an
+  empty string so the form's own "required" check answers; `showRowErrors()`
+  maps an `amount` error onto the Payment and Deposit boxes, which have no
+  `data-field` of their own.
+- S97 (the review's Critical item): the `change` handler looked for the
+  nearest element with `data-field`. The Payment and Deposit boxes have
+  none (the amount is worked out from the pair), so changing only one of
+  them did nothing; the amount only travelled along when another box on
+  the row changed. The handler now looks for `quick-edit-cell`, which every
+  control has, and a test checks that every control in the template carries
+  it. That was already so before today's work. I could not try it in a
+  browser, so it is read from the code and checked against a stand-in page.
+- S99: `_paged()` put `-pk` after the sort so tied rows have one fixed
+  order, but the export didn't, so with the new sorts the whole "other
+  side" came out in the database's own order. One
+  `_ordered_with_ties_broken()` now serves both.
+- The new tests were checked against the old code first (I ran them before
+  changing any app code: 17 assertions failed). A few pass on the old code
+  on purpose: they guard behaviour that mustn't change, or the server's
+  half of the empty-amount check (the bug was in the script). The script's
+  fixes were checked with a throwaway Node script against a fake page:
+  without the queue three requests went out at once, and an empty amount
+  was sent as "0". That script lives in the scratchpad, not in the project.
+- A slip worth knowing: a scripted edit turned a regex's word-boundary
+  escape into a backspace character. The test that used it found 0
+  controls instead of 9, which is how it showed. When a test finds nothing,
+  suspect the pattern.
+
+**Teaching note — key an event on what every control has, not on what
+some do.** The Edit-mode handler asked "is this inside something with
+`data-field`?", which was true for seven of the nine controls. The two it
+missed were exactly the amount boxes, so the main thing you would edit
+quietly didn't save. When code treats a group the same way, listen for the
+one thing the whole group shares (here a class), and add a test that the
+whole group has it. The second lesson is S98's: a rule ("remove what isn't
+wanted") can be right in every case it was written for and still be unable
+to tell two different things apart. When that happens, don't loosen the
+rule; find the extra fact that tells them apart (here, where the due date
+was before the edit).
+
+**Reviews:** code, database, security, front end and QA read it. One
+Critical item (S97) and one question (S98) were done the same day with
+your answers, with S99. The rest is filed in plan 03 as S100–S103 (section
+L): the "Could not save" message, `regenerate_occurrences()`'s smaller
+things, three older reminder quirks that need your call (a series can end
+up due on an already-Paid date; an off-schedule date you typed is deleted;
+an unpaid period is taken in as a preview when the due date moves back
+before it), and whether to add browser tests for Edit mode. QA added 25
+tests (amounts a cent apart, a sort across a page boundary with the page
+size lowered, the sort with filters, the due date moved for every
+frequency). The suite went from 936 to 978 tests.
+
+**Files touched:** `finance/models.py`, `finance/views/_helpers.py`,
+`finance/views/exports.py`, `finance/views/transactions.py`,
+`finance/views/accounts.py`,
+`finance/templates/finance/transaction_list.html`,
+`finance/templates/finance/account_detail.html`,
+`finance/static/finance/js/transaction-quick-edit.js`, `README.md`,
+`CLAUDE.md`, the tests in `test_reminders.py`, `test_transactions.py` and
+`test_accounts.py`, `plans/03_structure_review.md`, `plans/README.md`, this
+log.

@@ -34,8 +34,8 @@
                 <th><a href="{% querystring sort=sort_next.payee page=None %}" class="sort-link">Payee{% include "finance/includes/sort_arrow.html" with column="payee" %}</a></th>
                 <th><a href="{% querystring sort=sort_next.category page=None %}" class="sort-link">Category{% include "finance/includes/sort_arrow.html" with column="category" %}</a></th>
                 <th><a href="{% querystring sort=sort_next.memo page=None %}" class="sort-link">Memo{% include "finance/includes/sort_arrow.html" with column="memo" %}</a></th>
-                <th class="text-end"><a href="{% querystring sort=sort_next.amount page=None %}" class="sort-link">Payment{% include "finance/includes/sort_arrow.html" with column="amount" %}</a></th>
-                <th class="text-end"><a href="{% querystring sort=sort_next.amount page=None %}" class="sort-link">Deposit{% include "finance/includes/sort_arrow.html" with column="amount" %}</a></th>
+                <th class="text-end"><a href="{% querystring sort=sort_next.payment page=None %}" class="sort-link">Payment{% include "finance/includes/sort_arrow.html" with column="payment" %}</a></th>
+                <th class="text-end"><a href="{% querystring sort=sort_next.deposit page=None %}" class="sort-link">Deposit{% include "finance/includes/sort_arrow.html" with column="deposit" %}</a></th>
                 <th>Status</th>
                 <th></th>
             </tr>
@@ -52,7 +52,7 @@
                 <td class="text-end text-nowrap amount-positive">{% if t.amount > 0 %}{{ t.amount|moneyc:account.currency }}{% endif %}</td>
                 <td>
                     {% if t.reconciled %}<span class="badge text-bg-success">R</span>
-                    {% else %}<span class="badge text-bg-light text-muted border">—</span>{% endif %}
+                    {% else %}<span class="text-muted">—</span>{% endif %}
                 </td>
                 <td class="text-end text-nowrap">
                     <a href="{% url 'finance:transaction_edit' t.pk %}?next={{ request.get_full_path|urlencode }}" class="btn btn-sm btn-outline-secondary btn-icon" aria-label="Edit"><i class="bi bi-pencil"></i></a>

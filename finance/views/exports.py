@@ -20,7 +20,7 @@ from ..reporting import (
     net_worth_by_account,
     watched_expenses_category_ids,
 )
-from ._helpers import _export_response, _sorted
+from ._helpers import _export_response, _ordered_with_ties_broken, _sorted
 from .reports import _report_filters
 from .transactions import TRANSACTION_LIST_SORT_FIELDS, _filtered_transactions
 
@@ -45,6 +45,7 @@ def export_transactions(request):
     so what you get matches what you were looking at."""
     transactions, _filters = _filtered_transactions(request)
     transactions, _sort, _sort_next = _sorted(request, transactions, TRANSACTION_LIST_SORT_FIELDS)
+    transactions = _ordered_with_ties_broken(transactions)
     headers = ["Date", "Number", "Account", "Payee", "Category", "Memo", "Amount", "Currency", "Reconciled"]
     rows = [
         [

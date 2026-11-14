@@ -483,8 +483,8 @@ Stashy.
 | S35 | 12/11/2026 | Templates across `finance/` and `registration/`; `transaction-quick-edit.js`, `reports.js` | Things a screen reader or keyboard user trips over; nothing changes on screen except that clicking a label now puts you in its box. **Labels not linked to their box** (the S29 kind): Import (Account, File, Date format), the Reports filters (Date range, Subtotal by, Average interval, Account, Start, End); on Reports the "?" icon moves out of the label, so clicking it doesn't jump into the box. **Controls with no name:** the login PIN box, the reconcile tick boxes ("Reconcile Lidl 05/11/2026"), Edit mode's controls in `<template id="quick-edit-controls">`, and the pencil and bin buttons on the Accounts, Categories, Payees and Reminders lists (`aria-label="Edit"`/`"Delete"`, as Transactions already has). **Not reachable with Tab:** Reports' show/hide-subcategories arrow (`report-toggle-icon`, in both report tables and the Net worth table) becomes a real button that says whether it's open, looking the same; the "?" help icons get a name ("About Date range"). **Headings:** 15 pages use `<h3>` for their page title; they get `<h1 class="h3">` like the rest (same look). **Charts:** the 8 report charts and the dashboard donut get `role="img"` and a short description. **Transactions' Rec. tick** gets hidden "Reconciled" text. Your call (12/11/2026): none of this is yours to decide. Proposed phase: 5. | open |
 | S36 | 12/11/2026 | `account_list.html`, `transaction_form.html`, `reports.html`, `includes/sidebar_contents.html`, the transaction counts | Small on-screen slips, Claude's to fix (polish): Accounts' warning repeats a currency once per left-out account ("No known rate for USD, USD"), so each shows once (with S31's shared warning); the transaction form's browser tab says "New transaction" while its heading says "Enter reminder" (the title gets the same if/elif); Reports' error box uses internal field names ("Interval: Select a valid choice…" for the box labelled "Average interval"), so it uses the labels; the sidebar highlights Settings on Change PIN, New recovery code and Restore backup too; counts like "2500 transactions · showing 1001–2000" get the stash's thousands separator (worked out from the code, check when building). Proposed phase: 5. | open |
 | S37 | 12/11/2026 | `reports.html`, `welcome_categories.html`, `includes/head_assets.html`, `account_reconcile_review.html`, three pages with an inline width, `settings.html` | Leftovers in the templates, nothing you'd notice today: Reports' "View them" link puts display-format dates in the URL (`start|sdate`), while Stashy's own links carry YYYY-MM-DD (`regional.parse_date()`), so `date:"Y-m-d"`; "26 top-level categories" on the welcome step is typed in, so the view counts them from the spreadsheet; the `theme-color` tag is the light colour in both modes, so it gets a dark twin; reconcile's hidden balance and `data-amount` use the raw value where Transactions uses `unlocalize`, so they do too; `style="max-width: 560px;"` written into `generic_confirm_delete`, `backup_restore_confirm` and `reminder_edit_scope` becomes one class in `stashy.css` (with S19's `delete_page.html`); Settings' Restore link gets `urlencode` on the backup name (safe today: the names are plain letters, digits, `-`, `_` and `.`). Proposed phase: 5. | open |
-| S38 | 12/11/2026 | `finance/templates/finance/account_detail.html`, the register's Status column | Rows that aren't reconciled show "—" in a `badge text-bg-light text-muted border` pill. Bootstrap keeps `text-bg-light` near-white in dark mode, while `text-muted` turns the dash pale, so every such row gets a bright pill with a barely visible dash. Same kind of bug as S6. You looked at it and said fix it (12/11/2026). Claude's call: a plain muted "—" without the pill, as Transactions' Rec. column already does; it reads the same in both modes and needs no new CSS. The green **R** pill for reconciled rows stays. A test that the register no longer uses `text-bg-light`. Proposed phase: 1, next to S6. | open (decided 12/11/2026) |
-| S39 | 12/11/2026 | `finance/views/transactions.py` (`TRANSACTION_LIST_SORT_FIELDS`), `finance/views/accounts.py` (`ACCOUNT_REGISTER_SORT_FIELDS`), `transaction_list.html`, `account_detail.html` | The Payment and Deposit headers both sort by `amount`, so clicking either does the same thing and both show the arrow. Your call (12/11/2026, yes to Claude's suggestion): each sorts its own side. Payment: the first click puts the biggest payment first, the second the smallest; rows with no payment (deposits) stay at the bottom either way. Deposit works the same way for deposits. Only the clicked header shows the arrow. On both Transactions and the account register. A test for each column and each direction. Proposed phase: 1 (two headers doing the same is a bug). | open (decided 12/11/2026) |
+| S38 | 12/11/2026 | `finance/templates/finance/account_detail.html`, the register's Status column | Rows that aren't reconciled show "—" in a `badge text-bg-light text-muted border` pill. Bootstrap keeps `text-bg-light` near-white in dark mode, while `text-muted` turns the dash pale, so every such row gets a bright pill with a barely visible dash. Same kind of bug as S6. You looked at it and said fix it (12/11/2026). Claude's call: a plain muted "—" without the pill, as Transactions' Rec. column already does; it reads the same in both modes and needs no new CSS. The green **R** pill for reconciled rows stays. A test that the register no longer uses `text-bg-light`. Proposed phase: 1, next to S6. Built as a muted dash in a `<span class="text-muted">`, like the register's other dashes. | done 14/11/2026 (item 1.14) |
+| S39 | 12/11/2026 | `finance/views/transactions.py` (`TRANSACTION_LIST_SORT_FIELDS`), `finance/views/accounts.py` (`ACCOUNT_REGISTER_SORT_FIELDS`), `transaction_list.html`, `account_detail.html` | The Payment and Deposit headers both sort by `amount`, so clicking either does the same thing and both show the arrow. Your call (12/11/2026, yes to Claude's suggestion): each sorts its own side. Payment: the first click puts the biggest payment first, the second the smallest; rows with no payment (deposits) stay at the bottom either way. Deposit works the same way for deposits. Only the clicked header shows the arrow. On both Transactions and the account register. A test for each column and each direction. Proposed phase: 1 (two headers doing the same is a bug). Built with the keys `payment` and `deposit`; the old `?sort=amount` is ignored. Also on the export. | done 14/11/2026 (item 1.15) |
 
 | S40 | 13/11/2026 | `pyproject.toml` (`[tool.ruff.lint.isort]`) and the 14 files whose imports it reorders | You group imports as Python's own, then Django, then the project's (your SpotiCode habit). Stashy already groups and sorts them, through ruff's `I` rule (`ruff check .` fails on a wrong order, `ruff check --fix .` sorts), but Django shares one group with the other outside libraries (dateutil, ofxparse, openpyxl, whitenoise, tzlocal), sorted alphabetically, so `dateutil` comes before `django`. Fix: Django gets its own group, after Python's and before the other libraries (`section-order` plus a `django` section, three lines in `pyproject.toml`), then `ruff check --fix .` rearranges the 14 files that mix Django with another library: 9 app files and 5 test files (a dry run, 13/11/2026; nothing else changes). No group labels like `# Django`: the sorter keeps a comment attached to the import below it, so after sorting the labels land in the wrong place and split the groups (Claude tried it on a copy), and the blank lines and the module names already say which group is which. Your call (13/11/2026): Claude's way. **Also (your habit, added 13/11/2026): two blank lines after the imports in every file.** PEP 8 asks for two before a top-level `def` or `class` and gives no number before anything else. Ruff's sorter decides by what follows: two before a `def` or `class` (36 files today), one before a constant (38 files, e.g. `PAYEE_SORT_KEYS` in `payees.py`). `lines-after-imports = 2` in the same `[tool.ruff.lint.isort]` block makes it two everywhere (Claude tried it on scratch files), and `ruff check --fix` adds the missing line in those 38 files. Proposed phase: 3, as its first step (3.0), so the moves after it are written in the new order and the reshuffle stays out of their diffs. | open (decided 13/11/2026) |
 | S41 | 13/11/2026 | `finance/services/importing.py` (`_RECONCILED_FALSE_VALUES`, `_import_rows()`), `finance/tests/test_imports.py` | You'd like an empty Reconciled cell to count as "no". **It already works that way (Claude checked the code):** an empty cell, a cell holding only spaces and a file with no Reconciled column all become `""`, and `""` is in `_RECONCILED_FALSE_VALUES`, so the transaction comes in unreconciled. The same goes for `n`, `no`, `false`, `0`, `u`, `unreconciled` and `uncleared`, and for Excel's FALSE and 0. Anything else counts as reconciled (`R`, `yes`, TRUE, `1`, …). What's missing: no test proves it. `test_an_excel_file_with_real_dates` has a row with an empty Reconciled cell but checks only its payee, and no CSV test has the column at all. Fix: one test with an empty cell, a spaces-only cell and a missing column (CSV and Excel) that all come in unreconciled, next to one marked `R` that comes in reconciled; and the docstring says what a blank means ("blank means not reconciled"), not only that it may be blank. **Claude's find, your call (13/11/2026: "yes, file it"):** `c` and `cleared` count as reconciled today, but in Quicken `c` means the bank has the transaction and you haven't reconciled it against a statement yet; only `R` means reconciled. Imported as reconciled, a cleared transaction never shows up in the next Reconcile checklist and is already counted in the opening balance Reconcile starts from. So `c`, `cleared` and `*` (older Quicken files mark cleared with `*`) join the "no" list and come in unreconciled, while `R`, `X` and `reconciled` still come in reconciled. Transactions already imported stay as they are. Claude's call: the value decides, not the column's heading, so a `Yes` in a column headed "Cleared" still counts as reconciled (rare in bank files). The same test covers the new values. Proposed phase: 1, since it's now a behaviour fix and the test goes with it. | open (decided 13/11/2026) |
@@ -548,12 +548,17 @@ here, by phase. Findings that extend an older item are notes at the end.
   occurrence that is neither paid nor skipped and isn't a wanted future
   date. **Fix:** only previews dated after the series' `next_due_date`
   are removed. A test.
+  *Done 14/11/2026 (item 1.19), with one correction to the wording: the
+  cut-off is "on or after", because after an Enter or a Skip the preview
+  on the series' new due date must still go. A due date moved later by hand
+  is S98.*
 - **S52 — Entering a recurring reminder names the new date twice.**
   `transaction_form_view` formats `{reminder}` after `mark_entered()` has
   moved it on: "Entered 01/11/2026 | Landlord | -500.00 and moved it to
   01/11/2026." `reminder_skip` already takes the label first. **Fix:**
   the same. A test. (Plan 04's R20 assumes the old date, which this
   restores.)
+  *Done 14/11/2026 (item 1.20).*
 - **S53 — System payees are matched by exact spelling.** The payee
   autocomplete list (`views/api.py`) and `export_payees` check
   `name in Payee.SYSTEM_NAMES`. `Payee.system()` reuses a payee typed in
@@ -575,6 +580,11 @@ here, by phase. Findings that extend an older item are notes at the end.
   (each save waits for the previous one), and an empty amount is sent as
   empty, so the form answers "This field is required". A test for the
   empty amount; the queue is JavaScript only, so it's checked by hand.
+  *Done 14/11/2026 (item 1.23). The amount error also marks the Payment
+  and Deposit boxes red, since a tooltip on the row alone wouldn't be seen.
+  The server's half is tested; the script's half was checked against a
+  stand-in page (S103). Review found the amount boxes didn't save by
+  themselves: S97.*
 
 **Phase 2 (tests and leftovers):**
 - **S56 — Tests that build what the rules forbid.** `CategoryDeleteTests`
@@ -1043,11 +1053,91 @@ The rest:
     same, so nothing to do unless typed commas should ever work; then the
     forms read amounts through `money.parse_amount`.
 
-<!-- Next number: S97 -->
+### L. Found by the reviews of Phase 1, part C (14/11/2026)
+
+Five reviewers (code, database, security, front end, QA) read part C. The
+code reviewer's one Critical item (S97) and the database reviewer's one
+question (S98) were done the same day with your answers, and S99 with
+them. Nothing else was Critical; the security review found nothing that
+needed a change, and QA found no bug in part C's own code. QA added 25
+tests (amounts a cent apart, a sort across a page boundary with the page
+size lowered to 4, the sort with filters, the default order's ties, the
+due date moved earlier and later for every frequency, the Skip message).
+The rest:
+
+- **S97 — Payment and Deposit boxes didn't save on their own** (code
+  reviewer, Critical; already so before part C). In Edit mode a row saved
+  when a box with `data-field` changed. The Payment and Deposit boxes have
+  none (the amount is worked out from the pair), so changing only one of
+  them saved nothing: the amount travelled along only when another box on
+  the row changed. S55's "This field is required" could only be reached
+  that way too. **Fix (your yes, 14/11/2026):** the script listens for the
+  class every control shares, `quick-edit-cell`. Two tests (every control
+  carries the class; the script's handler names it), and a check of the
+  script against a stand-in page: a change to only the Payment box sends
+  one save, where before it sent none. Not tried in a browser. | done
+- **S98 — A due date moved later left its previews behind** (database and
+  code reviewers; a question). S51's rule ("only open occurrences dated on
+  or after the due date are removed") can't tell an unpaid earlier period,
+  kept on purpose, from previews a hand edit skipped over: a monthly
+  reminder due 20/09 whose due date is edited to 20/11 kept its October
+  preview as an overdue row. **Your call (14/11/2026): delete them.**
+  `save()` reads the stored due date before it saves and hands it to
+  `regenerate_occurrences(previous_due_date=...)`; a preview is an open
+  occurrence dated from the earlier of the old and the new due date. Tests
+  for moving later (previews go, an unpaid earlier period stays). | done
+- **S99 — The export didn't break ties like the page** (database
+  reviewer). The transactions export applied the sort but not `_paged()`'s
+  `-pk` tie-break, so rows that tie (with the new Payment and Deposit
+  sorts, the whole other side) came out in the database's own order. **Fix:**
+  one `_ordered_with_ties_broken()` in `_helpers.py`, used by `_paged()`
+  and the export; a test that fails without it. | done
+- **S100 — "Could not save - check your connection" for every failure**
+  (security reviewer; cosmetic; Phase 5, 5.9). A failed security check or
+  a server error answers with a page, so `response.json()` throws and the
+  message blames the connection.
+- **S101 — `regenerate_occurrences()`'s smaller things** (database and
+  code reviewers; Phase 3, 3.19). `existing` is a dict keyed by date, so
+  two occurrences on one date collapse into one and a Paid one can hide an
+  open one; every old Paid and Skipped row is loaded on each regeneration;
+  `wanted_dates` is a list used with `in`; outside a request the loop
+  isn't atomic (the next regeneration heals a crash).
+- **S102 — Two older reminder quirks** (database reviewer; not caused by
+  part C; your call before anything is built). (a) Entering a future
+  occurrence before the series reaches it leaves the series due on a date
+  that is already Paid, so that period could be paid twice. QA reproduced
+  it: a monthly series due 20/09 with previews 20/10, 20/11 and 20/12;
+  Enter the 20/11 preview, then the series twice. The series now stands at
+  20/11, unpaid, beside a Paid 20/11. `regenerate_occurrences()` skips
+  wanted dates that already exist but never compares them with the
+  series' own date; what the series should do (skip periods already
+  Paid?) is the question. (b) Hand-editing an occurrence's date to one
+  that isn't on the schedule gets it deleted at the next regeneration; the
+  docstring only promises that amount edits survive. (c) Moving the
+  series' due date back before an unpaid earlier period (unpaid 20/09, due
+  date moved from 20/10 to 05/09) takes that period in as a preview and
+  deletes it. That is how the old rule behaved too, and QA's test pins it;
+  say if an unpaid bill should survive that as well.
+- **S103 — No browser tests for Edit mode** (front-end checker; your
+  call). Playwright isn't installed, so the Edit-mode script (the queue,
+  the amount save, the red boxes) has no automated test: part C's script
+  changes were checked against a stand-in page by hand. QA noted that Node
+  is installed here, so a small test could run the script against a
+  hand-made fake page too, which would make Node a test dependency. Installing
+  Playwright and its Chromium (free, development only) would let the
+  front-end checker keep a small smoke suite and run it from `check.bat`.
+  It adds a download and a step.
+
+Not filed: the Enter and Skip messages word "moved it to" differently
+("... and moved it to ..." and "...; moved it to ..."); plan 04's R20
+rewrites those sentences anyway. Edit mode's controls without names are
+already in S35 (5.6), and `pip-audit` is in "Noticed, not planned".
+
+<!-- Next number: S104 -->
 
 ---
 
-## Phase 1 — Bugs and quick security fixes  (S1–S8, S10, S24 with plan 04's R9, S31–S33, S38, S39, S41, S46, S50–S55, S69, S75–S81, S83, S86–S88, S91–S93, S95)
+## Phase 1 — Bugs and quick security fixes  (S1–S8, S10, S24 with plan 04's R9, S31–S33, S38, S39, S41, S46, S50–S55, S69, S75–S81, S83, S86–S88, S91–S93, S95, S97–S99)
 
 Built in four parts (Claude's proposal, 14/11/2026), each one a commit:
 - **A, security and the PIN:** S7, S8, S10, S24 with R9, S54 (items 1.7–1.10,
@@ -1061,7 +1151,11 @@ Built in four parts (Claude's proposal, 14/11/2026), each one a commit:
   are S92–S96 (section K), and the code reviewer's "should fix" items were
   done the same day.
 - **C, reminders and transactions:** S38, S39, S51, S52, S55 (1.14, 1.15,
-  1.19, 1.20, 1.23).
+  1.19, 1.20, 1.23). **Done 14/11/2026.** Its reviews found one Critical
+  item, S97 (the Payment and Deposit boxes didn't save on their own), and
+  one question, S98 (a due date moved later). With your answers both were
+  done the same day, with S99 (1.37–1.39). The rest is S100–S103
+  (section L).
 - **D, small fixes:** S2, S4, S5, S6, S31, S32, S41, S53, S69, S80, S81,
   S92, S93, S95, and S46, the phase's one migration, so the real stash is
   backed up first (1.2, 1.4–1.6, 1.11, 1.12, 1.16, 1.17, 1.21, 1.24, 1.29,
@@ -1094,8 +1188,8 @@ Built in four parts (Claude's proposal, 14/11/2026), each one a commit:
 - [ ] **1.12** S32: Settings' rate date through `sdate`, and Source shows
   its label.
 - [x] **1.13** S33: the savings rate in the stash's number format.
-- [ ] **1.14** S38: the register's "—" without the pill.
-- [ ] **1.15** S39: Payment and Deposit sort separately, each biggest
+- [x] **1.14** S38: the register's "—" without the pill.
+- [x] **1.15** S39: Payment and Deposit sort separately, each biggest
   first.
 - [ ] **1.16** S41: blank Reconciled cells and `c`/`cleared`/`*` import as
   not reconciled; a test.
@@ -1103,11 +1197,11 @@ Built in four parts (Claude's proposal, 14/11/2026), each one a commit:
   the real stash is backed up first.
 - [x] **1.18** S50: refunds net against their own category in Reports and
   on the dashboard; a category that nets to a refund shows negative.
-- [ ] **1.19** S51: an unpaid reminder period survives regeneration.
-- [ ] **1.20** S52: the reminder message shows the date it was due.
+- [x] **1.19** S51: an unpaid reminder period survives regeneration.
+- [x] **1.20** S52: the reminder message shows the date it was due.
 - [ ] **1.21** S53: system payees recognised through `name_key`.
 - [x] **1.22** S54: the time zone is a `ChoiceField`.
-- [ ] **1.23** S55: Edit mode saves a row's changes in order, and an empty
+- [x] **1.23** S55: Edit mode saves a row's changes in order, and an empty
   amount is refused.
 - [ ] **1.24** S69: Payees falls back to sorting by name for an unknown
   sort, so the Payee header shows its arrow.
@@ -1132,6 +1226,13 @@ Built in four parts (Claude's proposal, 14/11/2026), each one a commit:
   about 100 years is refused with the warning banner, not a 500 page; a
   test each.
 - [ ] **1.36** S95: `to_cent()` gives zero without a sign; a test.
+- [x] **1.37** S97 (Critical, your yes): a change to only the Payment or
+  Deposit box in Edit mode saves; the script listens for `quick-edit-cell`.
+- [x] **1.38** S98 (your call: delete them): moving a recurring reminder's
+  due date later removes the previews it skipped over; an unpaid earlier
+  period stays.
+- [x] **1.39** S99: the transactions export ends its order with `-pk`,
+  like the page, through one `_ordered_with_ties_broken()`.
 
 **Done when:** each fix has a test that fails on today's code, the suite is
 green, and the render check of the changed pages shows no leaked template
@@ -1190,7 +1291,7 @@ syntax.
 tests and duplicates go, and a few new ones come), and a grep for the
 history patterns finds nothing outside `plans/` and `DEVLOG.md`.
 
-## Phase 3 — Python structure  (S40, S43, S15, S16, S17, S18, S20, S42, S45, S47, S48, S63–S66, S49, S71, S82, S89)
+## Phase 3 — Python structure  (S40, S43, S15, S16, S17, S18, S20, S42, S45, S47, S48, S63–S66, S49, S71, S82, S89, S101)
 
 - [ ] **3.0** First, the two tool settings, each as its own commit:
   S40, Django gets its own import group and `lines-after-imports = 2` in
@@ -1245,6 +1346,9 @@ history patterns finds nothing outside `plans/` and `DEVLOG.md`.
   a transaction (it would wait forever for the lock), today's recovery
   code goes into a copy of the backup before it replaces the live file, and
   one lock keeps two restores at the same moment apart.
+- [ ] **3.19** S101: `regenerate_occurrences()`'s smaller things (two
+  occurrences on one date, a set for the wanted dates, not loading every
+  old Paid row, atomic outside a request).
 
 **Done when:** the suite is green with no test edited except for moved
 imports, and every page renders the same as before.
@@ -1264,7 +1368,7 @@ imports, and every page renders the same as before.
 set, before and after, and compares them; the only difference is S3's
 rows, which Phase 1 already added.
 
-## Phase 5 — Templates and JavaScript  (S28, S19, S18's JavaScript part, S26, S27, S29, S30, S35–S37, S67, S84; S9 last, if Q2 is yes)
+## Phase 5 — Templates and JavaScript  (S28, S19, S18's JavaScript part, S26, S27, S29, S30, S35–S37, S67, S84, S100; S9 last, if Q2 is yes)
 
 - [ ] **5.0** S28 first: the templates move into folders per area, so
   S19's new files land straight in their folders.
@@ -1285,7 +1389,9 @@ rows, which Phase 1 already added.
 - [ ] **5.7** S30: the error pages' tag (gold 404, red 500).
 - [ ] **5.8** S36 and S37: the small on-screen slips and the template
   leftovers.
-- [ ] **5.9** S67: the JavaScript and CSS tidy-ups.
+- [ ] **5.9** S67 and S100: the JavaScript and CSS tidy-ups, and Edit
+  mode's "Could not save" message, which blames the connection for every
+  failure.
 - [ ] **5.11** S84: one `includes/form_field.html`, whose error box has
   the id the box's `aria-describedby` names. Before 5.10.
 - [ ] **5.10** S9 (only if Q2 is yes), last: the Content-Security-Policy

@@ -260,6 +260,31 @@ class PaymentDepositColumnTests(LoggedInWithAccountTestCase):
         self.assertIn('amount-positive">30.00', html.replace(" ", ""))
 
 
+class AccountRegisterStatusColumnTests(LoggedInWithAccountTestCase):
+    """S38: an unreconciled row shows a plain, muted dash. It used to sit in a `text-bg-light`
+    pill, which Bootstrap keeps near-white in dark mode, so the dash was barely visible there."""
+
+    def register(self):
+        url = reverse("finance:account_detail", args=[self.account.pk])
+        return self.client.get(url).content.decode()
+
+    def test_the_register_no_longer_uses_the_light_pill(self):
+        Transaction.objects.create(account=self.account, date=date(2026, 1, 1), amount=Decimal("-1.00"))
+        self.assertNotIn("text-bg-light", self.register())
+
+    def test_an_unreconciled_row_shows_a_muted_dash_and_no_badge(self):
+        Transaction.objects.create(account=self.account, date=date(2026, 1, 1), amount=Decimal("-1.00"))
+        html = self.register()
+        self.assertIn('<span class="text-muted">—</span>', html)
+        self.assertNotIn("badge text-bg-light", html)
+
+    def test_a_reconciled_row_keeps_its_green_pill(self):
+        Transaction.objects.create(
+            account=self.account, date=date(2026, 1, 1), amount=Decimal("-1.00"), reconciled=True
+        )
+        self.assertIn('<span class="badge text-bg-success">R</span>', self.register())
+
+
 class AccountRegisterPagingTests(LoggedInWithAccountTestCase):
     """8.11: the register has no date range, so it follows the Transactions page's rule for an
     open range: 1,000 rows per page, and the count covers every page."""

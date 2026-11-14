@@ -10,7 +10,7 @@ from ..forms import AccountCreateForm, AccountForm, ReconcileFinishForm, Reconci
 from ..models import Account, grouped_accounts
 from ..money import ZERO
 from ..services import reconciliation
-from ._helpers import _paged, _sorted
+from ._helpers import AMOUNT_SORT_COLUMNS, _paged, _sorted
 
 
 class AccountListView(ListView):
@@ -38,7 +38,7 @@ ACCOUNT_REGISTER_SORT_FIELDS = {
     "payee": ["payee__name"],
     "category": ["category__name"],
     "memo": ["memo"],
-    "amount": ["amount"],
+    **AMOUNT_SORT_COLUMNS,
 }
 
 

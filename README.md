@@ -169,18 +169,26 @@ every stash automatically).
   to CSV/Excel, and switched into **Edit mode**, where every row's fields
   can be changed in place and save themselves. While Edit mode is on, the
   filters, sort headers and page links are locked ("Finish editing to
-  change filters"), so nothing reloads the page under you. **All dates**
+  change filters"), so nothing reloads the page under you. Quick changes
+  to one row are saved one after the other, and emptying both Payment and
+  Deposit is refused ("This field is required") instead of being saved as
+  0.00. **All dates**
   shows every transaction, even one dated in the future by mistake. Typing
   a Start or End date switches the range to **Custom range**; the list
   updates when you click **Filter**. A date range longer than a
   year (or "All dates") shows 1,000 transactions per page, with page links
   above and below the list; the count and the total always cover every
   page, and the export always holds everything the filters match. An
-  account's own register pages the same way.
+  account's own register pages the same way. On both, **Payment** and
+  **Deposit** each sort their own side: the first click puts the biggest
+  first, the second the smallest, and rows with nothing in that column stay
+  at the bottom.
 - **Reminders** — recurring or one-time bills and income. A recurring
   reminder creates its upcoming dates ahead of time. **Enter** opens a
   pre-filled transaction; **Skip** moves on without creating one; either way
-  that date stays listed as Paid or Skipped. The list opens on this month.
+  that date stays listed as Paid or Skipped. If you later delete the
+  transaction that paid a date, that date stays on the list as overdue
+  rather than quietly disappearing. The list opens on this month.
 - **Reports** — Spending by category, Income by category, two vs.-average
   reports (current vs. earlier full periods of the same kind — e.g. this
   month vs. earlier months), Income & expense and its own vs.-average

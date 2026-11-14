@@ -85,8 +85,8 @@
                 <th><a href="{% querystring sort=sort_next.payee page=None %}" class="sort-link">Payee{% include "finance/includes/sort_arrow.html" with column="payee" %}</a></th>
                 <th><a href="{% querystring sort=sort_next.category page=None %}" class="sort-link">Category{% include "finance/includes/sort_arrow.html" with column="category" %}</a></th>
                 <th><a href="{% querystring sort=sort_next.memo page=None %}" class="sort-link">Memo{% include "finance/includes/sort_arrow.html" with column="memo" %}</a></th>
-                <th class="text-end"><a href="{% querystring sort=sort_next.amount page=None %}" class="sort-link">Payment{% include "finance/includes/sort_arrow.html" with column="amount" %}</a></th>
-                <th class="text-end"><a href="{% querystring sort=sort_next.amount page=None %}" class="sort-link">Deposit{% include "finance/includes/sort_arrow.html" with column="amount" %}</a></th>
+                <th class="text-end"><a href="{% querystring sort=sort_next.payment page=None %}" class="sort-link">Payment{% include "finance/includes/sort_arrow.html" with column="payment" %}</a></th>
+                <th class="text-end"><a href="{% querystring sort=sort_next.deposit page=None %}" class="sort-link">Deposit{% include "finance/includes/sort_arrow.html" with column="deposit" %}</a></th>
                 <th class="text-center" title="Reconciled">Rec.</th>
                 <th></th>
             </tr>

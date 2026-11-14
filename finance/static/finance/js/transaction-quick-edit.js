@@ -148,18 +148,28 @@
     function clearRowErrors(row) {
         row.querySelectorAll('.is-invalid').forEach(function (el) {
             el.classList.remove('is-invalid');
+            el.removeAttribute('aria-invalid');
             el.removeAttribute('title');
         });
         row.removeAttribute('title');
     }
 
+    // The amount has no box of its own: it is the Payment and Deposit pair.
+    function inputsFor(row, field) {
+        if (field === 'amount') return row.querySelectorAll('.quick-edit-payment, .quick-edit-deposit');
+        return row.querySelectorAll('[data-field="' + field + '"]');
+    }
+
     function showRowErrors(row, errors) {
         Object.keys(errors).forEach(function (field) {
             var message = errors[field].join(' ');
-            var input = row.querySelector('[data-field="' + field + '"]');
-            if (input) {
-                input.classList.add('is-invalid');
-                input.title = message;
+            var inputs = inputsFor(row, field);
+            if (inputs.length) {
+                inputs.forEach(function (input) {
+                    input.classList.add('is-invalid');
+                    input.setAttribute('aria-invalid', 'true');
+                    input.title = message;
+                });
             } else {
                 row.title = message;
             }
@@ -188,7 +198,9 @@
         var pk = row.dataset.pk;
         var payment = row.querySelector('.quick-edit-payment');
         var deposit = row.querySelector('.quick-edit-deposit');
-        var amount = '0';
+        // Both boxes empty is sent as empty, so the form answers "This field is required" and the
+        // row isn't quietly saved as 0.00.
+        var amount = '';
         if (payment && payment.value) amount = '-' + payment.value;
         else if (deposit && deposit.value) amount = deposit.value;
 
@@ -204,13 +216,14 @@
             }
         });
 
-        fetch(quickEditUrlBase.replace('/0/', '/' + pk + '/'), {
+        return fetch(quickEditUrlBase.replace('/0/', '/' + pk + '/'), {
             method: 'POST', body: body, headers: { 'X-Requested-With': 'XMLHttpRequest' },
         })
             .then(function (response) { return response.json(); })
             .then(function (data) {
+                // Whatever the answer, last time's red marks go: only this save's errors stay.
+                clearRowErrors(row);
                 if (data.ok) {
-                    clearRowErrors(row);
                     applyRow(row, data.row);
                     flashSaved(row);
                 } else {
@@ -218,6 +231,26 @@
                 }
             })
             .catch(function () { row.title = 'Could not save - check your connection.'; });
+    }
+
+    // One save at a time per row. The server answers on several threads, so two quick changes
+    // sent one after the other could finish in the opposite order, and the older would then
+    // overwrite the newer. A change made while a save is running only marks the row; when that
+    // save ends, the row is saved once more with whatever its boxes hold by then.
+    var saving = new WeakSet();
+    var changedWhileSaving = new WeakSet();
+
+    function queueSave(row) {
+        if (saving.has(row)) {
+            changedWhileSaving.add(row);
+            return;
+        }
+        saving.add(row);
+        // Built this way so that even a save that throws before it starts frees the row.
+        new Promise(function (resolve) { resolve(saveRow(row)); }).finally(function () {
+            saving.delete(row);
+            if (changedWhileSaving.delete(row)) queueSave(row);
+        });
     }
 
     // Typing in Payment clears Deposit and vice versa - only one side of a transfer at a time.
@@ -234,10 +267,13 @@
         }
     });
 
+    // Every control in a row has the class quick-edit-cell. Keying on it, not on data-field, is what
+    // lets a change to only the Payment or Deposit box save: those two have no data-field of their
+    // own (saveRow() works the amount out from the pair).
     table.addEventListener('change', function (event) {
-        var field = event.target.closest('[data-field]');
-        if (!field) return;
-        var row = field.closest('tr');
-        if (row) saveRow(row);
+        var control = event.target.closest('.quick-edit-cell');
+        if (!control) return;
+        var row = control.closest('tr');
+        if (row) queueSave(row);
     });
 })();

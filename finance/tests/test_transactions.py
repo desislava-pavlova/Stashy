@@ -1,10 +1,12 @@
 """Transactions: numbers, the add and edit forms, the list (filters, sorting, totals, Edit
 mode), deleting, and where you land after saving."""
 
+import csv
 import html
 import re
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
+from pathlib import Path
 from unittest import mock
 from urllib.parse import parse_qs, urlsplit
 
@@ -205,12 +207,6 @@ class SortingTests(LoggedInWithAccountTestCase):
         response = self.client.get(reverse("finance:transaction_list"), {"range": "", "sort": sort})
         return [t.pk for t in response.context["transactions"]]
 
-    def test_sort_by_amount_ascending(self):
-        self.assertEqual(self.ordered("amount"), [self.big.pk, self.small.pk])
-
-    def test_sort_by_amount_descending(self):
-        self.assertEqual(self.ordered("-amount"), [self.small.pk, self.big.pk])
-
     def test_sort_by_account_name(self):
         # "Checking" sorts before "Savings".
         self.assertEqual(self.ordered("account"), [self.big.pk, self.small.pk])
@@ -220,18 +216,297 @@ class SortingTests(LoggedInWithAccountTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["sort"], "")
 
-    def test_payment_and_deposit_both_show_the_ascending_arrow(self):
-        # The two headers share the "amount" sort, so both are marked, and no other one is.
-        html = self.client.get(reverse("finance:transaction_list"), {"range": "", "sort": "amount"}).content.decode()
-        self.assertRegex(html, r"Payment\s*<i [^>]*caret-up-fill")
-        self.assertRegex(html, r"Deposit\s*<i [^>]*caret-up-fill")
-        self.assertEqual(html.count("sort-arrow"), 2)
+    def test_only_the_clicked_amount_header_shows_its_arrow(self):
+        # S39: Payment and Deposit sort on their own, so each shows an arrow only when it's the one sorted.
+        for column, other in (("payment", "Deposit"), ("deposit", "Payment")):
+            with self.subTest(column=column):
+                html = self.client.get(
+                    reverse("finance:transaction_list"), {"range": "", "sort": column}
+                ).content.decode()
+                self.assertRegex(html, rf"{column.title()}\s*<i [^>]*caret-up-fill")
+                self.assertNotRegex(html, rf"{other}\s*<i ")
+                self.assertEqual(html.count("sort-arrow"), 1)
+                html = self.client.get(
+                    reverse("finance:transaction_list"), {"range": "", "sort": f"-{column}"}
+                ).content.decode()
+                self.assertRegex(html, rf"{column.title()}\s*<i [^>]*caret-down-fill")
+                self.assertEqual(html.count("sort-arrow"), 1)
+
+    def test_the_old_amount_sort_is_ignored_not_a_crash(self):
+        # S39: "amount" was the one sort both headers shared; a saved link to it just shows the default order.
+        response = self.client.get(reverse("finance:transaction_list"), {"range": "", "sort": "amount"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["sort"], "")
 
     def test_account_register_sorts_within_one_account_too(self):
         older = Transaction.objects.create(account=self.account, date=date(2025, 1, 1), amount=Decimal("-1.00"))
         response = self.client.get(reverse("finance:account_detail", args=[self.account.pk]), {"sort": "date"})
         pks = [t.pk for t in response.context["transactions"]]
         self.assertEqual(pks, [older.pk, self.big.pk])
+
+
+def _pages_with_amount_headers(account):
+    """The two pages that have Payment and Deposit headers, as {name: (url, query that shows every row)}."""
+    return {
+        "transactions": (reverse("finance:transaction_list"), {"range": ""}),
+        "register": (reverse("finance:account_detail", args=[account.pk]), {}),
+    }
+
+
+class PaymentAndDepositSortingTests(LoggedInWithAccountTestCase):
+    """S39: the Payment and Deposit headers each sort their own side, on the Transactions page and
+    on an account's register. The first click puts the biggest first, the second the smallest, and
+    the rows with nothing in that column stay at the bottom either way."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+
+        def make(amount):
+            return Transaction.objects.create(account=cls.account, date=date(2026, 1, 1), amount=Decimal(amount)).pk
+
+        cls.big_payment, cls.small_payment = make("-50.00"), make("-5.00")
+        cls.big_deposit, cls.small_deposit = make("200.00"), make("30.00")
+        cls.nothing = make("0.00")  # blank in both columns
+
+    def pages(self):
+        return _pages_with_amount_headers(self.account)
+
+    def ordered(self, sort):
+        """The pks in each page's order, for ?sort=<sort>."""
+        result = {}
+        for name, (url, params) in self.pages().items():
+            response = self.client.get(url, {**params, "sort": sort})
+            result[name] = [t.pk for t in response.context["transactions"]]
+        return result
+
+    def assert_order(self, sort, first, rest):
+        """`first` must lead in that order; `rest` (the rows with nothing in the column) follow, any order."""
+        for name, pks in self.ordered(sort).items():
+            with self.subTest(page=name, sort=sort):
+                self.assertEqual(pks[: len(first)], first)
+                self.assertEqual(set(pks[len(first) :]), set(rest))
+
+    def test_the_first_click_on_payment_puts_the_biggest_payment_first(self):
+        others = [self.big_deposit, self.small_deposit, self.nothing]
+        self.assert_order("payment", [self.big_payment, self.small_payment], others)
+
+    def test_the_second_click_on_payment_puts_the_smallest_payment_first(self):
+        others = [self.big_deposit, self.small_deposit, self.nothing]
+        self.assert_order("-payment", [self.small_payment, self.big_payment], others)
+
+    def test_the_first_click_on_deposit_puts_the_biggest_deposit_first(self):
+        others = [self.big_payment, self.small_payment, self.nothing]
+        self.assert_order("deposit", [self.big_deposit, self.small_deposit], others)
+
+    def test_the_second_click_on_deposit_puts_the_smallest_deposit_first(self):
+        others = [self.big_payment, self.small_payment, self.nothing]
+        self.assert_order("-deposit", [self.small_deposit, self.big_deposit], others)
+
+    def test_each_header_links_to_its_own_next_click(self):
+        for name, (url, params) in self.pages().items():
+            with self.subTest(page=name):
+                html = self.client.get(url, params).content.decode()
+                self.assertRegex(html, r'sort=payment"[^>]*>Payment')
+                self.assertRegex(html, r'sort=deposit"[^>]*>Deposit')
+                html = self.client.get(url, {**params, "sort": "payment"}).content.decode()
+                self.assertRegex(html, r'sort=-payment"[^>]*>Payment')
+                self.assertRegex(html, r'sort=deposit"[^>]*>Deposit')
+
+    def test_the_export_is_in_the_same_order_as_the_page_ties_included(self):
+        # Rows with nothing in the sorted column tie, so the page breaks the tie by newest first (see
+        # _paged()). The export must break it the same way, or it stops matching what you were looking at.
+        for sort in ("payment", "-payment", "deposit", "-deposit"):
+            with self.subTest(sort=sort):
+                page = self.client.get(reverse("finance:transaction_list"), {"range": "", "sort": sort})
+                response = self.client.get(
+                    reverse("finance:export_transactions"), {"format": "csv", "range": "", "sort": sort}
+                )
+                rows = list(csv.DictReader(response.content.decode().splitlines()))
+                self.assertEqual(
+                    [Decimal(row["Amount"]) for row in rows], [t.amount for t in page.context["transactions"]]
+                )
+
+
+class AmountSortEdgeCaseTests(LoggedInWithAccountTestCase):
+    """S39: amounts a cent apart, a third click on a header, and sort keys that must be ignored."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+
+        def make(amount):
+            return Transaction.objects.create(account=cls.account, date=date(2026, 1, 1), amount=Decimal(amount)).pk
+
+        # Made in an order that is neither smallest-first nor biggest-first, so a tie between them
+        # (which a whole-unit rounding would cause) cannot come out right by accident in both directions.
+        cls.pay_2c, cls.pay_3c, cls.pay_1c = make("-0.02"), make("-0.03"), make("-0.01")
+        cls.dep_2c, cls.dep_3c, cls.dep_1c = make("0.02"), make("0.03"), make("0.01")
+
+    def assert_order_on_both_pages(self, sort, expected):
+        for name, (url, params) in _pages_with_amount_headers(self.account).items():
+            with self.subTest(page=name, sort=sort):
+                response = self.client.get(url, {**params, "sort": sort})
+                self.assertEqual([t.pk for t in response.context["transactions"]], expected)
+
+    def test_amounts_a_cent_apart_sort_in_the_right_order(self):
+        # Rows with nothing in the sorted column come last, newest first (the tie-break), both ways.
+        # Broken if the amounts were rounded to whole units: every row on that side would tie.
+        newest_deposits_first = [self.dep_1c, self.dep_3c, self.dep_2c]
+        newest_payments_first = [self.pay_1c, self.pay_3c, self.pay_2c]
+        self.assert_order_on_both_pages("payment", [self.pay_3c, self.pay_2c, self.pay_1c, *newest_deposits_first])
+        self.assert_order_on_both_pages("-payment", [self.pay_1c, self.pay_2c, self.pay_3c, *newest_deposits_first])
+        self.assert_order_on_both_pages("deposit", [self.dep_3c, self.dep_2c, self.dep_1c, *newest_payments_first])
+        self.assert_order_on_both_pages("-deposit", [self.dep_1c, self.dep_2c, self.dep_3c, *newest_payments_first])
+
+    def test_a_third_click_goes_back_to_the_first_order(self):
+        for name, (url, params) in _pages_with_amount_headers(self.account).items():
+            for column in ("payment", "deposit"):
+                with self.subTest(page=name, column=column):
+                    html = self.client.get(url, {**params, "sort": f"-{column}"}).content.decode()
+                    self.assertRegex(html, rf'sort={column}"[^>]*>{column.title()}')
+
+    def test_sort_keys_that_are_not_a_column_are_ignored_on_both_pages(self):
+        # The register is as safe as the Transactions page: "amount" was a real sort until S39, and
+        # a doubled minus, other capitals or a bare minus are not columns either.
+        for name, (url, params) in _pages_with_amount_headers(self.account).items():
+            for sort in ("amount", "-amount", "--payment", "Payment", "-", " payment"):
+                with self.subTest(page=name, sort=sort):
+                    response = self.client.get(url, {**params, "sort": sort})
+                    self.assertEqual(response.status_code, 200)
+                    self.assertEqual(response.context["sort"], "")
+
+
+class AmountSortWithFiltersTests(LoggedInWithAccountTestCase):
+    """S39: the Payment and Deposit sorts work together with the Transactions page's filters, and the
+    count and the total still describe exactly the rows the filters match."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        savings = Account.objects.create(name="Savings")
+
+        def make(amount, memo="Rent", account=cls.account, reconciled=False):
+            return Transaction.objects.create(
+                account=account, date=date(2026, 1, 1), amount=Decimal(amount), memo=memo, reconciled=reconciled
+            ).pk
+
+        cls.pay_30, cls.pay_10, cls.dep_5 = make("-30.00"), make("-10.00"), make("5.00")
+        make("-20.00", reconciled=True)  # filtered out by the status
+        make("-99.00", memo="Other")  # filtered out by the search
+        make("-500.00", account=savings)  # filtered out by the account
+
+    def get(self, sort):
+        return self.client.get(
+            reverse("finance:transaction_list"),
+            {"range": "", "account": self.account.pk, "q": "rent", "status": "unreconciled", "sort": sort},
+        )
+
+    def test_the_filters_and_the_sort_apply_together(self):
+        expected = {
+            "payment": [self.pay_30, self.pay_10, self.dep_5],
+            "-payment": [self.pay_10, self.pay_30, self.dep_5],
+            # The one deposit leads both ways; the payments have no deposit and follow, newest first.
+            "deposit": [self.dep_5, self.pay_10, self.pay_30],
+            "-deposit": [self.dep_5, self.pay_10, self.pay_30],
+        }
+        for sort, pks in expected.items():
+            with self.subTest(sort=sort):
+                response = self.get(sort)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual([t.pk for t in response.context["transactions"]], pks)
+
+    def test_the_count_and_total_do_not_depend_on_the_sort(self):
+        for sort in ("payment", "-deposit"):
+            with self.subTest(sort=sort):
+                response = self.get(sort)
+                self.assertEqual(response.context["transaction_count"], 3)
+                self.assertEqual(response.context["total_amount"], Decimal("-35.00"))
+
+
+@mock.patch("finance.views._helpers.TRANSACTIONS_PER_PAGE", 4)
+class AmountSortAcrossPagesTests(LoggedInWithAccountTestCase):
+    """S39: with a sort on Payment or Deposit, many rows tie (everything in the other column, and
+    equal amounts), yet across pages every row shows exactly once and the order is the one a single
+    long page would have. The page size is 4 here, so 13 rows make 4 pages."""
+
+    PAGES = 4
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        # Payments and deposits, with equal amounts and a few zeros, mixed up so that no amount's
+        # rows happen to sit next to each other in the table.
+        amounts = ["-5", "5", "0", "-5", "-2", "5", "-5", "0", "2", "-2", "-0.01", "0.02", "-7"]
+        for amount in amounts:
+            Transaction.objects.create(account=cls.account, date=date(2026, 1, 1), amount=Decimal(amount))
+
+    def expected_pks(self, sort):
+        """What the order should be, worked out in plain Python: the column's rows by size (the first
+        click biggest first, the second smallest first), then every other row, ties newest first."""
+        column, descending = sort.removeprefix("-"), sort.startswith("-")
+        rows = list(Transaction.objects.all())
+        in_column = [t for t in rows if (t.amount < 0 if column == "payment" else t.amount > 0)]
+        others = [t for t in rows if t not in in_column]
+        size = (lambda t: abs(t.amount)) if descending else (lambda t: -abs(t.amount))
+        return [t.pk for t in sorted(in_column, key=lambda t: (size(t), -t.pk))] + [
+            t.pk for t in sorted(others, key=lambda t: -t.pk)
+        ]
+
+    def pks_across_pages(self, url, params):
+        first = self.client.get(url, params)
+        self.assertEqual(first.context["page_obj"].paginator.num_pages, self.PAGES)  # the page size patch is in effect
+        pks = []
+        for number in range(1, self.PAGES + 1):
+            response = self.client.get(url, {**params, "page": number})
+            pks += [t.pk for t in response.context["transactions"]]
+        return pks
+
+    def test_every_row_shows_once_and_in_order_across_the_pages(self):
+        for name, (url, params) in _pages_with_amount_headers(self.account).items():
+            for sort in ("payment", "-payment", "deposit", "-deposit"):
+                with self.subTest(page=name, sort=sort):
+                    self.assertEqual(self.pks_across_pages(url, {**params, "sort": sort}), self.expected_pks(sort))
+
+    def test_the_export_is_every_page_put_together(self):
+        amounts = dict(Transaction.objects.values_list("pk", "amount"))
+        for sort in ("payment", "-payment", "deposit", "-deposit"):
+            with self.subTest(sort=sort):
+                response = self.client.get(
+                    reverse("finance:export_transactions"), {"format": "csv", "range": "", "sort": sort}
+                )
+                rows = list(csv.DictReader(response.content.decode().splitlines()))
+                self.assertEqual(
+                    [Decimal(row["Amount"]) for row in rows], [amounts[pk] for pk in self.expected_pks(sort)]
+                )
+
+
+class DefaultOrderTiesTests(LoggedInWithAccountTestCase):
+    """With no sort chosen, the Transactions page, the register and the export all use the model's
+    own order (newest date first), and rows that still tie come out newest first."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        for day, memo in ((2, "first"), (1, "second"), (2, "third")):
+            Transaction.objects.create(account=cls.account, date=date(2026, 3, day), amount=Decimal("-1"), memo=memo)
+        # Number and creation time are the other things the default order looks at: make them tie too.
+        Transaction.objects.update(transaction_number=1, created_at=datetime(2026, 3, 1, tzinfo=UTC))
+
+    # The two 2 March rows tie on everything, so the later one ("third") leads; 1 March is last.
+    EXPECTED_MEMOS = ["third", "first", "second"]
+
+    def test_the_pages_follow_the_default_order(self):
+        # Broken if it dropped the model's order: "-pk" alone would put "second" before "first".
+        for name, (url, params) in _pages_with_amount_headers(self.account).items():
+            with self.subTest(page=name):
+                response = self.client.get(url, params)
+                self.assertEqual([t.memo for t in response.context["transactions"]], self.EXPECTED_MEMOS)
+
+    def test_the_export_follows_the_same_order(self):
+        response = self.client.get(reverse("finance:export_transactions"), {"format": "csv", "range": ""})
+        rows = list(csv.DictReader(response.content.decode().splitlines()))
+        self.assertEqual([row["Memo"] for row in rows], self.EXPECTED_MEMOS)
 
 
 class TransactionNumberFormTests(StashTestCase):
@@ -422,7 +697,7 @@ class TransactionPagingTests(LoggedInWithAccountTestCase):
             "category": str(self.groceries.pk),
             "q": "lidl",
             "status": "unreconciled",
-            "sort": "-amount",
+            "sort": "-payment",
         }
         response = self.get(**filters)
         links = re.findall(r'href="([^"]*)" aria-label="Page 2"', response.content.decode())
@@ -542,7 +817,7 @@ class EditRedirectTests(LoggedInWithAccountTestCase):
         self.assertRedirects(response, reverse("finance:account_detail", args=[self.account.pk]))
 
     def test_next_from_the_account_register_returns_there(self):
-        next_url = reverse("finance:account_detail", args=[self.account.pk]) + "?sort=amount"
+        next_url = reverse("finance:account_detail", args=[self.account.pk]) + "?sort=payment"
         response = self.edit(next=next_url)
         self.assertRedirects(response, next_url)
 
@@ -839,6 +1114,42 @@ class TransactionQuickEditTests(LoggedInTestCase):
     def test_get_is_not_allowed(self):
         response = self.client.get(reverse("finance:transaction_quick_edit", args=[self.txn.pk]))
         self.assertEqual(response.status_code, 405)
+
+    def test_every_edit_mode_control_carries_the_class_the_script_listens_for(self):
+        # The script saves a row when a control with this class changes. The Payment and Deposit
+        # boxes have no data-field (the amount is worked out from the pair), so the class is the
+        # only thing that makes a change to just one of them save.
+        content = self.client.get(reverse("finance:transaction_list")).content.decode()
+        start = content.index('<template id="quick-edit-controls">')
+        controls = re.findall(r"<(?:input|select)\b[^>]*>", content[start : content.index("</template>", start)])
+        self.assertEqual(len(controls), 9)
+        for control in controls:
+            with self.subTest(control=control):
+                self.assertIn("quick-edit-cell", control)
+
+    def test_the_script_saves_on_any_edit_mode_control_not_only_data_field_ones(self):
+        script = Path(settings.BASE_DIR) / "finance" / "static" / "finance" / "js" / "transaction-quick-edit.js"
+        handler = script.read_text(encoding="utf-8").split("table.addEventListener('change'")[1]
+        self.assertIn("closest('.quick-edit-cell')", handler)
+
+    def test_a_minus_typed_into_the_payment_box_is_refused_not_saved(self):
+        # The script puts its own minus in front of the Payment box, so a minus typed there arrives doubled.
+        response = self._post(amount="--5")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("amount", response.json()["errors"])
+        self.txn.refresh_from_db()
+        self.assertEqual(self.txn.amount, Decimal("-12.50"))
+
+    def test_an_empty_amount_is_refused_not_saved_as_zero(self):
+        # S55: the script sends an empty amount when both boxes are empty (it used to send "0"),
+        # so the form's own "required" check catches it. This guards the server's half of that
+        # contract; the script's half (the queue and the empty amount) has no automated test and
+        # was checked by hand with a stand-in page.
+        response = self._post(amount="")
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["errors"]["amount"], ["This field is required."])
+        self.txn.refresh_from_db()
+        self.assertEqual(self.txn.amount, Decimal("-12.50"))
 
 
 class PayeeNameColumnTests(StashTestCase):

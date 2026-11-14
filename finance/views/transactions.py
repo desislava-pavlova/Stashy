@@ -20,7 +20,7 @@ from ..forms import DateRangeFilterForm, TransactionForm
 from ..models import Account, Category, Reminder, Transaction, grouped_categories
 from ..money import ZERO
 from ..reporting import EARLIEST_RANGE_KEY, resolve_range
-from ._helpers import _paged, _safe_next, _sorted
+from ._helpers import AMOUNT_SORT_COLUMNS, _paged, _safe_next, _sorted
 
 # Reports' date-range presets, plus "All dates": no date limits at all, so even a transaction
 # dated in the future by mistake shows up. It takes the place of Reports' "Earliest to date",
@@ -37,7 +37,7 @@ TRANSACTION_LIST_SORT_FIELDS = {
     "payee": ["payee__name"],
     "category": ["category__name"],
     "memo": ["memo"],
-    "amount": ["amount"],
+    **AMOUNT_SORT_COLUMNS,
 }
 
 
@@ -258,12 +258,15 @@ def transaction_form_view(request, pk=None):
                     account.save(update_fields=["is_active"])
             txn = form.save()
             if reminder:
+                # Named before mark_entered(): it moves a recurring reminder's due date on, and the
+                # message must say which date was paid (the same order reminder_skip uses).
+                label = str(reminder)
                 reminder.mark_entered(txn)
                 if reminder.frequency == Reminder.Frequency.ONE_TIME:
-                    messages.success(request, f"Entered {reminder}.")
+                    messages.success(request, f"Entered {label}.")
                 else:
                     moved_to = regional.format_date(reminder.next_due_date)
-                    messages.success(request, f"Entered {reminder} and moved it to {moved_to}.")
+                    messages.success(request, f"Entered {label} and moved it to {moved_to}.")
                 return redirect("finance:reminder_list")
             messages.success(request, "Transaction saved.")
             if not instance:
