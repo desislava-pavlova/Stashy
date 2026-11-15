@@ -204,10 +204,12 @@ class WelcomeStepThreeTests(WelcomeWizardTestCase):
                 )
                 self.assertCountEqual(self.profile.watched_expenses_categories.all(), expected)
 
-    def test_title_starts_empty_and_the_dropdown_has_bootstrap_js(self):
+    def test_title_starts_with_watched_expenses_and_the_dropdown_has_bootstrap_js(self):
+        # S46: the step used to empty the box to hide the old "Bills & Utilities" default; a neutral
+        # default needs no hiding, so the box shows it and you can keep it or type over it.
         response = self.client.get(reverse("finance:welcome_step", args=[3]))
         title = response.context["form"]["watched_expenses_title"]
-        self.assertEqual(title.value(), "")
+        self.assertEqual(title.value(), "Watched expenses")
         self.assertNotContains(response, 'value="Bills &amp; Utilities"')
         self.assertContains(response, "bootstrap.bundle.min.js")
 

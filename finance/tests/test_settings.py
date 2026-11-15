@@ -1,7 +1,8 @@
 """The Settings page: its layout, its separate form endpoints (exchange rates, Watched
 expenses), and the Change PIN and recovery code pages."""
 
-from datetime import timedelta
+from datetime import date, timedelta
+from decimal import Decimal
 from unittest import mock
 
 from django.conf import settings
@@ -13,7 +14,7 @@ from audit.models import AuditLogEntry
 
 from ..currency import RateFetchError
 from ..forms import ProfileForm, WatchedExpensesForm
-from ..models import Category, Profile
+from ..models import Account, Category, ExchangeRate, Profile
 from ..stashes import security
 from .base import (
     LEAKED_TEMPLATE_SYNTAX,
@@ -21,6 +22,91 @@ from .base import (
     AlexsStashTestCase,
     LoggedInWithAccountTestCase,
 )
+
+
+class ExchangeRateTableTests(LoggedInWithAccountTestCase):
+    """S32: the Exchange rates table writes each rate's date in the stash's date format and names
+    each source by its label, not the code stored in the database."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.profile = Profile.for_user(cls.user)
+        for code, source in (("USD", ExchangeRate.Source.MANUAL), ("GBP", ExchangeRate.Source.FRANKFURTER)):
+            Account.objects.create(name=f"{code} account", currency=code)
+            ExchangeRate.objects.create(
+                base_currency=code, quote_currency="EUR", rate=Decimal("0.5"), date=date(2026, 4, 3), source=source
+            )
+
+    def page(self, date_format):
+        self.profile.date_format = date_format
+        self.profile.save(update_fields=["date_format"])
+        return self.client.get(reverse("finance:settings"))
+
+    def test_the_date_follows_the_stashs_date_format(self):
+        self.assertContains(self.page("dmy"), "<td>03/04/2026</td>")
+        month_first = self.page("mdy")
+        self.assertContains(month_first, "<td>04/03/2026</td>")
+        self.assertNotContains(month_first, "03/04/2026")
+        self.assertContains(self.page("ymd"), "<td>2026-04-03</td>")
+
+    def test_each_source_shows_its_label(self):
+        response = self.page("dmy")
+        self.assertContains(response, ">Typed in<")
+        self.assertContains(response, ">Frankfurter (ECB)<")
+        self.assertNotContains(response, ">manual<")
+        self.assertNotContains(response, ">Frankfurter<")
+
+
+class ExchangeRateTableRowsTests(LoggedInWithAccountTestCase):
+    """The Exchange rates table row by row: which currencies it lists, and what it shows for each."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        Profile.for_user(cls.user)
+
+    def add_rate(self, source, rate, day=date(2026, 4, 3), base="USD", quote="EUR"):
+        return ExchangeRate.objects.create(
+            base_currency=base, quote_currency=quote, rate=Decimal(rate), date=day, source=source
+        )
+
+    def page(self):
+        return self.client.get(reverse("finance:settings"))
+
+    def test_a_currency_with_no_known_rate_says_so_instead_of_showing_a_blank_row(self):
+        Account.objects.create(name="US card", currency="USD")
+        response = self.page()
+        self.assertEqual(response.context["known_rates"], [("USD", None)])
+        self.assertContains(response, "No rate known yet")
+        self.assertNotContains(response, "Every account already uses")
+
+    def test_with_every_account_in_the_main_currency_there_is_nothing_to_convert(self):
+        response = self.page()  # the one account is in the main currency
+        self.assertEqual(response.context["known_rates"], [])
+        self.assertContains(response, f"Every account already uses {response.context['profile'].main_currency}")
+        self.assertNotContains(response, "No rate known yet")
+
+    def test_two_accounts_in_one_currency_make_one_row(self):
+        for name in ("US card", "US savings"):
+            Account.objects.create(name=name, currency="USD")
+        self.assertEqual([code for code, _ in self.page().context["known_rates"]], ["USD"])
+
+    def test_a_typed_rate_and_a_fetched_one_for_the_same_day_show_the_typed_one_only(self):
+        Account.objects.create(name="US card", currency="USD")
+        self.add_rate(ExchangeRate.Source.FRANKFURTER, "0.9")
+        self.add_rate(ExchangeRate.Source.MANUAL, "0.8")
+        response = self.page()
+        self.assertEqual(len(response.context["known_rates"]), 1)
+        self.assertContains(response, '<td class="text-end">0.8000</td>', html=True)
+        self.assertContains(response, ">Typed in<")
+        self.assertNotContains(response, "0.9000")
+        self.assertNotContains(response, "Frankfurter (ECB)")
+
+    def test_a_rate_stored_the_other_way_round_is_shown_as_the_rate_into_the_main_currency(self):
+        Account.objects.create(name="US card", currency="USD")
+        self.add_rate(ExchangeRate.Source.MANUAL, "1.25", base="EUR", quote="USD")
+        self.assertContains(self.page(), '<td class="text-end">0.8000</td>', html=True)
 
 
 class SettingsEndpointsTests(LoggedInWithAccountTestCase):
@@ -226,7 +312,7 @@ class SettingsEndpointsTests(LoggedInWithAccountTestCase):
         )
         self.assertTrue(form.is_valid(), form.errors)
         profile = form.save(commit=False)
-        self.assertEqual(Profile.objects.get(pk=self.profile.pk).watched_expenses_title, "Bills & Utilities")
+        self.assertEqual(Profile.objects.get(pk=self.profile.pk).watched_expenses_title, "Watched expenses")
         profile.save()
         form.save_m2m()
         self.assertEqual(list(profile.watched_expenses_categories.all()), [category])
@@ -390,6 +476,13 @@ class RecoveryCodePageTests(PinPageTestCase):
     def generate(self, pin=None, **kwargs):
         data = {"current_pin": self.PIN if pin is None else pin}
         return self.client.post(reverse("finance:recovery_code"), data, **kwargs)
+
+    def test_the_page_is_never_cached(self):
+        # S80: so the browser's Back button can't show a code again.
+        self.assertIn("no-store", self.client.get(reverse("finance:recovery_code"))["Cache-Control"])
+        self.generate()
+        shown = self.client.get(reverse("finance:recovery_code"))
+        self.assertIn("no-store", shown["Cache-Control"])
 
     def test_get_shows_the_warning_and_a_pin_box_with_generate_and_back_but_no_code(self):
         response = self.client.get(reverse("finance:recovery_code"))

@@ -1,3 +1,4 @@
+from dateutil.relativedelta import relativedelta
 from django import forms
 from django.core.exceptions import ValidationError
 from django.core.validators import FileExtensionValidator
@@ -296,11 +297,6 @@ class TransactionForm(BootstrapFormMixin, forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        if "transaction_number" in self.fields:
-            self.fields["transaction_number"].help_text = (
-                "Prefilled with the next available number (shared across accounts, starting over each year, D9)"
-                " — change it, or clear it to have Stashy pick again."
-            )
         # Transfer categories are created automatically by the Transfer button, not picked by hand
         # here — except editing a transaction that already has one (an opening balance or transfer
         # leg) must still offer its own category, or saving the form would reject it as invalid.
@@ -451,6 +447,12 @@ class DateRangeFilterForm(forms.Form):
         ("year", "Year"),
     ]
 
+    # A custom range outside these limits would overflow the report maths (year 1 or 9999) or make
+    # Net worth walk every day of a century (S93).
+    EARLIEST_YEAR = 1900
+    LATEST_YEAR = 2100
+    MAX_RANGE_YEARS = 100
+
     # R3: reports default to This month, Last 3 periods - a fresh, unbound form
     # shows these as selected even before any filter is submitted.
     range = forms.ChoiceField(choices=RANGE_CHOICES, required=False, initial="this_month")
@@ -478,6 +480,10 @@ class DateRangeFilterForm(forms.Form):
                 raise ValidationError("A custom range needs both a start and an end date.")
             if start > end:
                 raise ValidationError("The start date must be on or before the end date.")
+            if start.year < self.EARLIEST_YEAR or end.year > self.LATEST_YEAR:
+                raise ValidationError(f"Dates must fall between {self.EARLIEST_YEAR} and {self.LATEST_YEAR}.")
+            if end > start + relativedelta(years=self.MAX_RANGE_YEARS):
+                raise ValidationError(f"A custom range can cover at most {self.MAX_RANGE_YEARS} years.")
         return cleaned
 
 

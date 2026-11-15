@@ -70,6 +70,12 @@ def stash_exists(name):
     return stash_db_path(name).exists()
 
 
+def is_stash(name):
+    """Whether `name` is exactly the name of a stash on disk, as list_stashes() spells it. Names
+    that merely reach a stash's folder (another case on Windows, a trailing slash, `..`) are not."""
+    return name in list_stashes()
+
+
 def list_stashes():
     """Every stash's name, alphabetically - a stash's existence *is* its own folder (holding
     a db.sqlite3) existing, so this is a directory scan, not a database query."""

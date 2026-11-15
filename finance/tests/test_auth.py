@@ -6,7 +6,7 @@ from unittest import mock
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.test import SimpleTestCase, override_settings
+from django.test import Client, SimpleTestCase, override_settings
 from django.urls import NoReverseMatch, URLPattern, resolve, reverse
 from django.utils import timezone
 from django.views.generic import RedirectView
@@ -302,6 +302,13 @@ class ForgotPinPageTests(StashTestCase):
         for leaked in ("{%", "%}", "{#", "#}"):
             self.assertNotContains(response, leaked)
 
+    def test_the_pages_that_show_a_recovery_code_are_never_cached(self):
+        # S80: so the browser's Back button can't show a code again. The Forgot PIN page, both as
+        # the form and as the page that shows the new code (the create-stash page: StashCreatePageTests).
+        no_store = "no-store"
+        self.assertIn(no_store, self.client.get(reverse("forgot_pin"))["Cache-Control"])
+        self.assertIn(no_store, self.reset()["Cache-Control"])
+
     def test_the_right_code_changes_the_pin_and_shows_a_new_code_once(self):
         response = self.reset()
         self.assertContains(response, "PIN changed")
@@ -393,6 +400,16 @@ class ForgotPinPageTests(StashTestCase):
             self.client.post(reverse("login"), {"username": settings.TEST_STASH, "password": "1234"}),
             "Too many wrong PINs",
         )
+
+
+class StashCreatePageTests(StashTestCase):
+    databases = {"default", settings.TEST_STASH}  # no stash is chosen yet, so Django touches `default`
+
+    def test_the_page_is_never_cached(self):
+        # S80: it also shows a new stash's recovery code, which the Back button must not show again.
+        response = Client().get(reverse("stash_create"))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("no-store", response["Cache-Control"])
 
 
 class ForgotPinWithoutAProfileTests(StashTestCase):

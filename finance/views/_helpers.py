@@ -91,6 +91,33 @@ def _safe_next(request, url):
     return url if allowed else ""
 
 
+# The biggest number SQLite's INTEGER holds. A lookup by a bigger one is an OverflowError.
+_LARGEST_ID = 2**63 - 1
+
+
+def _as_id(value):
+    """`value` as an integer database id if it is plain ASCII digits and fits, else None. Whatever
+    a hand-edited URL or form sends must not reach a lookup unchecked: a value that isn't a number
+    is a 500 page and a traceback in the log. `isdigit()` alone isn't enough, since it is also
+    true for characters like "²" that `int()` refuses, and a number too big for the database
+    overflows. A lookup by None finds nothing, so a bad id answers like an id that doesn't exist."""
+    text = value if isinstance(value, str) else ""
+    if not (text.isascii() and text.isdigit()):
+        return None
+    # Too long to be an id at all. Python refuses to turn a string of more than 4,300 digits into
+    # an int (a ValueError), so the length is checked first; leading zeros don't count.
+    digits = text.lstrip("0") or "0"
+    if len(digits) > len(str(_LARGEST_ID)):
+        return None
+    number = int(digits)
+    return number if number <= _LARGEST_ID else None
+
+
+def _as_ids(values):
+    """The ids among `values` (see _as_id()); anything else is left out."""
+    return [found for found in map(_as_id, values) if found is not None]
+
+
 def _plural(count, word):
     return f"{count} {word}{'' if count == 1 else 's'}"
 
@@ -101,7 +128,9 @@ def _plural(count, word):
 
 # Excel, LibreOffice and Google Sheets treat a cell starting with one of these as a formula, and
 # imported bank text can start with anything - so text cells that do get a leading apostrophe in
-# CSV, the usual "this is text" marker (OWASP's advice for CSV injection).
+# CSV, the usual "this is text" marker (OWASP's advice for CSV injection). The apostrophe goes
+# after any leading spaces: the report layouts indent a subcategory's name with two, and an
+# indent must not hide a formula from this check (S92).
 _FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
 
 
@@ -114,8 +143,10 @@ def _csv_cell(value):
         return f"{value:.2f}"
     if isinstance(value, date):
         return value.isoformat()
-    if isinstance(value, str) and value.startswith(_FORMULA_PREFIXES):
-        return "'" + value
+    if isinstance(value, str):
+        text = value.lstrip(" ")
+        if text.startswith(_FORMULA_PREFIXES):
+            return value[: len(value) - len(text)] + "'" + text
     return value
 
 

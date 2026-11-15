@@ -165,6 +165,13 @@ Checked, so nobody has to check again:
   or form gets there, but it fills `logs/stashy.log` with tracebacks. Fix:
   check the value first and answer 404 or show a message. A test covers
   each case.
+  *Done 15/11/2026 (item 1.2). One helper, `_as_id()` in `views/_helpers.py`:
+  an id is plain ASCII digits that fit SQLite, else nothing. It replaced
+  every `str.isdigit()` too (Transactions' account and category filters,
+  Payees' category filter), since `isdigit()` is also true for "²", which
+  `int()` refuses, and a 30-digit number overflowed SQLite. The reviews
+  found two more places that still send an oversized id straight to SQLite:
+  S106.*
 - **S3 — The Income & expense vs average export lacks two rows that the
   page shows.** The page adds an "Income total" and an "Expense total" row
   (built inside `reports_view`). The export builds the table on its own
@@ -189,6 +196,10 @@ Checked, so nobody has to check again:
 
   This is R1's cause (plan 04) in sorting instead of searching. Fix: sort
   on the `name_key` column that already exists for exactly this.
+  *Done 15/11/2026 (item 1.4): the dropdowns, the Payee and Category columns,
+  and `Category.Meta.ordering` and `Payee.Meta.ordering` (both now
+  `["name_key"]`, which also drops Category's join to its parent). Python-side
+  sorts that still use `.lower()` and the accounts are S109.*
 - **S5 — An internal code shows on screen.** The Number field's help text
   on the transaction form ends in "…starting over each year, **D9**)". Fix:
   drop "D9".
@@ -196,10 +207,13 @@ Checked, so nobody has to check again:
   text at all; its template renders the Number box without it. Templates
   are yours to word, so it isn't put back: the fix becomes deleting the
   unused help text in `TransactionForm.__init__`.*
+  *Done 15/11/2026 (item 1.5).*
 - **S6 — Edit mode's "saved" flash ignores dark mode.** The animation uses
   `--stashy-success-rgb`, which is never defined, so its fallback, Bootstrap's
   fixed green, always applies. Meanwhile `--stashy-positive-soft` (a pale
   green with a dark-mode twin) is defined and used nowhere. Fix: use it.
+  *Done 15/11/2026 (item 1.6), with a test that every `--stashy-*` variable
+  the stylesheet uses is defined in it (this was the only one that wasn't).*
 
 ### B. Security
 
@@ -476,8 +490,8 @@ Stashy.
 | S28 | 12/11/2026 | `finance/templates/finance/` (34 pages and an `includes/` folder, all side by side) | You're uneasy that every template sits in one folder; you'd usually split them by area (transactions, reminders, …). **Claude:** both are normal in Django. One flat folder named `<thing>_<action>.html` is Django's own default (its generic views look for `finance/transaction_list.html`), and it's fine for small apps. At Stashy's size, folders per area are clearer, and the code is already split that way: `views/` has one module per area and the tests one file per area. So the templates follow the same map: `accounts/` (list, detail, delete, transfer, both reconcile steps), `categories/`, `payees/`, `transactions/`, `reminders/`, `imports/`, `reports/` (with its three report-only pieces from `includes/`), `settings/`, `dashboard/`, `welcome/`. Shared pages stay at the top of `finance/`: `base.html`, `error_page.html`, and S19's `form_page.html` and `delete_page.html`; `includes/` keeps only pieces several areas use. Two folders stay where they are, because Django looks for them by name: `registration/` (the picker and PIN pages; Django's login view looks there) and `404.html`/`500.html` at the top. Claude's call: files keep their full names (`transactions/transaction_list.html`, not `transactions/list.html`), so PyCharm's tabs and search results never show five files all called `list.html`. The work is mechanical: move the files, update each view's `template_name`, the `{% extends %}`/`{% include %}` paths and the tests that name a template. Proposed phase: 5, as its first step, so S19's new files land straight in their folders. *12/11/2026 (you): "folders it is", and you accept Claude's other suggestions here and in S19, S25 and S27.* *Later on 12/11/2026 (you): each layout sits with the pages that use it ("by use"), not all layouts together. So `welcome_base.html` goes into `welcome/` with the five steps, and the error pages' layout leaves `finance/` to sit beside `404.html` and `500.html` at the top of `finance/templates/`, renamed `error_base.html` (Stashy names its layouts `*_base.html`, like `welcome_base.html`). `404.html` and `500.html` themselves don't move: Django looks them up by exact name at the top, and moving them would need our own error handlers in `stashy/urls.py`. The only cost: `error_base.html` is outside the app's own `finance/` folder, which normally keeps names from clashing with another app's, and nothing Stashy installs has a template of that name.* | open (decided 12/11/2026) |
 | S29 | 12/11/2026 | `finance/templates/finance/settings.html` (Watched expenses card) and `welcome_watched_expenses.html`, with `includes/category_checkbox_filter.html` | Found while checking the two red "Invalid id reference" marks PyCharm shows in `settings.html`. **Those two are false alarms (Claude checked the rendered page):** every label points at a box that exists (`id_main_currency`, …, `id_watched_expenses_title`) and no id repeats. PyCharm reads the template as plain HTML, so it takes `{{ field.id_for_label }}` as a literal id; nothing to change in the code. The real find: the **Categories** label next to the tick-some-categories dropdown has no `for`, and the dropdown's button has no id, so clicking the word does nothing and a screen reader doesn't connect the two. Fix: the include gives its button an id built from `field_name`, and both pages' Categories labels point at it with `for` (clicking the label then opens the dropdown). Transactions has no visible label there and needs none: its button text already says "All categories" or "3 categories selected". Proposed phase: 5 (templates). | open |
 | S30 | 12/11/2026 | `finance/templates/404.html`, `500.html` and their shared `finance/error_page.html` (`error_base.html` beside them after S28) | You like how the two error pages look, but they're hard to tell apart from the PIN login page: same squirrel, same card, nothing that says "error". You chose a small coloured tag above the heading, with a warning icon (`bi-exclamation-triangle-fill`, from the Bootstrap Icons Stashy already ships): **Error 404** in soft gold (a missing page is a mild problem, usually an old link) and **Error 500** in soft red (something really broke). Everything else stays as it is: the squirrel, the wordmark, the headings, the text and the button. How: `error_page.html` gets a block for the tag and each page fills in its code and colour. The 500 page gets no context, and the tag needs none (plain HTML and a class). Claude's call: the colours come from the tokens the reminders' Overdue and Today badges already use (`--stashy-negative(-soft)`, `--stashy-gold-soft`/`--stashy-gold-ink`), as one shared pair of pill classes that those badges switch to as well, so the colours are defined once and dark mode comes for free. A test checks that each page shows its tag. Proposed phase: 5 (templates). | open (decided 12/11/2026) |
-| S31 | 12/11/2026 | `finance/views/dashboard.py`, `dashboard.html` (Net worth tile) | Found by the template review you asked for (12/11/2026), like S32-S37. The dashboard's net worth quietly leaves out every account whose currency has no known exchange rate. The Accounts page warns about this ("No known rate for USD — not included above"), and the dashboard view gets the same list (`missing_rates` from `convert_balances()`) but the page never shows it, so the total is simply lower, with no hint why. Fix: the same warning under the Net worth tile, from one small include that the Accounts page uses too (no copy-paste). A test with a USD account and no USD rate. Proposed phase: 1. | open |
-| S32 | 12/11/2026 | `finance/templates/finance/settings.html`, the Exchange rates table | The "As of" date is `{{ known.date }}` without `sdate`, so it ignores the stash's date format (a month-first stash still sees day-first). "Source" shows the stored code (`manual`, `Frankfurter`) instead of its label from `ExchangeRate.Source` ("Typed in", "Frankfurter (ECB)"): the same kind of slip as S5. Fix: `sdate`, and the label instead of the code. A test with a month-first stash and a typed-in rate. Proposed phase: 1. | open |
+| S31 | 12/11/2026 | `finance/views/dashboard.py`, `dashboard.html` (Net worth tile) | Found by the template review you asked for (12/11/2026), like S32-S37. The dashboard's net worth quietly leaves out every account whose currency has no known exchange rate. The Accounts page warns about this ("No known rate for USD — not included above"), and the dashboard view gets the same list (`missing_rates` from `convert_balances()`) but the page never shows it, so the total is simply lower, with no hint why. Fix: the same warning under the Net worth tile, from one small include that the Accounts page uses too (no copy-paste). A test with a USD account and no USD rate. Proposed phase: 1. | done 15/11/2026 (item 1.11) |
+| S32 | 12/11/2026 | `finance/templates/finance/settings.html`, the Exchange rates table | The "As of" date is `{{ known.date }}` without `sdate`, so it ignores the stash's date format (a month-first stash still sees day-first). "Source" shows the stored code (`manual`, `Frankfurter`) instead of its label from `ExchangeRate.Source` ("Typed in", "Frankfurter (ECB)"): the same kind of slip as S5. Fix: `sdate`, and the label instead of the code. A test with a month-first stash and a typed-in rate. Proposed phase: 1. | done 15/11/2026 (item 1.12) |
 | S33 | 12/11/2026 | `dashboard.html` ("Saved in" tile), `reports.html` (report 5's "Savings rate"), `percent_fmt()` in `finance/views/reports.py` | The savings rate is printed the Python way, so a stash with the `10.000,50` number format sees "71.2%" next to "1.200,00 €". Fix: through the stash's number format (`money:1` in the templates, the same `regional` formatting in `percent_fmt()`). A test with the `10.000,50` format. Proposed phase: 1. | **done 14/11/2026** (item 1.13) |
 | S34 | 12/11/2026 | `finance/tests/test_pages.py`, `RenderCheckTests` | The test that catches leaked template code renders only 14 pages and looks only for `{#`, `#}`, `{%`, `%}`. Not covered: the transfer page, both reconcile steps, every add/edit/delete page, category usage, payee detail, the reminder scope page, backup restore, the welcome steps, login, picker, create stash, forgot PIN, 404 and 500. The review rendered all of them and none leaks today, so this is a safety gap, not a bug. Your call (12/11/2026): "fix whatever you need here", so Claude's call on the details: every page Stashy has, plus a check that fails when a new page in `finance/urls.py` is missing from the list (with a short, commented skip list for POST-only URLs and exports), so a new page can't be forgotten; it also looks for `{{`/`}}` outside `<script>` blocks; and the test's `date.today()` becomes `timezone.localdate()`, as the rules say. Proposed phase: 2. | open |
 | S35 | 12/11/2026 | Templates across `finance/` and `registration/`; `transaction-quick-edit.js`, `reports.js` | Things a screen reader or keyboard user trips over; nothing changes on screen except that clicking a label now puts you in its box. **Labels not linked to their box** (the S29 kind): Import (Account, File, Date format), the Reports filters (Date range, Subtotal by, Average interval, Account, Start, End); on Reports the "?" icon moves out of the label, so clicking it doesn't jump into the box. **Controls with no name:** the login PIN box, the reconcile tick boxes ("Reconcile Lidl 05/11/2026"), Edit mode's controls in `<template id="quick-edit-controls">`, and the pencil and bin buttons on the Accounts, Categories, Payees and Reminders lists (`aria-label="Edit"`/`"Delete"`, as Transactions already has). **Not reachable with Tab:** Reports' show/hide-subcategories arrow (`report-toggle-icon`, in both report tables and the Net worth table) becomes a real button that says whether it's open, looking the same; the "?" help icons get a name ("About Date range"). **Headings:** 15 pages use `<h3>` for their page title; they get `<h1 class="h3">` like the rest (same look). **Charts:** the 8 report charts and the dashboard donut get `role="img"` and a short description. **Transactions' Rec. tick** gets hidden "Reconciled" text. Your call (12/11/2026): none of this is yours to decide. Proposed phase: 5. | open |
@@ -487,12 +501,12 @@ Stashy.
 | S39 | 12/11/2026 | `finance/views/transactions.py` (`TRANSACTION_LIST_SORT_FIELDS`), `finance/views/accounts.py` (`ACCOUNT_REGISTER_SORT_FIELDS`), `transaction_list.html`, `account_detail.html` | The Payment and Deposit headers both sort by `amount`, so clicking either does the same thing and both show the arrow. Your call (12/11/2026, yes to Claude's suggestion): each sorts its own side. Payment: the first click puts the biggest payment first, the second the smallest; rows with no payment (deposits) stay at the bottom either way. Deposit works the same way for deposits. Only the clicked header shows the arrow. On both Transactions and the account register. A test for each column and each direction. Proposed phase: 1 (two headers doing the same is a bug). Built with the keys `payment` and `deposit`; the old `?sort=amount` is ignored. Also on the export. | done 14/11/2026 (item 1.15) |
 
 | S40 | 13/11/2026 | `pyproject.toml` (`[tool.ruff.lint.isort]`) and the 14 files whose imports it reorders | You group imports as Python's own, then Django, then the project's (your SpotiCode habit). Stashy already groups and sorts them, through ruff's `I` rule (`ruff check .` fails on a wrong order, `ruff check --fix .` sorts), but Django shares one group with the other outside libraries (dateutil, ofxparse, openpyxl, whitenoise, tzlocal), sorted alphabetically, so `dateutil` comes before `django`. Fix: Django gets its own group, after Python's and before the other libraries (`section-order` plus a `django` section, three lines in `pyproject.toml`), then `ruff check --fix .` rearranges the 14 files that mix Django with another library: 9 app files and 5 test files (a dry run, 13/11/2026; nothing else changes). No group labels like `# Django`: the sorter keeps a comment attached to the import below it, so after sorting the labels land in the wrong place and split the groups (Claude tried it on a copy), and the blank lines and the module names already say which group is which. Your call (13/11/2026): Claude's way. **Also (your habit, added 13/11/2026): two blank lines after the imports in every file.** PEP 8 asks for two before a top-level `def` or `class` and gives no number before anything else. Ruff's sorter decides by what follows: two before a `def` or `class` (36 files today), one before a constant (38 files, e.g. `PAYEE_SORT_KEYS` in `payees.py`). `lines-after-imports = 2` in the same `[tool.ruff.lint.isort]` block makes it two everywhere (Claude tried it on scratch files), and `ruff check --fix` adds the missing line in those 38 files. Proposed phase: 3, as its first step (3.0), so the moves after it are written in the new order and the reshuffle stays out of their diffs. | open (decided 13/11/2026) |
-| S41 | 13/11/2026 | `finance/services/importing.py` (`_RECONCILED_FALSE_VALUES`, `_import_rows()`), `finance/tests/test_imports.py` | You'd like an empty Reconciled cell to count as "no". **It already works that way (Claude checked the code):** an empty cell, a cell holding only spaces and a file with no Reconciled column all become `""`, and `""` is in `_RECONCILED_FALSE_VALUES`, so the transaction comes in unreconciled. The same goes for `n`, `no`, `false`, `0`, `u`, `unreconciled` and `uncleared`, and for Excel's FALSE and 0. Anything else counts as reconciled (`R`, `yes`, TRUE, `1`, …). What's missing: no test proves it. `test_an_excel_file_with_real_dates` has a row with an empty Reconciled cell but checks only its payee, and no CSV test has the column at all. Fix: one test with an empty cell, a spaces-only cell and a missing column (CSV and Excel) that all come in unreconciled, next to one marked `R` that comes in reconciled; and the docstring says what a blank means ("blank means not reconciled"), not only that it may be blank. **Claude's find, your call (13/11/2026: "yes, file it"):** `c` and `cleared` count as reconciled today, but in Quicken `c` means the bank has the transaction and you haven't reconciled it against a statement yet; only `R` means reconciled. Imported as reconciled, a cleared transaction never shows up in the next Reconcile checklist and is already counted in the opening balance Reconcile starts from. So `c`, `cleared` and `*` (older Quicken files mark cleared with `*`) join the "no" list and come in unreconciled, while `R`, `X` and `reconciled` still come in reconciled. Transactions already imported stay as they are. Claude's call: the value decides, not the column's heading, so a `Yes` in a column headed "Cleared" still counts as reconciled (rare in bank files). The same test covers the new values. Proposed phase: 1, since it's now a behaviour fix and the test goes with it. | open (decided 13/11/2026) |
+| S41 | 13/11/2026 | `finance/services/importing.py` (`_RECONCILED_FALSE_VALUES`, `_import_rows()`), `finance/tests/test_imports.py` | You'd like an empty Reconciled cell to count as "no". **It already works that way (Claude checked the code):** an empty cell, a cell holding only spaces and a file with no Reconciled column all become `""`, and `""` is in `_RECONCILED_FALSE_VALUES`, so the transaction comes in unreconciled. The same goes for `n`, `no`, `false`, `0`, `u`, `unreconciled` and `uncleared`, and for Excel's FALSE and 0. Anything else counts as reconciled (`R`, `yes`, TRUE, `1`, …). What's missing: no test proves it. `test_an_excel_file_with_real_dates` has a row with an empty Reconciled cell but checks only its payee, and no CSV test has the column at all. Fix: one test with an empty cell, a spaces-only cell and a missing column (CSV and Excel) that all come in unreconciled, next to one marked `R` that comes in reconciled; and the docstring says what a blank means ("blank means not reconciled"), not only that it may be blank. **Claude's find, your call (13/11/2026: "yes, file it"):** `c` and `cleared` count as reconciled today, but in Quicken `c` means the bank has the transaction and you haven't reconciled it against a statement yet; only `R` means reconciled. Imported as reconciled, a cleared transaction never shows up in the next Reconcile checklist and is already counted in the opening balance Reconcile starts from. So `c`, `cleared` and `*` (older Quicken files mark cleared with `*`) join the "no" list and come in unreconciled, while `R`, `X` and `reconciled` still come in reconciled. Transactions already imported stay as they are. Claude's call: the value decides, not the column's heading, so a `Yes` in a column headed "Cleared" still counts as reconciled (rare in bank files). The same test covers the new values. Proposed phase: 1, since it's now a behaviour fix and the test goes with it. | done 15/11/2026 (item 1.16) |
 | S42 | 13/11/2026 | `finance/views/*.py`: the 26 `render()` calls that build their dictionary inside the call, the 2 that pass `_reconcile_review_context(...)`, and `CLAUDE.md` | Every function view builds `context = {...}` first and ends with `return render(request, "<template>", context)`, the way you write views elsewhere. Today Stashy has no rule: 26 calls build the dictionary inside `render()`, and only the three biggest views (dashboard, Reports, the transaction list) use a `context` variable. Why (agreed 13/11/2026): the `return` line looks the same everywhere and stays short, the context reads as its own block, a key added only sometimes is a plain `if`, and it's what Django's tutorial teaches. Per file: accounts 4 (+2 helper calls), auth 5, categories 1, imports 1, payees 2, reminders 3, settings 4, transactions 2, welcome 4. **Your find:** `import_transactions`'s `render()` line is longer than PEP 8's "Maximum Line Length" (79). Claude checked them all: 7 `render()` lines are over 79 only because the dictionary sits on the same line, and this change brings each to 75 or less: `accounts.py` (`account_transfer`), `auth.py` (`stash_picker`), `imports.py` (`import_transactions`), `payees.py` (`payee_detail`), `reminders.py` (`reminder_edit`'s scope page), `settings.py` (`recovery_code_view`, `backup_restore`). Claude's calls: (1) a value that is a calculation is worked out in a named variable above the context, not inside it, so no context line runs long either: `lockout_minutes` in `forgot_pin`, `recent_backups` in `settings_view`, the payee list's `categories`, and the two `cleaned_data` values reconcile passes to `_reconcile_review_context()`; (2) `account_reconcile` builds the same start-page context twice, so one `_reconcile_start_context(account, form)` builds it; (3) `context = _reconcile_review_context(...)` also counts as "context first". Six `render()` lines stay over 79 afterwards, because a long template name sits deep inside an `if` (both reconcile steps, both recovery-code pages, the transaction form): fine under Stashy's 119 limit, the only limit ruff checks. Nothing changes on screen, and no test changes. CLAUDE.md gets the rule. Proposed phase: 3, item 3.6. | open (decided 13/11/2026) |
 | S43 | 13/11/2026 | `pyproject.toml` (`line-length`), then every file `ruff format` rewraps; plan 02's decision C1 | Lines may be 99 characters, not 119. PEP 8's "Maximum Line Length" is 79, and it lets a team agree on up to 99, no more. Plan 02's C1 (25/09/2026) chose 119 and gave as its reason that PEP 8 allows "up to 99/119", which misreads PEP 8. You asked for PEP 8 then, and again on 13/11/2026. Measured on a scratch copy (13/11/2026): with `line-length = 99`, `ruff format` rewraps 59 files by itself, and 63 lines are left for hand fixing (long strings and comments ruff can't split). The other 30 files don't change. **Comments and docstrings (your call, 13/11/2026):** PEP 8's 99 comes with a second condition, that comments and docstrings stay within 72. That's PEP 8's number for comments at any code width; you said 79, and 72 is what PEP 8 means. 1,162 comment and docstring lines are longer than 72 today, and 1,043 are longer than 79, so the work is about the same either way. Claude first suggested skipping it as too much hand work. You pointed out that S21's pass reads every comment and docstring anyway, which makes the extra work small, so they're rewrapped to 72 in that pass (Phase 2, item 2.5). At the end of it, ruff's `W505` is switched on with `max-doc-length = 72`, so it stays true. (Pick 79 instead if you'd rather: same work, one number in `pyproject.toml`.) When built, plan 02's C1 gets a revision note pointing here. Proposed phase: 3, item 3.0, with S40: both are tool settings that reshuffle many files, so they go first, each as its own commit, and the structural moves after them start from the new layout. | open (decided 13/11/2026) |
 | S44 | 13/11/2026 | `finance/views/payees.py` (`payee_list`), and the rule for the whole code | You find `payees.py` heavy with comments. You want docstrings and comments, but only ones that explain something a reader wouldn't see from the code, not ones that retell common logic. Your rule: trim, don't strip. Claude checked each of the four comments: all four explain a real "why", so none goes, but two are wordier than they need to be. (1) The 5-line comment above the three queries: it says the page asks the database once per kind of data rather than once per payee, because the list can hold hundreds of payees. That's worth keeping, in 2 lines; the part that lists what each query fetches repeats the code below it. (2) The 3-line comment on `.order_by()`: Transaction's default ordering by date would slip into the `DISTINCT` and repeat each category once per date. A real Django trap; keep it, in 2 lines. (3) "sort key only - the template shows one per row": keep. (4) The currency-blind `total_sort_value`: keep, in 1 line, since adding up different currencies is deliberate and only good for ordering. `payee_list`, the file's longest function, has no docstring; it gets a one-line one. Note: the whole-code review of 13/11/2026 (not filed yet) suggests moving this maths out of the view into a helper; if that happens, the comments go with the code, and comment (1) becomes the helper's docstring. The same rule applies to every file in S21's "trim the rest" pass (Phase 2). *Later on 13/11/2026:* the comment in `welcome.py`'s `_step_watched_expenses` ("The model's "Bills & Utilities" default…") read to you like a category that doesn't exist. It's right and it stays: it means `Profile.watched_expenses_title`'s default (`default="Bills & Utilities"` in `models.py`), and it explains why the first visit blanks the title box. It gets reworded to name the field, e.g. "Don't pre-fill the title's model default ("Bills & Utilities") on a first visit; coming Back keeps what was saved." *(Superseded the same day by S46: the default becomes "Watched expenses", and that line and its comment go.)* Proposed phase: 2, with S21. | open (decided 13/11/2026) |
 | S45 | 13/11/2026 | 19 files of app code (tests not counted); the worst listed below | You see places where a lot of code sits in one block, with no blank line between its steps. **Not overstated (Claude measured, 13/11/2026):** 47 stretches of 15 or more lines holding 8 or more statements with no blank line, in 19 files. PEP 8: "Use blank lines in functions, sparingly, to indicate logical sections." Rule (Claude's call): one blank line between a function's steps (read the request, query, build, respond), none inside one step. So an `if`/`elif` chain that makes one decision stays together: `resolve_range()`, `period_bucket()` and `_zone_table()` look dense but are lookup tables, and blank lines would only break them up. The ones that need it: `transaction_form_view` (about 90 lines with one blank line; it needs more than blank lines: the initial values for a reminder's Enter and for a new transaction each become a small helper, by your rule of one job per function), `account_reconcile` (40 lines; S42's start-page helper shortens it too), `reminder_list` (30 lines, its comments also trimmed by S44's rule), `audit/signals.py`'s `log_save` and `log_m2m`, `Reminder.regenerate_occurrences()`, `Category.clean()` (to check: it may be one chain of rules), `_report_filters`, `_import_ofx_rows`, the welcome steps, `stash_create`, `forgot_pin`, `category_usage`, `transaction_quick_edit`, `fetch_latest_rates`, and the rest of the 47 by the same rule. `reporting.py`'s (`category_vs_average_report_rows` and seven more) and `reports_view` wait for S14, which rewrites them in Phase 4, so they're touched once. Nothing changes on screen. Proposed phase: 3, item 3.7, in the same pass as S42, which already opens every function view. | open (decided 13/11/2026) |
-| S46 | 13/11/2026 | `finance/models.py` (`Profile.watched_expenses_title`), `finance/views/welcome.py` (`_step_watched_expenses`), a migration, `test_reports.py`, `test_welcome.py` | The Watched expenses title's default becomes **"Watched expenses"** instead of "Bills & Utilities" (your call, 13/11/2026). Why: the old default dates from Phase 13 (September 2026), when Watched expenses replaced a fixed "Bills & Utilities" report and the matching title meant "nothing looks different on day one" for the stashes that existed then. That reason has passed. Today a new stash that skips the welcome step gets a "Bills & Utilities" title on Settings and on Reports' card that nobody chose. Existing stashes keep the title they have saved (no data change): one showing "Bills & Utilities" may have kept it on purpose, and it can be renamed in Settings. **Claude's call:** the welcome step stops emptying the Title box on a first visit. It did that only to hide the old default; a neutral "Watched expenses" is a sensible starting title, so the box shows it and you can keep it or type over it. That line and its comment go, so S44's note about rewording that comment falls away. Tests: `test_default_title_is_bills_and_utilities` becomes the new default, and `test_title_starts_empty_…` becomes "starts with Watched expenses". A small migration records the new default; nothing in the data changes, but it is a migration, so the real stash is backed up first (`Stashy.bat` does that before it migrates). Proposed phase: 1. | open (decided 13/11/2026) |
+| S46 | 13/11/2026 | `finance/models.py` (`Profile.watched_expenses_title`), `finance/views/welcome.py` (`_step_watched_expenses`), a migration, `test_reports.py`, `test_welcome.py` | The Watched expenses title's default becomes **"Watched expenses"** instead of "Bills & Utilities" (your call, 13/11/2026). Why: the old default dates from Phase 13 (September 2026), when Watched expenses replaced a fixed "Bills & Utilities" report and the matching title meant "nothing looks different on day one" for the stashes that existed then. That reason has passed. Today a new stash that skips the welcome step gets a "Bills & Utilities" title on Settings and on Reports' card that nobody chose. Existing stashes keep the title they have saved (no data change): one showing "Bills & Utilities" may have kept it on purpose, and it can be renamed in Settings. **Claude's call:** the welcome step stops emptying the Title box on a first visit. It did that only to hide the old default; a neutral "Watched expenses" is a sensible starting title, so the box shows it and you can keep it or type over it. That line and its comment go, so S44's note about rewording that comment falls away. Tests: `test_default_title_is_bills_and_utilities` becomes the new default, and `test_title_starts_empty_…` becomes "starts with Watched expenses". A small migration records the new default; nothing in the data changes, but it is a migration, so the real stash is backed up first (`Stashy.bat` does that before it migrates). Proposed phase: 1. | done 15/11/2026 (item 1.17) |
 | S47 | 13/11/2026 | `finance/content.py` → `finance/tips.py`; the six views that import it; `test_pages.py`, `CLAUDE.md`, `README.md` | You'd like the module's name to say what's in it. `content.py` holds only the six `*_TIPS` lists (the "Stashy tips" beside the forms), 42 lines, nothing else, so `tips.py` (Claude's call: plain and short; `from ..tips import ACCOUNT_TIPS` reads well). The six imports in `views/` (accounts, categories, imports, payees, reminders, transactions), `TipsMovedOutOfTheViewsTests`' docstring in `test_pages.py`, CLAUDE.md's architecture map and README's folder tree follow. Nothing changes on screen. The tips' wording is yours to review and maybe change, another day; that's separate from the rename. Proposed phase: 3, item 3.8 (with 3.2's other moves and renames). | open (decided 13/11/2026) |
 | S48 | 13/11/2026 | `finance/forms.py` (542 lines) and `finance/auth_forms.py` (116) → a `finance/forms/` package; the 21 import lines that name them (views, admin, tests) | One `forms.py` per app is Django's default and normal, but in Stashy it's the odd one out: views are split by area (`views/`), tests are one module per area, and templates get folders per area (S28). Your call (13/11/2026): split forms the same way. `forms/_base.py`: `DateInput`, `BootstrapFormMixin` (shared by all). `forms/accounts.py`: `AccountForm`, `AccountCreateForm`, `TransferForm`, `ReconcileStartForm`, `ReconcileFinishForm`. `forms/categories.py`: `CategoryForm`, `CategoryParentSelect`. `forms/payees.py`, `forms/transactions.py`, `forms/reminders.py`, `forms/imports.py`: one form each. `forms/settings.py`: `ProfileForm`, `CheckRatesForm`, `WatchedExpensesForm`. `forms/auth.py`: everything in today's `auth_forms.py` (`PinField`, `PinConfirmMixin` and the PIN forms), so its odd name goes too. Claude's call: `DateRangeFilterForm` goes to `forms/filters.py`, since both Transactions and Reports use it, matching S16's `finance/filters.py`, which turns its answers into dates. As with `views/`, `forms/__init__.py` re-exports nothing, so every import names the real module (`from ..forms.accounts import AccountForm`). The tests stay as they are: each form is already tested in its area's module, so only their imports change. Nothing changes on screen. CLAUDE.md's architecture map follows. Proposed phase: 3, item 3.9, after 3.2 (S16 moves the two non-form helpers out of `forms.py` first). | open (decided 13/11/2026) |
 | S49 | 13/11/2026 | `finance/models.py` (1,000 lines) | You don't like one file for every model. Claude advised against splitting it: one `models.py` is Django's default, and the models refer to each other a lot (a transfer category belongs to an account, a reminder fills in a transaction), so a `models/` package would invite import loops for little gain. It would also be the one package that must re-export everything (Django finds models through `models`). Your call (13/11/2026): one file, with visual sections. A section banner before each group, in the style `views/exports.py`, `views/_helpers.py` and `services/importing.py` already use (a `# ----` line, the name, a `# ----` line). The file's order already matches, so nothing moves: Names (`name_key()` and its helper), Profile, Accounts (`AccountType`, the groups, `AccountQuerySet`, `Account`, `grouped_accounts()`), Categories (`CategoryQuerySet`, `Category`, `categories_alphabetical()`, `grouped_categories()`), Payees, Transactions, Imports (`ImportBatch`), Reminders, Exchange rates, Reconciliations. The same rule for `reporting.py`, the other long module, when S14 rewrites it (Phase 4). Nothing changes on screen. Proposed phase: 3, item 3.14 (numbered 3.10 when filed; moved to the end on 13/11/2026 when the whole-code review's items joined the phase), last, after any item that moves code in or out of `models.py`. | open (decided 13/11/2026) |
@@ -565,6 +579,7 @@ here, by phase. Findings that extend an older item are notes at the end.
   another case ("opening balance"), which then shows in the autocomplete
   and exports as not system-managed. **Fix:** one `Payee.is_system`
   through `name_key`, and a `name_key__in` exclude. Tests.
+  *Done 15/11/2026 (item 1.21): `Payee.SYSTEM_KEYS` and `Payee.is_system`.*
 - **S54 — The time-zone setting accepts any text.** `ProfileForm`'s
   `time_zone` is a `CharField` with a `Select` widget, so a hand-made
   POST saves anything, and `regional` quietly falls back to the default
@@ -749,6 +764,7 @@ here, by phase. Findings that extend an older item are notes at the end.
   **Fix:** `payee_list` falls back to `"name"` when the column isn't in
   `PAYEE_SORT_KEYS`, with a test in `test_payees.py`. Found by the
   qa-tester while checking R21. Proposed phase: 1.
+  *Done 15/11/2026 (item 1.24).*
 - **S70 — The starter categories file sits at the project's top level.**
   You asked on 13/11/2026 for fewer items at the top of the project
   folder. Most of them have to stay there, because the tools look for
@@ -863,11 +879,14 @@ recovery-code page losing the new code after a PIN re-hash, the old
   browser.** `never_cache` on `recovery_code_view`, `stash_create` and
   `forgot_pin`, so Back doesn't show the code again. Proposed: Phase 1,
   part D.
+  *Done 15/11/2026 (item 1.29).*
 - **S81 — The session's stash is still checked as a path.**
   `StashSelectionMiddleware` uses `stash_exists()`. The session is
   signed, so only someone with the secret key could use it, but checking
   `list_stashes()` like the cookie costs little. Proposed: Phase 1,
   part D.
+  *Done 15/11/2026 (item 1.29): `registry.is_stash()`, used for the session
+  and the cookie, so the rule has one home.*
 - **S82 — The PIN is saved in three places** (`views/settings.py`,
   `security.reset_pin_with_recovery_code()`, `registry.reset_pin_directly()`).
   One `security.set_pin()`. Proposed: Phase 3.
@@ -1010,6 +1029,9 @@ The rest:
   past the indent in the writer). A test with a formula-like main category
   and subcategory, in the CSV and XLSX of one category report and one
   vs-average report. Checklist item 1.34.
+  *Done 15/11/2026: the writer looks past the indent and puts the `'` after
+  it (`  '=cmd`), so it also covers the net worth layout. XLSX was already
+  plain text.*
 - **S93 — Extreme custom dates make Reports crash or crawl** (security
   reviewer; an older problem on the paths part B touched; proposed:
   Phase 1, part D). `/reports/?range=custom&start=0001-01-01&end=0002-01-01`
@@ -1021,6 +1043,10 @@ The rest:
   years; the page already turns an invalid form into its warning banner
   with the default filters. A test each. Same family as S2. Checklist
   item 1.35.
+  *Done 15/11/2026: 1900 to 2100 and at most 100 years, in
+  `DateRangeFilterForm.clean()`, so Reports and every report export. The
+  reviews found the Transactions list's own crash in year 9999
+  (`_longer_than_a_year()`), fixed too; other dates are S108.*
 - **S94 — The export's footer row says "Total", the page's says "Net"**
   (code reviewer; proposed: Phase 4). The Income & expense vs average card
   passes `total_label="Net"` to its table; `_vs_average_layout()` always
@@ -1033,6 +1059,7 @@ The rest:
   `_as_shown()` already avoids it for expense-only reports. **Fix:** give
   back zero without its sign (`result or ZERO`). A test. Checklist item
   1.36.
+  *Done 15/11/2026.*
 - **S96 — The report maths repeats a few shapes** (code reviewer;
   proposed: Phase 4). "Add the converted, signed amounts per category" is
   written five times (`category_totals_top_level`, both `totals_for`
@@ -1133,11 +1160,78 @@ Not filed: the Enter and Skip messages word "moved it to" differently
 rewrites those sentences anyway. Edit mode's controls without names are
 already in S35 (5.6), and `pip-audit` is in "Noticed, not planned".
 
-<!-- Next number: S104 -->
+### M. Found by the reviews of Phase 1, part D (15/11/2026)
+
+Four reviewers (code, database, security, front end) read part D. The QA
+tester started and was stopped by you before its final report; by then it had
+added about 40 tests (a check that no model change is waiting for its
+migration, the import through the page, the rate table, the category order),
+which pass but were not each checked against a broken version. Nothing was
+Critical. The small findings were done the same day: a currency named
+twice in the missing-rate hint when two accounts share it (it now names each
+once, alphabetically), `_as_id()` failing on a string of over 4,300 digits,
+the Transactions list's own crash on a date in year 9999, one
+`registry.is_stash()` for the session and the cookie, and test polish. The
+rest:
+
+- **S104 — A test that depends on which other tests run** (found while running
+  subsets). `test_the_deploy_check_only_finds_what_it_was_told_to_skip`
+  (`test_project.py`) runs Django's checks, and the JSON-field check asks the
+  `default` database a question; a run with no test that sets that database
+  up gets "queries to 'default' are not allowed". It passes in the full suite
+  and fails alone. **Fix:** give the test the database, or mock the one query.
+  Phase 2, 2.16.
+- **S105 — An owner named "Default" collides with the `default` database
+  alias** (database and security reviewers; older). The folder name comes
+  from the owner name (`default`), and Stashy's placeholder database is the
+  alias `default`: `ensure_registered("default")` does nothing, so
+  `create_stash()` would migrate and fill the placeholder, and the stash
+  folder would never get a `db.sqlite3`, so it is never listed or backed up.
+  Read from the code, not run. Windows device names (`con`, `nul`, `aux`,
+  `com1`...) are the same kind of trouble as folder names. **Fix:** names
+  that are an alias or a device name get the same suffix a duplicate does; a
+  test with "Default". Part E, 1.40.
+- **S106 — Two multi-choice fields send an oversized id to SQLite** (security
+  reviewer). `ReconcileFinishForm.transaction` and
+  `WatchedExpensesForm.watched_expenses_categories` use Django's
+  `ModelMultipleChoiceField`, which runs `pk__in=[<huge number>]`: an
+  OverflowError, so a hand-made POST gets a 500 page. The single-choice field
+  gives a form error. **Fix:** one small field subclass that turns the error
+  into "not a valid choice". Part E, 1.41.
+- **S107 — A control character in a memo makes the Excel export a 500 page**
+  (security reviewer). openpyxl refuses `\x0b`, `\x0c` and similar in a cell,
+  and text pasted from a PDF or a bank page can hold them. The importer
+  doesn't clean them either. **Fix:** strip them in `_xlsx_response()` (and,
+  optionally, on import). A test. Part E, 1.42.
+- **S108 — Dates in the data have no limits** (security reviewer; your call).
+  Transactions, imports, Reconcile's statement date and reminders accept years
+  1 to 9999. A typo like `0026` makes "Earliest to date" start in year 26,
+  and a reminder due in year 9999 or a yearly interval of 32767 overflows in
+  `_advance()` (a 500 page); a recurring reminder due long ago generates up to
+  500 past rows per save. **Proposal:** one date validator (1900 to 2100) on
+  the model fields and in the importer (a row outside it is "unreadable"), and
+  a sane maximum `interval` (say 120). It would add validators to the
+  migration state. Not planned until you decide.
+- **S109 — Two sort rules** (code and database reviewers; Phase 3, 3.20). SQL
+  and the dropdowns sort on `name_key` (casefold); the Python-side sorts use
+  `.lower()` (`grouped_categories()`, `PAYEE_SORT_KEYS`, two in
+  `views/categories.py`). They differ for characters like "ß", so a list and a
+  dropdown could disagree in rare cases. **Fix:** use `.name_key` there.
+  Accounts have the same "lidl after Zara" fault S4 fixed for payees and
+  categories (`Account.Meta.ordering`, the Account column) and no `name_key`;
+  that is your call.
+
+Visible side effects of S4, for your eye: the categories export is now one
+A to Z list (it was top-level first, then subcategories by parent; the Parent
+column is still there), and Watched expenses' chart may draw its series in a
+different order, which can change their colours. In the admin, the category
+dropdowns sort by the bare name while showing "Parent > Child".
+
+<!-- Next number: S110 -->
 
 ---
 
-## Phase 1 — Bugs and quick security fixes  (S1–S8, S10, S24 with plan 04's R9, S31–S33, S38, S39, S41, S46, S50–S55, S69, S75–S81, S83, S86–S88, S91–S93, S95, S97–S99)
+## Phase 1 — Bugs and quick security fixes  (S1–S8, S10, S24 with plan 04's R9, S31–S33, S38, S39, S41, S46, S50–S55, S69, S75–S81, S83, S86–S88, S91–S93, S95, S97–S99; part E: S105–S107)
 
 Built in four parts (Claude's proposal, 14/11/2026), each one a commit:
 - **A, security and the PIN:** S7, S8, S10, S24 with R9, S54 (items 1.7–1.10,
@@ -1159,19 +1253,29 @@ Built in four parts (Claude's proposal, 14/11/2026), each one a commit:
 - **D, small fixes:** S2, S4, S5, S6, S31, S32, S41, S53, S69, S80, S81,
   S92, S93, S95, and S46, the phase's one migration, so the real stash is
   backed up first (1.2, 1.4–1.6, 1.11, 1.12, 1.16, 1.17, 1.21, 1.24, 1.29,
-  1.34–1.36).
+  1.34–1.36). **Done 15/11/2026.** The migration is
+  `0019_phase1d_title_default_and_name_ordering`: two ordering changes and the
+  title's new default, no data. On SQLite a default change rebuilds the
+  `finance_profile` table, so it was rehearsed on a scratch database with
+  made-up data (every row, index and foreign key kept, a saved "Bills &
+  Utilities" title kept), and the real stash was checked read-only
+  (`foreign_key_check` clean, integrity ok) before `Stashy.bat` backs it up and
+  migrates it. The reviews found nothing Critical; their small findings were
+  done the same day (S104 aside, see section M).
+- **E, what part D's reviews found** (Claude's proposal, 15/11/2026): S105,
+  S106 and S107 (1.40–1.42). Planned only; starts when you name it.
 
 - [x] **1.1** S1: `min_value=CENT` on the transfer amount; test with 0.01.
-- [ ] **1.2** S2: both bad URLs answer 404 or show a message; a test each.
+- [x] **1.2** S2: both bad URLs answer 404 or show a message; a test each.
   Also category usage's `transaction_id=abc` (G's note).
 - [x] **1.3** S3: the two summary rows built once in `reporting.py`, used by
   the page and the export; a test that the export has them.
-- [ ] **1.4** S4: dropdowns and the Payee/Category columns sort by
+- [x] **1.4** S4: dropdowns and the Payee/Category columns sort by
   `name_key`; a test with Cyrillic names in mixed case. Also
   `Category.Meta.ordering` (G's note).
-- [ ] **1.5** S5: the unused Number help text (with its "D9") out of the
+- [x] **1.5** S5: the unused Number help text (with its "D9") out of the
   form.
-- [ ] **1.6** S6: the saved flash uses `--stashy-positive-soft`.
+- [x] **1.6** S6: the saved flash uses `--stashy-positive-soft`.
 - [x] **1.7** S8: empty `SECRET_KEY` in `.env.example`; `bootstrap.py`
   creates `.env` from it. Settings stop Stashy on an empty key.
 - [x] **1.8** S10: silence the four HTTPS checks by name; `httponly` on the
@@ -1183,27 +1287,27 @@ Built in four parts (Claude's proposal, 14/11/2026), each one a commit:
   `manage.py reset_pin`: a `*` for each typed digit, and the owner name
   works in any upper/lower case. A test each. Also `reset_pin_directly()`
   saves the Profile through `save()`, so the audit log sees it (G's note).
-- [ ] **1.11** S31: the dashboard warns about accounts left out of net
+- [x] **1.11** S31: the dashboard warns about accounts left out of net
   worth, from one include shared with the Accounts page.
-- [ ] **1.12** S32: Settings' rate date through `sdate`, and Source shows
+- [x] **1.12** S32: Settings' rate date through `sdate`, and Source shows
   its label.
 - [x] **1.13** S33: the savings rate in the stash's number format.
 - [x] **1.14** S38: the register's "—" without the pill.
 - [x] **1.15** S39: Payment and Deposit sort separately, each biggest
   first.
-- [ ] **1.16** S41: blank Reconciled cells and `c`/`cleared`/`*` import as
+- [x] **1.16** S41: blank Reconciled cells and `c`/`cleared`/`*` import as
   not reconciled; a test.
-- [ ] **1.17** S46: "Watched expenses" as the default title. A migration:
+- [x] **1.17** S46: "Watched expenses" as the default title. A migration:
   the real stash is backed up first.
 - [x] **1.18** S50: refunds net against their own category in Reports and
   on the dashboard; a category that nets to a refund shows negative.
 - [x] **1.19** S51: an unpaid reminder period survives regeneration.
 - [x] **1.20** S52: the reminder message shows the date it was due.
-- [ ] **1.21** S53: system payees recognised through `name_key`.
+- [x] **1.21** S53: system payees recognised through `name_key`.
 - [x] **1.22** S54: the time zone is a `ChoiceField`.
 - [x] **1.23** S55: Edit mode saves a row's changes in order, and an empty
   amount is refused.
-- [ ] **1.24** S69: Payees falls back to sorting by name for an unknown
+- [x] **1.24** S69: Payees falls back to sorting by name for an unknown
   sort, so the Payee header shows its arrow.
 - [x] **1.25** S75 (Critical): the lockout counts from
   the current database row, and the Profile forms save only their own
@@ -1215,17 +1319,17 @@ Built in four parts (Claude's proposal, 14/11/2026), each one a commit:
 - [x] **1.28** S78 and S79 (Q3 and Q4): a restore keeps today's PIN,
   recovery code and lockout and asks for the PIN; a login ends when the
   browser closes.
-- [ ] **1.29** S80 and S81: `never_cache` on the three recovery-code
+- [x] **1.29** S80 and S81: `never_cache` on the three recovery-code
   pages; the session's stash checked against `list_stashes()`.
 - [x] **1.30** S83: `reset_pin` asks twice, and `--pin`'s
   help mentions the shell's history.
-- [ ] **1.34** S92: a subcategory's name is escaped before it is indented,
+- [x] **1.34** S92: a subcategory's name is escaped before it is indented,
   so a formula-like name gets its `'` in the CSV; a test for the CSV and
   the XLSX.
-- [ ] **1.35** S93: a custom range outside a sane window or longer than
+- [x] **1.35** S93: a custom range outside a sane window or longer than
   about 100 years is refused with the warning banner, not a 500 page; a
   test each.
-- [ ] **1.36** S95: `to_cent()` gives zero without a sign; a test.
+- [x] **1.36** S95: `to_cent()` gives zero without a sign; a test.
 - [x] **1.37** S97 (Critical, your yes): a change to only the Payment or
   Deposit box in Edit mode saves; the script listens for `quick-edit-cell`.
 - [x] **1.38** S98 (your call: delete them): moving a recurring reminder's
@@ -1233,12 +1337,19 @@ Built in four parts (Claude's proposal, 14/11/2026), each one a commit:
   period stays.
 - [x] **1.39** S99: the transactions export ends its order with `-pk`,
   like the page, through one `_ordered_with_ties_broken()`.
+- [ ] **1.40** S105: an owner named "Default" doesn't take the folder (and the
+  database alias) `default`; Windows device names too. A test.
+- [ ] **1.41** S106: the two multi-choice fields (Reconcile's transactions,
+  Watched expenses' categories) refuse an oversized id with a form error, not
+  a 500 page. A test each.
+- [ ] **1.42** S107: the Excel export strips characters a worksheet can't
+  hold, so one odd memo doesn't turn Export into a 500 page. A test.
 
 **Done when:** each fix has a test that fails on today's code, the suite is
 green, and the render check of the changed pages shows no leaked template
 syntax.
 
-## Phase 2 — Leftovers and documentation  (S11, S12, S13, S21, S44, S43's comments, S25, S34, S56–S62, S68, S70, S72–S74, S85, S90)
+## Phase 2 — Leftovers and documentation  (S11, S12, S13, S21, S44, S43's comments, S25, S34, S56–S62, S68, S70, S72–S74, S85, S90, S104)
 
 - [x] **1.31** S86 and S87: `backup_now()` never overwrites a file; the PIN
   pages check through `_check()`, so they never re-save the hash.
@@ -1283,6 +1394,8 @@ syntax.
   install manager.
 - [ ] **2.15** S85: the three test modules use `tests/base.py`'s
   `LEAKED_TEMPLATE_SYNTAX`, and `test_pages.py`'s own copy too.
+- [ ] **2.16** S104: `test_the_deploy_check_only_finds_what_it_was_told_to_skip`
+  passes alone and in any subset.
 - [ ] **2.16** S90: one `TemporaryStashesMixin.create_stash()`, the
   `ResetPinCommandTests` stash built once per class, and the browser-close
   test moved to `test_project.py`.
@@ -1291,7 +1404,7 @@ syntax.
 tests and duplicates go, and a few new ones come), and a grep for the
 history patterns finds nothing outside `plans/` and `DEVLOG.md`.
 
-## Phase 3 — Python structure  (S40, S43, S15, S16, S17, S18, S20, S42, S45, S47, S48, S63–S66, S49, S71, S82, S89, S101)
+## Phase 3 — Python structure  (S40, S43, S15, S16, S17, S18, S20, S42, S45, S47, S48, S63–S66, S49, S71, S82, S89, S101, S109)
 
 - [ ] **3.0** First, the two tool settings, each as its own commit:
   S40, Django gets its own import group and `lines-after-imports = 2` in
@@ -1349,6 +1462,8 @@ history patterns finds nothing outside `plans/` and `DEVLOG.md`.
 - [ ] **3.19** S101: `regenerate_occurrences()`'s smaller things (two
   occurrences on one date, a set for the wanted dates, not loading every
   old Paid row, atomic outside a request).
+- [ ] **3.20** S109: the Python-side name sorts use `name_key`, like the
+  database (your call for the accounts).
 
 **Done when:** the suite is green with no test edited except for moved
 imports, and every page renders the same as before.
@@ -1458,6 +1573,14 @@ item 3.6 was closed as saved for later.
     lockouts after repeated lockouts would change that.
   - `pip-audit` isn't installed. Adding it to `requirements-dev.txt` would
     let you check the pinned libraries for known holes.
+  - From part D's security review (15/11/2026), hardening, not bugs:
+    `@sensitive_post_parameters` on the PIN pages (it matters only if DEBUG
+    is ever on); `Cache-Control: no-store` on every page with financial data
+    (a middleware), so Back after logging out shows nothing; an upload size
+    limit and `defusedxml` for imported Excel files; the CSV escape could also
+    look past other whitespace and treat a leading line feed as a prefix
+    (low confidence that any spreadsheet cares); `CategoryAdmin` lacks
+    `list_select_related` (one query per row, about 150).
   - The PIN protects the website, not the files: the stashes and their
     backups aren't encrypted and hold the PIN's hash, which a 4-digit PIN
     can't resist. Keep the `stashes/` folder out of cloud-synced folders.

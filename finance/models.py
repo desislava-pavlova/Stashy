@@ -6,8 +6,8 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
 from django.db import models
-from django.db.models import Case, Max, Q, Sum, Value, When
-from django.db.models.functions import Coalesce, Lower
+from django.db.models import Case, F, Max, Q, Sum, Value, When
+from django.db.models.functions import Coalesce
 from django.urls import reverse
 from django.utils import timezone
 
@@ -69,7 +69,8 @@ class Profile(models.Model):
 
     # "Watched expenses" (R8, Phase 13) - a Settings-configurable replacement for the old
     # hardcoded "Bills & Utilities" report: any set of expense categories worth watching closely.
-    watched_expenses_title = models.CharField(max_length=60, default="Bills & Utilities")
+    # The default is a neutral name since S46; a stash that kept the old "Bills & Utilities" keeps it.
+    watched_expenses_title = models.CharField(max_length=60, default="Watched expenses")
     watched_expenses_categories = models.ManyToManyField(
         "Category",
         blank=True,
@@ -323,7 +324,9 @@ class Category(models.Model):
 
     class Meta:
         verbose_name_plural = "categories"
-        ordering = ["parent__name", "name"]
+        # name_key, not name: SQLite sorts plain text by code point, so "lidl" would come after
+        # "Zara", and it needs no join to the parent.
+        ordering = ["name_key"]
         constraints = [
             models.UniqueConstraint(fields=["parent", "name_key"], name="unique_subcategory_name_ci"),
             # NULL parents never clash in SQL, so top-level names need their own rule. An account's
@@ -440,8 +443,8 @@ def categories_alphabetical(queryset):
             When(category_type=Category.CategoryType.TRANSFER, then=Value(2)),
             default=Value(99),
         ),
-        _sort_group=Lower(Coalesce("parent__name", "name")),
-        _sort_child=Case(When(parent__isnull=True, then=Value("")), default=Lower("name")),
+        _sort_group=Coalesce("parent__name_key", "name_key"),
+        _sort_child=Case(When(parent__isnull=True, then=Value("")), default=F("name_key")),
     ).order_by("_sort_type", "_sort_group", "_sort_child")
 
 
@@ -493,6 +496,10 @@ class Payee(models.Model):
     TRANSFER_MONEY = "Transfer Money"
     RECONCILIATION_ADJUSTMENT = "Reconciliation Adjustment"
     SYSTEM_NAMES = (OPENING_BALANCE, TRANSFER_MONEY, RECONCILIATION_ADJUSTMENT)
+    # The same names the way name_key() sees them: Payee.system() reuses a payee typed in another
+    # case ("opening balance"), so a plain `name in SYSTEM_NAMES` would miss it. (Inside this
+    # generator, name_key is the module's function, not the field of that name defined below.)
+    SYSTEM_KEYS = frozenset(name_key(name) for name in SYSTEM_NAMES)
 
     name = models.CharField(max_length=150)
     # name_key(name), kept by save(): the database checks uniqueness on this column.
@@ -502,7 +509,7 @@ class Payee(models.Model):
     objects = PayeeQuerySet.as_manager()
 
     class Meta:
-        ordering = ["name"]
+        ordering = ["name_key"]  # see Category.Meta.ordering
         constraints = [models.UniqueConstraint(fields=["name_key"], name="unique_payee_name_ci")]
 
     def __str__(self):
@@ -517,6 +524,11 @@ class Payee(models.Model):
         super().clean()
         if Payee.objects.named(self.name).exclude(pk=self.pk).exists():
             raise ValidationError({"name": "A payee with this name already exists."})
+
+    @property
+    def is_system(self):
+        """One of the payees Stashy makes for its own transactions, in whatever case it was typed."""
+        return self.name_key in self.SYSTEM_KEYS
 
     @classmethod
     def system(cls, name):

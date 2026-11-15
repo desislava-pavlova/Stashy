@@ -465,7 +465,7 @@ h1, h2, h3, h4, h5, h6,
 .edit-locked { opacity: .5; pointer-events: none; }
 .register .quick-edit-saved { animation: quick-edit-flash .6s ease-out; }
 @keyframes quick-edit-flash {
-    from { background-color: rgba(var(--stashy-success-rgb, 25, 135, 84), .18); }
+    from { background-color: var(--stashy-positive-soft); }
     to { background-color: transparent; }
 }
 

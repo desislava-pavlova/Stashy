@@ -26,6 +26,7 @@
                 <div class="stat-label">Net worth</div>
                 <div class="stat-value{% if net_worth < 0 %} amount-negative{% endif %}">{{ net_worth|moneyc:main_currency }}</div>
                 <div class="stat-hint">{{ accounts|length }} active account{{ accounts|length|pluralize }}</div>
+                {% include "finance/includes/missing_rates_hint.html" %}
             </div>
         </div>
         <div class="card stat-tile">

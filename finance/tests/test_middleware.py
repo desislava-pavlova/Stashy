@@ -24,7 +24,7 @@ from ..middleware import (
 )
 from ..models import Profile
 from ..stashes import registry
-from .base import AlexsStashTestCase, StashTestCase, TemporaryStashesMixin
+from .base import AlexsStashTestCase, StashClient, StashTestCase, TemporaryStashesMixin
 
 
 class StashSelectionMiddlewareTests(SimpleTestCase):
@@ -53,6 +53,35 @@ class StashSelectionMiddlewareTests(SimpleTestCase):
         middleware(request)
         self.assertIsNone(seen["alias"])
         self.assertNotIn("stash", request.session)
+
+    @staticmethod
+    def alias_seen_by_the_view(request):
+        seen = {}
+        StashSelectionMiddleware(lambda r: seen.setdefault("alias", db_router.current_stash_alias()))(request)
+        return seen["alias"]
+
+    def test_only_the_exact_name_of_a_stash_counts_in_the_session_too(self):
+        """Plan 03, S81. The session is signed, but its stash name is checked like the last-stash
+        cookie's (S10), not as a path. Windows finds the test stash's folder under each of these
+        too (so this check is for Windows, where Stashy runs), but none is the stash's name."""
+        here = Path(settings.STASHES_DIR)
+        for value in (
+            settings.TEST_STASH.upper(),
+            f"{settings.TEST_STASH}/",
+            f"../{here.name}/{settings.TEST_STASH}",
+        ):
+            with self.subTest(session_stash=value):
+                self.assertTrue(registry.stash_exists(value))
+                request = self.factory.get("/")
+                request.session = {"stash": value}
+                self.assertIsNone(self.alias_seen_by_the_view(request))
+                self.assertNotIn("stash", request.session)
+
+    def test_a_session_naming_a_real_stash_routes_to_it(self):
+        request = self.factory.get("/")
+        request.session = {"stash": settings.TEST_STASH}
+        self.assertEqual(self.alias_seen_by_the_view(request), settings.TEST_STASH)
+        self.assertEqual(request.session["stash"], settings.TEST_STASH)
 
     def test_the_alias_is_cleared_again_after_the_response(self):
         middleware = StashSelectionMiddleware(lambda r: "ok")
@@ -370,6 +399,48 @@ class MiddlewareChainTests(StashTestCase):
             with self.subTest(page=name):
                 response = Client().get(reverse(name))
                 self.assertRedirects(response, reverse("stash_picker"), fetch_redirect_response=False)
+
+    def test_a_session_naming_a_stash_that_does_not_exist_ends_up_at_the_picker(self):
+        """S81, through every middleware: the dead name is dropped from the session before the
+        gates look at it. Left in, the picker would answer "already chosen" and the PIN screen
+        would look for a stash that isn't there."""
+        for name in ("finance:dashboard", "login", "stash_picker"):
+            with self.subTest(page=name):
+                browser = StashClient()
+                browser.choose_stash("ghost")
+                response = browser.get(reverse(name), follow=True)
+                self.assertEqual(response.status_code, 200)
+                self.assertTemplateUsed(response, "registration/stash_picker.html")
+        self.assertNotIn("ghost", connections.databases)
+
+    def test_a_dead_session_stash_does_not_hide_the_remembered_one(self):
+        """The dropped name leaves "no stash chosen", so the last-stash cookie still gets its turn."""
+        browser = StashClient()
+        browser.choose_stash("ghost")
+        browser.cookies[registry.LAST_STASH_COOKIE] = settings.TEST_STASH
+        response = browser.get(reverse("finance:dashboard"), follow=True)
+        self.assertTemplateUsed(response, "registration/login.html")
+        self.assertEqual(response.context["stash_name"], settings.TEST_STASH)
+
+    def test_only_the_exact_stash_name_opens_a_stash_from_the_session_or_the_cookie(self):
+        """S81 and S10, through every middleware. Windows finds the test stash's folder under each
+        of these names, but none is the stash's name, so none may open it or register a second
+        connection to its database."""
+        here = Path(settings.STASHES_DIR)
+        for value in (
+            settings.TEST_STASH.upper(),
+            f"{settings.TEST_STASH}/",
+            f"../{here.name}/{settings.TEST_STASH}",
+        ):
+            from_session = StashClient()
+            from_session.choose_stash(value)
+            from_cookie = Client()
+            from_cookie.cookies[registry.LAST_STASH_COOKIE] = value
+            for source, browser in (("session", from_session), ("cookie", from_cookie)):
+                with self.subTest(value=value, source=source):
+                    response = browser.get(reverse("login"), follow=True)
+                    self.assertTemplateUsed(response, "registration/stash_picker.html")
+            self.assertNotIn(value, connections.databases)
 
     def test_the_picker_lists_each_stash_by_its_owner_name(self):
         Profile.objects.create(user=get_user_model().objects.create_user(settings.TEST_STASH), owner_name="Alex")

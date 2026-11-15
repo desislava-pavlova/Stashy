@@ -14,7 +14,7 @@ from django.urls import reverse
 
 from ..models import Account, Category, ExchangeRate, Payee, Profile, Reminder, Transaction
 from ..reporting import income_and_spending, savings_rate, spending_tree
-from .base import LoggedInWithAccountTestCase, StashTestCase
+from .base import LEAKED_TEMPLATE_SYNTAX, LoggedInWithAccountTestCase, StashTestCase
 
 # Tests that patch timezone.localdate pretend today is one of these days, so the fixed dates
 # they set up keep their meaning (overdue, due soon, this month).
@@ -243,6 +243,58 @@ class DashboardCurrencyTests(LoggedInWithAccountTestCase):
         self.assertEqual(response.context["main_currency"], "EUR")
         self.assertEqual(response.context["month_spending"], Decimal("60.00"))
         self.assertEqual(response.context["spending_tree"][0]["total"], 60.0)
+
+
+class DashboardMissingRateTests(LoggedInWithAccountTestCase):
+    """S31: an account whose currency has no known rate is left out of the net worth total, and
+    the tile says so, with the same hint the Accounts page shows."""
+
+    def test_an_account_with_no_known_rate_is_flagged_under_the_net_worth_tile(self):
+        Account.objects.create(name="US card", currency="USD")
+        response = self.client.get(reverse("finance:dashboard"))
+        self.assertContains(response, "No known rate for USD")
+        self.assertContains(response, "not included above")
+        self.assertContains(response, reverse("finance:settings"))
+
+    def test_the_accounts_page_shows_the_same_hint(self):
+        Account.objects.create(name="US card", currency="USD")
+        hint = "No known rate for USD"
+        self.assertContains(self.client.get(reverse("finance:account_list")), hint)
+
+    def test_no_hint_once_the_rate_is_known(self):
+        Account.objects.create(name="US card", currency="USD")
+        ExchangeRate.objects.create(base_currency="USD", quote_currency="EUR", rate=Decimal("0.5"), date=date.today())
+        for name in ("finance:dashboard", "finance:account_list"):
+            with self.subTest(page=name):
+                self.assertNotContains(self.client.get(reverse(name)), "No known rate")
+
+    def test_every_currency_left_out_is_named(self):
+        for currency in ("USD", "GBP"):
+            Account.objects.create(name=f"{currency} account", currency=currency)
+        # Alphabetical, whatever order the accounts come in.
+        self.assertContains(self.client.get(reverse("finance:dashboard")), "No known rate for GBP, USD")
+
+    def test_two_accounts_in_one_currency_name_it_once(self):
+        # The view hands the include the accounts, not the currencies, so it must not repeat one.
+        for name in ("US card", "US savings"):
+            Account.objects.create(name=name, currency="USD")
+        for page in ("finance:dashboard", "finance:account_list"):
+            with self.subTest(page=page):
+                body = self.client.get(reverse(page)).content.decode()
+                self.assertIn("No known rate for USD —", body)
+                self.assertNotIn("USD, USD", body)
+
+    def test_the_hint_is_a_second_line_inside_the_net_worth_tile_and_leaks_no_syntax(self):
+        Account.objects.create(name="US card", currency="USD")
+        body = self.client.get(reverse("finance:dashboard")).content.decode()
+        accounts_page = self.client.get(reverse("finance:account_list")).content.decode()
+        for syntax in LEAKED_TEMPLATE_SYNTAX:
+            self.assertNotIn(syntax, body)
+            self.assertNotIn(syntax, accounts_page)
+        # From the Net worth label up to the next tile's label: that tile's text, and only it.
+        net_worth_tile = body.split('<div class="stat-label">Net worth</div>')[1].split("stat-label")[0]
+        self.assertLess(net_worth_tile.index("active account"), net_worth_tile.index("No known rate"))
+        self.assertEqual(body.count("No known rate"), 1)
 
 
 class SpendingTreeRefundTests(StashTestCase):

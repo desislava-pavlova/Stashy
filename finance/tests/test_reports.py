@@ -21,6 +21,7 @@ from ..forms import DateRangeFilterForm, WatchedExpensesForm, watched_expenses_p
 from ..models import Account, Category, Profile, Transaction
 from ..regional import NBSP
 from ..templatetags.stashy_format import diff_tint
+from ..views.exports import REPORT_EXPORTS
 from .base import LEAKED_TEMPLATE_SYNTAX, LoggedInTestCase, LoggedInWithAccountTestCase, StashTestCase
 
 EXPENSE, INCOME = Category.CategoryType.EXPENSE, Category.CategoryType.INCOME
@@ -83,6 +84,40 @@ class ReportsCustomRangeErrorTests(LoggedInWithAccountTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "custom range needs both a start and an end date")
 
+    def test_a_range_outside_1900_to_2100_shows_the_warning_not_an_error_page(self):
+        # S93: year 1 overflowed `start - timedelta(days=1)`, and year 9999 overflowed the period columns.
+        for start, end in (("01/01/0001", "01/01/0002"), ("01/01/2026", "31/12/9999"), ("01/01/1899", "01/01/1900")):
+            with self.subTest(start=start, end=end):
+                response = self.client.get(reverse("finance:reports"), {"range": "custom", "start": start, "end": end})
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, "Dates must fall between 1900 and 2100.")
+
+    def test_a_range_longer_than_100_years_shows_the_warning(self):
+        response = self.client.get(
+            reverse("finance:reports"), {"range": "custom", "start": "01/01/1950", "end": "02/01/2050"}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "A custom range can cover at most 100 years.")
+
+    def test_the_exports_fall_back_to_the_default_filters_like_the_page(self):
+        # Same as the export with no filters at all (some, like Watched expenses with nothing chosen, answer 404).
+        for report in REPORT_EXPORTS:
+            with self.subTest(report=report):
+                url = reverse("finance:export_report", args=[report])
+                expected = self.client.get(url, {"format": "csv"})
+                response = self.client.get(
+                    url, {"range": "custom", "start": "01/01/0001", "end": "31/12/9999", "format": "csv"}
+                )
+                self.assertEqual(response.status_code, expected.status_code)
+                self.assertEqual(response.content, expected.content)
+
+    def test_a_range_of_exactly_100_years_is_still_accepted(self):
+        response = self.client.get(
+            reverse("finance:reports"), {"range": "custom", "start": "01/01/1990", "end": "01/01/2090"}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual((response.context["start"], response.context["end"]), (date(1990, 1, 1), date(2090, 1, 1)))
+
     def test_a_custom_range_is_applied(self):
         response = self.client.get(
             reverse("finance:reports"), {"range": "custom", "start": "01/02/2026", "end": "31/03/2026"}
@@ -114,6 +149,22 @@ class DateRangeFilterFormTests(SimpleTestCase):
 
     def test_preset_range_needs_no_dates(self):
         self.assertTrue(DateRangeFilterForm({"range": "this_month"}).is_valid())
+
+    def test_the_edges_of_the_sane_window_are_accepted(self):
+        for start, end in (("01/01/1900", "31/12/1999"), ("01/01/2001", "31/12/2100"), ("01/01/1990", "01/01/2090")):
+            with self.subTest(start=start, end=end):
+                form = DateRangeFilterForm({"range": "custom", "start": start, "end": end})
+                self.assertTrue(form.is_valid(), form.errors)
+
+    def test_one_day_past_the_window_or_the_length_limit_is_refused(self):
+        for start, end in (("31/12/1899", "01/01/1900"), ("01/01/2100", "01/01/2101"), ("01/01/1990", "02/01/2090")):
+            with self.subTest(start=start, end=end):
+                self.assertFalse(DateRangeFilterForm({"range": "custom", "start": start, "end": end}).is_valid())
+
+    def test_a_preset_range_ignores_dates_outside_the_window(self):
+        # Only a custom range reads the date boxes; a preset must not be refused for what they hold.
+        form = DateRangeFilterForm({"range": "this_month", "start": "01/01/0001", "end": "31/12/9999"})
+        self.assertTrue(form.is_valid(), form.errors)
 
 
 class ReportsPageMarkupTests(LoggedInWithAccountTestCase):
@@ -659,8 +710,16 @@ class WatchedExpensesSettingsTests(LoggedInWithAccountTestCase):
         cls.profile = Profile.for_user(cls.user)
         cls.electricity = Category.objects.create(name="Electricity", category_type=Category.CategoryType.EXPENSE)
 
-    def test_default_title_is_bills_and_utilities(self):
-        self.assertEqual(self.profile.watched_expenses_title, "Bills & Utilities")
+    def test_default_title_is_watched_expenses(self):
+        # S46: it was "Bills & Utilities", a leftover from before the report was configurable.
+        self.assertEqual(self.profile.watched_expenses_title, "Watched expenses")
+        self.assertContains(self.client.get(reverse("finance:settings")), 'value="Watched expenses"')
+
+    def test_a_title_a_stash_already_saved_is_kept(self):
+        # S46 changes only what a new profile starts with; nothing is rewritten.
+        self.profile.watched_expenses_title = "Bills & Utilities"
+        self.profile.save(update_fields=["watched_expenses_title"])
+        self.assertEqual(Profile.objects.get(pk=self.profile.pk).watched_expenses_title, "Bills & Utilities")
 
     def test_form_only_offers_expense_categories(self):
         income = Category.objects.create(name="Salary", category_type=Category.CategoryType.INCOME)

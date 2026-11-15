@@ -20,7 +20,7 @@ from ..forms import DateRangeFilterForm, TransactionForm
 from ..models import Account, Category, Reminder, Transaction, grouped_categories
 from ..money import ZERO
 from ..reporting import EARLIEST_RANGE_KEY, resolve_range
-from ._helpers import AMOUNT_SORT_COLUMNS, _paged, _safe_next, _sorted
+from ._helpers import AMOUNT_SORT_COLUMNS, _as_id, _as_ids, _paged, _safe_next, _sorted
 
 # Reports' date-range presets, plus "All dates": no date limits at all, so even a transaction
 # dated in the future by mistake shows up. It takes the place of Reports' "Earliest to date",
@@ -34,8 +34,8 @@ TRANSACTION_LIST_SORT_FIELDS = {
     "date": ["date", "transaction_number"],
     "num": ["transaction_number"],
     "account": ["account__name"],
-    "payee": ["payee__name"],
-    "category": ["category__name"],
+    "payee": ["payee__name_key"],
+    "category": ["category__name_key"],
     "memo": ["memo"],
     **AMOUNT_SORT_COLUMNS,
 }
@@ -44,7 +44,13 @@ TRANSACTION_LIST_SORT_FIELDS = {
 def _longer_than_a_year(start, end):
     """Whether a date range is long enough to be split into pages: longer than one year, or
     open at either end ("All time"). A whole calendar year, 01/01 to 31/12, is not."""
-    return start is None or end is None or end >= start + relativedelta(years=1)
+    if start is None or end is None:
+        return True
+    try:
+        return end >= start + relativedelta(years=1)
+    except (ValueError, OverflowError):
+        # A start in year 9999 has no "a year later": nothing can be longer than a year after it.
+        return False
 
 
 def _filtered_transactions(request):
@@ -60,9 +66,7 @@ def _filtered_transactions(request):
     search = request.GET.get("q", "").strip()
     with_subcategories = request.GET.get("with_subcategories") == "1"
     include_uncategorized = "none" in category_values
-    selected_categories = list(
-        Category.objects.filter(pk__in=[v for v in category_values if v.isdigit()]).select_related("parent")
-    )
+    selected_categories = list(Category.objects.filter(pk__in=_as_ids(category_values)).select_related("parent"))
 
     range_key = request.GET.get("range", "")
     if range_key == EARLIEST_RANGE_KEY:
@@ -83,8 +87,8 @@ def _filtered_transactions(request):
     else:
         range_key = "custom"  # dates without a range: the dashboard's links
 
-    if account_id.isdigit():
-        transactions = transactions.filter(account_id=account_id)
+    if (account_pk := _as_id(account_id)) is not None:
+        transactions = transactions.filter(account_id=account_pk)
     if selected_categories or include_uncategorized:
         category_ids = {c.pk for c in selected_categories}
         if with_subcategories:
@@ -194,7 +198,7 @@ def transaction_form_view(request, pk=None):
     reminder_id = request.POST.get("reminder") or request.GET.get("reminder")
     # Only for a brand-new transaction - editing an existing one never carries a reminder link.
     if reminder_id and not instance:
-        reminder = get_object_or_404(Reminder, pk=reminder_id)
+        reminder = get_object_or_404(Reminder, pk=_as_id(reminder_id))
     initial = {}
     if instance and instance.payee_id:
         initial["payee_name"] = instance.payee.name

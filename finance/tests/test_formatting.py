@@ -12,7 +12,7 @@ from django.utils import formats
 
 from .. import regional
 from ..models import Profile
-from ..money import parse_amount
+from ..money import parse_amount, to_cent
 from ..templatetags.stashy_format import money
 from .base import StashTestCase
 
@@ -45,6 +45,25 @@ class ParseAmountTests(SimpleTestCase):
         for raw in ("", "   ", "abc", "NaN", None):
             with self.subTest(raw=raw):
                 self.assertIsNone(parse_amount(raw))
+
+
+class ToCentTests(SimpleTestCase):
+    def test_a_tiny_negative_rounds_to_zero_without_its_sign(self):
+        # S95: Decimal("-0.0033") used to come back as Decimal("-0.00"), which the CSV wrote as "-0.00".
+        for value in (Decimal("-0.0033"), Decimal("-0.004"), Decimal("-0.00"), Decimal("-5.55e-17")):
+            with self.subTest(value=value):
+                result = to_cent(value)
+                self.assertEqual(str(result), "0.00")
+                self.assertFalse(result.is_signed())
+
+    def test_a_real_amount_keeps_its_sign_and_rounds_half_up(self):
+        self.assertEqual(to_cent(Decimal("-0.005")), Decimal("-0.01"))
+        self.assertEqual(to_cent(Decimal("-132.370000000000")), Decimal("-132.37"))
+        self.assertEqual(to_cent(Decimal("0.005")), Decimal("0.01"))
+        self.assertEqual(str(to_cent(Decimal("12"))), "12.00")
+
+    def test_nothing_is_zero(self):
+        self.assertEqual(str(to_cent(None)), "0.00")
 
 
 class MoneyFilterTests(SimpleTestCase):

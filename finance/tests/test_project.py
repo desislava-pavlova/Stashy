@@ -14,6 +14,7 @@ from io import StringIO
 from pathlib import Path
 from unittest import mock
 
+from django.apps import apps
 from django.conf import settings
 from django.contrib.staticfiles import finders
 from django.contrib.staticfiles.storage import staticfiles_storage
@@ -85,6 +86,36 @@ class StaticFileTests(SimpleTestCase):
         icons_css = (Path(tmp.name) / icons).read_text(encoding="utf-8")
         self.assertRegex(icons_css, r'url\("fonts/bootstrap-icons\.[0-9a-f]{12}\.woff2')
 
+    def test_every_stashy_variable_the_stylesheet_uses_is_defined_in_it(self):
+        """An undefined `var(--stashy-x)` quietly uses its fallback, or nothing: S6's Edit-mode
+        flash named `--stashy-success-rgb`, which was never defined, so it was always Bootstrap's
+        fixed green and ignored dark mode."""
+        css = finders.find("finance/css/stashy.css")
+        text = Path(css).read_text(encoding="utf-8")
+        used = set(re.findall(r"var\(\s*(--stashy-[a-z0-9-]+)", text))
+        defined = set(re.findall(r"(--stashy-[a-z0-9-]+)\s*:", text))
+        self.assertTrue(used)
+        self.assertEqual(sorted(used - defined), [])
+
+    def test_the_edit_mode_flash_uses_the_pale_green_that_has_a_dark_mode_twin(self):
+        text = Path(finders.find("finance/css/stashy.css")).read_text(encoding="utf-8")
+        flash = text[text.index("@keyframes quick-edit-flash") :].split("}")[0]  # the `from` step
+        self.assertIn("var(--stashy-positive-soft)", flash)
+
+    def test_every_stashy_token_the_light_theme_sets_is_set_in_the_dark_theme_too(self):
+        """A colour defined only for light mode stays that colour on the dark page. The tokens
+        that are the same in both themes (the fonts) are the only ones left out on purpose. The
+        flash above is the example: its pale green needs its own dark twin."""
+        text = Path(finders.find("finance/css/stashy.css")).read_text(encoding="utf-8")
+        light_start = text.index('[data-bs-theme="light"] {')
+        dark_start = text.index('[data-bs-theme="dark"] {')
+        token = r"(--stashy-[a-z0-9-]+)\s*:"
+        light = set(re.findall(token, text[light_start:dark_start]))
+        dark = set(re.findall(token, text[dark_start:].split("\n}\n")[0]))
+        self.assertIn("--stashy-positive-soft", light)  # so a change to the file's layout can't empty this
+        self.assertEqual(sorted(light - dark), ["--stashy-font-body", "--stashy-font-display"])
+        self.assertEqual(sorted(dark - light), [])
+
     def test_every_static_file_a_template_names_exists(self):
         """With fingerprinted names, `{% static %}` raises for a file that doesn't exist, so a
         typo would turn the whole page into an error instead of one missing image."""
@@ -141,6 +172,31 @@ class TestSettingsTests(SimpleTestCase):
         so a new warning fails this test."""
         with override_settings(SECRET_KEY=secrets.token_urlsafe(50)):
             call_command("check", deploy=True, fail_level="WARNING", stdout=StringIO(), stderr=StringIO())
+
+
+class PendingMigrationsTests(StashTestCase):
+    """A model change that never got its migration. The tests build their database from the
+    migrations, so a change that adds no column (a default, a help text, an ordering) can be
+    missing without any other test noticing; Stashy.bat would then keep asking for it, or a
+    later `makemigrations` would quietly put it in an unrelated migration. `--dry-run` writes
+    nothing, and under the test settings the only databases it can see are the throwaway ones.
+
+    The migrations are not in git yet (plan 03, phase 6), so a fresh clone has none, and then
+    every model would count as new: the test skips itself there."""
+
+    # makemigrations looks at the migration history of every database the router knows.
+    databases = {"default", settings.TEST_STASH}
+
+    def test_no_model_change_is_waiting_for_its_migration(self):
+        for label in ("finance", "audit"):
+            folder = Path(apps.get_app_config(label).path) / "migrations"
+            if not any(folder.glob("0*.py")):
+                self.skipTest(f"{label} has no migration files here (they are kept out of git)")
+        output = StringIO()
+        try:
+            call_command("makemigrations", check=True, dry_run=True, stdout=output, stderr=output)
+        except SystemExit:
+            self.fail(f"A model changed without a migration:\n{output.getvalue()}")
 
 
 class EnvFileTests(SimpleTestCase):

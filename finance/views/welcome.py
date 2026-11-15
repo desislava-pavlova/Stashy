@@ -94,10 +94,7 @@ def _step_watched_expenses(request, profile, step):
             _advance(profile, step)
             return _to_step(step + 1)
     else:
-        # The model's "Bills & Utilities" default shouldn't be pre-typed for someone who hasn't
-        # picked a title yet; coming Back to an already-completed step keeps what they saved.
-        initial = {"watched_expenses_title": ""} if profile.welcome_step < step else {}
-        form = WatchedExpensesForm(instance=profile, initial=initial)
+        form = WatchedExpensesForm(instance=profile)
     return render(
         request,
         "finance/welcome_watched_expenses.html",

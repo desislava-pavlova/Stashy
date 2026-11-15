@@ -35,8 +35,8 @@ class AccountListView(ListView):
 ACCOUNT_REGISTER_SORT_FIELDS = {
     "date": ["date", "transaction_number"],
     "num": ["transaction_number"],
-    "payee": ["payee__name"],
-    "category": ["category__name"],
+    "payee": ["payee__name_key"],
+    "category": ["category__name_key"],
     "memo": ["memo"],
     **AMOUNT_SORT_COLUMNS,
 }

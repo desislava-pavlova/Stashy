@@ -16,7 +16,7 @@ from openpyxl import Workbook
 
 from .. import starter_categories
 from ..forms import CategoryForm, TransactionForm
-from ..models import Account, Category, Payee, Transaction, grouped_categories
+from ..models import Account, Category, Payee, Transaction, categories_alphabetical, grouped_categories
 from ..services.importing import _resolve_category
 from .base import AlexsStashTestCase, LoggedInTestCase, LoggedInWithAccountTestCase, StashTestCase
 
@@ -192,6 +192,131 @@ class CategoryUsageAndRecategorizeTests(LoggedInTestCase):
         self.client.post(reverse("finance:category_usage", args=[self.groceries.pk]), {"move_to": self.household.pk})
         self.txns[0].refresh_from_db()
         self.assertEqual(self.txns[0].category, self.groceries)
+
+    def _move(self, **data):
+        response = self.client.post(reverse("finance:category_usage", args=[self.groceries.pk]), data, follow=True)
+        self.assertEqual(response.status_code, 200)
+        return [str(message) for message in response.context["messages"]]
+
+    def test_a_destination_that_is_not_a_number_shows_a_message_and_moves_nothing(self):
+        # S2: this used to be a 500 page.
+        for bad in ("abc", "²", "9" * 30, ""):
+            with self.subTest(move_to=bad):
+                messages = self._move(transaction_id=[self.txns[0].pk], move_to=bad)
+                self.assertEqual(messages, ["Choose a category to move the selected transactions to."])
+                self.txns[0].refresh_from_db()
+                self.assertEqual(self.txns[0].category, self.groceries)
+
+    def test_selected_ids_that_are_not_numbers_are_dropped(self):
+        messages = self._move(transaction_id=["abc", "²"], move_to=self.household.pk)
+        self.assertEqual(messages, ["Select at least one transaction to move."])
+        messages = self._move(transaction_id=["abc", self.txns[1].pk, "²"], move_to=self.household.pk)
+        self.assertEqual(messages, ["Moved 1 transaction to Household."])
+        self.txns[1].refresh_from_db()
+        self.assertEqual(self.txns[1].category, self.household)
+
+    def test_only_this_categorys_own_transactions_move_whatever_ids_are_sent(self):
+        # A hand-made form can name any transaction; the ids that are too big for the database (the
+        # biggest is longer than Python turns into a number) are dropped, and another category's
+        # transaction is left where it is.
+        travel = Category.objects.create(name="Travel", category_type=Type.EXPENSE)
+        elsewhere = Transaction.objects.create(
+            account=self.account, date=date(2026, 1, 9), category=travel, amount=Decimal("-1.00")
+        )
+        messages = self._move(
+            transaction_id=[self.txns[0].pk, elsewhere.pk, "9" * 30, "9" * 4301], move_to=self.household.pk
+        )
+        self.assertEqual(messages, ["Moved 1 transaction to Household."])
+        elsewhere.refresh_from_db()
+        self.txns[0].refresh_from_db()
+        self.assertEqual((elsewhere.category, self.txns[0].category), (travel, self.household))
+
+    def test_a_destination_that_is_the_category_itself_moves_nothing(self):
+        messages = self._move(transaction_id=[self.txns[0].pk], move_to=self.groceries.pk)
+        self.assertEqual(messages, ["Choose a category to move the selected transactions to."])
+        self.txns[0].refresh_from_db()
+        self.assertEqual(self.txns[0].category, self.groceries)
+
+    def test_a_destination_that_no_longer_exists_moves_nothing(self):
+        messages = self._move(transaction_id=[self.txns[0].pk], move_to=999999)
+        self.assertEqual(messages, ["Choose a category to move the selected transactions to."])
+        self.txns[0].refresh_from_db()
+        self.assertEqual(self.txns[0].category, self.groceries)
+
+
+class CategoryNameOrderTests(StashTestCase):
+    """S4: names are sorted on `name_key`, which folds case in every alphabet. SQLite's own lower()
+    folds only A-Z, so a dropdown held "Аптека, Вода, бензин, яйца" instead of "Аптека, бензин, Вода, яйца"."""
+
+    @classmethod
+    def setUpTestData(cls):
+        for name in ("яйца", "Вода", "бензин", "Аптека"):
+            Category.objects.create(name=name, category_type=Type.EXPENSE)
+        Category.objects.create(
+            name="Автомойка", parent=Category.objects.get(name="бензин"), category_type=Type.EXPENSE
+        )
+
+    def test_a_dropdown_sorts_in_any_alphabet_with_subcategories_under_their_parent(self):
+        names = [c.name for c in categories_alphabetical(Category.objects.all())]
+        self.assertEqual(names, ["Аптека", "бензин", "Автомойка", "Вода", "яйца"])
+
+    def test_the_default_order_is_by_name_key_without_a_join(self):
+        self.assertEqual(
+            list(Category.objects.values_list("name", flat=True)), ["Автомойка", "Аптека", "бензин", "Вода", "яйца"]
+        )
+        self.assertNotIn("JOIN", str(Category.objects.all().query))
+
+
+class CategoriesAlphabeticalOrderTests(StashTestCase):
+    """S4, the ways a dropdown order can still go wrong: a subcategory sorted by its "Parent > Child"
+    label, a name sorted by its spelling instead of its `name_key`, or the Transfer group sorted by
+    name instead of last."""
+
+    def make(self, name, parent=None, kind=Type.EXPENSE):
+        # A subcategory always has its parent's type (see Category.create_subcategory()).
+        return Category.objects.create(
+            name=name, parent=parent, category_type=parent.category_type if parent else kind
+        )
+
+    def names(self):
+        return [c.name for c in categories_alphabetical(Category.objects.all())]
+
+    def test_a_subcategory_sorts_with_its_parent_not_by_its_label(self):
+        # As a label, "Car > Fuel" would come after "Car insurance": ">" sorts after a space.
+        car = self.make("Car")
+        self.make("Car insurance")
+        self.make("Fuel", parent=car)
+        self.assertEqual(self.names(), ["Car", "Fuel", "Car insurance"])
+
+    def test_a_lower_case_parent_sorts_among_the_capitals_and_keeps_its_children(self):
+        apple = self.make("apple")
+        self.make("Banana", parent=apple)
+        self.make("Avocado")
+        self.make("Zebra")
+        # By spelling, every capital would come before "apple".
+        self.assertEqual(self.names(), ["apple", "Banana", "Avocado", "Zebra"])
+
+    def test_the_same_subcategory_names_under_two_parents_stay_with_their_own_parent(self):
+        for parent in (self.make("Home"), self.make("Food")):
+            self.make("other", parent=parent)
+            self.make("Alpha", parent=parent)
+        self.assertEqual(self.names(), ["Food", "Alpha", "other", "Home", "Alpha", "other"])
+
+    def test_income_then_expense_then_transfer_whatever_the_names(self):
+        self.make("Zebra pay", kind=Type.INCOME)
+        self.make("apple")
+        Account.objects.create(name="Wallet")
+        Account.objects.create(name="Bank")
+        # "[" sorts before every letter, so by name alone the Transfer categories would come first.
+        self.assertEqual(self.names(), ["Zebra pay", "apple", "[Bank]", "[Wallet]"])
+
+    def test_the_transaction_form_offers_the_same_order(self):
+        car = self.make("Car")
+        self.make("Car insurance")
+        self.make("Fuel", parent=car)
+        self.assertEqual(
+            [c.name for c in TransactionForm().fields["category"].queryset], ["Car", "Fuel", "Car insurance"]
+        )
 
 
 class SystemManagedCategoryStillGuardedTests(LoggedInTestCase):

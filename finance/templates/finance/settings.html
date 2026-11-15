@@ -54,8 +54,8 @@
                         <td>{{ code }}</td>
                         {% if known %}
                         <td class="text-end">{{ known.rate|money:4 }}</td>
-                        <td>{{ known.date }}</td>
-                        <td class="text-muted small">{{ known.source }}</td>
+                        <td>{{ known.date|sdate }}</td>
+                        <td class="text-muted small">{{ known.source|rate_source }}</td>
                         {% else %}
                         <td class="text-end text-muted" colspan="3">No rate known yet — edit one in the admin, or check rates.</td>
                         {% endif %}

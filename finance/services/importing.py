@@ -161,14 +161,22 @@ def _read_ofx(upload):
 # Turning rows into transactions
 # ---------------------------------------------------------------------------
 
-_RECONCILED_FALSE_VALUES = {"", "n", "no", "false", "0", "unreconciled", "uncleared", "u"}
+# What a Reconciled cell can hold to mean "not reconciled": nothing (a blank cell, a cell of spaces,
+# or a file with no such column), n, no, false, 0, u, unreconciled, uncleared, and also c, cleared
+# and *. Anything else (R, X, reconciled, yes, TRUE, 1, ...) means reconciled.
+# Why c, cleared and * are "not": in Quicken a cleared transaction is one the bank has, not one you
+# have checked against a statement (only R means that). Imported as reconciled, it would never show
+# up in the next Reconcile checklist (S41).
+# The value decides, not the column's heading: a Yes in a column headed "Cleared" still counts.
+_RECONCILED_FALSE_VALUES = {"", "n", "no", "false", "0", "unreconciled", "uncleared", "u", "c", "cleared", "*"}
 
 
 def _import_rows(fieldnames, rows, account, batch, date_format="auto"):
     """Shared row processing for CSV and XLSX imports. Recognizes Date, Num, Account, Payee,
     Category, Memo, Amount and Reconciled columns (the layout Quicken/Money "transaction
     report" exports use) - only Date needs to be present in a row; Num, Payee, Category, Memo
-    and Reconciled can all be blank. Amount still has to parse, since a transaction can't be
+    and Reconciled can all be blank (a blank Reconciled means not reconciled, see
+    _RECONCILED_FALSE_VALUES). Amount still has to parse, since a transaction can't be
     saved without one, and an Account column naming an account that doesn't exist is skipped
     rather than guessed at (D9 backlog "Accounts must already exist")."""
     # Normalize header names so common bank export variants all work.

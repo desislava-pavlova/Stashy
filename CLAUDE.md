@@ -46,7 +46,7 @@ terms.
 ## Commands
 
 ```
-.venv\Scripts\python.exe manage.py test                          # full suite, ~75 s (978 tests on 14/11/2026)
+.venv\Scripts\python.exe manage.py test                          # full suite, ~75 s (1,075 tests on 15/11/2026)
 .venv\Scripts\python.exe manage.py test finance.tests.test_reminders  # one module (audit: `test audit`)
 .venv\Scripts\python.exe manage.py migrate --database <stash>    # one stash (Stashy.bat does all, with backups)
 .venv\Scripts\python.exe manage.py reset_pin <owner name>        # real, visible action - ask first
@@ -96,13 +96,22 @@ check.bat                                                        # ruff check + 
   - `services/`: `importing.py` (`import_file()` → `ImportResult`, raises
     `ImportFileError`) and `reconciliation.py` (`reconcile()`, raises
     `UnacceptedDifferenceError`). Plain functions, no HTTP. Each runs in its
-    own `atomic(using=<stash>)`.
+    own `atomic(using=<stash>)`. An import's Reconciled cell means
+    reconciled unless it is blank, `n`, `no`, `false`, `0`, `u`,
+    `unreconciled`, `uncleared`, or a "cleared" mark (`c`, `cleared`, `*`):
+    only R-like values reconcile, since cleared only means the bank has it.
   - `views/`: one module per area (`dashboard`, `accounts`, `categories`,
     `payees`, `transactions`, `reminders`, `imports`, `exports`, `reports`,
     `settings`, `api`, `auth` for picker/login/forgot-PIN, `welcome` for the
     4-step wizard), plus `_helpers.py` (`_sorted`, `_paged`, `_safe_next`,
     the export writers). `finance/urls.py` imports the modules, not the
     views; there are no re-exports in `views/__init__.py`.
+  - Ids read from a URL or a form go through `_as_id()` / `_as_ids()`
+    (`views/_helpers.py`: plain ASCII digits that fit SQLite, else None), never
+    `str.isdigit()` and never straight into a lookup: a bad id then answers
+    like one that doesn't exist (404, a message, or the filter ignored). A
+    lookup by None finds nothing. The `ModelMultipleChoiceField`s are still
+    open (plan 03, S106).
   - Transaction lists page at `TRANSACTIONS_PER_PAGE` (1,000) through
     `_paged()`, only when the range is longer than a year or open (the
     account register always is). The count and total cover every page;
@@ -136,6 +145,10 @@ check.bat                                                        # ruff check + 
     `regional.parse_date()` (the stash's format, or YYYY-MM-DD).
     Transactions has "All dates" (`range=""`, ignores the date boxes)
     instead of Reports' "Earliest to date".
+    A custom range on Reports (and its exports) must lie between the years
+    1900 and 2100 and cover at most 100 years (`DateRangeFilterForm.clean()`,
+    S93); a bad one shows the warning banner and the default filters. Other
+    dates are not limited yet (plan 03, S108).
   - Report exports: one view, `exports.export_report`, at
     `reports/export/<slug>/`. A new one is one entry in `REPORT_EXPORTS`
     (named arguments, one per line). The Income & expense vs average
@@ -201,8 +214,8 @@ check.bat                                                        # ruff check + 
   mark its parent had, so give it again with `method_decorator`. A new view
   needs no login decorator.
 - Middleware chain: StashSelection → Auth → LoginRequired → RequireStash (picker or the
-  last-stash cookie, which is unsigned, so it counts only if `list_stashes()` has its
-  name) → AuditContext → RegionalPreferences (sets
+  last-stash cookie, which is unsigned, so it counts only if `registry.is_stash()` finds
+  its exact name; the session's stash is checked the same way) → AuditContext → RegionalPreferences (sets
   `request.stashy_profile`) → RequireSetup (welcome wizard) → … →
   StashAtomicRequest.
 - Exports: pass real values (`Decimal`, `date`, `None`) to
@@ -257,6 +270,9 @@ check.bat                                                        # ruff check + 
   `casefold()`, set by `save()`). Look names up with
   `Payee.objects.named()`/`.resolve()` or `name_key=name_key(x)`, never
   `name__iexact` or `Lower()`: SQLite folds only A-Z, so Cyrillic slips past.
+  Sort on `name_key` too (dropdowns, the Payee and Category columns,
+  `Meta.ordering`), never on `name` or `Lower(name)`. The system payees are
+  recognised through it: `Payee.is_system`, `Payee.SYSTEM_KEYS`.
 - The one-level subcategory rule and the duplicate-name messages live in
   `Category.clean()`/`Payee.clean()`, so forms and the admin share them.
 - Reports convert through `RateTable` (main currency, latest known rate).

@@ -12,8 +12,10 @@ def to_cent(value):
     pulled out of an aggregate query before storing or exporting it raw - SQLite can hand
     back a Decimal with far more decimal places than the underlying amounts actually have
     (e.g. Decimal("-132.370000000000")), which is invisible through |moneyc's own rounding
-    but shows up ugly in a plain str() export or a difference computed from two such values."""
-    return (value if value is not None else ZERO).quantize(CENT, rounding=ROUND_HALF_UP)
+    but shows up ugly in a plain str() export or a difference computed from two such values.
+    A tiny negative rounds to zero without its sign: `Decimal("-0.0033")` would otherwise come
+    back as `Decimal("-0.00")`, and the CSV writer would print "-0.00" (S95)."""
+    return (value if value is not None else ZERO).quantize(CENT, rounding=ROUND_HALF_UP) or ZERO
 
 
 def parse_amount(raw):

@@ -2,6 +2,7 @@
 and accounts named in a file, guessing a category from the payee's history, date formats,
 and the messages for files that can't be read."""
 
+import csv
 import io
 import re
 from datetime import date, datetime
@@ -75,6 +76,125 @@ class CsvImportTests(LoggedInWithAccountTestCase):
         self._import()
         self._import()
         self.assertEqual(Transaction.objects.count(), 2)
+
+
+class ReconciledColumnTests(LoggedInWithAccountTestCase):
+    """S41: only R (and X, reconciled, yes, ...) comes in reconciled. A blank, a cell of spaces, a
+    missing column, and the "cleared" marks (c, cleared, *) come in unreconciled: in Quicken a
+    cleared transaction is one the bank has, not one checked against a statement, and imported as
+    reconciled it would never show up in the next Reconcile checklist."""
+
+    NOT_RECONCILED = ("", "   ", "n", "No", "FALSE", "0", "u", "Unreconciled", "uncleared", "c", "C", "cleared", "*")
+    RECONCILED = ("R", "r", "X", "reconciled", "Reconciled", "yes", "TRUE", "1")
+
+    def import_values(self, values, heading="Reconciled"):
+        """Imports one row per value, each with its own payee, and returns {value: reconciled}."""
+        buffer = io.StringIO()
+        writer = csv.writer(buffer)
+        writer.writerow(["Date", "Payee", "Amount", heading])
+        for number, value in enumerate(values, start=1):
+            writer.writerow(["2026-01-05", f"Payee {number}", f"-{number}.00", value])
+        result = importing.import_file(csv_upload(buffer.getvalue()), self.account)
+        self.assertEqual(result.created, len(values))
+        return {
+            value: Transaction.objects.get(payee__name=f"Payee {n}").reconciled for n, value in enumerate(values, 1)
+        }
+
+    def test_these_csv_values_mean_not_reconciled(self):
+        for value, reconciled in self.import_values(self.NOT_RECONCILED).items():
+            with self.subTest(value=value):
+                self.assertFalse(reconciled)
+
+    def test_these_csv_values_mean_reconciled(self):
+        for value, reconciled in self.import_values(self.RECONCILED).items():
+            with self.subTest(value=value):
+                self.assertTrue(reconciled)
+
+    def test_a_file_with_no_reconciled_column_comes_in_unreconciled(self):
+        importing.import_file(csv_upload("Date,Payee,Amount\n2026-01-05,Lidl,-3.00\n"), self.account)
+        self.assertFalse(Transaction.objects.get(payee__name="Lidl").reconciled)
+
+    def test_the_value_decides_not_the_columns_heading(self):
+        # A "Yes" in a column called Cleared still counts as reconciled; "c" in a Status column does not.
+        self.assertTrue(self.import_values(["Yes"], heading="Cleared")["Yes"])
+        Transaction.objects.all().delete()
+        self.assertFalse(self.import_values(["c"], heading="Status")["c"])
+
+    def test_an_excel_file_reads_blank_spaces_booleans_and_marks_the_same_way(self):
+        workbook = Workbook()
+        workbook.active.append(["Date", "Payee", "Amount", "Reconciled"])
+        values = [None, "   ", False, 0, "c", "*", "R", True, 1]
+        for number, value in enumerate(values, start=1):
+            workbook.active.append([date(2026, 1, 5), f"Payee {number}", -number, value])
+        buffer = io.BytesIO()
+        workbook.save(buffer)
+
+        importing.import_file(SimpleUploadedFile("bank.xlsx", buffer.getvalue()), self.account)
+
+        shown = [Transaction.objects.get(payee__name=f"Payee {n}").reconciled for n in range(1, len(values) + 1)]
+        self.assertEqual(shown, [False, False, False, False, False, False, True, True, True])
+
+    def test_an_excel_file_with_no_reconciled_column_comes_in_unreconciled(self):
+        workbook = Workbook()
+        workbook.active.append(["Date", "Payee", "Amount"])
+        workbook.active.append([date(2026, 1, 5), "Lidl", -3])
+        buffer = io.BytesIO()
+        workbook.save(buffer)
+
+        importing.import_file(SimpleUploadedFile("bank.xlsx", buffer.getvalue()), self.account)
+
+        self.assertFalse(Transaction.objects.get(payee__name="Lidl").reconciled)
+
+
+class ReconciledImportThroughThePageTests(ImportTestCase):
+    """S41 end to end: the file goes up the import page, and what comes in is what the Reconcile
+    checklist then offers."""
+
+    def reconcile_checklist(self, statement_balance="0.00"):
+        return self.client.post(
+            reverse("finance:account_reconcile", args=[self.account.pk]),
+            {"statement_date": "31/01/2026", "statement_balance": statement_balance},
+        )
+
+    def test_cleared_rows_wait_in_the_checklist_and_reconciled_ones_are_the_opening_balance(self):
+        self._import(
+            "Date,Payee,Amount,Reconciled\n"
+            "2026-01-05,Lidl,-10.00,R\n"
+            "2026-01-06,Ikea,-20.00,c\n"
+            "2026-01-07,Salary,100.00,*\n"
+            "2026-01-08,Cafe,-3.00,\n"
+        )
+        checklist = self.reconcile_checklist()
+        self.assertEqual([t.payee.name for t in checklist.context["payments"]], ["Ikea", "Cafe"])
+        self.assertEqual([t.payee.name for t in checklist.context["deposits"]], ["Salary"])
+        self.assertEqual(checklist.context["opening_balance"], Decimal("-10.00"))
+
+    def test_importing_the_same_file_again_leaves_every_reconciled_mark_as_it_is(self):
+        self._import("Date,Payee,Amount,Reconciled\n2026-01-05,Lidl,-10.00,\n2026-01-06,Ikea,-20.00,R\n")
+        # Lidl is reconciled since (an account's own reconcile does that); the second file says the
+        # opposite about both rows.
+        lidl = Transaction.objects.get(payee__name="Lidl")
+        lidl.reconciled = True
+        lidl.save(update_fields=["reconciled"])
+
+        response = self._import("Date,Payee,Amount,Reconciled\n2026-01-05,Lidl,-10.00,\n2026-01-06,Ikea,-20.00,\n")
+
+        self.assertEqual(Transaction.objects.count(), 2)
+        self.assertEqual(
+            dict(Transaction.objects.values_list("payee__name", "reconciled")), {"Lidl": True, "Ikea": True}
+        )
+        # The first import's message is still waiting too: the second one is the last.
+        messages = [str(m) for m in self.client.get(response["Location"]).context["messages"]]
+        self.assertIn("Imported 0 transactions (2 duplicates skipped)", messages[-1])
+
+    def test_a_status_column_of_bank_words_comes_in_reconciled(self):
+        # Characterization, not a claim that it is right. Possible bug: banks that export a Status
+        # column ("Posted", "Pending", "Completed") have every row come in reconciled, because
+        # only the few marks in _RECONCILED_FALSE_VALUES mean "not". Those rows then never show up
+        # in the Reconcile checklist.
+        self._import("Date,Payee,Amount,Status\n2026-01-05,Lidl,-10.00,Posted\n2026-01-06,Ikea,-20.00,Pending\n")
+        self.assertEqual(set(Transaction.objects.values_list("reconciled", flat=True)), {True})
+        self.assertEqual(self.reconcile_checklist().context["payments"], [])
 
 
 class ImportCategoryGuessTests(LoggedInWithAccountTestCase):

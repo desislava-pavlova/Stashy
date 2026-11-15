@@ -14,13 +14,7 @@
     <div class="min-w-0">
         <div class="stat-label">Total net worth ({{ main_currency }})</div>
         <div class="stat-value{% if net_worth < 0 %} amount-negative{% endif %}">{{ net_worth|moneyc:main_currency }}</div>
-        {% if missing_rates %}
-        <div class="stat-hint">
-            <i class="bi bi-exclamation-triangle text-warning"></i>
-            No known rate for {% for a in missing_rates %}{{ a.currency }}{% if not forloop.last %}, {% endif %}{% endfor %} —
-            not included above. <a href="{% url 'finance:settings' %}">Check rates</a>.
-        </div>
-        {% endif %}
+        {% include "finance/includes/missing_rates_hint.html" %}
     </div>
 </div>
 {% for group in groups %}

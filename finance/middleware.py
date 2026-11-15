@@ -64,11 +64,13 @@ class StashSelectionMiddleware:
     def __call__(self, request):
         alias = request.session.get("stash") or None
         if alias:
-            if registry.stash_exists(alias):
+            if registry.is_stash(alias):
                 registry.ensure_registered(alias)
             else:
-                # Named a stash whose folder no longer exists (deleted by hand) - treat it the
-                # same as none chosen rather than routing queries at a dead alias.
+                # Not one of the stashes on disk (its folder was deleted by hand, or the name
+                # isn't a stash's name at all: the session is signed, but a name is checked like
+                # the last-stash cookie's) - treat it as none chosen rather than routing queries
+                # at a dead or foreign alias.
                 alias = None
                 request.session.pop("stash", None)
         with db_router.use_stash(alias):
@@ -114,7 +116,7 @@ class RequireStashMiddleware:
     def __call__(self, request):
         if not request.session.get("stash") and not request.path.startswith(self.exempt_prefixes()):
             remembered = request.COOKIES.get(registry.LAST_STASH_COOKIE)
-            if remembered and remembered in registry.list_stashes():
+            if remembered and registry.is_stash(remembered):
                 request.session["stash"] = remembered
                 return redirect(self._same_page(request))
             return redirect("stash_picker")

@@ -106,7 +106,7 @@ def export_payees(request):
         [
             p.name,
             "Y" if p.is_active else "N",
-            "Y" if p.name in Payee.SYSTEM_NAMES else "N",
+            "Y" if p.is_system else "N",
         ]
         for p in payees
     ]

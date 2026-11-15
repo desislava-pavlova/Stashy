@@ -146,7 +146,10 @@ every stash automatically).
   them blank — so every account's balance is a pure sum of its transactions.
   Each account has its own currency; **Settings** sets your main currency and
   lets you fetch exchange rates (needs internet) to convert everything for net
-  worth. On an account's page, **Transfer** moves money to another account as
+  worth; an account whose currency has no known rate is left out of the total,
+  and the dashboard and the Accounts page both say so. The rate table on
+  Settings shows each rate's date in your date format and where it came from
+  ("Typed in" or "Frankfurter (ECB)"). On an account's page, **Transfer** moves money to another account as
   a paired transaction, and **Reconcile** checks it off against a bank
   statement.
 - **Categories** — income/expense categories, with one level of
@@ -182,7 +185,9 @@ every stash automatically).
   account's own register pages the same way. On both, **Payment** and
   **Deposit** each sort their own side: the first click puts the biggest
   first, the second the smallest, and rows with nothing in that column stay
-  at the bottom.
+  at the bottom. The Payee and Category columns, and every category and
+  payee dropdown, sort alphabetically in any alphabet with upper and lower
+  case together ("lidl" next to "Lidl", "бензин" among the capitals).
 - **Reminders** — recurring or one-time bills and income. A recurring
   reminder creates its upcoming dates ahead of time. **Enter** opens a
   pre-filled transaction; **Skip** moves on without creating one; either way
@@ -194,7 +199,7 @@ every stash automatically).
   month vs. earlier months), Income & expense and its own vs.-average
   report, Net worth, and Watched expenses (any set of expense categories
   chosen in Settings, e.g. bills — the report's own title is editable
-  there too). A category's own type decides income vs.
+  there too, and starts as "Watched expenses"). A category's own type decides income vs.
   spending everywhere, never the sign of the amount. A refund (a positive
   amount in an expense category) shrinks that category's spending, and a
   category whose refunds beat its spending shows a negative number (spent
@@ -208,7 +213,9 @@ every stash automatically).
   (including "Earliest to date"; typing a Start or End date switches it to
   Custom range, and **Apply** updates the page), subtotal
   (week to year), average interval (how many earlier periods to use) and
-  account; every amount converts to your main currency. **Expand** a
+  account; every amount converts to your main currency. A custom range runs
+  between the years 1900 and 2100 and covers at most 100 years; anything else
+  shows the warning and uses the default filters. **Expand** a
   report to see its table; once expanded, **Show all/Hide all** opens or
   closes every subcategory row, and you can export it.
 - **Backups** — **Settings** has **Back up now**, the list of recent backups
@@ -245,7 +252,11 @@ case-insensitively and a few common bank export variants are recognized.
 Only `Date` and `Amount` need a value. `Account` and `Category` are matched
 by name (`Parent:Child` for a subcategory); a category Stashy doesn't have
 yet is created for you and marked as auto-generated. `Num` becomes the
-transaction number, and a `Reconciled` value marks the row reconciled.
+transaction number, and a `Reconciled` value marks the row reconciled:
+`R`, `X`, `yes` and the like do. A blank cell, no such column, and the
+"cleared" marks `c`, `cleared` and `*` do not (in Quicken, cleared means
+the bank has it, not that you've checked it against a statement), so
+those rows still turn up in your next Reconcile.
 Stashy detects each file's date format from its own dates (day-first formats
 like `DD/MM/YYYY`, `DD.MM.YYYY`, `DD-MM-YYYY`, or ISO `YYYY-MM-DD`), and you can
 override it on the import page. Amounts are read exactly (never as floating

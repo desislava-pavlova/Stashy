@@ -14,6 +14,7 @@ from django.core.cache import cache
 from django.db import transaction
 from django.http import Http404
 from django.shortcuts import redirect, render
+from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST
 
 from .. import backup as finance_backup
@@ -164,6 +165,7 @@ def _recovery_code_cache_key(token):
     return f"stashy:new-recovery-code:{token}"
 
 
+@never_cache
 def recovery_code_view(request):
     """Its own page: a warning, the current PIN, and Generate/Back. Generate mints a new code
     and redirects back to this same URL - a real page reload, so refreshing afterward can't

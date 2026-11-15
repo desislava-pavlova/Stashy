@@ -7,6 +7,7 @@ from django.views.generic import CreateView, DeleteView, ListView, UpdateView
 from ..content import CATEGORY_TIPS
 from ..forms import CategoryForm
 from ..models import Category, Transaction, grouped_categories
+from ._helpers import _as_id, _as_ids
 
 
 class CategoryListView(ListView):
@@ -81,9 +82,9 @@ def category_usage(request, pk):
     transactions = category.transactions.select_related("account", "payee")
 
     if request.method == "POST":
-        selected_ids = request.POST.getlist("transaction_id")
+        selected_ids = _as_ids(request.POST.getlist("transaction_id"))
         target = (
-            Category.objects.filter(pk=request.POST.get("move_to"))
+            Category.objects.filter(pk=_as_id(request.POST.get("move_to")))
             .exclude(Q(pk=category.pk) | Q(account__isnull=False))
             .first()
         )

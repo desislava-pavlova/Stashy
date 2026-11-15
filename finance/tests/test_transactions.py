@@ -22,7 +22,7 @@ from django.utils import timezone
 from .. import models
 from ..forms import TransactionForm
 from ..models import Account, Category, Payee, Profile, Transaction
-from ..views._helpers import _safe_next
+from ..views._helpers import _as_id, _as_ids, _safe_next
 from ..views.transactions import _longer_than_a_year
 from .base import LoggedInTestCase, LoggedInWithAccountTestCase, StashTestCase
 
@@ -509,9 +509,251 @@ class DefaultOrderTiesTests(LoggedInWithAccountTestCase):
         self.assertEqual([row["Memo"] for row in rows], self.EXPECTED_MEMOS)
 
 
+class NameColumnSortingTests(LoggedInWithAccountTestCase):
+    """S4: the Payee and Category columns sort on name_key, on the Transactions page and on an
+    account's register. Plain `name` put "lidl" after "Zara" and a lower-case Cyrillic name after
+    every capital one."""
+
+    NAMES = ("Zara", "lidl", "бензин", "Аптека", "Вода")
+    IN_ORDER = ["lidl", "Zara", "Аптека", "бензин", "Вода"]
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        for name in cls.NAMES:
+            Transaction.objects.create(
+                account=cls.account,
+                date=date(2026, 1, 1),
+                payee=Payee.objects.create(name=name),
+                category=Category.objects.create(name=name, category_type=Category.CategoryType.EXPENSE),
+                amount=Decimal("-1.00"),
+            )
+
+    def names_shown(self, column, sort):
+        shown = {}
+        for page, (url, params) in {
+            "transactions": (reverse("finance:transaction_list"), {"range": ""}),
+            "register": (reverse("finance:account_detail", args=[self.account.pk]), {}),
+        }.items():
+            rows = self.client.get(url, {**params, "sort": sort}).context["transactions"]
+            shown[page] = [getattr(t, column).name for t in rows]
+        return shown
+
+    def test_the_payee_column_sorts_in_any_alphabet(self):
+        for page, names in self.names_shown("payee", "payee").items():
+            with self.subTest(page=page):
+                self.assertEqual(names, self.IN_ORDER)
+        for page, names in self.names_shown("payee", "-payee").items():
+            with self.subTest(page=page, direction="descending"):
+                self.assertEqual(names, self.IN_ORDER[::-1])
+
+    def test_the_category_column_sorts_in_any_alphabet(self):
+        for page, names in self.names_shown("category", "category").items():
+            with self.subTest(page=page):
+                self.assertEqual(names, self.IN_ORDER)
+        for page, names in self.names_shown("category", "-category").items():
+            with self.subTest(page=page, direction="descending"):
+                self.assertEqual(names, self.IN_ORDER[::-1])
+
+
+class AsIdTests(SimpleTestCase):
+    """S2's helper: an id from a hand-editable place is plain ASCII digits that fit SQLite, else None."""
+
+    def test_ids_that_fit(self):
+        for text, expected in (
+            ("5", 5),
+            ("0", 0),
+            ("007", 7),
+            ("0" * 5000 + "1", 1),
+            ("9223372036854775807", 2**63 - 1),
+        ):
+            with self.subTest(text=text[:30]):
+                self.assertEqual(_as_id(text), expected)
+
+    def test_everything_else_is_none_and_never_an_error(self):
+        for value in (
+            "",
+            " ",
+            "abc",
+            "1.5",
+            "-1",
+            "+1",
+            "1 2",
+            "²",
+            "٣",
+            "9223372036854775808",
+            "9" * 30,
+            "9" * 4301,
+            None,
+            5,
+            ["5"],
+        ):
+            with self.subTest(value=str(value)[:30]):
+                self.assertIsNone(_as_id(value))
+
+    def test_a_list_keeps_only_the_ids(self):
+        self.assertEqual(_as_ids(["1", "x", "²", "3", "9" * 4301, ""]), [1, 3])
+
+
+class HandEditedIdTests(LoggedInWithAccountTestCase):
+    """S2: whatever a hand-edited URL sends in place of an id must not become a 500 page. "²" is
+    the sneaky one: `str.isdigit()` is true for it, but `int()` refuses it."""
+
+    # "9" * 4301 is longer than Python will turn into an int at all.
+    BAD_IDS = ("abc", "²", "٣", "1.5", "-1", "0x10", "9" * 30, "9" * 4301)
+
+    def test_a_reminder_that_is_not_a_number_is_a_404_like_one_that_does_not_exist(self):
+        self.assertEqual(self.client.get(reverse("finance:transaction_add"), {"reminder": "999999"}).status_code, 404)
+        for bad in self.BAD_IDS:
+            with self.subTest(reminder=bad):
+                self.assertEqual(
+                    self.client.get(reverse("finance:transaction_add"), {"reminder": bad}).status_code, 404
+                )
+
+    def test_a_posted_reminder_that_is_not_a_number_is_a_404_too(self):
+        response = self.client.post(reverse("finance:transaction_add"), {"reminder": "abc"})
+        self.assertEqual(response.status_code, 404)
+
+    def test_an_account_or_category_filter_that_is_not_a_number_is_ignored(self):
+        txn = Transaction.objects.create(account=self.account, date=date(2026, 1, 1), amount=Decimal("-1.00"))
+        for bad in self.BAD_IDS:
+            for param in ("account", "category"):
+                with self.subTest(filter=param, value=bad[:12]):
+                    page = self.client.get(reverse("finance:transaction_list"), {"range": "", param: bad})
+                    self.assertEqual([t.pk for t in page.context["transactions"]], [txn.pk])
+                    export = self.client.get(
+                        reverse("finance:export_transactions"), {"range": "", param: bad, "format": "csv"}
+                    )
+                    self.assertEqual(export.status_code, 200)
+
+    def test_the_new_transaction_form_takes_a_hand_edited_account_without_an_error(self):
+        # `?account=` here goes straight into the form's starting values, not through _as_id().
+        for bad in self.BAD_IDS:
+            with self.subTest(account=bad[:12]):
+                response = self.client.get(reverse("finance:transaction_add"), {"account": bad})
+                self.assertEqual(response.status_code, 200)
+        good = self.client.get(reverse("finance:transaction_add"), {"account": self.account.pk})
+        self.assertEqual(good.context["form"]["account"].value(), str(self.account.pk))
+
+
+class MixedIdFilterTests(LoggedInWithAccountTestCase):
+    """S2: a hand-edited URL that holds some good ids and some bad ones keeps the good ones: one
+    bad id is dropped by itself, it doesn't switch the whole filter off (or on)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.other_account = Account.objects.create(name="Savings")
+        expense = Category.CategoryType.EXPENSE
+        cls.food = Category.objects.create(name="Food", category_type=expense)
+        cls.groceries = Category.objects.create(name="Groceries", parent=cls.food, category_type=expense)
+        cls.rent = Category.objects.create(name="Rent", category_type=expense)
+
+        def add(account, category):
+            return Transaction.objects.create(
+                account=account, date=date(2026, 1, 1), category=category, amount=Decimal("-1.00")
+            )
+
+        cls.in_food = add(cls.account, cls.food)
+        cls.in_groceries = add(cls.account, cls.groceries)
+        cls.in_rent = add(cls.account, cls.rent)
+        cls.uncategorized = add(cls.account, None)
+        cls.in_savings = add(cls.other_account, cls.rent)
+
+    def page(self, **params):
+        return self.client.get(reverse("finance:transaction_list"), {"range": "", **params})
+
+    def shown(self, **params):
+        return {t.pk for t in self.page(**params).context["transactions"]}
+
+    def test_a_good_category_keeps_working_next_to_bad_ones(self):
+        params = {"category": [self.rent.pk, "abc", "²", "9" * 30, "9" * 4301, "-1"]}
+        self.assertEqual(self.shown(**params), {self.in_rent.pk, self.in_savings.pk})
+        export = self.client.get(reverse("finance:export_transactions"), {"range": "", "format": "csv", **params})
+        self.assertEqual(export.content.decode().count("\n"), 3)  # the header and the two rent rows
+
+    def test_the_filter_label_counts_only_the_good_ids(self):
+        page = self.page(category=[self.rent.pk, "abc", "²"])
+        self.assertEqual(page.context["category_filter_label"], "Rent")
+        page = self.page(category=[self.rent.pk, self.food.pk, "abc"])
+        self.assertEqual(page.context["category_filter_label"], "2 categories selected")
+
+    def test_a_good_category_with_its_subcategories_next_to_a_bad_id(self):
+        page = self.page(category=[self.food.pk, "abc"], with_subcategories="1")
+        self.assertEqual({t.pk for t in page.context["transactions"]}, {self.in_food.pk, self.in_groceries.pk})
+        self.assertEqual(page.context["selected_category_obj"], self.food)
+
+    def test_uncategorized_next_to_a_bad_id_is_still_only_the_uncategorized(self):
+        self.assertEqual(self.shown(category=["none", "abc", "²"]), {self.uncategorized.pk})
+        self.assertEqual(
+            self.shown(category=["none", self.rent.pk, "abc"]),
+            {self.uncategorized.pk, self.in_rent.pk, self.in_savings.pk},
+        )
+
+    def test_a_good_account_and_a_bad_category_still_filter_by_the_account(self):
+        self.assertEqual(self.shown(account=self.other_account.pk, category="abc"), {self.in_savings.pk})
+        self.assertEqual(self.shown(account="abc", category=self.rent.pk), {self.in_rent.pk, self.in_savings.pk})
+
+    def test_a_deleted_account_or_category_in_an_old_link(self):
+        # Characterization, not a claim that it is right. Possible bug: the two filters disagree.
+        # An account id that is a number but names nothing shows no rows, while a category id that
+        # names nothing is dropped like a bad one and shows every row (the label says "All categories").
+        self.assertEqual(self.shown(account=999999), set())
+        page = self.page(category=999999)
+        self.assertEqual(len(page.context["transactions"]), 5)
+        self.assertEqual(page.context["category_filter_label"], "All categories")
+
+
+class HandEditedDateTests(LoggedInWithAccountTestCase):
+    """S93's family: a date typed into the Transactions page's URL must not become a 500 page."""
+
+    def test_no_range_can_be_longer_than_a_year_after_year_9999(self):
+        # start + one year overflows the calendar there.
+        self.assertFalse(_longer_than_a_year(date(9999, 6, 1), date(9999, 12, 31)))
+        self.assertTrue(_longer_than_a_year(date(1, 1, 1), date(9999, 12, 31)))
+
+    def test_extreme_dates_give_the_page_and_the_export_not_an_error(self):
+        txn = Transaction.objects.create(account=self.account, date=date(2026, 1, 1), amount=Decimal("-1.00"))
+        for params in (
+            {"start": "9999-06-01", "end": "9999-12-31"},
+            {"start": "0001-01-01", "end": "9999-12-31"},
+            {"range": "custom", "start": "0001-01-01", "end": "0001-06-01"},
+        ):
+            with self.subTest(params=params):
+                self.assertEqual(self.client.get(reverse("finance:transaction_list"), params).status_code, 200)
+                export = self.client.get(reverse("finance:export_transactions"), {**params, "format": "csv"})
+                self.assertEqual(export.status_code, 200)
+        wide = self.client.get(reverse("finance:transaction_list"), {"start": "0001-01-01", "end": "9999-12-31"})
+        self.assertEqual([t.pk for t in wide.context["transactions"]], [txn.pk])
+
+    def test_the_new_transaction_form_takes_any_hand_edited_date(self):
+        # `?date=` is "Save and add another"'s way of handing back the date just used. A date that
+        # isn't one starts the form on today; one at the very edge of the calendar is kept.
+        today = timezone.localdate()
+        for text, expected in (
+            ("9999-12-31", date(9999, 12, 31)),
+            ("0001-01-01", date(1, 1, 1)),
+            ("2026-02-30", today),
+            ("abc", today),
+            ("", today),
+            ("1" * 5000, today),
+        ):
+            with self.subTest(date=text[:12]):
+                response = self.client.get(reverse("finance:transaction_add"), {"date": text})
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.context["form"]["date"].value(), expected)
+
+
 class TransactionNumberFormTests(StashTestCase):
     def test_form_includes_transaction_number(self):
         self.assertIn("transaction_number", TransactionForm().fields)
+
+    def test_the_number_box_has_no_help_text_with_an_internal_code(self):
+        # S5: the form's own text ended "...starting over each year, D9)" and no page showed it. What
+        # is left is the model's plain sentence.
+        help_text = TransactionForm().fields["transaction_number"].help_text
+        self.assertNotIn("D9", help_text)
+        self.assertEqual(help_text, models.Transaction._meta.get_field("transaction_number").help_text)
 
     def test_clearing_the_number_on_edit_reassigns_the_next_one(self):
         account = Account.objects.create(name="Checking")

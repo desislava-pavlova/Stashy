@@ -5571,3 +5571,160 @@ frequency). The suite went from 936 to 978 tests.
 `CLAUDE.md`, the tests in `test_reminders.py`, `test_transactions.py` and
 `test_accounts.py`, `plans/03_structure_review.md`, `plans/README.md`, this
 log.
+
+
+## 15/11/2026 — Plan 03, Phase 1, part D: fifteen small fixes, and the phase's one migration (S2, S4, S5, S6, S31, S32, S41, S46, S53, S69, S80, S81, S92, S93, S95)
+
+**What changed:** the last planned part of Phase 1, small fixes you can mostly see.
+- **S2:** a hand-edited `?reminder=abc` is now a 404, and the mass re-categorize
+  on a category's usage page shows its usual message (or drops the bad ids)
+  instead of a 500 page. The same helper replaced three `isdigit()` checks, so
+  `?account=²` and a 30-digit number no longer crash Transactions or Payees.
+- **S93:** a custom range on Reports (and its exports) must be between the years
+  1900 and 2100 and at most 100 years long; anything else shows the warning
+  banner with the default filters, instead of an error page. The Transactions
+  list crashed the same way on a date in year 9999, so that is fixed too.
+- **S4:** the category and payee dropdowns, the Payee and Category columns on
+  Transactions and the register, and both models' default order now sort on the
+  case-folded name, in any alphabet: "Аптека, бензин, Вода, яйца", "lidl" next
+  to "Lidl".
+- **S53:** a system payee typed in another case ("opening balance") is
+  recognised: it stays out of the payee autocomplete, and the payees export
+  marks it system-managed.
+- **S31:** the dashboard's Net worth tile now says when an account is left out
+  because its currency has no known rate, with the same hint as the Accounts
+  page ("No known rate for GBP, USD — not included above. Check rates.").
+- **S32:** Settings' exchange rate table writes the date in your date format and
+  names the source ("Typed in", "Frankfurter (ECB)") instead of its code.
+- **S5, S6:** the Number box's unused help text with its internal "D9" is gone;
+  Edit mode's "saved" flash uses the pale green that has a dark-mode version.
+- **S41:** an import's `c`, `cleared` and `*` in the Reconciled column come in
+  unreconciled; `R`, `X`, `yes` and so on still reconcile; blanks, spaces and a
+  missing column stay unreconciled (and are now tested).
+- **S46:** the Watched expenses title starts as "Watched expenses" (it was
+  "Bills & Utilities"), and the welcome step's Title box shows it instead of
+  being emptied. A stash that already saved a title keeps it.
+- **S92, S95:** a subcategory or account name that starts like a formula keeps
+  its protective apostrophe in the CSV even though the report layouts indent it;
+  a tiny negative rounds to `0.00`, not `-0.00`.
+- **S69, S80, S81:** Payees treats an unknown sort as "name" (and shows its
+  arrow); the three pages that show a recovery code are never cached by the
+  browser; the session's stash must be a stash on disk by its exact name, like
+  the last-stash cookie.
+
+**Why the code looks like this:**
+- S2: `str.isdigit()` answers "is this made of digit characters", which is wider
+  than "is this a number": it is also true for "²", which `int()` then refuses,
+  and for a 4,301-digit string, which Python also refuses (a ValueError since
+  3.11), and a number above SQLite's biggest integer overflows in the database.
+  So one helper, `_as_id()`, says exactly what an id is: ASCII digits, no more
+  than 19 of them once leading zeros are ignored, and at most 2⁶³−1. Anything
+  else is `None`, and a lookup by `None` finds nothing, so a bad id answers the
+  way an id that doesn't exist already did. `_as_ids()` drops the bad ones from
+  a list. It is pure, so it has its own plain unit test.
+- S93: the check sits in `DateRangeFilterForm.clean()`, because the page and
+  every export read their filters through that one form and already turn an
+  invalid form into the warning banner. The Transactions page has no form, so
+  `_longer_than_a_year()` answers "no" when "a year after the start" doesn't
+  exist (year 9999). It is not true that nothing else can crash: S108 lists the
+  dates stored in the data, which have no limits yet.
+- S4: SQLite compares text by code point, so a plain `name` sorts "Zara" before
+  "lidl" and every Cyrillic capital before a lower-case letter, and its `lower()`
+  folds only A–Z. `name_key` is already the case-folded name that the unique
+  rules use, so every sort now uses it. Changing `Category.Meta.ordering` also
+  drops a join to the parent on every category query. The database review
+  checked that nothing relied on the old order: a query that groups drops
+  `Meta.ordering`, and the category list sorts again in Python. Two things you
+  might see: the categories export is now one A–Z list (it was top-level first),
+  and Watched expenses' chart can draw its series in another order.
+- S53: `Payee.SYSTEM_KEYS` is the three system names through `name_key()`, and
+  `is_system` and the API's exclude use it. The constant is built in the class
+  body, next to a field also called `name_key`; it works because a generator's
+  body doesn't see class-level names, so there it is the module's function. A
+  comment says so, because it looks like it shouldn't work.
+- S6: the flash named `--stashy-success-rgb`, which was never defined, so it was
+  always Bootstrap's fixed green. A test now checks that every `--stashy-*`
+  variable the stylesheet uses is defined in it; it found exactly that one.
+- S31: one include, `includes/missing_rates_hint.html`, used by both pages. The
+  front-end check found it printed "USD, USD" for two accounts in one currency,
+  because the view hands it the accounts, not the currencies. The new
+  `currency_codes` filter names each currency once, alphabetically; the old
+  Accounts page had the same stutter.
+- S32: the date goes through `sdate` like every other full date. The source's
+  label comes from a new `rate_source` filter over `ExchangeRate.Source`,
+  falling back to the code for one it doesn't know.
+- S41: only R-like values reconcile because in Quicken "cleared" means the bank
+  has the transaction, not that you've checked it against a statement. Imported
+  as reconciled it would never show up in the next Reconcile checklist.
+- S92: the writer looks past leading spaces and puts the `'` after them
+  (`  '=cmd`), not before, so the indent stays. Fixing it in the writer, not in
+  each layout, also covers the net worth layout, which indents account names.
+  The Excel file already stored all text as text.
+- S95: `result or ZERO`: a `Decimal("-0.00")` is falsy, so one line gives back
+  an unsigned zero.
+- S46 and the migration: `0019_phase1d_title_default_and_name_ordering` holds
+  the two ordering changes and the title's new default, and no data steps. On
+  SQLite a changed default makes Django rebuild the `finance_profile` table (copy
+  the rows into a new table, drop the old one), so I rehearsed it on a scratch
+  database with made-up data and compared every `finance_` table by column name:
+  all rows, indexes and foreign keys survived, a saved "Bills & Utilities" title
+  stayed, and only that table's column order changed (the title moved to the
+  end), which nothing depends on. I also checked the real stash read-only
+  before it gets migrated: no foreign-key violations, integrity fine.
+  `Stashy.bat` backs it up and migrates it at the next start.
+- S69, S80, S81: unchanged in spirit: the fallback sets `sort = "name"` so the
+  header shows its arrow; `@never_cache` goes under `@login_not_required`, so
+  the login mark stays on the outermost function; `registry.is_stash()` gives
+  the "exact name of a stash on disk" rule one home for the session and the
+  cookie (the code review's idea).
+- Tests were checked against the old behaviour where I could, and the reviews
+  found my own misses: `_as_id` failing on a very long digit string, and the
+  "USD, USD" hint. A new test, written by the QA tester before it was stopped,
+  runs `makemigrations --check` under the test settings, so a model change
+  without its migration is caught (it skips itself in a clone that has no
+  migration files, since they are kept out of git).
+
+**Teaching note — validate exactly what you need, once.** Python gave us three
+different "is this a number?" answers in one afternoon: `isdigit()` (true for
+"²"), `int()` (refuses it, and refuses a very long string), and the database
+(overflows on a big one). Each is right about its own question and wrong about
+yours. Write the question you actually mean ("an ASCII id that fits a database
+integer") as one small function, use it everywhere, and test it with the ugly
+values. The second lesson is the migration's: when a change is "only a
+default", don't assume it is free. On SQLite it rebuilds the table, so try it
+on made-up data first and compare by column name, not by position.
+
+**Reviews:** code, database, security and front end read it, and the QA tester
+started and was stopped by you before its final report. Nothing was Critical.
+The small findings were done the same day: the "USD, USD" hint, `_as_id()` on a
+very long string, the Transactions list in year 9999, `registry.is_stash()`, a
+comment that misdescribed `SYSTEM_KEYS`, and test polish. The rest is in plan
+03 as S104–S109 (section M): a test that fails when run in a subset (S104);
+an owner named "Default" colliding with the `default` database alias (S105);
+two multi-choice fields that send an oversized id to SQLite (S106); an Excel
+export that fails on a control character in a memo (S107); dates in the data
+with no limits (S108, your call); two sort rules and the accounts (S109). S105
+to S107 are a small "part E" of Phase 1. The suite went from 978 to 1,075 tests;
+about 40 of those came from the QA tester before it stopped, and I did not see
+its final report, so those tests were not each checked against a broken
+version.
+
+**Files touched:** `finance/models.py`, `finance/forms.py`, `finance/money.py`,
+`finance/middleware.py`, `finance/stashes/registry.py`,
+`finance/services/importing.py`, `finance/views/_helpers.py`,
+`finance/views/transactions.py`, `finance/views/accounts.py`,
+`finance/views/categories.py`, `finance/views/payees.py`,
+`finance/views/auth.py`, `finance/views/settings.py`, `finance/views/api.py`,
+`finance/views/exports.py`, `finance/views/welcome.py`,
+`finance/templatetags/stashy_format.py`,
+`finance/templates/finance/dashboard.html`,
+`finance/templates/finance/account_list.html`,
+`finance/templates/finance/settings.html`, the new
+`finance/templates/finance/includes/missing_rates_hint.html`,
+`finance/static/finance/css/stashy.css`, `README.md`, `CLAUDE.md`, the tests in
+`test_transactions.py`, `test_payees.py`, `test_categories.py`,
+`test_reports.py`, `test_auth.py`, `test_settings.py`, `test_middleware.py`,
+`test_api.py`, `test_exports.py`, `test_formatting.py`, `test_dashboard.py`,
+`test_imports.py`, `test_project.py`, `test_welcome.py` and `test_currency.py`,
+`plans/03_structure_review.md`, `plans/README.md`, this log. The migration
+(`finance/migrations/0019_…`) is kept out of git, like the others.

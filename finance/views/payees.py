@@ -7,6 +7,7 @@ from ..content import PAYEE_TIPS
 from ..forms import PayeeForm
 from ..models import Category, Payee, Transaction, categories_alphabetical
 from ..money import ZERO
+from ._helpers import _as_id
 
 PAYEE_SORT_KEYS = {
     "name": lambda row: row["payee"].name.lower(),
@@ -26,8 +27,8 @@ def payee_list(request):
         payees = payees.filter(name__icontains=search)
     if category_id == "none":
         payees = payees.filter(transactions__category__isnull=True).distinct()
-    elif category_id.isdigit():
-        payees = payees.filter(transactions__category_id=category_id).distinct()
+    elif (category_pk := _as_id(category_id)) is not None:
+        payees = payees.filter(transactions__category_id=category_pk).distinct()
     if memo_filter:
         payees = payees.filter(transactions__memo__icontains=memo_filter).distinct()
     payees = list(payees)
@@ -92,8 +93,10 @@ def payee_list(request):
         )
 
     sort = request.GET.get("sort", "name")
-    column = sort.removeprefix("-")
-    rows.sort(key=PAYEE_SORT_KEYS.get(column, PAYEE_SORT_KEYS["name"]), reverse=sort.startswith("-"))
+    if sort.removeprefix("-") not in PAYEE_SORT_KEYS:
+        # A hand-typed or old link: sort by name, and say so, so the Payee header shows its arrow.
+        sort = "name"
+    rows.sort(key=PAYEE_SORT_KEYS[sort.removeprefix("-")], reverse=sort.startswith("-"))
     sort_next = {name: (f"-{name}" if sort == name else name) for name in PAYEE_SORT_KEYS}
 
     return render(

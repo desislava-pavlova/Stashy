@@ -4,6 +4,7 @@ from django import template
 
 from finance import regional
 from finance.currency import CURRENCY_SYMBOLS, format_money
+from finance.models import ExchangeRate
 
 register = template.Library()
 
@@ -14,6 +15,20 @@ def currency_symbol(code):
     |moneyc already uses, for the few spots (e.g. a chart, JS-rendered) that need just the
     symbol on its own rather than a full formatted amount."""
     return CURRENCY_SYMBOLS.get(code, code)
+
+
+@register.filter
+def currency_codes(accounts):
+    """The currencies of `accounts`, each once, alphabetically: "GBP, USD". For a warning that
+    names the currencies left out of a total, not one entry per account."""
+    return ", ".join(sorted({account.currency for account in accounts}))
+
+
+@register.filter
+def rate_source(code):
+    """An exchange rate's source the way people read it ("Typed in", "Frankfurter (ECB)"), not the
+    code stored in the database."""
+    return dict(ExchangeRate.Source.choices).get(code, code)
 
 
 @register.filter

@@ -31,6 +31,40 @@ class NameKeyTests(StashTestCase):
         self.assertEqual(payee.name_key, "über shop")
 
 
+class PayeeIsSystemTests(StashTestCase):
+    """S53: Payee.system() reuses a payee typed in another case, so "is it one of Stashy's own"
+    is asked through name_key, not by exact spelling."""
+
+    def test_the_system_payees_in_any_case(self):
+        for system_name in Payee.SYSTEM_NAMES:
+            for name in (system_name, system_name.upper(), system_name.lower()):
+                with self.subTest(name=name):
+                    # The three spellings share one name_key, so only one can exist at a time.
+                    payee = Payee.objects.create(name=name)
+                    self.assertTrue(payee.is_system)
+                    payee.delete()
+
+    def test_a_payee_that_only_looks_similar_is_not_a_system_payee(self):
+        for name in ("Opening Balance Fee", "Transfer", "Лидл", "Opening  Balance"):
+            with self.subTest(name=name):
+                self.assertFalse(Payee.objects.create(name=name).is_system)
+
+    def test_a_reused_system_payee_still_counts(self):
+        typed = Payee.objects.create(name="opening balance")
+        self.assertTrue(Payee.system(Payee.OPENING_BALANCE).is_system)
+        self.assertEqual(Payee.system(Payee.OPENING_BALANCE), typed)
+
+
+class PayeeDefaultOrderTests(StashTestCase):
+    def test_payees_come_in_name_key_order_in_any_alphabet(self):
+        # S4: plain `name` sorts "lidl" after "Zara" and a lower-case Cyrillic name after a capital one.
+        for name in ("Zara", "lidl", "бензин", "Аптека", "Вода"):
+            Payee.objects.create(name=name)
+        self.assertEqual(
+            list(Payee.objects.values_list("name", flat=True)), ["lidl", "Zara", "Аптека", "бензин", "Вода"]
+        )
+
+
 class PayeeUniquenessTests(StashTestCase):
     """2.4 (F3): one payee per name, whatever the case."""
 
@@ -268,6 +302,22 @@ class PayeeListFilterAndSortTests(LoggedInWithAccountTestCase):
         # The list is sorted by name even without ?sort=, so "Payee" shows the arrow from the start.
         response = self.client.get(reverse("finance:payee_list"))
         self.assertRegex(response.content.decode(), r"Payee\s*<i [^>]*caret-up-fill")
+
+    def test_an_unknown_sort_falls_back_to_name_and_shows_its_arrow(self):
+        # S69: it sorted by name already, but kept the unknown value, so no header showed an arrow
+        # and the first click on "Payee" (which asks for sort=name) seemed to do nothing.
+        for sort in ("nonsense", "-nonsense", "-"):
+            with self.subTest(sort=sort):
+                response = self.client.get(reverse("finance:payee_list"), {"sort": sort})
+                self.assertEqual(response.context["sort"], "name")
+                self.assertEqual([r["payee"].name for r in response.context["rows"]], ["Ikea", "Lidl"])
+                self.assertRegex(response.content.decode(), r"Payee\s*<i [^>]*caret-up-fill")
+
+    def test_a_category_filter_that_is_not_a_number_is_ignored(self):
+        # S2's family: "²" passes str.isdigit() but int() refuses it, which used to be a 500 page.
+        for bad in ("abc", "²", "-1", "9" * 30):
+            with self.subTest(category=bad):
+                self.assertEqual({r["payee"].name for r in self.rows(category=bad)}, {"Ikea", "Lidl"})
 
     def test_search_by_name(self):
         names = [r["payee"].name for r in self.rows(q="lid")]

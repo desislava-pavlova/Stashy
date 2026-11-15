@@ -13,6 +13,7 @@ from django.contrib.auth.views import LoginView
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils.decorators import method_decorator
+from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST
 
 from ..auth_forms import ForgotPinForm, StashCreateForm, StashLoginForm
@@ -45,6 +46,7 @@ def stash_picker(request):
 
 
 @login_not_required
+@never_cache
 def stash_create(request):
     """Create a new stash: whose it is, plus a PIN. Its own page, so "no stashes yet" can
     land directly here."""
@@ -153,6 +155,7 @@ class StashLoginView(LoginView):
 
 
 @login_not_required
+@never_cache
 def forgot_pin(request):
     stash_name = request.session.get("stash", "")
     if not stash_name:

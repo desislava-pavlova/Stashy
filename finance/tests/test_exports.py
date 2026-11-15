@@ -9,11 +9,13 @@ from decimal import Decimal
 
 from django.conf import settings
 from django.db import connections
+from django.test import SimpleTestCase
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from openpyxl import load_workbook
 
 from ..models import Account, Category, Payee, Profile, Transaction
+from ..views._helpers import _csv_cell
 from ..views.exports import REPORT_EXPORTS
 from .base import LoggedInWithAccountTestCase
 
@@ -102,6 +104,29 @@ class ExportOtherListsTests(LoggedInWithAccountTestCase):
         self.assertIn(Payee.OPENING_BALANCE, by_name)
         self.assertEqual(by_name[Payee.OPENING_BALANCE][2], "Y")
 
+    def test_a_system_payee_typed_in_another_case_is_marked_system_managed(self):
+        # S53: found through name_key, like Payee.system() finds it.
+        Payee.objects.create(name="opening balance")
+        Payee.objects.create(name="Opening Balance Fee")
+        response = self.client.get(reverse("finance:export_payees"), {"format": "csv"})
+        by_name = {row[0]: row for row in list(csv.reader(io.StringIO(response.content.decode())))[1:]}
+        self.assertEqual(by_name["opening balance"][2], "Y")
+        self.assertEqual(by_name["Opening Balance Fee"][2], "N")
+
+    def test_every_system_payee_is_marked_in_any_case(self):
+        # S53: all three names, not just the first two.
+        for name in Payee.SYSTEM_NAMES:
+            Payee.objects.create(name=name.upper())
+            Payee.objects.create(name=f"{name} fee")
+        response = self.client.get(reverse("finance:export_payees"), {"format": "csv"})
+        marked = {row[0]: row[2] for row in list(csv.reader(io.StringIO(response.content.decode())))[1:]}
+        self.assertEqual(
+            {name for name, flag in marked.items() if flag == "Y"}, {n.upper() for n in Payee.SYSTEM_NAMES}
+        )
+        self.assertEqual(
+            {name for name, flag in marked.items() if flag == "N"}, {f"{n} fee" for n in Payee.SYSTEM_NAMES}
+        )
+
 
 class ExportTests(LoggedInWithAccountTestCase):
     """1.11 (F33, F46): exports open correctly in Excel and can't run formulas."""
@@ -139,6 +164,75 @@ class ExportTests(LoggedInWithAccountTestCase):
         self.assertEqual(amount_cell.number_format, "0.00")
         self.assertEqual(memo_cell.data_type, "s")
         self.assertEqual(memo_cell.value, '=HYPERLINK("http://evil.example")')
+
+
+class CsvCellTests(SimpleTestCase):
+    """S92: the CSV writer escapes text a spreadsheet would read as a formula, past any indent."""
+
+    def test_text_that_starts_like_a_formula_gets_an_apostrophe(self):
+        for text in ("=1+1", "+1", "-1", "@x", "\t=1", "\r=1"):
+            with self.subTest(text=text):
+                self.assertEqual(_csv_cell(text), "'" + text)
+
+    def test_the_apostrophe_goes_after_the_indent_so_the_indent_stays(self):
+        self.assertEqual(_csv_cell("  =1+1"), "  '=1+1")
+        self.assertEqual(_csv_cell("    @x"), "    '@x")
+
+    def test_plain_text_is_left_alone(self):
+        for text in ("Groceries", "  Groceries", "  ", "", " a=b"):
+            with self.subTest(text=text):
+                self.assertEqual(_csv_cell(text), text)
+
+    def test_amounts_dates_and_nothing_are_written_in_their_csv_form(self):
+        self.assertEqual(_csv_cell(None), "")
+        self.assertEqual(_csv_cell(Decimal("-1.5")), "-1.50")
+        self.assertEqual(_csv_cell(date(2026, 1, 2)), "2026-01-02")
+
+
+class FormulaLikeNamesInReportExportsTests(LoggedInWithAccountTestCase):
+    """S92: the layouts indent a subcategory's name with two spaces, and used to leave a name that
+    starts like a formula unescaped behind that indent. The CSV now looks past the indent; the
+    Excel file keeps every name as text."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        main = Category.objects.create(name="=SUM(1)", category_type=Category.CategoryType.EXPENSE)
+        sub = Category.objects.create(name="+2", parent=main, category_type=Category.CategoryType.EXPENSE)
+        for category in (main, sub):
+            Transaction.objects.create(
+                account=cls.account, date=date.today(), category=category, amount=Decimal("-5.00")
+            )
+        Account.objects.create(name="@evil")
+
+    def csv_names(self, slug):
+        response = self.client.get(reverse("finance:export_report", args=[slug]), {"format": "csv"})
+        return [row[0] for row in list(csv.reader(io.StringIO(response.content.decode("utf-8-sig"))))[1:]]
+
+    def xlsx_cells(self, slug):
+        response = self.client.get(reverse("finance:export_report", args=[slug]), {"format": "xlsx"})
+        sheet = load_workbook(io.BytesIO(response.content)).active
+        return [sheet.cell(row=row, column=1) for row in range(2, sheet.max_row + 1)]
+
+    def test_csv_escapes_the_main_category_and_the_indented_subcategory(self):
+        for slug in ("spending", "spending-vs-average"):
+            with self.subTest(slug=slug):
+                names = self.csv_names(slug)
+                self.assertIn("'=SUM(1)", names)
+                self.assertIn("  '+2", names)
+                self.assertNotIn("  +2", names)
+
+    def test_csv_escapes_an_indented_account_name_in_net_worth_too(self):
+        names = self.csv_names("net-worth")
+        self.assertIn("  '@evil", names)
+        self.assertNotIn("  @evil", names)
+
+    def test_xlsx_keeps_every_name_as_plain_text(self):
+        for slug in ("spending", "spending-vs-average"):
+            with self.subTest(slug=slug):
+                cells = {cell.value: cell for cell in self.xlsx_cells(slug)}
+                for name in ("=SUM(1)", "  +2"):
+                    self.assertEqual(cells[name].data_type, "s")
 
 
 class ReportExportTests(LoggedInWithAccountTestCase):

@@ -1,0 +1,8 @@
+{# The accounts left out of a net worth total because their currency has no known rate. Needs missing_rates. #}
+{% load stashy_format %}
+{% if missing_rates %}
+<div class="stat-hint">
+    <i class="bi bi-exclamation-triangle text-warning" aria-hidden="true"></i>
+    No known rate for {{ missing_rates|currency_codes }}! <a href="{% url 'finance:settings' %}">Check rates</a>.
+</div>
+{% endif %}
