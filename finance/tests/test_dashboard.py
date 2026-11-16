@@ -253,7 +253,7 @@ class DashboardMissingRateTests(LoggedInWithAccountTestCase):
         Account.objects.create(name="US card", currency="USD")
         response = self.client.get(reverse("finance:dashboard"))
         self.assertContains(response, "No known rate for USD")
-        self.assertContains(response, "not included above")
+        self.assertContains(response, "Check rates")
         self.assertContains(response, reverse("finance:settings"))
 
     def test_the_accounts_page_shows_the_same_hint(self):
@@ -281,7 +281,7 @@ class DashboardMissingRateTests(LoggedInWithAccountTestCase):
         for page in ("finance:dashboard", "finance:account_list"):
             with self.subTest(page=page):
                 body = self.client.get(reverse(page)).content.decode()
-                self.assertIn("No known rate for USD —", body)
+                self.assertIn("No known rate for USD!", body)
                 self.assertNotIn("USD, USD", body)
 
     def test_the_hint_is_a_second_line_inside_the_net_worth_tile_and_leaks_no_syntax(self):

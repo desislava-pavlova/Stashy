@@ -2,6 +2,7 @@ from dateutil.relativedelta import relativedelta
 from django import forms
 from django.core.exceptions import ValidationError
 from django.core.validators import FileExtensionValidator
+from django.db import connections
 from django.db.models import Q
 from django.utils import timezone
 
@@ -56,6 +57,32 @@ class BootstrapFormMixin:
             else:
                 widget.attrs.setdefault("class", "form-control")
         _use_regional_dates(self)
+
+
+class SafeModelMultipleChoiceField(forms.ModelMultipleChoiceField):
+    """A ModelMultipleChoiceField that answers an id too big for the database like any other id
+    that isn't a choice (plan 03, S106). Django looks the ids up with `pk__in=[...]`, and SQLite
+    refuses a number over 2**63 - 1 with an OverflowError: a hand-made request got a 500 page.
+    So an id outside what the database can hold is refused first, before any query. (A
+    single-choice field already copes, because Django's `pk=` lookup returns nothing for it, and
+    ids read from a URL go through views/_helpers.py's `_as_id()`, which guards the same limit.)
+
+    This overrides `_check_values()`, a private Django method, because it is the one place the
+    ids are checked; the tests for both forms using it would show a Django upgrade renaming it."""
+
+    def _check_values(self, value):
+        # The pk is a BigAutoField on every model here, and this is the range that field can hold.
+        lowest, highest = connections[self.queryset.db].ops.integer_field_range("BigIntegerField")
+        for pk in value:
+            try:
+                number = int(pk)
+            except (TypeError, ValueError):
+                continue  # not a number at all: Django's own check below says so, in its words
+            if not lowest <= number <= highest:
+                raise ValidationError(
+                    self.error_messages["invalid_choice"], code="invalid_choice", params={"value": pk}
+                )
+        return super()._check_values(value)
 
 
 class AccountForm(BootstrapFormMixin, forms.ModelForm):
@@ -208,7 +235,7 @@ class ReconcileFinishForm(forms.Form):
 
     statement_date = forms.DateField(input_formats=["%Y-%m-%d"])
     statement_balance = forms.DecimalField(max_digits=12, decimal_places=2)
-    transaction = forms.ModelMultipleChoiceField(queryset=Transaction.objects.none(), required=False)
+    transaction = SafeModelMultipleChoiceField(queryset=Transaction.objects.none(), required=False)
     accept_difference = forms.BooleanField(required=False)
 
     def __init__(self, *args, account, **kwargs):
@@ -538,6 +565,7 @@ class WatchedExpensesForm(ProfileColumnsOnlyMixin, BootstrapFormMixin, forms.Mod
         model = Profile
         fields = ["watched_expenses_title", "watched_expenses_categories"]
         labels = {"watched_expenses_title": "Title", "watched_expenses_categories": "Categories"}
+        field_classes = {"watched_expenses_categories": SafeModelMultipleChoiceField}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

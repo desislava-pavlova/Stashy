@@ -71,6 +71,77 @@ class CreateAndResetStashTests(TemporaryStashesMixin, SimpleTestCase):
         with self.assertRaisesMessage(StashError, 'No stash named "nobody".'):
             registry.reset_pin_directly("nobody", "1234")
 
+    def test_an_owner_called_default_gets_a_real_stash_of_its_own(self):
+        """S105: the folder name is also the stash's connection alias, and "default" is already
+        the picker's empty placeholder database. The stash would have been built in the
+        placeholder and its own folder left without a database, so it was never listed."""
+        self.make_stashes()
+        type(self).databases |= {"default-2"}
+        folder, _ = registry.create_stash("Default", "1234")
+        self.addCleanup(self._unregister, folder)
+        self.assertEqual(folder, "default-2")
+        self.assertTrue(registry.stash_db_path("default-2").exists())
+        self.assertEqual(registry.list_stashes(), ["default-2"])
+        self.assertEqual(registry.stash_choices(), [("default-2", "Default")])
+        self.assertEqual(Profile.objects.using("default-2").get().owner_name, "Default")
+
+    def test_a_folder_name_that_is_reserved_gets_the_suffix_a_duplicate_gets(self):
+        self.make_stashes()
+        for owner_name, expected in [
+            ("Default", "default-2"),
+            ("DEFAULT", "default-2"),
+            ("Con", "con-2"),
+            ("nul", "nul-2"),
+            ("AUX", "aux-2"),
+            ("prn", "prn-2"),
+            ("COM1", "com1-2"),
+            ("lpt9", "lpt9-2"),
+        ]:
+            with self.subTest(owner_name=owner_name):
+                self.assertEqual(registry._folder_name_from_owner(owner_name), expected)
+
+    def test_names_that_only_look_like_reserved_ones_are_left_alone(self):
+        self.make_stashes()
+        for owner_name, expected in [
+            ("Default Dan", "default-dan"),
+            ("Console", "console"),
+            ("com10", "com10"),
+            ("Nully", "nully"),
+        ]:
+            with self.subTest(owner_name=owner_name):
+                self.assertEqual(registry._folder_name_from_owner(owner_name), expected)
+
+    def test_a_reserved_name_keeps_counting_past_a_suffix_already_taken(self):
+        self.make_stashes("default-2")
+        self.assertEqual(registry._folder_name_from_owner("Default"), "default-3")
+
+    def test_the_first_free_suffix_is_used_even_when_a_later_one_is_taken(self):
+        self.make_stashes("default-3", "con-2")
+        self.assertEqual(registry._folder_name_from_owner("Default"), "default-2")
+        self.assertEqual(registry._folder_name_from_owner("Con"), "con-3")
+
+    def test_the_check_is_on_the_tidied_folder_name_so_spaces_and_punctuation_do_not_dodge_it(self):
+        self.make_stashes()
+        for owner_name, expected in [
+            ("  Default  ", "default-2"),
+            ("!Con!", "con-2"),
+            # Only a name that tidies up to exactly a reserved word is reserved.
+            ("N.U.L", "n-u-l"),
+            ("Com 1", "com-1"),
+        ]:
+            with self.subTest(owner_name=owner_name):
+                self.assertEqual(registry._folder_name_from_owner(owner_name), expected)
+
+    def test_the_pin_of_an_owner_called_default_can_be_reset_by_that_name(self):
+        """The owner name finds the stash in "default-2": nothing looks for a folder called
+        "default", and the stash's user is named after the folder it really lives in."""
+        self.make_stashes()
+        type(self).databases |= {"default-2"}
+        folder, _ = registry.create_stash("Default", "1234")
+        self.addCleanup(self._unregister, folder)
+        self.assertEqual(registry.reset_pin_directly("default", "5678"), ("default-2", "Default"))
+        self.assertTrue(get_user_model().objects.db_manager(folder).get().check_password("5678"))
+
 
 class ResetPinCommandTests(TemporaryStashesMixin, SimpleTestCase):
     """manage.py reset_pin on a real temporary stash: Alex's, in the folder "alex"."""

@@ -220,6 +220,59 @@ class ReconcileFinishFormTests(LoggedInWithAccountTestCase):
         self.txn.refresh_from_db()
         self.assertFalse(self.txn.reconciled)
 
+    def test_a_transaction_id_too_big_for_the_database_restarts_with_a_message(self):
+        """S106: Django's multi-choice field put the number into the query, and SQLite refuses one
+        over 2**63 - 1 with an OverflowError, which was a 500 page. The ticked row beside it must
+        not be reconciled either: a garbled finish saves nothing. (2**63 - 1 itself is the
+        boundary: it fits, so it never overflowed, and is an ordinary id that isn't a choice.)"""
+        for too_big in ("9" * 30, str(2**63), str(2**63 - 1)):
+            with self.subTest(too_big=too_big):
+                response = self.finish(
+                    statement_date="2026-09-30", statement_balance="-20.00", transaction=[self.txn.pk, too_big]
+                )
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, "didn&#x27;t come through")
+        self.txn.refresh_from_db()
+        self.assertFalse(self.txn.reconciled)
+
+    def test_a_transaction_that_is_not_open_on_this_account_restarts_with_a_message(self):
+        """The ticked ids are looked up among this account's unreconciled transactions only: a
+        hand-made request can't reconcile another account's transaction through this page, count
+        one that is already reconciled, or name one that doesn't exist."""
+        savings = Account.objects.create(name="Savings")
+        elsewhere = Transaction.objects.create(account=savings, date=date(2026, 9, 1), amount=Decimal("5.00"))
+        done = Transaction.objects.create(
+            account=self.account, date=date(2026, 8, 1), amount=Decimal("1.00"), reconciled=True
+        )
+        for foreign_id in (elsewhere.pk, done.pk, 10**9):
+            with self.subTest(foreign_id=foreign_id):
+                response = self.finish(
+                    statement_date="2026-09-30", statement_balance="-20.00", transaction=[self.txn.pk, foreign_id]
+                )
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, "didn&#x27;t come through")
+        elsewhere.refresh_from_db()
+        self.txn.refresh_from_db()
+        self.assertFalse(elsewhere.reconciled)
+        self.assertFalse(self.txn.reconciled)
+        self.assertFalse(Reconciliation.objects.exists())
+
+    def test_nothing_ticked_is_a_finish_like_any_other_not_a_garbled_one(self):
+        """The ticked transactions are optional: with none ticked, the statement is simply
+        compared with what is already reconciled (here, nothing)."""
+        agreeing = self.finish(statement_date="2026-09-30", statement_balance="0.00")
+        self.assertRedirects(agreeing, reverse("finance:account_detail", args=[self.account.pk]))
+        self.assertEqual(Reconciliation.objects.count(), 1)
+        self.txn.refresh_from_db()
+        self.assertFalse(self.txn.reconciled)
+
+    def test_nothing_ticked_and_a_statement_that_disagrees_shows_the_difference(self):
+        response = self.finish(statement_date="2026-09-30", statement_balance="-20.00")
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "finance/account_reconcile_review.html")
+        self.assertNotContains(response, "didn&#x27;t come through")
+        self.assertFalse(Reconciliation.objects.exists())
+
     def test_a_valid_finish_still_reconciles(self):
         response = self.finish(statement_date="2026-09-30", statement_balance="-20.00", transaction=self.txn.pk)
         self.assertRedirects(response, reverse("finance:account_detail", args=[self.account.pk]))

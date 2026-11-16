@@ -6,6 +6,7 @@ from decimal import Decimal
 from unittest import mock
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.test import override_settings
 from django.urls import resolve, reverse
 from django.utils import timezone
@@ -13,7 +14,7 @@ from django.utils import timezone
 from audit.models import AuditLogEntry
 
 from ..currency import RateFetchError
-from ..forms import ProfileForm, WatchedExpensesForm
+from ..forms import ProfileForm, SafeModelMultipleChoiceField, WatchedExpensesForm
 from ..models import Account, Category, ExchangeRate, Profile
 from ..stashes import security
 from .base import (
@@ -21,6 +22,7 @@ from .base import (
     REHASHING_PASSWORD_HASHERS,
     AlexsStashTestCase,
     LoggedInWithAccountTestCase,
+    StashTestCase,
 )
 
 
@@ -343,6 +345,88 @@ class SettingsEndpointsTests(LoggedInWithAccountTestCase):
         self.assertContains(response, "Watched expenses weren&#x27;t saved")
         self.assertContains(response, "Select a valid choice")
         self.assertFalse(self.profile.watched_expenses_categories.exists())
+
+    def test_a_category_id_too_big_for_the_database_shows_the_same_error_not_a_server_error(self):
+        """S106: SQLite refuses a number over 2**63 - 1 (an OverflowError, so a 500 page). A real
+        category sent beside it is not saved either: the form is refused as a whole. (2**63 - 1
+        itself is the boundary: it fits, so it never overflowed, and is just an unknown id.)"""
+        water = Category.objects.create(name="Water", category_type=Category.CategoryType.EXPENSE)
+        for too_big in ("9" * 30, str(2**63), str(2**63 - 1)):
+            with self.subTest(too_big=too_big):
+                response = self.client.post(
+                    reverse("finance:save_watched_expenses"),
+                    {"watched_expenses_title": "Bills", "watched_expenses_categories": [water.pk, too_big]},
+                )
+                self.assertEqual(response.status_code, 200)
+                self.assertTemplateUsed(response, "finance/settings.html")
+                self.assertContains(response, "Select a valid choice")
+                self.assertFalse(self.profile.watched_expenses_categories.exists())
+
+
+class SafeModelMultipleChoiceFieldTests(StashTestCase):
+    """S106 at the field itself (the reconcile page and Watched expenses both use it): an id too
+    big for the database is refused like any other id that isn't a choice. Everything else the
+    field does is still Django's own."""
+
+    TOO_BIG = "9" * 30
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.water = Category.objects.create(name="Water", category_type=Category.CategoryType.EXPENSE)
+
+    @staticmethod
+    def field(required=False):
+        return SafeModelMultipleChoiceField(queryset=Category.objects.all(), required=required)
+
+    def refusal(self, ids, **kwargs):
+        with self.assertRaises(ValidationError) as caught:
+            self.field(**kwargs).clean(ids)
+        return caught.exception
+
+    def test_the_message_names_the_id_that_is_too_big(self):
+        error = self.refusal([self.TOO_BIG])
+        self.assertEqual(error.code, "invalid_choice")
+        self.assertEqual(
+            error.messages, [f"Select a valid choice. {self.TOO_BIG} is not one of the available choices."]
+        )
+
+    def test_the_real_id_beside_it_is_not_blamed_whichever_comes_first(self):
+        blamed = [f"Select a valid choice. {self.TOO_BIG} is not one of the available choices."]
+        for ids in ([str(self.water.pk), self.TOO_BIG], [self.TOO_BIG, str(self.water.pk)]):
+            with self.subTest(ids=ids):
+                self.assertEqual(self.refusal(ids).messages, blamed)
+
+    def test_the_edges_of_what_the_database_can_hold_all_give_the_same_refusal(self):
+        for pk in (str(2**63), str(-(2**63)), str(-(2**63) - 1), "-5", "0"):
+            with self.subTest(pk=pk):
+                error = self.refusal([pk])
+                self.assertEqual(error.code, "invalid_choice")
+                self.assertIn(f"{pk} is not one of the available choices", error.messages[0])
+
+    def test_a_value_that_is_no_number_at_all_still_gets_the_usual_message(self):
+        """Django's own message and code, untouched (a string of 5,000 digits is one Python
+        refuses to turn into a number)."""
+        for ids in (["abc"], ["9" * 5000]):
+            with self.subTest(ids=[value[:12] for value in ids]):
+                self.assertEqual(self.refusal(ids).code, "invalid_pk_value")
+
+    def test_a_too_big_id_beside_a_value_that_is_no_number_is_refused_either_way_round(self):
+        """Which of the two is named depends on the order, and doesn't matter: it is refused."""
+        for ids in (["abc", self.TOO_BIG], [self.TOO_BIG, "abc"]):
+            with self.subTest(ids=ids):
+                self.assertIn(self.refusal(ids).code, {"invalid_choice", "invalid_pk_value"})
+
+    def test_it_asks_the_database_nothing_to_refuse_one(self):
+        with self.assertNumQueries(0, using=settings.TEST_STASH):
+            self.refusal([self.TOO_BIG, str(self.water.pk)])
+
+    def test_valid_ids_give_their_rows_as_before(self):
+        cleaned = self.field().clean([self.water.pk, str(self.water.pk)])
+        self.assertEqual(list(cleaned), [self.water])
+
+    def test_an_empty_list_gives_nothing_when_the_field_is_optional(self):
+        self.assertEqual(list(self.field().clean([])), [])
+        self.assertEqual(self.refusal([], required=True).code, "required")
 
 
 class SettingsLayoutTests(AlexsStashTestCase):

@@ -18,7 +18,7 @@ from pathlib import Path
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
-from django.db import connections, transaction
+from django.db import DEFAULT_DB_ALIAS, connections, transaction
 
 from audit.context import audit_suspended, system_action
 
@@ -48,6 +48,23 @@ BACKUP_WITHOUT_SETTINGS = (
 # cookie's Max-Age anyway.
 LAST_STASH_COOKIE = "stashy_last_stash"
 LAST_STASH_COOKIE_AGE = 60 * 60 * 24 * 400
+
+# Folder names no stash may take (plan 03, S105). A stash's folder name is also its connection
+# alias, and "default" is already the picker's empty placeholder database: ensure_registered()
+# would do nothing for it, and the stash would be built inside the placeholder. The others are
+# Windows device names: a folder with one can be made from a script, but Explorer and the command
+# line treat it as the device and can't open, copy or delete it.
+_RESERVED_FOLDER_NAMES = frozenset(
+    {
+        DEFAULT_DB_ALIAS,
+        "con",
+        "prn",
+        "aux",
+        "nul",
+        *(f"com{number}" for number in range(1, 10)),
+        *(f"lpt{number}" for number in range(1, 10)),
+    }
+)
 
 
 def stashes_dir():
@@ -238,12 +255,13 @@ def validate_owner_name(owner_name, exclude_folder=None):
 
 def _folder_name_from_owner(owner_name):
     """ "Alex" -> "alex"; "The Smiths" -> "the-smiths" (generated once, never shown, and made
-    unique below if another stash's owner name happens to slugify to the same thing)."""
+    unique below if another stash's owner name happens to slugify to the same thing). A reserved
+    name takes the same suffix a duplicate does: "Default" -> "default-2"."""
     slug = re.sub(r"[^a-z0-9]+", "-", owner_name.strip().lower()).strip("-")
     base = slug or "stash"
     candidate = base
     suffix = 2
-    while stash_exists(candidate):
+    while candidate in _RESERVED_FOLDER_NAMES or stash_exists(candidate):
         candidate = f"{base}-{suffix}"
         suffix += 1
     return candidate

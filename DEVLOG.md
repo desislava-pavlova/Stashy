@@ -5728,3 +5728,95 @@ version.
 `test_imports.py`, `test_project.py`, `test_welcome.py` and `test_currency.py`,
 `plans/03_structure_review.md`, `plans/README.md`, this log. The migration
 (`finance/migrations/0019_…`) is kept out of git, like the others.
+
+## 16/11/2026 — Plan 03, Phase 1, part E: an owner called "Default", oversized ids in two forms, odd characters in the Excel export (S105, S106, S107)
+
+**What changed:** the three small findings that part D's reviews left, so Phase 1
+is now complete. Nothing in the database changed, so no migration and no backup
+of the real stash.
+- **S105:** an owner named "Default" (or "Con", "Nul", "COM1" and the other
+  Windows device names) gets the folder `default-2`, `con-2` and so on, the same
+  suffix a duplicate gets. Before, "Default" would have been built inside
+  Stashy's empty placeholder database, and its own folder would never have got a
+  database, so it was never listed or backed up.
+- **S106:** a hand-made request that names an id bigger than the database can
+  hold (Reconcile's ticked transactions, Watched expenses' categories on
+  Settings and in the welcome wizard) now gets the form's usual "Select a valid
+  choice", not an error page.
+- **S107:** the Excel export drops the characters a worksheet can't hold, so one
+  odd memo (text pasted from a PDF can carry them) no longer turns Export into
+  an error page. Tabs and line breaks stay, and the CSV is untouched.
+- Three dashboard tests that were already red before this work now follow your
+  new wording of the missing-rates hint ("No known rate for USD!").
+
+**Why the code looks like this:**
+- S105: a stash's folder name is also its connection alias, and `default` is
+  already the picker's placeholder, so `ensure_registered("default")` did nothing
+  and `create_stash()` would have migrated the placeholder. The fix is one more
+  condition in the loop that already adds `-2`, `-3` for duplicates, not a second
+  rule. The placeholder's name comes from Django's `DEFAULT_DB_ALIAS`, not a
+  copied string. A reviewer compared my device-name list with Python's own
+  `ntpath.isreserved()`: for names a slug can produce, it is exactly
+  `con prn aux nul com1-9 lpt1-9` (COM0 and LPT0 are not reserved). My first
+  comment said Windows won't let a folder have such a name; the security review
+  tried it, and a script can make one, but Explorer and the command line then
+  can't open or delete it. The comment now says that.
+- S106: Django checks a multi-choice field with `pk__in=[...]`, and SQLite
+  refuses a number over 2⁶³−1 with an `OverflowError`. My first version caught
+  that error and asked the database about each id on its own to find the one to
+  blame; the security review measured 900 queries for one hand-made request.
+  Now the field asks Django's own SQLite backend for the integer range
+  (`ops.integer_field_range`) and refuses an id outside it before any query: no
+  queries, no error to catch, and no copy of the limit that `_as_id()` already
+  has (forms can't import from views). It overrides `_check_values()`, a private
+  Django method, because that is the one place ids are checked; the tests for
+  both forms would show a Django upgrade renaming it. A ModelForm's
+  many-to-many field gets the class through `Meta.field_classes`.
+- S107: openpyxl's own list of refused characters (`ILLEGAL_CHARACTERS_RE`) has
+  the control characters, but XML also forbids U+FFFE and U+FFFF, and the XML
+  writer refuses those when the file is saved. My first fix used openpyxl's
+  list; the security review found the gap. The writer now has its own pattern.
+  The characters come out before the cell is told to be text, so one in front of
+  an `=` can't turn a memo into a formula (it is stored as text either way). The
+  headers are fixed labels, never typed text, so they are not cleaned. Claude's
+  call: strip, not replace with a space. Vertical tab and form feed can separate
+  words in pasted text, so words may glue ("page onepage two"); if you ever see
+  that in a real export, swapping those two for a space is a small change.
+- Tests: written first and run against the untouched code, so each was red for
+  the right reason (the `OverflowError`, openpyxl's `IllegalCharacterError`,
+  `'default' != 'default-2'`). The QA tester put the old behaviour back in memory
+  to check its 17 extra tests the same way, and the U+FFFF test was checked
+  against openpyxl's own pattern. A few tests pass on the old code on purpose,
+  because they guard what must not change: the biggest id that fits, a name like
+  "Console", and the CSV.
+- The three dashboard tests: the hint's template was reworded after those tests
+  were written (it now ends in "!" and no longer says "not included above"), so
+  the tests follow the template, as agreed for your template edits.
+
+**Teaching note — ask the tool for its limits instead of copying them, and ask
+the real question.** The database knows what integers it holds, and Django will
+tell you (`integer_field_range`); a number copied into your code is a second
+opinion that can drift. The Excel fix shows the other half: I asked "which
+characters does openpyxl refuse?" and fixed exactly that, but the real question
+was "which characters can a worksheet hold?", and one more pair came up.
+Reviews and a probing test are how you find the difference. One small trap along
+the way: a `\ufffe` I typed in an edit arrived in the file as the real invisible
+character, not as the escape. It worked, but nobody could read it, so I
+replaced the bytes with the escape. If a line of source looks like it has gaps,
+check its bytes.
+
+**Reviews:** code, security and the QA tester read it. Nothing was Critical. The
+small findings were done the same day (the U+FFFE/U+FFFF gap, the cheaper
+S106 check, the field class moved up in `forms.py`, test wording). Filed in plan
+03: S110 (a `default` folder copied in by hand would still be listed), S111 (an
+imported amount with too many digits is an error page; it joins S108) and S112
+(the admin's lists overflow on a huge number in the address). Filed in plan 04:
+R33 (Reconcile is refused at about a thousand ticked rows: Django's default
+limit of 1,000 form fields; checked with Django's own request parser, not in the
+running app). The suite went from 1,075 to 1,105 tests.
+
+**Files touched:** `finance/stashes/registry.py`, `finance/forms.py`,
+`finance/views/_helpers.py`, `CLAUDE.md`, the tests in `test_stashes.py`,
+`test_reconciliation.py`, `test_settings.py`, `test_welcome.py`,
+`test_exports.py` and `test_dashboard.py`, `plans/03_structure_review.md`,
+`plans/04_fixes_and_changes_plan.md`, `plans/README.md`, this log. No new files.

@@ -166,6 +166,100 @@ class ExportTests(LoggedInWithAccountTestCase):
         self.assertEqual(memo_cell.value, '=HYPERLINK("http://evil.example")')
 
 
+class ExcelControlCharacterTests(LoggedInWithAccountTestCase):
+    """S107: a worksheet can't hold most control characters, and text pasted from a PDF or a
+    bank's page can carry them. openpyxl refused the cell, so one odd memo made the whole Excel
+    export a 500 page."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        Transaction.objects.create(
+            account=cls.account,
+            date=date(2026, 9, 1),
+            payee=Payee.objects.create(name="Mar\x0bket"),
+            memo="page one\x0cpage\x08 two\x1f",
+            amount=Decimal("-5.00"),
+        )
+
+    def export(self, fmt):
+        return self.client.get(reverse("finance:export_transactions"), {"format": fmt})
+
+    def test_the_excel_export_still_works_and_leaves_the_text_without_them(self):
+        response = self.export("xlsx")
+        self.assertEqual(response.status_code, 200)
+        sheet = load_workbook(io.BytesIO(response.content)).active
+        self.assertEqual(sheet["D2"].value, "Market")
+        self.assertEqual(sheet["F2"].value, "page onepage two")
+
+    def test_the_two_characters_xml_forbids_beyond_the_control_ones_are_cleaned_too(self):
+        """U+FFFE and U+FFFF aren't on openpyxl's own list, but the XML writer refuses them when
+        the file is saved, so they were an error page of their own (found by the security review)."""
+        Transaction.objects.update(memo="a\ufffeb\uffffc")
+        sheet = self.xlsx("finance:export_transactions")
+        self.assertEqual(sheet["F2"].value, "abc")
+
+    def test_tabs_and_line_breaks_in_a_memo_are_kept(self):
+        Transaction.objects.update(memo="one\ttwo\nthree\r\nfour")
+        sheet = load_workbook(io.BytesIO(self.export("xlsx").content)).active
+        self.assertEqual(sheet["F2"].value, "one\ttwo\nthree\r\nfour")
+
+    def test_a_list_export_with_such_a_name_works_too(self):
+        """Every export goes through the same writer: a category name needs the same care. (The
+        report exports have their own test below.)"""
+        Category.objects.create(name="Fuel\x0b", category_type=Category.CategoryType.EXPENSE)
+        response = self.client.get(reverse("finance:export_categories"), {"format": "xlsx"})
+        self.assertEqual(response.status_code, 200)
+        sheet = load_workbook(io.BytesIO(response.content)).active
+        self.assertIn("Fuel", [sheet.cell(row=row, column=1).value for row in range(2, sheet.max_row + 1)])
+
+    def xlsx(self, url_name, *args, **params):
+        response = self.client.get(reverse(url_name, args=args), {"format": "xlsx", **params})
+        self.assertEqual(response.status_code, 200)
+        return load_workbook(io.BytesIO(response.content)).active
+
+    @staticmethod
+    def column(sheet, number):
+        """The cells under the header row, top to bottom."""
+        return [sheet.cell(row=row, column=number).value for row in range(2, sheet.max_row + 1)]
+
+    def test_account_names_and_institutions_are_cleaned_in_the_account_and_transaction_files(self):
+        savings = Account.objects.create(name="Sav\x0bings", institution="Na\x1ftional Bank")
+        Transaction.objects.create(account=savings, date=date(2026, 9, 2), amount=Decimal("10.00"))
+        accounts = self.xlsx("finance:export_accounts")
+        self.assertIn("Savings", self.column(accounts, 1))
+        self.assertIn("National Bank", self.column(accounts, 4))
+        transactions = self.xlsx("finance:export_transactions")
+        self.assertIn("Savings", self.column(transactions, 3))
+
+    def test_report_exports_clean_the_category_and_account_names_in_their_rows_too(self):
+        fuel = Category.objects.create(name="Fu\x0bel", category_type=Category.CategoryType.EXPENSE)
+        Transaction.objects.create(account=self.account, date=date.today(), category=fuel, amount=Decimal("-5.00"))
+        Account.objects.create(name="Wal\x1flet")
+        for slug, expected in (("spending", "Fuel"), ("spending-vs-average", "Fuel"), ("net-worth", "  Wallet")):
+            with self.subTest(slug=slug):
+                self.assertIn(expected, self.column(self.xlsx("finance:export_report", slug), 1))
+
+    def test_text_that_only_looks_like_a_formula_once_the_characters_are_gone_stays_text(self):
+        """The characters come out before the cell is told to be text, so the "=" they were
+        hiding behind can't turn the memo into a formula."""
+        Transaction.objects.update(memo="\x0b=1+1")
+        memo = self.xlsx("finance:export_transactions")["F2"]
+        self.assertEqual((memo.value, memo.data_type), ("=1+1", "s"))
+
+    def test_a_memo_made_only_of_such_characters_leaves_an_empty_cell(self):
+        Transaction.objects.update(memo="\x0b\x0c\x08")
+        sheet = self.xlsx("finance:export_transactions")
+        self.assertIn(sheet["F2"].value, (None, ""))
+        # The neighbouring cells are untouched.
+        self.assertEqual(sheet["D2"].value, "Market")
+
+    def test_the_csv_export_is_left_as_it_was(self):
+        """A CSV has no such limit, so nothing is taken out of it."""
+        content = self.export("csv").content.decode("utf-8-sig")
+        self.assertIn("page one\x0cpage\x08 two\x1f", content)
+
+
 class CsvCellTests(SimpleTestCase):
     """S92: the CSV writer escapes text a spreadsheet would read as a formula, past any indent."""
 

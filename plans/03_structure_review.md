@@ -1221,6 +1221,47 @@ rest:
   categories (`Account.Meta.ordering`, the Account column) and no `name_key`;
   that is your call.
 
+What part E's reviews found (16/11/2026; nothing Critical). Done the same day:
+- S107 was only partly done: U+FFFE and U+FFFF aren't on openpyxl's own list,
+  but the XML writer refuses them when the file is saved, so a memo holding
+  one was an error page again (the security review measured it). The writer
+  now has its own pattern with them in it.
+- S106's field first caught the `OverflowError` and asked the database about
+  every id; the review measured up to 900 queries for one hand-made request.
+  It now refuses an id outside the database's own integer range before any
+  query (no queries, no `OverflowError` to catch).
+- The shared field class moved up in `forms.py`, the Excel writer's string
+  handling is in one place, and test wording was fixed. Three dashboard tests
+  were already failing before part E, because they still checked the old
+  wording of the missing-rates hint, which you have since changed; they now
+  follow your wording.
+
+Filed:
+- **S110 — A `default` folder put in `stashes/` by hand is still listed**
+  (code, QA and security reviewers). `create_stash()` can no longer make one
+  (S105), but `list_stashes()` lists any folder holding a `db.sqlite3`, so a
+  copy named `default` would appear in the picker and point at the picker's
+  empty placeholder database. Very unlikely: it takes a hand-made folder with
+  that exact name. **Proposal (Claude):** `list_stashes()` skips the reserved
+  folder names. Phase 2, 2.17.
+- **S111 — An imported amount with too many digits is a 500 page** (security
+  reviewer, measured by it; not part E's code). 30 digits, or a 1 followed by
+  400 zeros, raises `decimal.InvalidOperation` inside the save; the import is
+  rolled back, so nothing half-imports, but the whole import ends in an error
+  page. **Proposal (Claude):** a row whose amount the model can't hold counts
+  as "unreadable", like a bad date or amount does today. It belongs with S108
+  (limits on imported values), so it waits for your decision there. The same
+  review noted that the importer stores control characters as typed; the Excel
+  writer now copes with them on the way out, so cleaning them on the way in
+  stays optional.
+- **S112 — The admin's lists overflow on a huge number in the address** (security
+  reviewer, measured by it; low). A signed-in superuser editing
+  `/admin/finance/transaction/?id__in=<30 digits>` (also `date__year`) gets a
+  500 page. **Proposal (Claude):** one small mixin on every `ModelAdmin` that
+  turns the `OverflowError` into Django's usual "invalid filter" redirect.
+  Phase 2, 2.18. It could also wait for plan 05, which touches the admin.
+- One item for plan 04: R33 (Reconcile refuses about a thousand ticked rows).
+
 Visible side effects of S4, for your eye: the categories export is now one
 A to Z list (it was top-level first, then subcategories by parent; the Parent
 column is still there), and Watched expenses' chart may draw its series in a
@@ -1263,7 +1304,8 @@ Built in four parts (Claude's proposal, 14/11/2026), each one a commit:
   migrates it. The reviews found nothing Critical; their small findings were
   done the same day (S104 aside, see section M).
 - **E, what part D's reviews found** (Claude's proposal, 15/11/2026): S105,
-  S106 and S107 (1.40–1.42). Planned only; starts when you name it.
+  S106 and S107 (1.40–1.42). **Done 16/11/2026.** No migration, so no backup
+  of the real stash was needed.
 
 - [x] **1.1** S1: `min_value=CENT` on the transfer amount; test with 0.01.
 - [x] **1.2** S2: both bad URLs answer 404 or show a message; a test each.
@@ -1337,19 +1379,19 @@ Built in four parts (Claude's proposal, 14/11/2026), each one a commit:
   period stays.
 - [x] **1.39** S99: the transactions export ends its order with `-pk`,
   like the page, through one `_ordered_with_ties_broken()`.
-- [ ] **1.40** S105: an owner named "Default" doesn't take the folder (and the
+- [x] **1.40** S105: an owner named "Default" doesn't take the folder (and the
   database alias) `default`; Windows device names too. A test.
-- [ ] **1.41** S106: the two multi-choice fields (Reconcile's transactions,
+- [x] **1.41** S106: the two multi-choice fields (Reconcile's transactions,
   Watched expenses' categories) refuse an oversized id with a form error, not
   a 500 page. A test each.
-- [ ] **1.42** S107: the Excel export strips characters a worksheet can't
+- [x] **1.42** S107: the Excel export strips characters a worksheet can't
   hold, so one odd memo doesn't turn Export into a 500 page. A test.
 
 **Done when:** each fix has a test that fails on today's code, the suite is
 green, and the render check of the changed pages shows no leaked template
 syntax.
 
-## Phase 2 — Leftovers and documentation  (S11, S12, S13, S21, S44, S43's comments, S25, S34, S56–S62, S68, S70, S72–S74, S85, S90, S104)
+## Phase 2 — Leftovers and documentation  (S11, S12, S13, S21, S44, S43's comments, S25, S34, S56–S62, S68, S70, S72–S74, S85, S90, S104, S110, S112)
 
 - [x] **1.31** S86 and S87: `backup_now()` never overwrites a file; the PIN
   pages check through `_check()`, so they never re-save the hash.
@@ -1399,6 +1441,12 @@ syntax.
 - [ ] **2.16** S90: one `TemporaryStashesMixin.create_stash()`, the
   `ResetPinCommandTests` stash built once per class, and the browser-close
   test moved to `test_project.py`.
+- [ ] **2.17** S110: `list_stashes()` skips the reserved folder names
+  (`_RESERVED_FOLDER_NAMES`), so a hand-made `default` folder isn't listed;
+  a test.
+- [ ] **2.18** S112: a mixin on every `ModelAdmin` turns an `OverflowError`
+  from a huge number in the address into Django's "invalid filter" redirect;
+  a test (or move it to plan 05).
 
 **Done when:** the suite is green (fewer tests than 723, since history-only
 tests and duplicates go, and a few new ones come), and a grep for the

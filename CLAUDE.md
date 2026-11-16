@@ -46,7 +46,7 @@ terms.
 ## Commands
 
 ```
-.venv\Scripts\python.exe manage.py test                          # full suite, ~75 s (1,075 tests on 15/11/2026)
+.venv\Scripts\python.exe manage.py test                          # full suite, ~75 s (1,105 tests on 16/11/2026)
 .venv\Scripts\python.exe manage.py test finance.tests.test_reminders  # one module (audit: `test audit`)
 .venv\Scripts\python.exe manage.py migrate --database <stash>    # one stash (Stashy.bat does all, with backups)
 .venv\Scripts\python.exe manage.py reset_pin <owner name>        # real, visible action - ask first
@@ -110,8 +110,11 @@ check.bat                                                        # ruff check + 
     (`views/_helpers.py`: plain ASCII digits that fit SQLite, else None), never
     `str.isdigit()` and never straight into a lookup: a bad id then answers
     like one that doesn't exist (404, a message, or the filter ignored). A
-    lookup by None finds nothing. The `ModelMultipleChoiceField`s are still
-    open (plan 03, S106).
+    lookup by None finds nothing. A multi-choice field uses
+    `SafeModelMultipleChoiceField` (`forms.py`), never Django's own: SQLite
+    refuses an id over 2**63 - 1 in `pk__in`, and the subclass turns that into
+    the usual "not a valid choice" error (plan 03, S106). A ModelForm's
+    many-to-many field gets it through `Meta.field_classes`.
   - Transaction lists page at `TRANSACTIONS_PER_PAGE` (1,000) through
     `_paged()`, only when the range is longer than a year or open (the
     account register always is). The count and total cover every page;
@@ -175,7 +178,10 @@ check.bat                                                        # ruff check + 
     `create_stash()`, `restore_stash()` = restore + migrate, keeping
     today's PIN, recovery code and lockout (the user's call) and refusing an
     empty or damaged backup before anything is replaced, owner names,
-    `reset_pin_directly()`) and `security.py` (PIN rule, lockout, recovery
+    `reset_pin_directly()`; a stash's folder name is made from its owner name
+    and doubles as its connection alias, so `_RESERVED_FOLDER_NAMES` (`default`,
+    the picker's placeholder, and Windows device names like `con`) get the
+    "-2" suffix a duplicate gets, S105) and `security.py` (PIN rule, lockout, recovery
     codes; a right recovery code works during a lockout). `StashError` is in `stashes/__init__.py`. `registry` imports
     `security`, never the reverse. `text.py`: `possessive()`.
     `db_router.py`, `middleware.py`,
@@ -220,7 +226,9 @@ check.bat                                                        # ruff check + 
   StashAtomicRequest.
 - Exports: pass real values (`Decimal`, `date`, `None`) to
   `_export_response()`, never `str()`. The writers format them, escape
-  formula-like text in CSV and keep text as text in XLSX.
+  formula-like text in CSV and keep text as text in XLSX, where they also drop
+  the control characters a worksheet can't hold (openpyxl refuses the cell, so
+  one odd memo was a 500 page; S107).
 - `/admin/login/` redirects to the stash PIN login (`admin_login`), so the
   lockout covers every login, and `/admin/password_change/` to Change PIN.
 - Secrets shown once (a new recovery code) go in the local-memory cache,

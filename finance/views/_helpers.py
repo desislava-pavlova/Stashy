@@ -2,6 +2,7 @@
 and the CSV/XLSX writers every export goes through."""
 
 import csv
+import re
 from datetime import date
 from decimal import Decimal
 
@@ -161,10 +162,20 @@ def _csv_response(filename, headers, rows):
     return response
 
 
+# What a worksheet can't hold (plan 03, S107): the control characters XML forbids (every one but
+# tab, line feed and carriage return), and U+FFFE and U+FFFF. Text pasted from a PDF or a bank's
+# page can carry them. openpyxl refuses the first kind when the cell is set, and its own list
+# (`ILLEGAL_CHARACTERS_RE`) misses the last two, which the XML writer then refuses when the file
+# is saved. Either way one odd memo turned the whole export into an error page.
+_FORBIDDEN_IN_WORKSHEETS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\ufffe\uffff]")
+
+
 def _xlsx_response(filename, headers, rows):
     """Amounts go in as real numbers and dates as real dates, so Excel can add them up and sort
     them. Text is always stored as text - openpyxl would otherwise write a string starting with
-    "=" as a formula."""
+    "=" as a formula - and loses the characters a worksheet can't hold (see
+    _FORBIDDEN_IN_WORKSHEETS; tabs and line breaks stay). The headers are fixed labels, never
+    text a user typed, so they are not cleaned."""
     date_format = regional.current().date_placeholder
     workbook = Workbook()
     sheet = workbook.active
@@ -174,13 +185,15 @@ def _xlsx_response(filename, headers, rows):
             cell = sheet.cell(row=row_index, column=column_index)
             if value is None:
                 continue
+            if isinstance(value, str):
+                cell.value = _FORBIDDEN_IN_WORKSHEETS.sub("", value)
+                cell.data_type = TYPE_STRING
+                continue
             cell.value = value
             if isinstance(value, Decimal):
                 cell.number_format = "0.00"
             elif isinstance(value, date):
                 cell.number_format = date_format
-            elif isinstance(value, str):
-                cell.data_type = TYPE_STRING
     response = HttpResponse(content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     response["Content-Disposition"] = f'attachment; filename="{filename}.xlsx"'
     workbook.save(response)

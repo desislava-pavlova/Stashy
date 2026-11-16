@@ -188,6 +188,19 @@ class WelcomeStepThreeTests(WelcomeWizardTestCase):
         self.assertEqual(self.profile.welcome_step, 3)
         self.assertIn(self.category, self.profile.watched_expenses_categories.all())
 
+    def test_a_category_id_too_big_for_the_database_stays_on_the_step_with_an_error(self):
+        """S106: the wizard's step uses the same form as Settings, so it needs the same care."""
+        response = self.client.post(
+            reverse("finance:welcome_step", args=[3]),
+            {"watched_expenses_title": "Bills", "watched_expenses_categories": [self.category.pk, "9" * 30]},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "finance/welcome_watched_expenses.html")
+        self.assertContains(response, "Select a valid choice")
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.welcome_step, 2)
+        self.assertFalse(self.profile.watched_expenses_categories.exists())
+
     def test_coming_back_and_saving_again_replaces_or_clears_the_chosen_categories(self):
         """Step 3 saves only the Profile's own columns now (plan 03, S75), and its categories
         (a many-to-many) still have to be saved with them."""
