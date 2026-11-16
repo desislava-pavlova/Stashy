@@ -11,12 +11,13 @@ from unittest import mock
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
+from django.test import SimpleTestCase
 from django.urls import reverse
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 
 from .. import starter_categories
 from ..forms import CategoryForm, TransactionForm
-from ..models import Account, Category, Payee, Transaction, categories_alphabetical, grouped_categories
+from ..models import Account, Category, Payee, Transaction, categories_alphabetical, grouped_categories, name_key
 from ..services.importing import _resolve_category
 from .base import AlexsStashTestCase, LoggedInTestCase, LoggedInWithAccountTestCase, StashTestCase
 
@@ -643,6 +644,44 @@ class StarterCategoriesXlsxTests(StashTestCase):
     def test_unavailable_sheet_returns_none(self):
         self._write({"Basic": [("Expense", "Groceries", None)]})
         self.assertIsNone(starter_categories.add_starter_categories("Extended"))
+
+
+class TheRealStarterCategoriesFileTests(SimpleTestCase):
+    """Every test above swaps in a file of its own, so none of them would notice the real one
+    going missing or moving (plan 03, S70: it lives beside the code that reads it)."""
+
+    def test_the_file_is_in_the_finance_folder_not_the_project_root(self):
+        path = starter_categories.starter_categories_path()
+        self.assertTrue(path.is_file())
+        self.assertEqual(path.parent.resolve(), (Path(settings.BASE_DIR) / "finance").resolve())
+
+    def test_the_real_file_offers_both_lists(self):
+        self.assertEqual(starter_categories.available_sheets(), ["Basic", "Extended"])
+
+    def test_every_row_of_the_real_file_is_income_or_expense_and_a_category_keeps_one_type(self):
+        """The reader treats any type that isn't "income" as an expense, so a typo ("Incme")
+        would quietly make an income category an expense, and a main category named in two rows
+        with two types quietly takes the first row's. The file is edited by hand ("edit that file
+        to change" the lists, says the README), so this is what would notice a slip. It checks
+        the rules, not the contents: adding or renaming categories is fine."""
+        for sheet_name in starter_categories.SHEET_CHOICES:
+            workbook = load_workbook(starter_categories.starter_categories_path(), read_only=True, data_only=True)
+            try:
+                rows = [
+                    row for row in workbook[sheet_name].iter_rows(min_row=2, values_only=True) if row[0] and row[1]
+                ]
+            finally:
+                workbook.close()
+            types_of_each_category = {}
+            for type_name, category, _ in rows:
+                with self.subTest(sheet=sheet_name, category=category):
+                    self.assertIn(str(type_name).strip().lower(), {"income", "expense"})
+                types_of_each_category.setdefault(name_key(str(category).strip()), set()).add(
+                    str(type_name).strip().lower()
+                )
+            with self.subTest(sheet=sheet_name):
+                self.assertTrue(rows)
+                self.assertEqual([key for key, types in types_of_each_category.items() if len(types) > 1], [])
 
 
 class OldStarterCategoriesButtonIsGoneTests(AlexsStashTestCase):

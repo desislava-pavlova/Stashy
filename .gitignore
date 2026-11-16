@@ -236,4 +236,8 @@ __marimo__/
 /.claude
 CLAUDE.local.md
 
+# The browser tool /visual-check uses saves screenshots and page snapshots here. They show the
+# test stash's data, and a run that stops halfway would leave them behind.
+/.playwright-mcp/
+
 /images/

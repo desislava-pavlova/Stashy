@@ -31,8 +31,8 @@
     </div>
 </div>
 {% else %}
-<div class="alert alert-warning py-2">starter_categories.xlsx wasn't found in the project
-    folder, so there's nothing to pick from. You can add categories by hand later.</div>
+<div class="alert alert-warning py-2">starter_categories.xlsx wasn't found in Stashy's
+    finance folder, so there's nothing to pick from. You can add categories by hand later.</div>
 <form method="post">
     {% csrf_token %}
     <button type="submit" name="skip" value="1" class="btn btn-primary btn-lg w-100">Next</button>

@@ -18,13 +18,13 @@ from pathlib import Path
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
-from django.db import DEFAULT_DB_ALIAS, connections, transaction
+from django.db import connections, transaction
 
 from audit.context import audit_suspended, system_action
 
 from .. import backup, db_router, regional
 from ..models import Profile, name_key
-from . import StashError, security
+from . import StashError, folder_names, security
 
 BACKUPS_DIR_NAME = "backups"
 
@@ -48,23 +48,6 @@ BACKUP_WITHOUT_SETTINGS = (
 # cookie's Max-Age anyway.
 LAST_STASH_COOKIE = "stashy_last_stash"
 LAST_STASH_COOKIE_AGE = 60 * 60 * 24 * 400
-
-# Folder names no stash may take (plan 03, S105). A stash's folder name is also its connection
-# alias, and "default" is already the picker's empty placeholder database: ensure_registered()
-# would do nothing for it, and the stash would be built inside the placeholder. The others are
-# Windows device names: a folder with one can be made from a script, but Explorer and the command
-# line treat it as the device and can't open, copy or delete it.
-_RESERVED_FOLDER_NAMES = frozenset(
-    {
-        DEFAULT_DB_ALIAS,
-        "con",
-        "prn",
-        "aux",
-        "nul",
-        *(f"com{number}" for number in range(1, 10)),
-        *(f"lpt{number}" for number in range(1, 10)),
-    }
-)
 
 
 def stashes_dir():
@@ -94,12 +77,9 @@ def is_stash(name):
 
 
 def list_stashes():
-    """Every stash's name, alphabetically - a stash's existence *is* its own folder (holding
-    a db.sqlite3) existing, so this is a directory scan, not a database query."""
-    directory = stashes_dir()
-    if not directory.exists():
-        return []
-    return sorted(p.name for p in directory.iterdir() if p.is_dir() and (p / "db.sqlite3").exists())
+    """Every stash's name, alphabetically. What counts as a stash is decided in one place,
+    folder_names.stash_folders(), which the launch script (scripts/bootstrap.py) uses too (S110)."""
+    return [folder.name for folder in folder_names.stash_folders(stashes_dir())]
 
 
 def ensure_registered(name):
@@ -261,7 +241,7 @@ def _folder_name_from_owner(owner_name):
     base = slug or "stash"
     candidate = base
     suffix = 2
-    while candidate in _RESERVED_FOLDER_NAMES or stash_exists(candidate):
+    while folder_names.is_reserved_folder_name(candidate) or stash_exists(candidate):
         candidate = f"{base}-{suffix}"
         suffix += 1
     return candidate

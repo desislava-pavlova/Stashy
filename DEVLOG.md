@@ -5820,3 +5820,127 @@ running app). The suite went from 1,075 to 1,105 tests.
 `test_reconciliation.py`, `test_settings.py`, `test_welcome.py`,
 `test_exports.py` and `test_dashboard.py`, `plans/03_structure_review.md`,
 `plans/04_fixes_and_changes_plan.md`, `plans/README.md`, this log. No new files.
+
+## 16/11/2026 — Plan 03, Phase 2, part A: seven small standalone items (S68, S70, S72, S73, S74, S110, S112)
+
+**What changed:** Phase 2 has 18 items, so I split it into three parts the way
+Phase 1 was split: A (the small standalone ones, this entry), B (the tests) and
+C (dead bits and the comment pass, last because it touches almost every file).
+Nothing in the database changed, so no migration and no backup of the real
+stash.
+- **S68:** `.gitignore` lists `/.playwright-mcp/`, where the browser tool that
+  `/visual-check` uses would leave screenshots of the test stash.
+- **S70:** `starter_categories.xlsx` moved from the project's top level into
+  `finance/`, next to the only code that reads it. The welcome page's "wasn't
+  found" message, the README and `CLAUDE.md` follow.
+- **S72:** the test run deletes its own temporary folder at exit, so a run with
+  warnings shown (`-Wa`) no longer ends with a `ResourceWarning`.
+- **S73:** `.gitattributes` has `*.bat text eol=crlf`, and `Stashy.bat` is saved
+  with CRLF.
+- **S74:** the README and `Stashy.bat`'s "Python isn't installed" message
+  describe the Python install manager instead of the old installer's
+  "Add python.exe to PATH" box.
+- **S110:** a folder in `stashes/` with a reserved name (`default`, `con`, `nul`
+  and the others) isn't a stash, even if someone copied a `db.sqlite3` into it.
+- **S112:** a value in an admin list's address that the database or the
+  calendar can't hold (30 digits in `?id__in=`, `?date__year=9999`, any
+  `__iso_year`) goes back to the plain list instead of a 500 page.
+
+**Why the code looks like this:**
+- S110 is also in `scripts/bootstrap.py`. The launch script scans `stashes/` on
+  its own, because it runs before Django is configured and can't ask the app. If
+  I had only changed the app's `list_stashes()`, the two scans would have
+  disagreed: the app would no longer register a reserved-name folder, but the
+  script would still run `migrate --database con` on it, and Stashy would stop
+  at launch. That is S110 making a worse problem than the one it fixed, so the
+  launch script had to change too. My first version copied the filter into both
+  places; the code and security reviews both pointed at what that leaves: the
+  next rule is two edits, and one gets forgotten. Now `stash_folders()` in
+  `finance/stashes/folder_names.py` is the one definition, and both call it. The
+  file imports only the standard library, which a test now checks for it and for
+  the packages above it (and for `backup.py`, which makes the same promise and
+  had nothing checking it).
+- This reverses one sentence of part E's entry: the placeholder's name was
+  taken from Django's `DEFAULT_DB_ALIAS`, "not a copied string". A module that
+  works before Django is configured can't import it, so `"default"` is written
+  out in `folder_names.py` and a test checks it equals `DEFAULT_DB_ALIAS`. The
+  test is the same protection, in the other direction.
+- S112 lives in `stashy/admin_mixins.py`, not in `audit/` or `finance/`, because
+  the audit app can't import from `finance` (a test checks) and its own admin
+  needed the guard too; the project package is the one place both can reach. It
+  works by overriding `get_changelist_instance()`, because Django's
+  `changelist_view` already wraps that call in `try/except
+  IncorrectLookupParameters` and answers with a redirect to the plain list.
+  The mixin only has to translate the error. The nine finance admins got one
+  `StashyModelAdmin` base (the History redirect plus the guard) so none of them
+  repeats the pair, and a test checks every registered admin has the mixin
+  ahead of `ModelAdmin` in its bases: behind it, the check would pass and the
+  method would never run.
+- My first catch was `OverflowError` only, because that is what the 30-digit
+  number raised. The QA tester tried `?date__year=9999` and the security
+  reviewer `__iso_year`: both raise `ValueError` (Django adds one to the year to
+  find the end of the range; the iso-year lookups validate themselves). So the
+  mixin catches both, and now writes one warning with the parameter names, not
+  their values, since a refusal that leaves no trace would also hide a real
+  bug of the same kind. My first docstring promised a note on the redirected
+  page; Django shows none, so I corrected it.
+- S72 uses `atexit.register(folder.cleanup)`. The QA tester wrote a test that
+  starts a second Python with warnings on, which is the only way to see what
+  happens at exit.
+- S73: `Stashy.bat` was LF, not CRLF as the finding assumed; only `check.bat`
+  was. The batch interpreter can miss a `goto` label that crosses a 512-byte
+  boundary in an LF file, with no warning. Git stores text with LF either way
+  (`* text=auto`), so nothing in git changes.
+- S74: the wording follows PEP 773 (no box to tick; the first Python is
+  installed on first use). I could not read python.org's current download page,
+  and have not tried a computer with no Python, so the text is untested there.
+- Tests: written first and run against the old code. The scan tests failed with
+  `['alex', 'default', 'default-dan'] != ['alex', 'default-dan']`, the admin ones
+  with the `OverflowError`, and the starter-file location test with the old
+  path. The `ValueError` cases were run against the narrower mixin through a
+  scratch runner that patches it in memory: eight failures and the log test.
+  `TheRealStarterCategoriesFileTests` exists because every older starter test
+  swaps in a file of its own; none would notice the real one going missing.
+- Cleaning up after the reviews, small: the starter path uses `with_name`, the
+  scan tests split into pure functions and tests that touch the disk, the
+  repeated superuser set-up is one `SuperuserAdminTestCase`, and
+  `bootstrap.py`'s three `sys.path.insert` lines are one idempotent
+  `_make_project_importable()` with the `# Imported here:` comment right above
+  each import (the first half of S63).
+
+**Teaching note — when the same rule is written twice, the second copy is the
+bug waiting to happen.** I knew `bootstrap.py` scanned `stashes/` separately,
+and still wrote the fix as "add the filter to both". It worked and the tests
+passed. But a test that checks two copies against a fixed list can only catch
+the copies drifting from the list, not from each other, so the real fix was to
+make one copy: a function both import. The other lesson is about a guard's
+width. I tested the error my example raised, and the guard fitted that example;
+the reviewers tried the neighbours (the last year, another lookup) and found the
+same 500 under a different exception. When you catch an error to fix a class of
+problem, ask which other errors the same input can raise.
+
+**Reviews:** code, security and the QA tester read it. Nothing was Critical. The
+QA tester added 17 tests (the real starter file's rules and the welcome step
+with it, the scan against the session and the cookie, the standard-library
+check, the exit cleanup) and proved the important ones fail on a broken
+version by patching the app in memory. Filed in plan 03 (section N): S113 (the
+Add page with a prefilled value it can't use, `?account=zz`, is a 500 page),
+S114 (the bulk-action form with a huge id) and S115 (a bad regular expression in
+the address). A few notes went to "Noticed, not planned": reserved names with an
+extension or a trailing dot (`nul.txt`, `con.`) aren't caught, which only a
+hand-made folder could hit; a skipped reserved-name folder gets no message; and
+`bootstrap.py` hard-codes `stashes/`, which plan 06 will settle. Items 1.31 to
+1.33 were also moved back under Phase 1 in the plan, where they had been filed
+under Phase 2's heading by mistake. The suite went from 1,105 to 1,134 tests. Two
+stale folders from stopped test runs on 14/11 and 15/11 sit in the computer's
+Temp folder; they are safe to delete by hand.
+
+**Files touched:** `.gitignore`, `.gitattributes`, `Stashy.bat`, `README.md`,
+`CLAUDE.md`, `stashy/settings/test.py`, the new `stashy/admin_mixins.py`,
+`finance/admin.py`, `audit/admin.py`, `finance/starter_categories.py`, the moved
+`finance/starter_categories.xlsx`, `finance/templates/finance/welcome_categories.html`,
+`finance/stashes/__init__.py`, `finance/stashes/registry.py`, the new
+`finance/stashes/folder_names.py`, `scripts/bootstrap.py`, the tests in
+`test_categories.py`, `test_stashes.py`, `test_project.py`, `test_admin.py`,
+`test_middleware.py` and `test_welcome.py`, `plans/03_structure_review.md`,
+`plans/README.md`, this log.

@@ -1,2 +1,7 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Windows runs a batch file with LF endings, but its goto and call can miss a label that crosses
+# a 512-byte boundary, with no warning. Git stores text with LF either way; this makes a checkout
+# write these files with CRLF (plan 03, S73).
+*.bat text eol=crlf

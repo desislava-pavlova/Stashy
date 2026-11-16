@@ -40,8 +40,8 @@ exit /b 0
 echo.
 echo  Stashy needs Python 3.12 or newer, and it isn't installed on this computer yet.
 echo.
-echo    1. Go to https://www.python.org/downloads/ and download the latest Python 3.
-echo    2. Run the installer and TICK "Add python.exe to PATH" on the first screen.
+echo    1. Go to https://www.python.org/downloads/ and download the Python install manager.
+echo    2. Run it. If it offers to install Python, say yes.
 echo    3. Double-click Stashy.bat again.
 echo.
 pause

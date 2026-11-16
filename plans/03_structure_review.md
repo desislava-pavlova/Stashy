@@ -32,6 +32,9 @@ small restore edges of S88 wait for their phases.
 *14/11/2026 (later):* Phase 1 part B (money and reports: S1, S3, S33, S50)
 is done. Its reviews added S92–S96 (section K): S92, S93 and S95 go into
 part D, S94 and S96 into Phase 4.
+*16/11/2026:* Phase 1 is complete (parts A–E). Phase 2 is built in three
+parts, listed at its heading; part A (S68, S70, S72, S73, S74, S110, S112)
+is done.
 
 **Baseline (10/10/2026):** 723 tests green. `ruff check .` and
 `ruff format --check .` are clean, `manage.py check` finds nothing, and
@@ -665,11 +668,12 @@ here, by phase. Findings that extend an older item are notes at the end.
 
 **Phase 3 (structure):**
 - **S63 — `bootstrap.py`'s imports inside functions.** Three have a real
-  reason (they run before Django is installed) but no
+  reason (they run before Django is set up) but no
   `# Imported here: <why>` comment. The guard test in `test_project.py`
   checks only `finance/` and `audit/`, and only imports directly in a
   function's body. **Fix:** the comments, and the test also checks
-  `scripts/` and imports inside `if`/`try`/`with`.
+  `scripts/` and imports inside `if`/`try`/`with`. *The comments were done
+  16/11/2026, with S110; the test is still to do (item 3.10).*
 - **S64 — Small slips.**
   - The four regional settings are copied into a Profile in two places
     (`registry.py`, `models.py`): one helper.
@@ -753,7 +757,8 @@ here, by phase. Findings that extend an older item are notes at the end.
   stops halfway would leave the folder behind, and a `git add .` would
   commit its screenshots, which show the test stash's data. **Fix:** one
   line, `.playwright-mcp/`, in `.gitignore`. Proposed phase: 2, with S13's
-  `.gitignore` trim.
+  `.gitignore` trim. *Done 16/11/2026 (item 2.10; S13's trim is still to
+  come).*
 - **S69 — Payees keeps a sort it doesn't know.** `payee_list` sorts its
   rows in Python (the totals are worked out per row, so `_sorted()`, which
   sorts a query, doesn't fit). An unknown `?sort=` value (a hand-typed or
@@ -782,7 +787,7 @@ here, by phase. Findings that extend an older item are notes at the end.
   `BASE_DIR`. The module docstring, the welcome page's "wasn't found"
   message, README (its text and the structure tree) and CLAUDE.md's map
   follow. The file is in git, so the commit also records the old path's
-  removal. Proposed phase: 2.
+  removal. Proposed phase: 2. *Done 16/11/2026 (item 2.11).*
 
 ### I. Found by the dependency upgrade (plan 07, 14/11/2026)
 
@@ -802,7 +807,8 @@ here, by phase. Findings that extend an older item are notes at the end.
   every run with warnings shown (`-Wa`) ends with a `ResourceWarning`, and
   that noise could hide a real warning. **Fix:**
   `atexit.register(_test_run_folder.cleanup)` right after it. Proposed
-  phase: 2.
+  phase: 2. *Done 16/11/2026 (item 2.12): the `ResourceWarning` was shown
+  before and is gone after.*
 - **S73 — `Stashy.bat` has Unix line endings.** Windows runs a batch
   file with LF endings, but its `goto` and `call` can miss a label that
   crosses a 512-byte boundary in the file, with no warning. The labels
@@ -810,7 +816,8 @@ here, by phase. Findings that extend an older item are notes at the end.
   `*.bat text eol=crlf` to `.gitattributes`, and save `Stashy.bat` (and
   `check.bat`, already CRLF) with CRLF. Git already stores every text file
   with LF (`* text=auto`), so what's in git doesn't change and no git step
-  is needed. Proposed phase: 2.
+  is needed. Proposed phase: 2. *Done 16/11/2026 (item 2.13). `Stashy.bat`
+  was in fact LF (only `check.bat` was CRLF); it is CRLF now.*
 - **S74 — The first-run instructions describe an installer that's going
   away.** `README.md` and `Stashy.bat`'s "Stashy needs Python" message
   tell new users to tick "Add python.exe to PATH". python.org now points
@@ -820,7 +827,9 @@ here, by phase. Findings that extend an older item are notes at the end.
   **Fix:** both texts describe the install manager: download it from
   python.org, run it, then start `Stashy.bat` again (its search already
   tries `py -3.15` and `py -3.14`). Plan 06 makes Python unnecessary in
-  the end, but that's far off. Proposed phase: 2.
+  the end, but that's far off. Proposed phase: 2. *Done 16/11/2026 (item
+  2.14). The wording follows PEP 773 (no box to tick; the first Python is
+  installed on first use) and is untested on a computer with no Python.*
 
 ### J. Found by the reviews of Phase 1, part A (14/11/2026)
 
@@ -1243,7 +1252,8 @@ Filed:
   copy named `default` would appear in the picker and point at the picker's
   empty placeholder database. Very unlikely: it takes a hand-made folder with
   that exact name. **Proposal (Claude):** `list_stashes()` skips the reserved
-  folder names. Phase 2, 2.17.
+  folder names. Phase 2, 2.17. *Done 16/11/2026, with the launch script's
+  own scan (see 2.17).*
 - **S111 — An imported amount with too many digits is a 500 page** (security
   reviewer, measured by it; not part E's code). 30 digits, or a 1 followed by
   400 zeros, raises `decimal.InvalidOperation` inside the save; the import is
@@ -1260,6 +1270,9 @@ Filed:
   500 page. **Proposal (Claude):** one small mixin on every `ModelAdmin` that
   turns the `OverflowError` into Django's usual "invalid filter" redirect.
   Phase 2, 2.18. It could also wait for plan 05, which touches the admin.
+  *Done 16/11/2026 (item 2.18). Measured first: `id__in` and a huge
+  `date__year` raised two different `OverflowError`s, on the Transactions
+  list and on the audit log's.*
 - One item for plan 04: R33 (Reconcile refuses about a thousand ticked rows).
 
 Visible side effects of S4, for your eye: the categories export is now one
@@ -1268,7 +1281,45 @@ column is still there), and Watched expenses' chart may draw its series in a
 different order, which can change their colours. In the admin, the category
 dropdowns sort by the bare name while showing "Parent > Child".
 
-<!-- Next number: S110 -->
+### N. Found by the reviews of Phase 2, part A (16/11/2026)
+
+Three reviewers (code, security, QA) read part A. Nothing was Critical. Done
+the same day: S112's guard now also catches `ValueError` (`?date__year=9999`
+and every `__iso_year` value were still 500 pages, found by both the security
+reviewer and the QA tester), logs each refusal with the parameter names, and
+its docstring no longer promises a note Django doesn't show; S110's scan is
+one shared function (code and security reviewers); a test that the files
+`bootstrap.py` imports are standard-library only (nothing checked that); the
+"every admin has the guard" test checks the mixin comes before `ModelAdmin`;
+the repeated `sys.path` line is one helper (S63's comments came with it);
+the QA tester added 17 tests (the real starter file's rules, the welcome
+step with it, the stash scan and the session and cookie, the exit cleanup).
+
+Filed (all about the admin, so they could also wait for plan 05, like S112):
+- **S113 — The Add page takes a prefilled value it can't use.**
+  `/admin/finance/transaction/add/?account=<30 digits>` (also `category`,
+  `payee`) is a 500 page, and so is `?account=zz`. The autocomplete widget looks
+  the prefilled value up while the page is drawn, after the view has returned,
+  so the mixin's `try` can't catch it. Only `TransactionAdmin` has
+  `autocomplete_fields`. **Proposal (Claude):** `get_changeform_initial_data()`
+  in `StashyModelAdmin` drops a value `_as_id()` rejects. Phase 2, 2.19.
+- **S114 — The bulk-action form takes a huge id.** `POST` to a list with
+  `action=delete_selected` and `_selected_action=<30 digits>` is a 500 page
+  (`OverflowError`; `abc` is a `ValueError`, stock Django). The checkboxes
+  can't send one, so it takes a hand-made request with a login and a CSRF
+  token. **Proposal (Claude):** `response_action()` in the same mixin, with
+  the same catch, and a redirect to the plain list. The QA tester's test, to
+  start from: POST `{"action": "delete_selected", "_selected_action":
+  ["9" * 30]}` to `admin:finance_transaction_changelist` with a client that
+  doesn't re-raise (`StashClient(raise_request_exception=False)`), and assert
+  the status is under 500. Phase 2, 2.20.
+- **S115 — A bad regular expression in the address is a 500 page.**
+  `?memo__regex=(` raises `OperationalError`, because Django's
+  `lookup_allowed` accepts any lookup on a local field. Not a number, so the
+  mixin doesn't cover it. **Proposal (Claude):** catch `OperationalError` in
+  the same place, or restrict the lookups an admin accepts. Phase 2, 2.21.
+
+<!-- Next number: S116 -->
 
 ---
 
@@ -1365,6 +1416,14 @@ Built in four parts (Claude's proposal, 14/11/2026), each one a commit:
   pages; the session's stash checked against `list_stashes()`.
 - [x] **1.30** S83: `reset_pin` asks twice, and `--pin`'s
   help mentions the shell's history.
+- [x] **1.31** S86 and S87: `backup_now()` never overwrites a file; the PIN
+  pages check through `_check()`, so they never re-save the hash.
+- [x] **1.32** S88: a check of the backup file before anything is replaced
+  (empty, damaged, cut short, no user, no Profile), and a message on
+  Settings instead of an error page. (The guard against a transaction and
+  the recovery code's gap during `migrate` are 3.18.)
+- [x] **1.33** S91: a right recovery code works during a lockout (your
+  call, yes).
 - [x] **1.34** S92: a subcategory's name is escaped before it is indented,
   so a formula-like name gets its `'` in the CSV; a test for the CSV and
   the XLSX.
@@ -1393,14 +1452,18 @@ syntax.
 
 ## Phase 2 — Leftovers and documentation  (S11, S12, S13, S21, S44, S43's comments, S25, S34, S56–S62, S68, S70, S72–S74, S85, S90, S104, S110, S112)
 
-- [x] **1.31** S86 and S87: `backup_now()` never overwrites a file; the PIN
-  pages check through `_check()`, so they never re-save the hash.
-- [x] **1.32** S88: a check of the backup file before anything is replaced
-  (empty, damaged, cut short, no user, no Profile), and a message on
-  Settings instead of an error page. (The guard against a transaction and
-  the recovery code's gap during `migrate` are 3.18.)
-- [x] **1.33** S91: a right recovery code works during a lockout (your
-  call, yes).
+Built in three parts (Claude's call, 16/11/2026: one phase of 18 items is
+too much for one review, and Phase 1 went the same way), each one a commit:
+- **A, small and standalone:** 2.10–2.14, 2.17, 2.18 (S68, S70, S72, S73,
+  S74, S110, S112). **Done 16/11/2026.** Each touches one or two files and
+  none depends on the others. S110 also changed `scripts/bootstrap.py`,
+  which scans `stashes/` on its own (see 2.17).
+- **B, the tests:** 2.1, 2.6–2.9, 2.15, 2.16 (S11, S25, S34, S56–S62, S85,
+  S90, S104). Test files only (`tests/base.py` included).
+- **C, dead bits and comments:** 2.2–2.5 (S12, S13, S21, S44, S43's
+  comments). Last, because it touches almost every file, and part B has
+  already removed the tests that only describe history.
+
 - [ ] **2.1** S11: delete the 21 history-only tests, trim three, rename the
   kept classes; plus the seven more from G's note.
 - [ ] **2.2** S12: remove the dead bits.
@@ -1425,14 +1488,15 @@ syntax.
   rules, shared set-up in `base.py`.
 - [ ] **2.9** S62: tests for fetching exchange rates and for typed-in
   rates beating fetched ones.
-- [ ] **2.10** S68: `.playwright-mcp/` in `.gitignore`.
-- [ ] **2.11** S70: `starter_categories.xlsx` moves into `finance/`, and
-  the code, the welcome page's message, README and CLAUDE.md follow.
-- [ ] **2.12** S72: the test settings clean up their temporary folder at
+- [x] **2.10** S68: `.playwright-mcp/` in `.gitignore`.
+- [x] **2.11** S70: `starter_categories.xlsx` moves into `finance/`, and
+  the code, the welcome page's message, README and CLAUDE.md follow. A test
+  reads the real file (every older test swaps in one of its own).
+- [x] **2.12** S72: the test settings clean up their temporary folder at
   exit; a `-Wa` run ends with no `ResourceWarning`.
-- [ ] **2.13** S73: `*.bat text eol=crlf` in `.gitattributes`, and
+- [x] **2.13** S73: `*.bat text eol=crlf` in `.gitattributes`, and
   `Stashy.bat` saved with CRLF.
-- [ ] **2.14** S74: README and `Stashy.bat`'s message describe the Python
+- [x] **2.14** S74: README and `Stashy.bat`'s message describe the Python
   install manager.
 - [ ] **2.15** S85: the three test modules use `tests/base.py`'s
   `LEAKED_TEMPLATE_SYNTAX`, and `test_pages.py`'s own copy too.
@@ -1441,12 +1505,31 @@ syntax.
 - [ ] **2.16** S90: one `TemporaryStashesMixin.create_stash()`, the
   `ResetPinCommandTests` stash built once per class, and the browser-close
   test moved to `test_project.py`.
-- [ ] **2.17** S110: `list_stashes()` skips the reserved folder names
-  (`_RESERVED_FOLDER_NAMES`), so a hand-made `default` folder isn't listed;
-  a test.
-- [ ] **2.18** S112: a mixin on every `ModelAdmin` turns an `OverflowError`
-  from a huge number in the address into Django's "invalid filter" redirect;
-  a test (or move it to plan 05).
+- [x] **2.17** S110: `list_stashes()` skips the reserved folder names
+  (now `finance/stashes/folder_names.py`), so a hand-made `default` folder
+  isn't listed; a test. `scripts/bootstrap.py` had its own copy of the scan
+  of `stashes/` (it runs before Django is set up); without a change there,
+  a reserved name the app no longer registers would still be migrated at
+  launch and stop Stashy starting. After the reviews the scan is one
+  function, `stash_folders()` in the same standard-library-only module, used
+  by both. Tests: the script's scan, the two against each other, and one that
+  the files the script imports use only the standard library (nothing
+  checked that before, for `backup.py` either).
+- [x] **2.18** S112: a mixin on every `ModelAdmin` turns an `OverflowError`
+  (or `ValueError`, found by the reviews) from a value in an admin list's
+  address that the database or the calendar can't hold into Django's "invalid
+  filter" redirect, and logs it; a test. Claude's call: the mixin lives in `stashy/admin_mixins.py` (the
+  audit app can't import from `finance`, and its own admin needed it
+  too), and `finance/admin.py` has one `StashyModelAdmin` base for the
+  nine admins. A test checks that every registered admin has it, ahead of
+  `ModelAdmin` in its bases.
+- [ ] **2.19** S113: the Add page drops a prefilled value `_as_id()`
+  rejects, so `?account=<huge>` and `?account=zz` aren't a 500 page; a test
+  (or move it to plan 05, with S112).
+- [ ] **2.20** S114: the bulk-action form turns a huge or non-numeric id
+  into the plain-list redirect, through `response_action()`; a test.
+- [ ] **2.21** S115: a bad regular expression in an admin list's address
+  isn't a 500 page; a test.
 
 **Done when:** the suite is green (fewer tests than 723, since history-only
 tests and duplicates go, and a few new ones come), and a grep for the
@@ -1484,7 +1567,10 @@ history patterns finds nothing outside `plans/` and `DEVLOG.md`.
   package split by area, like `views/`, with no re-exports; the 21
   import lines follow. After 3.2.
 - [ ] **3.10** S63: `bootstrap.py`'s in-function imports get their
-  comment, and the guard test checks `scripts/` and nested imports.
+  comment, and the guard test checks `scripts/` and nested imports. (The
+  comments were written on 16/11/2026 with S110, which added a third import
+  and one `_make_project_importable()` for the repeated `sys.path` line;
+  the guard test is still to do.)
 - [ ] **3.11** S64: the small slips (one regional-settings helper, the
   savings rate's rounding, `messages` shadowed, `apply_to_series()`
   inside `system_action()`, `Stashy.bat`'s Python version checked).
@@ -1634,3 +1720,17 @@ item 3.6 was closed as saved for later.
     can't resist. Keep the `stashes/` folder out of cloud-synced folders.
   - A reset by `manage.py reset_pin` on a stash with no lockout to clear
     leaves no audit row (passwords aren't audited).
+- From Phase 2 part A's reviews (16/11/2026), judged too unlikely to plan:
+  - The reserved-name check is an exact match, so a hand-made folder like
+    `nul.txt`, `con.` (trailing dot or space) or `com¹` isn't caught, though
+    Python's `ntpath.isreserved` would. The app only makes `[a-z0-9-]` names,
+    Explorer refuses most of these, and on this computer `nul.txt` is an
+    ordinary name. If it's ever wanted, `ntpath` is standard library, so the
+    check could use it without importing Django; Stashy.bat accepts Python
+    3.12, which lacks `isreserved`, so it would need its own rule there.
+  - A hand-made folder with a reserved name and a database inside is skipped
+    without a word, by the picker and by the launch script, and gets no
+    backup. `bootstrap.py` could print one line saying so.
+  - `bootstrap.py` hard-codes `ROOT / "stashes"`, while the app reads
+    `settings.STASHES_DIR`. Plan 06 moves the data folder, and defines it in
+    one place then.

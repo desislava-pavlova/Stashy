@@ -46,7 +46,7 @@ terms.
 ## Commands
 
 ```
-.venv\Scripts\python.exe manage.py test                          # full suite, ~75 s (1,105 tests on 16/11/2026)
+.venv\Scripts\python.exe manage.py test                          # full suite, ~75 s (1,134 tests on 16/11/2026)
 .venv\Scripts\python.exe manage.py test finance.tests.test_reminders  # one module (audit: `test audit`)
 .venv\Scripts\python.exe manage.py migrate --database <stash>    # one stash (Stashy.bat does all, with backups)
 .venv\Scripts\python.exe manage.py reset_pin <owner name>        # real, visible action - ask first
@@ -179,15 +179,22 @@ check.bat                                                        # ruff check + 
     today's PIN, recovery code and lockout (the user's call) and refusing an
     empty or damaged backup before anything is replaced, owner names,
     `reset_pin_directly()`; a stash's folder name is made from its owner name
-    and doubles as its connection alias, so `_RESERVED_FOLDER_NAMES` (`default`,
-    the picker's placeholder, and Windows device names like `con`) get the
-    "-2" suffix a duplicate gets, S105) and `security.py` (PIN rule, lockout, recovery
+    and doubles as its connection alias, so the reserved names in
+    `folder_names.py` (`default`, the picker's placeholder, and Windows
+    device names like `con`) get the "-2" suffix a duplicate gets, S105. What
+    counts as a stash is `folder_names.stash_folders()`, used by
+    `list_stashes()` and by `scripts/bootstrap.py` (S110): a hand-made folder
+    with a reserved name isn't one. `folder_names.py` and the `__init__.py`
+    files above it are standard library only, because bootstrap imports them
+    before Django is configured (a test checks, for `backup.py` too), so any
+    new rule about which folders are stashes goes there) and `security.py` (PIN rule, lockout, recovery
     codes; a right recovery code works during a lockout). `StashError` is in `stashes/__init__.py`. `registry` imports
     `security`, never the reverse. `text.py`: `possessive()`.
     `db_router.py`, `middleware.py`,
     `backup.py` (standard library only, since bootstrap imports it before
     Django; copies go through SQLite's backup API, never a file copy).
-  - `starter_categories.py` reads `starter_categories.xlsx`. A new
+  - `starter_categories.py` reads `starter_categories.xlsx`, which sits
+    beside it in `finance/` (S70, 16/11/2026). A new
     subcategory always takes its main category's type: create it with
     `Category.create_subcategory()`. `Category.objects.main_categories()`
     = top-level, never a transfer category.
@@ -197,7 +204,8 @@ check.bat                                                        # ruff check + 
   models). `audit.context.system_action(reason)` marks automatic changes;
   `audit.context.audit_suspended()` writes nothing for this request only
   (never disconnect the signals: that is process-wide). The audit app
-  imports nothing from `finance` (a test checks).
+  imports nothing from `finance` (a test checks); its admin takes one mixin
+  from the project package, `stashy.admin_mixins`.
 - **Multi-stash routing:** the session's `stash` → `StashSelectionMiddleware`
   → a ContextVar in `db_router` → `StashRouter`. `db_router.use_stash(alias)`
   sets it for a block and puts back the previous one afterwards.
@@ -231,6 +239,14 @@ check.bat                                                        # ruff check + 
   one odd memo was a 500 page; S107).
 - `/admin/login/` redirects to the stash PIN login (`admin_login`), so the
   lockout covers every login, and `/admin/password_change/` to Change PIN.
+- Every `ModelAdmin` carries `stashy.admin_mixins.HugeNumberInAddressMixin`
+  (a value in a list's address that SQLite or the calendar can't hold
+  redirects to the plain list and is logged, not a 500 page; S112; the Add
+  page and the bulk-action form are not covered yet, S113 to S115). The
+  finance admins get it through `StashyModelAdmin` in `finance/admin.py`,
+  which also has the History redirect; a test checks that every registered
+  admin has it ahead of `ModelAdmin`, so a new admin class inherits
+  `StashyModelAdmin`.
 - Secrets shown once (a new recovery code) go in the local-memory cache,
   never the signed-cookie session.
 - Tests: `finance/tests/test_<area>.py`, one module per area, named after the
@@ -239,8 +255,9 @@ check.bat                                                        # ruff check + 
   code-wide rules → `test_project.py`), plus `audit/tests.py`.
   - `settings/test.py` makes a temporary `STASHES_DIR` per run holding one
     stash, `settings.TEST_STASH` ("tester"). `apps.py` registers it like any
-    stash; its database is the runner's in-memory one. App code never asks
-    whether it's under test (a test checks).
+    stash; its database is the runner's in-memory one. The folder is deleted
+    at exit (`atexit`), so a `-Wa` run ends with no `ResourceWarning`. App
+    code never asks whether it's under test (a test checks).
   - `finance/tests/base.py`: every database test derives from `StashTestCase`
     (or `LoggedInTestCase`, `LoggedInWithAccountTestCase`,
     `AlexsStashTestCase`). Its queries go to the test stash and its client

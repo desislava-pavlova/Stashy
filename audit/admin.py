@@ -6,6 +6,8 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.html import format_html, format_html_join
 
+from stashy.admin_mixins import HugeNumberInAddressMixin
+
 from .models import AuditLogEntry
 
 
@@ -24,7 +26,7 @@ def format_timestamp(value):
 
 
 @admin.register(AuditLogEntry)
-class AuditLogEntryAdmin(admin.ModelAdmin):
+class AuditLogEntryAdmin(HugeNumberInAddressMixin, admin.ModelAdmin):
     list_display = ("id", "when", "op", "table", "row", "column_display", "old", "new", "source")
     list_display_links = ("id",)
     list_filter = ("action", "source", "table", "column", "timestamp")

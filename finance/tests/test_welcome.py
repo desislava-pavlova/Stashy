@@ -6,13 +6,14 @@ from pathlib import Path
 from unittest import mock
 
 from django.contrib.auth import get_user_model
+from django.contrib.messages import get_messages
 from django.test import SimpleTestCase
 from django.urls import reverse
 from django.utils import timezone
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 
 from .. import starter_categories
-from ..models import Account, Category, Profile
+from ..models import Account, Category, Profile, name_key
 from .base import StashTestCase
 
 
@@ -158,6 +159,70 @@ class WelcomeStepTwoTests(WelcomeWizardTestCase):
         self.assertRedirects(post_response, reverse("finance:welcome_step", args=[3]))
         self.profile.refresh_from_db()
         self.assertEqual(self.profile.welcome_step, 2)
+
+
+class WelcomeStepTwoWithTheRealFileTests(WelcomeWizardTestCase):
+    """Every test above swaps in a file of its own. These use the one Stashy ships (plan 03,
+    S70: it moved from the project folder into finance/), the way a new stash's wizard does, so
+    a file that goes missing, or whose rows the step can't turn into categories, fails here and
+    not for the first person to set up a stash. They compare with the file's own rows, so
+    adding or renaming a category in it needs no change here."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.profile.welcome_step = 1
+        cls.profile.save(update_fields=["welcome_step"])
+
+    @staticmethod
+    def rows_of(sheet_name):
+        """(type, category, subcategory or None) for each row of the shipped file's sheet."""
+        workbook = load_workbook(starter_categories.starter_categories_path(), read_only=True, data_only=True)
+        try:
+            rows = workbook[sheet_name].iter_rows(min_row=2, values_only=True)
+            return [
+                (str(type_name).strip().lower(), str(category).strip(), str(sub).strip() if sub else None)
+                for type_name, category, sub in rows
+                if type_name and category
+            ]
+        finally:
+            workbook.close()
+
+    def assert_the_whole_list_is_created(self, sheet_name):
+        rows = self.rows_of(sheet_name)
+        main_types = {name_key(category): type_name for type_name, category, _ in rows}
+        subcategories = {(name_key(category), name_key(sub)) for _, category, sub in rows if sub}
+        self.assertTrue(main_types)
+
+        response = self.client.post(reverse("finance:welcome_step", args=[2]), {"sheet": sheet_name})
+
+        self.assertRedirects(response, reverse("finance:welcome_step", args=[3]))
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.welcome_step, 2)
+        created = Category.objects.select_related("parent")
+        self.assertEqual({c.name_key: c.category_type for c in created.filter(parent__isnull=True)}, main_types)
+        self.assertEqual(
+            {(c.parent.name_key, c.name_key) for c in created.filter(parent__isnull=False)}, subcategories
+        )
+        total = len(main_types) + len(subcategories)
+        self.assertEqual(
+            [str(message) for message in get_messages(response.wsgi_request)],
+            [f"Added {total} categories from {sheet_name}."],
+        )
+        for category in created:
+            with self.subTest(category=category.full_name):
+                category.full_clean()
+
+    def test_the_page_offers_both_lists(self):
+        response = self.client.get(reverse("finance:welcome_step", args=[2]))
+        self.assertEqual(response.context["available"], ["Basic", "Extended"])
+        self.assertNotContains(response, "wasn't found")
+
+    def test_basic_creates_every_category_in_its_sheet(self):
+        self.assert_the_whole_list_is_created("Basic")
+
+    def test_extended_creates_every_category_and_subcategory_in_its_sheet(self):
+        self.assert_the_whole_list_is_created("Extended")
 
 
 class WelcomeStepThreeTests(WelcomeWizardTestCase):

@@ -9,6 +9,8 @@ import re
 import runpy
 import secrets
 import shutil
+import subprocess
+import sys
 import tempfile
 from io import StringIO
 from pathlib import Path
@@ -238,6 +240,151 @@ class EnvFileTests(SimpleTestCase):
         (self.root / ".env").write_text("SECRET_KEY=mine\nPORT=8001\n", encoding="utf-8")
         bootstrap.ensure_env_file()
         self.assertEqual((self.root / ".env").read_text(encoding="utf-8"), "SECRET_KEY=mine\nPORT=8001\n")
+
+
+class LaunchScriptFindsTheSameStashesTests(SimpleTestCase):
+    """Plan 03, S110: scripts/bootstrap.py scans stashes/ while it is still setting things up
+    (before Django is configured), so it must find the same folders the app's own scan does.
+    Otherwise a reserved name would be migrated at launch as a database nothing has registered,
+    and Stashy would refuse to start. Both go through folder_names.stash_folders(); these tests
+    are what notices one of them going its own way again."""
+
+    def setUp(self):
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        self.root = Path(folder.name)
+        patcher = mock.patch.object(bootstrap, "ROOT", self.root)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        # _stash_dirs() puts ROOT on the path; this keeps the temporary folder out of it afterwards.
+        patcher = mock.patch.object(sys, "path", [*sys.path])
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def make_folder(self, name, *, database=True):
+        folder = self.root / "stashes" / name
+        folder.mkdir(parents=True)
+        if database:
+            (folder / "db.sqlite3").touch()
+
+    def test_only_real_stashes_are_found(self):
+        self.make_folder("alex")
+        self.make_folder("default-dan")
+        self.make_folder("default")
+        self.make_folder("no-database-yet", database=False)
+        (self.root / "stashes" / "notes.txt").write_text("not a stash", encoding="utf-8")
+
+        self.assertEqual([folder.name for folder in bootstrap._stash_dirs()], ["alex", "default-dan"])
+
+    def test_no_stashes_folder_means_no_stashes(self):
+        self.assertEqual(bootstrap._stash_dirs(), [])
+
+    def test_the_app_and_the_script_find_the_same_folders(self):
+        """Each scan is checked against a fixed list above and in test_stashes.py. This one sets
+        them against each other, so a rule added to only one of them (a new kind of folder to skip)
+        is caught, whatever the fixed lists say."""
+        for name in ("alex", "alex copy", "Default", "default-dan", "console", "com10"):
+            self.make_folder(name)
+        self.make_folder("no-database-yet", database=False)
+        (self.root / "stashes" / "notes.txt").write_text("not a stash", encoding="utf-8")
+
+        with mock.patch.object(registry, "stashes_dir", return_value=self.root / "stashes"):
+            from_the_app = registry.list_stashes()
+
+        self.assertEqual([folder.name for folder in bootstrap._stash_dirs()], from_the_app)
+        self.assertEqual(from_the_app, ["alex", "alex copy", "com10", "console", "default-dan"])
+
+
+class LaunchScriptImportsNeedNoDjangoTests(SimpleTestCase):
+    """scripts/bootstrap.py takes a few modules from the app (the backup code, the reserved
+    folder names) while it is still setting things up, before Django is configured, and each
+    says it uses the standard library only. Nothing else checks that: the suite always has Django
+    loaded, so an import of it added to one of them would pass here and break the launch."""
+
+    @staticmethod
+    def modules_the_script_takes_from_the_app():
+        tree = ast.parse(Path(bootstrap.__file__).read_text(encoding="utf-8"))
+        return sorted(
+            {
+                node.module
+                for node in ast.walk(tree)
+                if isinstance(node, ast.ImportFrom) and node.module and node.module.split(".")[0] == "finance"
+            }
+        )
+
+    @staticmethod
+    def files_loaded_by(module):
+        """The module's own file and the `__init__.py` of every package above it, which Python
+        runs first."""
+        parts = module.split(".")
+        root = Path(settings.BASE_DIR)
+        packages = [root.joinpath(*parts[:depth], "__init__.py") for depth in range(1, len(parts))]
+        return [*packages, root.joinpath(*parts[:-1], f"{parts[-1]}.py")]
+
+    @staticmethod
+    def imports_outside_the_standard_library(path):
+        """Every import in the file, even one inside a function. A relative import counts: it
+        names something of the app, which could be anything."""
+        found = []
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Import):
+                names = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                names = ["." * node.level + (node.module or "")]
+            else:
+                continue
+            found += [
+                name for name in names if name.startswith(".") or name.split(".")[0] not in sys.stdlib_module_names
+            ]
+        return found
+
+    def test_what_the_script_takes_from_the_app_uses_the_standard_library_only(self):
+        modules = self.modules_the_script_takes_from_the_app()
+        # So that a change to how the script imports can't leave the loop below with nothing to check.
+        self.assertIn("finance.backup", modules)
+        self.assertIn("finance.stashes.folder_names", modules)
+        for module in modules:
+            for path in self.files_loaded_by(module):
+                with self.subTest(file=str(path.relative_to(settings.BASE_DIR))):
+                    self.assertEqual(self.imports_outside_the_standard_library(path), [])
+
+    def test_the_check_does_notice_an_import_of_django_or_of_the_app(self):
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        path = Path(folder.name) / "not_standard_library_only.py"
+        path.write_text(
+            "import json\nfrom django.conf import settings\n\n\ndef later():\n    from . import registry\n",
+            encoding="utf-8",
+        )
+        self.assertEqual(self.imports_outside_the_standard_library(path), ["django.conf", "."])
+
+
+class TestRunFolderIsRemovedAtExitTests(SimpleTestCase):
+    """Plan 03, S72: the test settings make a temporary folder for each run. Left to Python's own
+    safety net to delete it, a run with warnings switched on (python -Wa) ended with a
+    ResourceWarning, which could hide a real one. What happens at exit can only be seen from
+    outside, so this loads the settings in a Python of its own, with its temporary folder
+    pointed at a scratch folder."""
+
+    def test_the_folder_is_deleted_when_python_exits_and_no_warning_is_printed(self):
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        result = subprocess.run(
+            [sys.executable, "-W", "always", "-c", "import stashy.settings.test as s; print(s.STASHES_DIR)"],
+            cwd=settings.BASE_DIR,
+            env={**os.environ, "TMP": scratch.name, "TEMP": scratch.name, "TMPDIR": scratch.name},
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("ResourceWarning", result.stderr)
+        run_folder = Path(result.stdout.strip())
+        # So that the test can't pass by the settings using some other folder entirely.
+        self.assertEqual(run_folder.parent.resolve(), Path(scratch.name).resolve())
+        self.assertFalse(run_folder.exists())
 
 
 class StashyLocalhostTests(StashTestCase):

@@ -10,8 +10,10 @@ own **stash**: a completely separate database with its own PIN.
 
 ## Quick start (Windows)
 
-1. Install Python 3.12 or newer from https://www.python.org/downloads/ —
-   on the installer's first screen, tick **"Add python.exe to PATH"**.
+1. Install Python 3.12 or newer: on https://www.python.org/downloads/,
+   download the **Python install manager** and run it. If it offers to
+   install Python, say yes. There is nothing to tick: the manager sets up
+   the `py` command that `Stashy.bat` looks for.
 2. Double-click **`Stashy.bat`**.
 
 The first run sets everything up (private Python environment, components,
@@ -155,8 +157,8 @@ every stash automatically).
 - **Categories** — income/expense categories, with one level of
   subcategories. A new stash's setup offers a starting list (Basic: 26
   top-level categories, or Extended: those plus all their subcategories,
-  read from `starter_categories.xlsx` — edit that file to change the
-  list); after that, add, edit or delete them by hand from the Categories
+  read from `finance/starter_categories.xlsx` — edit that file to change
+  the list); after that, add, edit or delete them by hand from the Categories
   page. Two main categories, or two subcategories of the same one, can't
   share a name, even in a different case. Every category dropdown lists Income first, then Expense, then
   Transfer, each main category followed by its own subcategories.
@@ -285,7 +287,6 @@ Stashy/
 ├── requirements-dev.txt  # extra tools for working on Stashy (ruff, coverage)
 ├── pyproject.toml        # settings for those tools
 ├── .env.example          # copied to .env (secret key, DEBUG, PORT) on first run
-├── starter_categories.xlsx  # Basic/Extended starting category lists, read by the welcome wizard
 ├── plans/                # numbered development plans (index in plans/README.md)
 ├── DEVLOG.md             # what changed and why, entry by entry
 ├── CLAUDE.md             # working notes for the AI assistant used on this project
@@ -297,11 +298,13 @@ Stashy/
 │   │                     #   exports.py, settings.py, auth.py (picker, PIN login),
 │   │                     #   welcome.py (the setup wizard), and so on
 │   ├── content.py        # the "Stashy tips" text shown beside forms
+│   ├── starter_categories.xlsx  # Basic/Extended starting category lists (welcome wizard)
 │   ├── services/         # importing a file, reconciling an account
 │   ├── forms.py
 │   ├── reporting.py      # report calculations
 │   ├── stashes/          # registry.py: creating and finding stashes, owner names;
-│   │                     #   security.py: PINs, lockout, recovery codes
+│   │                     #   security.py: PINs, lockout, recovery codes;
+│   │                     #   folder_names.py: which folders are stashes
 │   ├── db_router.py      # sends each request's queries to its session's stash
 │   ├── middleware.py
 │   ├── backup.py

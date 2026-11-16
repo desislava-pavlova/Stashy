@@ -1,4 +1,4 @@
-"""Starter categories (Phase 15 / L5): `starter_categories.xlsx` at the project root, two
+"""Starter categories (Phase 15 / L5): `starter_categories.xlsx`, next to this module, with two
 sheets - Basic and Extended - each with Type | Category | Subcategory columns. Read only by
 the welcome wizard's Categories step; there's no button to run this again afterwards - delete
 what you don't want instead.
@@ -6,7 +6,6 @@ what you don't want instead.
 
 from pathlib import Path
 
-from django.conf import settings
 from openpyxl import load_workbook
 
 from .models import Category, name_key
@@ -16,7 +15,8 @@ SHEET_CHOICES = ["Basic", "Extended"]
 
 
 def starter_categories_path():
-    return Path(settings.BASE_DIR) / STARTER_CATEGORIES_FILENAME
+    # Beside this module, not at the project's top level: only this code reads the file (S70).
+    return Path(__file__).with_name(STARTER_CATEGORIES_FILENAME)
 
 
 def available_sheets():

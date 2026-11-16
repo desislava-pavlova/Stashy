@@ -8,7 +8,7 @@ from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.core.management import CommandError, call_command
-from django.db import connections
+from django.db import DEFAULT_DB_ALIAS, connections
 from django.test import SimpleTestCase
 from django.utils import timezone
 
@@ -19,7 +19,7 @@ from .. import backup as finance_backup
 from .. import db_router, regional
 from ..management.commands import reset_pin
 from ..models import Payee, Profile
-from ..stashes import StashError, registry, security
+from ..stashes import StashError, folder_names, registry, security
 from .base import TemporaryStashesMixin
 
 
@@ -141,6 +141,51 @@ class CreateAndResetStashTests(TemporaryStashesMixin, SimpleTestCase):
         self.addCleanup(self._unregister, folder)
         self.assertEqual(registry.reset_pin_directly("default", "5678"), ("default-2", "Default"))
         self.assertTrue(get_user_model().objects.db_manager(folder).get().check_password("5678"))
+
+
+class ReservedFolderNameTests(SimpleTestCase):
+    """S105 and S110: the names no stash may take."""
+
+    def test_device_names_are_reserved_in_any_case(self):
+        for name in ["con", "CON", "Prn", "aux", "NUL", "com1", "COM9", "lpt1", "Lpt9", "default", "Default"]:
+            with self.subTest(name=name):
+                self.assertTrue(folder_names.is_reserved_folder_name(name))
+
+    def test_names_that_only_look_reserved_are_not(self):
+        for name in ["default-2", "default-dan", "console", "com10", "com0", "lpt", "nully", "alex"]:
+            with self.subTest(name=name):
+                self.assertFalse(folder_names.is_reserved_folder_name(name))
+
+    def test_default_is_the_placeholder_alias_django_calls_default(self):
+        # folder_names can't import Django, so it spells the name out: this is what keeps the
+        # two from drifting apart.
+        self.assertIn(DEFAULT_DB_ALIAS, folder_names.RESERVED_FOLDER_NAMES)
+
+
+class StashFolderScanTests(TemporaryStashesMixin, SimpleTestCase):
+    """S110: the folders under stashes/ that are *not* stashes, though they hold a db.sqlite3."""
+
+    def test_a_hand_made_default_folder_is_not_listed_as_a_stash(self):
+        self.make_stashes("alex", "default-dan")
+        registry.stash_path("default").mkdir()
+        sqlite3.connect(registry.stash_db_path("default")).close()
+
+        self.assertEqual(registry.list_stashes(), ["alex", "default-dan"])
+        self.assertFalse(registry.is_stash("default"))
+        self.assertTrue(registry.is_stash("default-dan"))
+
+    def test_the_folder_scan_ignores_upper_and_lower_case_too(self):
+        """The name check lower-cases the folder's name, and so must the scan that uses it: a
+        folder copied in as "Default" is the same folder as "default" on Windows. A name that
+        only starts or ends like a reserved one is a stash, as before. (Device names such as
+        "CON" are left out of this test on purpose: Windows can't open, copy or delete a folder
+        of that name, so the test would leave one behind.)"""
+        self.make_stashes("alex", "console", "com10")
+        registry.stash_path("Default").mkdir()
+        sqlite3.connect(registry.stash_db_path("Default")).close()
+
+        self.assertEqual(registry.list_stashes(), ["alex", "com10", "console"])
+        self.assertFalse(registry.is_stash("Default"))
 
 
 class ResetPinCommandTests(TemporaryStashesMixin, SimpleTestCase):

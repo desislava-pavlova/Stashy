@@ -2,6 +2,7 @@
 
 Starts from base.py and changes only what tests need to be different."""
 
+import atexit
 import os
 import tempfile
 from pathlib import Path
@@ -17,6 +18,9 @@ from .base import *  # noqa: F403
 # stash. Its database is the test runner's own in-memory one, so the empty db.sqlite3 file only
 # marks the folder as a stash. finance/tests/base.py runs the tests inside this stash.
 _test_run_folder = tempfile.TemporaryDirectory(prefix="stashy-tests-", ignore_cleanup_errors=True)
+# Cleaning up by hand at exit: left to Python's own safety net, a run with warnings shown (-Wa)
+# ends with a ResourceWarning that could hide a real one (plan 03, S72).
+atexit.register(_test_run_folder.cleanup)
 STASHES_DIR = Path(_test_run_folder.name)
 TEST_STASH = "tester"
 (STASHES_DIR / TEST_STASH / "backups").mkdir(parents=True)

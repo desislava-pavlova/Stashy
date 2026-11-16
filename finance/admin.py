@@ -2,6 +2,7 @@ from django.contrib import admin
 from django.contrib.auth.models import Group, User
 
 from audit.admin import AuditHistoryAdminMixin
+from stashy.admin_mixins import HugeNumberInAddressMixin
 
 from .models import Account, Category, ExchangeRate, ImportBatch, Payee, Profile, Reconciliation, Reminder, Transaction
 
@@ -11,8 +12,13 @@ admin.site.unregister(User)
 admin.site.unregister(Group)
 
 
+class StashyModelAdmin(AuditHistoryAdminMixin, HugeNumberInAddressMixin, admin.ModelAdmin):
+    """What every admin page of Stashy's data shares: History opens the audit log, and a huge
+    number typed into a list's address is turned away politely (S112)."""
+
+
 @admin.register(Profile)
-class ProfileAdmin(AuditHistoryAdminMixin, admin.ModelAdmin):
+class ProfileAdmin(StashyModelAdmin):
     """View-only (A1): a stash's one Profile row is edited from Settings, not here. The
     recovery-code hash and PIN-lockout fields are left off entirely - they're operational
     secrets/state, not preferences."""
@@ -41,7 +47,7 @@ class ProfileAdmin(AuditHistoryAdminMixin, admin.ModelAdmin):
 
 
 @admin.register(Account)
-class AccountAdmin(AuditHistoryAdminMixin, admin.ModelAdmin):
+class AccountAdmin(StashyModelAdmin):
     list_display = ("name", "account_type", "currency", "institution", "balance", "is_active")
     list_filter = ("account_type", "currency", "is_active")
     search_fields = ("name", "institution")
@@ -58,27 +64,27 @@ class AccountAdmin(AuditHistoryAdminMixin, admin.ModelAdmin):
 
 
 @admin.register(ExchangeRate)
-class ExchangeRateAdmin(AuditHistoryAdminMixin, admin.ModelAdmin):
+class ExchangeRateAdmin(StashyModelAdmin):
     list_display = ("date", "base_currency", "quote_currency", "rate", "source")
     list_filter = ("source", "base_currency", "quote_currency")
     date_hierarchy = "date"
 
 
 @admin.register(Category)
-class CategoryAdmin(AuditHistoryAdminMixin, admin.ModelAdmin):
+class CategoryAdmin(StashyModelAdmin):
     list_display = ("full_name", "category_type", "parent", "account", "is_auto_generated")
     list_filter = ("category_type", "is_auto_generated")
     search_fields = ("name",)
 
 
 @admin.register(Payee)
-class PayeeAdmin(AuditHistoryAdminMixin, admin.ModelAdmin):
+class PayeeAdmin(StashyModelAdmin):
     list_display = ("name", "is_active")
     search_fields = ("name",)
 
 
 @admin.register(Transaction)
-class TransactionAdmin(AuditHistoryAdminMixin, admin.ModelAdmin):
+class TransactionAdmin(StashyModelAdmin):
     list_display = ("date", "transaction_number", "account", "display_payee", "category", "amount", "reconciled")
     list_filter = ("account", "category", "reconciled")
     search_fields = ("payee__name", "memo")
@@ -87,18 +93,18 @@ class TransactionAdmin(AuditHistoryAdminMixin, admin.ModelAdmin):
 
 
 @admin.register(ImportBatch)
-class ImportBatchAdmin(AuditHistoryAdminMixin, admin.ModelAdmin):
+class ImportBatchAdmin(StashyModelAdmin):
     list_display = ("source_filename", "account", "imported_at", "row_count", "duplicate_count")
 
 
 @admin.register(Reminder)
-class ReminderAdmin(AuditHistoryAdminMixin, admin.ModelAdmin):
+class ReminderAdmin(StashyModelAdmin):
     list_display = ("__str__", "account", "reminder_type", "signed_amount", "frequency", "next_due_date", "status")
     list_filter = ("reminder_type", "frequency")
 
 
 @admin.register(Reconciliation)
-class ReconciliationAdmin(AuditHistoryAdminMixin, admin.ModelAdmin):
+class ReconciliationAdmin(StashyModelAdmin):
     list_display = (
         "account",
         "statement_date",

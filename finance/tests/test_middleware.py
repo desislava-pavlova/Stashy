@@ -1,6 +1,7 @@
 """The middleware and the stash router: which stash a request uses, its transaction, and
 the gates in front of every page (choose a stash, then finish the welcome wizard)."""
 
+import sqlite3
 import tempfile
 import threading
 from pathlib import Path
@@ -254,6 +255,43 @@ class RememberedStashCookieTests(SimpleTestCase):
             response = middleware(request)
         self.assertEqual(response, "ok")
         self.assertNotIn("stash", request.session)
+
+
+class AHandMadeDefaultFolderIsNeverChosenTests(TemporaryStashesMixin, SimpleTestCase):
+    """Plan 03, S110: a folder called "default" under stashes/ is not a stash, even holding a
+    db.sqlite3. A browser can name a stash in two places, the session and the last-stash cookie,
+    and both must refuse it: chosen, it would send every query to the picker's empty placeholder
+    database (which is what "default" is) instead of to a stash."""
+
+    def setUp(self):
+        self.factory = RequestFactory()
+        self.addCleanup(db_router.clear_current_stash_alias)
+        self.make_stashes("alex")
+        registry.stash_path("default").mkdir()
+        sqlite3.connect(registry.stash_db_path("default")).close()
+
+    def test_the_session_cant_choose_it(self):
+        seen = {}
+        request = self.factory.get("/")
+        request.session = {"stash": "default"}
+        StashSelectionMiddleware(lambda r: seen.setdefault("alias", db_router.current_stash_alias()))(request)
+        self.assertIsNone(seen["alias"])
+        self.assertNotIn("stash", request.session)
+
+    def test_the_last_stash_cookie_cant_choose_it(self):
+        request = self.factory.get("/accounts/login/")
+        request.session = {}
+        request.COOKIES = {registry.LAST_STASH_COOKIE: "default"}
+        response = RequireStashMiddleware(get_response=lambda r: "should not be reached")(request)
+        self.assertEqual(response.url, reverse("stash_picker"))
+        self.assertNotIn("stash", request.session)
+
+    def test_a_real_stash_next_to_it_is_still_chosen(self):
+        request = self.factory.get("/accounts/login/")
+        request.session = {}
+        request.COOKIES = {registry.LAST_STASH_COOKIE: "alex"}
+        RequireStashMiddleware(get_response=lambda r: "should not be reached")(request)
+        self.assertEqual(request.session["stash"], "alex")
 
 
 class RequireSetupMiddlewareTests(SimpleTestCase):

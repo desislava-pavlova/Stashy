@@ -41,14 +41,26 @@ URL = f"http://{HOST}:{PORT}/"
 BROWSER_URL = f"http://stashy.localhost:{PORT}/"
 
 
+def _make_project_importable():
+    """This script starts with only its own folder (scripts/) on the path, so the app's
+    standard-library-only modules (finance.backup, finance.stashes.folder_names) can't be
+    imported until the project folder is on it too. Safe to call again."""
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+
+
 def _stash_dirs():
     """Every stash's own folder (Phase 12: live switching means there's no single "current"
     stash at launch time any more - a session picks one after Stashy is already running - so
     setup steps that used to touch just "the current stash" now loop over all of them)."""
-    stashes_dir = ROOT / "stashes"
-    if not stashes_dir.exists():
-        return []
-    return sorted(p for p in stashes_dir.iterdir() if p.is_dir() and (p / "db.sqlite3").exists())
+    _make_project_importable()
+    # Imported here: it needs the project folder on the path (above), and it is the app's own
+    # definition of a stash, so this scan can't disagree with the app's (S110). A reserved name
+    # that is skipped there is skipped here: migrating one would fail, because the app never
+    # registers it.
+    from finance.stashes.folder_names import stash_folders
+
+    return stash_folders(ROOT / "stashes")
 
 
 class SetupError(Exception):
@@ -125,9 +137,10 @@ def migrate_database():
     """Migrates the picker's own placeholder database, then every stash in turn (Phase 12:
     with no restart needed to switch stashes, any of them could be picked on this launch, so
     all of them need to be current, not just whichever one happened to be selected last)."""
-    # finance.backup is standard library only, so it can be imported before Django is set up.
-    # Its backups go through SQLite's backup API and are named after the stash.
-    sys.path.insert(0, str(ROOT))
+    _make_project_importable()
+    # Imported here: it needs the project folder on the path (above). finance.backup is
+    # standard library only, so it works before Django is set up. Its backups go through
+    # SQLite's backup API and are named after the stash.
     from finance.backup import backup_now
 
     pending = run_python("manage.py", "migrate", "--check", capture_output=True)
@@ -162,7 +175,8 @@ def run_quarterly_backup():
     stash_dirs = _stash_dirs()
     if not stash_dirs:
         return
-    sys.path.insert(0, str(ROOT))
+    _make_project_importable()
+    # Imported here: it needs the project folder on the path (above); see migrate_database().
     from finance.backup import quarterly_backup_if_due
 
     for stash_dir in stash_dirs:
