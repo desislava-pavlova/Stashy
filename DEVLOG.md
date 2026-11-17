@@ -6283,3 +6283,38 @@ tests ase.py, 	est_middleware.py, 	est_dashboard.py and 	est_pages.py),
 inance/static/finance/css/stashy.css, inance/templates/finance/dashboard.html,
 pyproject.toml, .gitignore, CLAUDE.md, plans/03_structure_review.md,
 plans/README.md, this log. No new files, no migration.
+
+## 17/11/2026 — Plan 03, Phase 2, part C, afterwards: the four tools kept as files
+
+**What changed:** the four scripts that did part C's mechanical work now live in
+`scripts/dev/`: `rewrap_comments.py`, `apply_edits.py`, `find_history_notes.py`
+and `find_retelling_comments.py`. Nothing in the app changed, and no test scans
+that folder. 1,119 tests, ruff clean (the tools pass the same rules as the app).
+
+**Why the code looks like this:**
+- **Kept because you said so, in one folder.** I had left them in the session's
+  scratch folder, which disappears with the chat, and asked. You said to save
+  them if they would be needed again. They went into one subfolder of `scripts/`
+  rather than the top level, since you want few top-level items.
+- **They had to pass the project's own rules first.** Scratch scripts don't
+  follow the standards the app does. The rewrap tool broke its own 72-column rule,
+  so I ran it on itself (it fixed 13 paragraphs), then ruff's `--fix` and a few
+  hand edits. One thing was copy-paste: the code that finds "the docstring of this
+  class or function" was written twice, so it is now `docstring_nodes()`. And
+  `apply_edits.py` was a flat script; it is now three small functions that each do
+  one thing (read the edits, apply them to a text, apply them to a file).
+- **I tested them after the lint changes, because ruff's auto-fixes edited them.**
+  The rewrap tool run over the whole project reports 0 edits, the history scan
+  still finds the same 193 lines in tests, the retelling scan finds nothing, and
+  the edit applier keeps CRLF and LF files as they were and leaves a file alone
+  when one of its edits doesn't match exactly once.
+
+**Teaching note — a tool you keep is code you maintain.** Throwaway scripts can
+be rough because nobody reads them again. The moment they go into the repository
+they are part of it: they get linted, they need a docstring that says how to run
+them, and anyone changing the rules (like the new 72-column limit) has to change
+them too. That is the real cost of "save it", and the reason to ask first.
+
+**Files touched:** new `scripts/dev/apply_edits.py`, `find_history_notes.py`,
+`find_retelling_comments.py` and `rewrap_comments.py`; `CLAUDE.md`, `README.md`,
+`plans/03_structure_review.md`, this log. No migration.

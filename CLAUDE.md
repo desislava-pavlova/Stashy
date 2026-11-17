@@ -46,7 +46,7 @@ terms.
 ## Commands
 
 ```
-.venv\Scripts\python.exe manage.py test                          # full suite, ~70 s (1,115 tests on 17/11/2026)
+.venv\Scripts\python.exe manage.py test                          # full suite, ~70 s (1,119 tests on 17/11/2026)
 .venv\Scripts\python.exe manage.py test finance.tests.test_reminders  # one module (audit: `test audit`)
 .venv\Scripts\python.exe manage.py migrate --database <stash>    # one stash (Stashy.bat does all, with backups)
 .venv\Scripts\python.exe manage.py reset_pin <owner name>        # real, visible action - ask first
@@ -64,6 +64,23 @@ check.bat                                                        # ruff check + 
   that calls the server itself uses `127.0.0.1`.
 - Waitress doesn't auto-reload, so remind the user to restart Stashy.bat
   after code changes.
+- `scripts/dev/` holds four developer tools (17/11/2026), not part of the
+  app, so no test scans them. Each says how to run it in its docstring;
+  run them as `.venv\Scripts\python.exe scripts\dev\<name>.py`.
+  - `rewrap_comments.py <root>`: lists comments and docstrings over 72
+    columns; `--apply` rewraps them, and writes a file only after checking
+    that its code is unchanged and its comments keep their words in order.
+    Run `ruff format .` afterwards (it puts a one-line docstring's closing
+    quotes back on the text line, so that line must fit in 72 with them).
+  - `apply_edits.py <edits module>`: many exact-text edits across files
+    (`EDITS = [(path, old, new)]`), each `old` must occur exactly once, a
+    file with a mistake is left untouched, and each file keeps its own
+    CRLF or LF endings.
+  - `find_history_notes.py <root>`: dates, "Phase N", plan and finding
+    codes inside comments and docstrings only (the rule is under
+    "Comments and docstrings"). Tests legitimately keep their pointers.
+  - `find_retelling_comments.py <root>`: comments whose words mostly
+    appear in the code below them, a pointer for a human to read.
 - `requirements.txt` pins every library in `.venv`, also the ones other
   libraries pull in (its commented group, plan 07), so a fresh install gets
   the versions the tests ran with. `requirements-dev.txt` adds ruff and

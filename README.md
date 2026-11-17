@@ -283,6 +283,7 @@ OFX/QFX files exported directly from your bank are also supported.
 Stashy/
 ├── Stashy.bat            # one-click setup + launch (Windows)
 ├── scripts/bootstrap.py  # what Stashy.bat runs: install, migrate + back up every stash, start Waitress
+├── scripts/dev/          # developer tools: rewrap comments, apply many edits, find history notes
 ├── requirements.txt      # what Stashy needs to run
 ├── requirements-dev.txt  # extra tools for working on Stashy (ruff, coverage)
 ├── pyproject.toml        # settings for those tools

@@ -1554,7 +1554,10 @@ too much for one review, and Phase 1 went the same way), each one a commit:
   `W505` with `max-doc-length = 72` is on in `pyproject.toml`. Eleven
   one-line docstrings that were 73 to 75 columns with their quotes were
   shortened by hand, because `ruff format` moves the closing quotes back onto
-  the text line.*
+  the text line. Afterwards (17/11/2026, at your word "if I need them for
+  further use, save them") the four tools were kept as files in `scripts/dev/`
+  (`rewrap_comments.py`, `apply_edits.py`, `find_history_notes.py`,
+  `find_retelling_comments.py`), made to pass the project's own ruff rules.*
 - [x] **2.6** S25: the import's date-detection comment reworded, and a
   test with ambiguous rows before the deciding one. *Done 16/11/2026. The
   test has a day-first and a month-first file; the month-first one is the
@@ -1864,3 +1867,19 @@ item 3.6 was closed as saved for later.
   - `bootstrap.py` hard-codes `ROOT / "stashes"`, while the app reads
     `settings.STASHES_DIR`. Plan 06 moves the data folder, and defines it in
     one place then.
+- From Phase 2 part C's reviews (17/11/2026), small and left alone:
+  - `.gitignore` has no `build/`, `dist/` or `*.spec`, because Stashy makes
+    none yet. Plan 06's PyInstaller step should add them, since its output
+    could hold a bundled copy of `.env` or a database.
+  - The dashboard's "Next {{ reminder_lookahead_days }} days" would read
+    "Next 1 days" if `Reminder.DUE_SOON_DAYS` ever became 1 (a `pluralize`
+    fixes it). The reminder tip in `content.py` is built when the module is
+    imported, so a test can't patch the constant to check it.
+  - The rewrap leaves about 24 comments whose last line is one word, and
+    some docstrings with the closing `"""` on its own line. Both are legal
+    and consistent enough; rewording would be polish only.
+  - The history check the security review asked for (whether a database, a
+    spreadsheet, a `.env` or `CLAUDE.local.md` was ever committed to the
+    public repository) can only be run with git, so it is yours to do:
+    `git log --all --name-only --pretty=format: | Sort-Object -Unique`, and
+    `git log --all -S"<the real stash's name>" --oneline`.
