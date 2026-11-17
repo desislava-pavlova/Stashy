@@ -1,5 +1,5 @@
-"""Reconciling an account against a statement: the button, the two steps, the checklist and
-the adjustment transaction."""
+"""Reconciling an account against a statement: the button, the two
+steps, the checklist and the adjustment transaction."""
 
 from datetime import date
 from decimal import Decimal
@@ -164,7 +164,8 @@ class ReconcileChecklistDisplayTests(LoggedInWithAccountTestCase):
                 "statement_balance": "-40.00",
             },
         )
-        # The row's own cell: "-40.00" is also in the statement balance box, a hidden field.
+        # The row's own cell: "-40.00" is also in the statement balance
+        # box, a hidden field.
         self.assertContains(response, 'text-nowrap amount-negative">-40.00', count=1)
 
     def test_column_totals_shown(self):
@@ -196,7 +197,8 @@ class ReconcileChecklistDisplayTests(LoggedInWithAccountTestCase):
 
 
 class ReconcileFinishFormTests(LoggedInWithAccountTestCase):
-    """1.6 (F5): a garbled finish step gets a message, never a server error."""
+    """1.6 (F5): a garbled finish step gets a message, never a server
+    error."""
 
     @classmethod
     def setUpTestData(cls):
@@ -222,10 +224,12 @@ class ReconcileFinishFormTests(LoggedInWithAccountTestCase):
         self.assertFalse(self.txn.reconciled)
 
     def test_a_transaction_id_too_big_for_the_database_restarts_with_a_message(self):
-        """S106: Django's multi-choice field put the number into the query, and SQLite refuses one
-        over 2**63 - 1 with an OverflowError, which was a 500 page. The ticked row beside it must
-        not be reconciled either: a garbled finish saves nothing. (2**63 - 1 itself is the
-        boundary: it fits, so it never overflowed, and is an ordinary id that isn't a choice.)"""
+        """S106: Django's multi-choice field put the number into the
+        query, and SQLite refuses one over 2**63 - 1 with an
+        OverflowError, which was a 500 page. The ticked row beside it
+        must not be reconciled either: a garbled finish saves nothing.
+        (2**63 - 1 itself is the boundary: it fits, so it never
+        overflowed, and is an ordinary id that isn't a choice.)"""
         for too_big in ("9" * 30, str(2**63), str(2**63 - 1)):
             with self.subTest(too_big=too_big):
                 response = self.finish(
@@ -237,9 +241,11 @@ class ReconcileFinishFormTests(LoggedInWithAccountTestCase):
         self.assertFalse(self.txn.reconciled)
 
     def test_a_transaction_that_is_not_open_on_this_account_restarts_with_a_message(self):
-        """The ticked ids are looked up among this account's unreconciled transactions only: a
-        hand-made request can't reconcile another account's transaction through this page, count
-        one that is already reconciled, or name one that doesn't exist."""
+        """The ticked ids are looked up among this account's
+        unreconciled transactions only: a hand-made request can't
+        reconcile another account's transaction through this page, count
+        one that is already reconciled, or name one that doesn't exist.
+        """
         savings = Account.objects.create(name="Savings")
         elsewhere = Transaction.objects.create(account=savings, date=date(2026, 9, 1), amount=Decimal("5.00"))
         done = Transaction.objects.create(
@@ -259,8 +265,9 @@ class ReconcileFinishFormTests(LoggedInWithAccountTestCase):
         self.assertFalse(Reconciliation.objects.exists())
 
     def test_nothing_ticked_is_a_finish_like_any_other_not_a_garbled_one(self):
-        """The ticked transactions are optional: with none ticked, the statement is simply
-        compared with what is already reconciled (here, nothing)."""
+        """The ticked transactions are optional: with none ticked, the
+        statement is simply compared with what is already reconciled
+        (here, nothing)."""
         agreeing = self.finish(statement_date="2026-09-30", statement_balance="0.00")
         self.assertRedirects(agreeing, reverse("finance:account_detail", args=[self.account.pk]))
         self.assertEqual(Reconciliation.objects.count(), 1)

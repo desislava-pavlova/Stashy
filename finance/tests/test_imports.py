@@ -1,6 +1,7 @@
-"""Importing bank files: CSV, Excel and OFX files, skipping rows already imported, categories
-and accounts named in a file, guessing a category from the payee's history, date formats,
-and the messages for files that can't be read."""
+"""Importing bank files: CSV, Excel and OFX files, skipping rows already
+imported, categories and accounts named in a file, guessing a category
+from the payee's history, date formats, and the messages for files that
+can't be read."""
 
 import csv
 import io
@@ -43,8 +44,8 @@ NEWFILEUID:NONE
 
 
 class ImportTestCase(LoggedInWithAccountTestCase):
-    """Logged in with an account, plus _import(), which posts CSV text to the import page
-    as bank.csv, for self.account."""
+    """Logged in with an account, plus _import(), which posts CSV text
+    to the import page as bank.csv, for self.account."""
 
     def _import(self, csv_text, **extra):
         return post_import(self.client, self.account, csv_upload(csv_text), **extra)
@@ -70,16 +71,19 @@ class CsvImportTests(LoggedInWithAccountTestCase):
 
 
 class ReconciledColumnTests(LoggedInWithAccountTestCase):
-    """S41: only R (and X, reconciled, yes, ...) comes in reconciled. A blank, a cell of spaces, a
-    missing column, and the "cleared" marks (c, cleared, *) come in unreconciled: in Quicken a
-    cleared transaction is one the bank has, not one checked against a statement, and imported as
-    reconciled it would never show up in the next Reconcile checklist."""
+    """S41: only R (and X, reconciled, yes, ...) comes in reconciled. A
+    blank, a cell of spaces, a missing column, and the "cleared" marks
+    (c, cleared, *) come in unreconciled: in Quicken a cleared
+    transaction is one the bank has, not one checked against a
+    statement, and imported as reconciled it would never show up in the
+    next Reconcile checklist."""
 
     NOT_RECONCILED = ("", "   ", "n", "No", "FALSE", "0", "u", "Unreconciled", "uncleared", "c", "C", "cleared", "*")
     RECONCILED = ("R", "r", "X", "reconciled", "Reconciled", "yes", "TRUE", "1")
 
     def import_values(self, values, heading="Reconciled"):
-        """Imports one row per value, each with its own payee, and returns {value: reconciled}."""
+        """Imports one row per value, each with its own payee, and
+        returns {value: reconciled}."""
         buffer = io.StringIO()
         writer = csv.writer(buffer)
         writer.writerow(["Date", "Payee", "Amount", heading])
@@ -106,7 +110,8 @@ class ReconciledColumnTests(LoggedInWithAccountTestCase):
         self.assertFalse(Transaction.objects.get(payee__name="Lidl").reconciled)
 
     def test_the_value_decides_not_the_columns_heading(self):
-        # A "Yes" in a column called Cleared still counts as reconciled; "c" in a Status column does not.
+        # A "Yes" in a column called Cleared still counts as reconciled;
+        # "c" in a Status column does not.
         self.assertTrue(self.import_values(["Yes"], heading="Cleared")["Yes"])
         Transaction.objects.all().delete()
         self.assertFalse(self.import_values(["c"], heading="Status")["c"])
@@ -138,8 +143,8 @@ class ReconciledColumnTests(LoggedInWithAccountTestCase):
 
 
 class ReconciledImportThroughThePageTests(ImportTestCase):
-    """S41 end to end: the file goes up the import page, and what comes in is what the Reconcile
-    checklist then offers."""
+    """S41 end to end: the file goes up the import page, and what comes
+    in is what the Reconcile checklist then offers."""
 
     def reconcile_checklist(self, statement_balance="0.00"):
         return self.client.post(
@@ -162,8 +167,8 @@ class ReconciledImportThroughThePageTests(ImportTestCase):
 
     def test_importing_the_same_file_again_leaves_every_reconciled_mark_as_it_is(self):
         self._import("Date,Payee,Amount,Reconciled\n2026-01-05,Lidl,-10.00,\n2026-01-06,Ikea,-20.00,R\n")
-        # Lidl is reconciled since (an account's own reconcile does that); the second file says the
-        # opposite about both rows.
+        # Lidl is reconciled since (an account's own reconcile does
+        # that); the second file says the opposite about both rows.
         lidl = Transaction.objects.get(payee__name="Lidl")
         lidl.reconciled = True
         lidl.save(update_fields=["reconciled"])
@@ -174,15 +179,17 @@ class ReconciledImportThroughThePageTests(ImportTestCase):
         self.assertEqual(
             dict(Transaction.objects.values_list("payee__name", "reconciled")), {"Lidl": True, "Ikea": True}
         )
-        # The first import's message is still waiting too: the second one is the last.
+        # The first import's message is still waiting too: the second
+        # one is the last.
         messages = [str(m) for m in self.client.get(response["Location"]).context["messages"]]
         self.assertIn("Imported 0 transactions (2 duplicates skipped)", messages[-1])
 
     def test_a_status_column_of_bank_words_comes_in_reconciled(self):
-        # Characterization, not a claim that it is right. Possible bug: banks that export a Status
-        # column ("Posted", "Pending", "Completed") have every row come in reconciled, because
-        # only the few marks in _RECONCILED_FALSE_VALUES mean "not". Those rows then never show up
-        # in the Reconcile checklist.
+        # Characterization, not a claim that it is right. Possible bug:
+        # banks that export a Status column ("Posted", "Pending",
+        # "Completed") have every row come in reconciled, because only
+        # the few marks in _RECONCILED_FALSE_VALUES mean "not". Those
+        # rows then never show up in the Reconcile checklist.
         self._import("Date,Payee,Amount,Status\n2026-01-05,Lidl,-10.00,Posted\n2026-01-06,Ikea,-20.00,Pending\n")
         self.assertEqual(set(Transaction.objects.values_list("reconciled", flat=True)), {True})
         self.assertEqual(self.reconcile_checklist().context["payments"], [])
@@ -221,7 +228,8 @@ class CategoryAutoCreateTests(ImportTestCase):
 
     def test_a_new_subcategory_inherits_its_existing_parents_type(self):
         income_parent = Category.objects.create(name="Work Income", category_type=Category.CategoryType.INCOME)
-        # A negative amount would normally infer "expense", but the parent already exists as income.
+        # A negative amount would normally infer "expense", but the
+        # parent already exists as income.
         self._import("Date,Payee,Memo,Amount,Category\n01/01/2026,Employer,,-5.00,Work Income:Adjustment\n")
         adjustment = Category.objects.get(name="Adjustment")
         self.assertEqual(adjustment.parent_id, income_parent.pk)
@@ -287,7 +295,8 @@ class DateFormatDetectionTests(ImportTestCase):
         self.assertEqual(Transaction.objects.get().date, date(2026, 1, 25))
 
     def test_an_unambiguous_month_first_file_is_detected(self):
-        # 25 in the second slot can only be a day - settles the file as month-first.
+        # 25 in the second slot can only be a day - settles the file as
+        # month-first.
         self._import("Date,Payee,Memo,Amount\n01/25/2026,Shop,,-10.00\n")
         self.assertEqual(Transaction.objects.get().date, date(2026, 1, 25))
 
@@ -296,8 +305,9 @@ class DateFormatDetectionTests(ImportTestCase):
         self.assertEqual(Transaction.objects.get().date, date(2026, 1, 5))
 
     def test_ambiguous_dates_before_the_deciding_one_are_read_the_way_it_settles(self):
-        # 03/04 and 04/05 can be read both ways. Only the last row (a 25 in the day place or the
-        # month place) settles the format, and it settles it for the rows above it.
+        # 03/04 and 04/05 can be read both ways. Only the last row (a 25
+        # in the day place or the month place) settles the format, and
+        # it settles it for the rows above it.
         day_first = "Date,Payee,Memo,Amount\n03/04/2026,Shop,,-1.00\n04/05/2026,Cafe,,-2.00\n25/01/2026,Bar,,-3.00\n"
         month_first = day_first.replace("25/01/2026", "01/25/2026")
         for name, file, expected in (
@@ -312,14 +322,16 @@ class DateFormatDetectionTests(ImportTestCase):
                 self.assertEqual(dates, expected)
 
     def test_an_ambiguous_file_falls_back_to_the_profile_default(self):
-        # 03/04 alone could be either reading - nothing here settles it, so it falls back to
-        # dmy, the default profile format in a test environment.
+        # 03/04 alone could be either reading - nothing here settles it,
+        # so it falls back to dmy, the default profile format in a test
+        # environment.
         self._import("Date,Payee,Memo,Amount\n03/04/2026,Shop,,-10.00\n")
         self.assertEqual(Transaction.objects.get().date, date(2026, 4, 3))
 
     def test_an_explicit_override_beats_auto_detection(self):
-        # Would auto-detect as day-first (25 can only be a day); forcing month-first instead
-        # makes this row fail to parse as a date (there's no 25th month), so nothing imports.
+        # Would auto-detect as day-first (25 can only be a day); forcing
+        # month-first instead makes this row fail to parse as a date
+        # (there's no 25th month), so nothing imports.
         self._import("Date,Payee,Memo,Amount\n25/01/2026,Shop,,-10.00\n", date_format="mdy")
         self.assertEqual(Transaction.objects.count(), 0)
 
@@ -330,7 +342,8 @@ class DateFormatDetectionTests(ImportTestCase):
 
 
 class ImportErrorTests(LoggedInWithAccountTestCase):
-    """1.10 (F32, F47): unreadable files get a message; skipped rows are counted."""
+    """1.10 (F32, F47): unreadable files get a message; skipped rows are
+    counted."""
 
     def upload(self, name, content):
         return post_import(self.client, self.account, SimpleUploadedFile(name, content), follow=True)
@@ -420,12 +433,14 @@ class ImportFileTests(StashTestCase):
         self.assertEqual((result.created, result.duplicates), (1, 1))
 
     def test_stored_fingerprints_are_read_once_not_once_per_row(self):
-        # 8.3 (F29): one query for the whole file, however many rows it has.
+        # 8.3 (F29): one query for the whole file, however many rows it
+        # has.
         rows = "".join(f"2026-01-{day:02d},Lidl,-{day}.00\n" for day in range(1, 29))
         with CaptureQueriesContext(connections[settings.TEST_STASH]) as queries:
             result = importing.import_file(csv_upload("Date,Payee,Amount\n" + rows), self.account)
         self.assertEqual(result.created, 28)
-        # Other queries read the column along with the rest of a row; these filter on it.
+        # Other queries read the column along with the rest of a row;
+        # these filter on it.
         fingerprint_lookups = [
             q["sql"] for q in queries.captured_queries if "import_fingerprint" in q["sql"].partition("WHERE")[2]
         ]

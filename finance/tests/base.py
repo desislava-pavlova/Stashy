@@ -1,9 +1,11 @@
 """Base classes shared by finance's tests (and audit's).
 
-Every test that uses the database runs inside the test stash: the throwaway stash that
-stashy/settings/test.py makes for each test run (settings.TEST_STASH). The test's own queries go
-to that stash's database, and its test client starts with the stash chosen, as if picked on the
-picker - so every request goes through the real middleware, the way it does in Stashy itself.
+Every test that uses the database runs inside the test stash: the
+throwaway stash that stashy/settings/test.py makes for each test run
+(settings.TEST_STASH). The test's own queries go to that stash's
+database, and its test client starts with the stash chosen, as if picked
+on the picker - so every request goes through the real middleware, the
+way it does in Stashy itself.
 """
 
 import csv
@@ -32,33 +34,38 @@ from .. import urls as finance_urls
 from ..models import Account, Category, Payee, Profile, Reminder, Transaction
 from ..stashes import registry
 
-# Tests that patch timezone.localdate pretend today is one of these days, so the fixed dates
-# they set up keep their meaning (overdue, due soon, this month).
+# Tests that patch timezone.localdate pretend today is one of these
+# days, so the fixed dates they set up keep their meaning (overdue, due
+# soon, this month).
 TODAY_12_SEPT = date(2026, 9, 12)
 TODAY_13_SEPT = date(2026, 9, 13)
 TODAY_14_SEPT = date(2026, 9, 14)
 TODAY_19_SEPT = date(2026, 9, 19)
 
-# Django template syntax that shows up as visible text when a tag or comment goes wrong (a
-# {# #} comment is one line only). A rendered page must contain none of it.
+# Django template syntax that shows up as visible text when a tag or
+# comment goes wrong (a {# #} comment is one line only). A rendered page
+# must contain none of it.
 LEAKED_TEMPLATE_SYNTAX = ("{%", "%}", "{#", "#}")
 
 
 def leaked_syntax_in(page):
-    """The Django template syntax left in a rendered page (its text, as a string), as a list: the
-    four of LEAKED_TEMPLATE_SYNTAX, and "{{" and "}}" outside <script> blocks, where JavaScript
-    uses them for itself."""
+    """The Django template syntax left in a rendered page (its text, as
+    a string), as a list: the four of LEAKED_TEMPLATE_SYNTAX, and "{{"
+    and "}}" outside <script> blocks, where JavaScript uses them for
+    itself."""
     outside_scripts = re.sub(r"<script\b.*?</script>", "", page, flags=re.DOTALL | re.IGNORECASE)
     return [s for s in LEAKED_TEMPLATE_SYNTAX if s in page] + [s for s in ("{{", "}}") if s in outside_scripts]
 
 
-# Values for the URL parameters other than <pk>, so every pattern in finance/urls.py can be reversed.
+# Values for the URL parameters other than <pk>, so every pattern in
+# finance/urls.py can be reversed.
 OTHER_URL_VALUES = {"step": 1, "report": "spending"}
 
 
 def every_finance_url(pk_of=lambda name: 1):
-    """Yields (name, url) for every pattern in finance/urls.py. pk_of(name) gives the value for
-    a pattern's <pk>, so a test can point the URLs at rows it made."""
+    """Yields (name, url) for every pattern in finance/urls.py.
+    pk_of(name) gives the value for a pattern's <pk>, so a test can
+    point the URLs at rows it made."""
     for pattern in finance_urls.urlpatterns:
         assert isinstance(pattern, URLPattern)
         kwargs = {}
@@ -68,8 +75,8 @@ def every_finance_url(pk_of=lambda name: 1):
 
 
 def csv_rows(response):
-    """The rows of a CSV reply, as lists of text. The exports start with a byte order mark, which
-    "utf-8-sig" drops."""
+    """The rows of a CSV reply, as lists of text. The exports start with
+    a byte order mark, which "utf-8-sig" drops."""
     return list(csv.reader(io.StringIO(response.content.decode("utf-8-sig"))))
 
 
@@ -79,24 +86,25 @@ def csv_upload(text, name="bank.csv", encoding="utf-8"):
 
 
 def post_import(client, account, upload, *, follow=False, **form_data):
-    """Posts `upload` to the import page for `account`. `form_data` adds to the form, say
-    date_format="mdy"."""
+    """Posts `upload` to the import page for `account`. `form_data` adds
+    to the form, say date_format="mdy"."""
     data = {"account": account.pk, "file": upload, **form_data}
     return client.post(reverse("finance:import_transactions"), data, follow=follow)
 
 
 def create_accounts_with_a_transaction(count):
-    """`count` new accounts with one 10.00 transaction each. A number in each name keeps two calls
-    from clashing, so a test can compare the queries of one account and of several."""
+    """`count` new accounts with one 10.00 transaction each. A number in
+    each name keeps two calls from clashing, so a test can compare the
+    queries of one account and of several."""
     for i in range(count):
         account = Account.objects.create(name=f"Account {count}-{i}")
         Transaction.objects.create(account=account, date=date(2026, 1, 5), amount=Decimal("10.00"))
 
 
 def create_reminders(account, count):
-    """`count` new one-time reminders, half of them with a payee and the rest with only a category
-    (a subcategory of "Food"), so a page that shows either one can be checked for the queries it
-    makes."""
+    """`count` new one-time reminders, half of them with a payee and the
+    rest with only a category (a subcategory of "Food"), so a page that
+    shows either one can be checked for the queries it makes."""
     food = Category.objects.get_or_create(name="Food", category_type=Category.CategoryType.EXPENSE)[0]
     for i in range(count):
         Reminder.objects.create(
@@ -115,9 +123,10 @@ class NewerMD5PasswordHasher(MD5PasswordHasher):
     algorithm = "md5_newer"
 
 
-# For override_settings(PASSWORD_HASHERS=...): with the newer hasher listed first, Django re-saves
-# an MD5-hashed PIN in the newer format the next time the PIN is checked - which changes the
-# hash the login is tied to.
+# For override_settings(PASSWORD_HASHERS=...): with the newer hasher
+# listed first, Django re-saves an MD5-hashed PIN in the newer format
+# the next time the PIN is checked - which changes the hash the login is
+# tied to.
 REHASHING_PASSWORD_HASHERS = [
     f"{__name__}.NewerMD5PasswordHasher",
     "django.contrib.auth.hashers.MD5PasswordHasher",
@@ -125,8 +134,8 @@ REHASHING_PASSWORD_HASHERS = [
 
 
 class StashClient(Client):
-    """A test client that has already chosen the test stash, the way the picker does it: by
-    putting the stash's name in the session."""
+    """A test client that has already chosen the test stash, the way the
+    picker does it: by putting the stash's name in the session."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -136,13 +145,16 @@ class StashClient(Client):
         session = self.session
         session["stash"] = name
         session.save()
-        # The session lives in a signed cookie, so a saved session is a new cookie value.
+        # The session lives in a signed cookie, so a saved session is a
+        # new cookie value.
         self.cookies[settings.SESSION_COOKIE_NAME] = session.session_key
 
     def force_login(self, user, backend=None):
-        # Django's login() empties a session whose earlier login no longer matches (after a PIN
-        # change, say), and the chosen stash goes with it. A browser finds its way back through
-        # the "last stash used" cookie; this client simply chooses the same stash again.
+        # Django's login() empties a session whose earlier login no
+        # longer matches (after a PIN change, say), and the chosen stash
+        # goes with it. A browser finds its way back through the "last
+        # stash used" cookie; this client simply chooses the same stash
+        # again.
         stash = self.session.get("stash")
         super().force_login(user, backend)
         if stash and self.session.get("stash") != stash:
@@ -150,10 +162,11 @@ class StashClient(Client):
 
 
 class StashTestCase(TestCase):
-    """A test inside the test stash. Its own queries and its requests use the stash's database.
-    `default`, the picker's empty placeholder, is off limits unless a class adds it to
-    `databases` - so code that loses track of its stash fails here instead of quietly using
-    the placeholder."""
+    """A test inside the test stash. Its own queries and its requests
+    use the stash's database. `default`, the picker's empty placeholder,
+    is off limits unless a class adds it to `databases` - so code that
+    loses track of its stash fails here instead of quietly using the
+    placeholder."""
 
     databases = {settings.TEST_STASH}
     client_class = StashClient
@@ -165,8 +178,9 @@ class StashTestCase(TestCase):
         super().setUpClass()
 
     def get_and_count_queries(self, url):
-        """(the response, the number of queries it took) of a page's second visit: a session's
-        first visit also makes its Profile, which would count as extra queries."""
+        """(the response, the number of queries it took) of a page's
+        second visit: a session's first visit also makes its Profile,
+        which would count as extra queries."""
         self.client.get(url)
         with CaptureQueriesContext(connections[settings.TEST_STASH]) as queries:
             response = self.client.get(url)
@@ -174,11 +188,13 @@ class StashTestCase(TestCase):
 
 
 class TemporaryStashesMixin:
-    """Real stash aliases backed by files in a temporary folder - registered at runtime the way
-    the live app does it, and removed again afterwards. A test calls make_stashes() first, then
-    makes the stashes it needs: bare folders with make_stashes(names), or whole ones (migrated,
-    with a user and a Profile) with create_stash(). A class whose tests all need the same stash
-    can build it once in setUpClass instead (see ResetPinCommandTests)."""
+    """Real stash aliases backed by files in a temporary folder -
+    registered at runtime the way the live app does it, and removed
+    again afterwards. A test calls make_stashes() first, then makes the
+    stashes it needs: bare folders with make_stashes(names), or whole
+    ones (migrated, with a user and a Profile) with create_stash(). A
+    class whose tests all need the same stash can build it once in
+    setUpClass instead (see ResetPinCommandTests)."""
 
     def make_stashes(self, *names):
         tmp = tempfile.TemporaryDirectory()
@@ -191,24 +207,27 @@ class TemporaryStashesMixin:
             sqlite3.connect(registry.stash_db_path(name)).close()
             registry.ensure_registered(name)
             self.addCleanup(self.unregister, name)
-        self.addCleanup(db_router.clear_current_stash_alias)
+        self.addCleanup(db_router.set_current_stash_alias, None)
         self.allow_databases(*names)
 
     def allow_databases(self, *names):
-        """Django's test runner only lets a test touch the databases it lists. A stash's alias
-        doesn't exist until the test makes it, so it is added for this one test."""
+        """Django's test runner only lets a test touch the databases it
+        lists. A stash's alias doesn't exist until the test makes it, so
+        it is added for this one test."""
         test_class = type(self)
         self.addCleanup(setattr, test_class, "databases", test_class.databases)
         test_class.databases = frozenset(test_class.databases) | set(names)
 
     def create_stash(self, owner_name, pin):
-        """registry.create_stash() in the temporary folder. It registers the stash's alias
-        itself, so the test has to be allowed that alias up front; it is unregistered again
-        afterwards. Returns (folder name, recovery code), like registry.create_stash()."""
+        """registry.create_stash() in the temporary folder. It registers
+        the stash's alias itself, so the test has to be allowed that
+        alias up front; it is unregistered again afterwards. Returns
+        (folder name, recovery code), like registry.create_stash()."""
         self.allow_databases(registry._folder_name_from_owner(owner_name))
         folder, recovery_code = registry.create_stash(owner_name, pin)
-        # Cleanups run last in, first out: the stash is unregistered, then its folder goes, so
-        # a test class that shares one temporary folder never finds the next test's leftovers.
+        # Cleanups run last in, first out: the stash is unregistered,
+        # then its folder goes, so a test class that shares one
+        # temporary folder never finds the next test's leftovers.
         self.addCleanup(shutil.rmtree, registry.stash_path(folder), ignore_errors=True)
         self.addCleanup(self.unregister, folder)
         return folder, recovery_code
@@ -221,10 +240,11 @@ class TemporaryStashesMixin:
 
 
 class StarterCategoriesFileMixin:
-    """Swaps the spreadsheet of starter categories for one in a temporary folder. A test calls
-    use_a_starter_categories_file() in setUp(), then fills the file with
-    write_starter_categories({"Basic": [("Expense", "Groceries", None)]}): each sheet is a name
-    and its (type, category, subcategory) rows."""
+    """Swaps the spreadsheet of starter categories for one in a
+    temporary folder. A test calls use_a_starter_categories_file() in
+    setUp(), then fills the file with write_starter_categories({"Basic":
+    [("Expense", "Groceries", None)]}): each sheet is a name and its
+    (type, category, subcategory) rows."""
 
     def use_a_starter_categories_file(self):
         tmp = tempfile.TemporaryDirectory()
@@ -248,12 +268,13 @@ class StarterCategoriesFileMixin:
 
 
 class LoggedInTestCase(StashTestCase):
-    """Logged in as "tester" (self.user), the test stash's one user - a stash's user is named
-    after its folder.
+    """Logged in as "tester" (self.user), the test stash's one user - a
+    stash's user is named after its folder.
 
-    The user is made once per class, in setUpTestData(): Django undoes each test's database
-    changes and hands every test its own copy of self.user, so no test sees another's. Logging
-    in is per test, because each test gets a new client."""
+    The user is made once per class, in setUpTestData(): Django undoes
+    each test's database changes and hands every test its own copy of
+    self.user, so no test sees another's. Logging in is per test,
+    because each test gets a new client."""
 
     @classmethod
     def setUpTestData(cls):
@@ -264,11 +285,13 @@ class LoggedInTestCase(StashTestCase):
 
 
 class LoggedInAsSuperuserTestCase(LoggedInTestCase):
-    """Logged in as the stash's superuser "tester" (self.user), whom the admin needs."""
+    """Logged in as the stash's superuser "tester" (self.user), whom the
+    admin needs."""
 
     @classmethod
     def setUpTestData(cls):
-        # Not LoggedInTestCase's own: that one makes an ordinary user with the same name.
+        # Not LoggedInTestCase's own: that one makes an ordinary user
+        # with the same name.
         cls.user = get_user_model().objects.create_superuser("tester", password="not-a-real-password-123")
 
 
@@ -282,8 +305,8 @@ class LoggedInWithAccountTestCase(LoggedInTestCase):
 
 
 class AlexsStashTestCase(LoggedInTestCase):
-    """Logged in, and the stash's owner is called Alex (self.profile), so pages say "Alex's
-    stash"."""
+    """Logged in, and the stash's owner is called Alex (self.profile),
+    so pages say "Alex's stash"."""
 
     @classmethod
     def setUpTestData(cls):

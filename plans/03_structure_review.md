@@ -706,7 +706,8 @@ here, by phase. Findings that extend an older item are notes at the end.
   - `payee-autofill.js`: neither `fetch` handles a failed or non-JSON
     reply, and an older answer can arrive after a newer one; stale
     answers get ignored.
-  - `charts.js`: its "Read once" comment is wrong, and it swaps the
+  - `charts.js`: its "Read once" comment is wrong (*reworded in
+    Phase 2 part C*), and it swaps the
     no-break thousands space for a normal one, against `regional`'s "an
     amount never wraps". Keep the swap with a reason, or drop it.
   - `dashboard.js`: the Uncategorized link branch can never run.
@@ -1465,7 +1466,12 @@ too much for one review, and Phase 1 went the same way), each one a commit:
   1,134 to 1,115 tests.
 - **C, dead bits and comments:** 2.2–2.5 (S12, S13, S21, S44, S43's
   comments). Last, because it touches almost every file, and part B has
-  already removed the tests that only describe history.
+  already removed the tests that only describe history. **Done
+  17/11/2026.** The suite went from 1,115 to 1,119 tests: the front-end
+  check added four (three for the dashboard's Due-soon card, one for the
+  reminder tip), and one test was replaced by another (see 2.2). 957 comment
+  and docstring edits were made by a script that proved the code unchanged,
+  the rest by hand.
 
 - [x] **2.1** S11: delete the 21 history-only tests, trim three, rename the
   kept classes; plus the seven more from G's note. *Done 16/11/2026: the 21
@@ -1479,18 +1485,76 @@ too much for one review, and Phase 1 went the same way), each one a commit:
   the old Expand-button id, "Contract" and the old admin label. The classes that shared a file with a real test have clear
   names now: `ReminderSkipTests`, `ReminderIntervalTests`, `ReminderLabelTests`,
   `TransactionSearchTests`.*
-- [ ] **2.2** S12: remove the dead bits.
-- [ ] **2.3** S13: history notes out of the 12 files, R-codes in code and
+- [x] **2.2** S12: remove the dead bits. *Done 17/11/2026. Gone:
+  `stashyDate()` in `charts.js` (only the function: the `data-date-format`
+  attribute on `<body>` stays, `stashy.js` reads it for the date picker), `CheckRatesForm` and the `check_rates_form` context key,
+  the `.inline-add-row` rules, `db_router.clear_current_stash_alias()`,
+  `STATICFILES_DIRS`, `ReminderForm.Meta.help_texts["amount"]`,
+  `dashboard.REMINDER_LOOKAHEAD_DAYS` (the view reads
+  `Reminder.DUE_SOON_DAYS`) and the `<YYYYMMDD>` comment (a file name has the
+  time too). The tests that called `clear_current_stash_alias()` use
+  `set_current_stash_alias(None)` for their clean-up and `use_stash()` where
+  a test sets a stash itself; one test, "clearing goes back to no stash",
+  became "leaving a `use_stash()` block puts back the stash that was current
+  before". `mascot-full-360.webp` stays for S19, as decided.*
+- [x] **2.3** S13: history notes out of the code, R-codes in code and
   CLAUDE.md replaced by words, boilerplate docstrings and `.gitignore`
-  trimmed; plus the comments that are wrong today (G's note).
-- [ ] **2.4** S21: module docstrings, `resolve_range()`, `Profile`, the
-  reminder tip.
-- [ ] **2.5** S44: `payees.py`'s comments trimmed (none removed) and a
+  trimmed; plus the comments that are wrong today (G's note). *Done
+  17/11/2026. A scan that looks only inside comments and docstrings (not
+  code or test data) found 286 lines in 48 files, more than the first count
+  of 48 lines in 12 files, because Phase 1 and part A added "(plan 03,
+  S75)" notes of their own. Every one in application code is gone or put in
+  words (the rule stays, the history doesn't), as are the wrong comments of
+  G's note (`plan 05`, `ensure_registered()` without `registry`, "same
+  granularities as Interval", "base.html's flatpickr", "D9" in the importer,
+  "settings.py" in `formats.py`) and Django's template docstrings in
+  `stashy/urls.py`, `wsgi.py` and `asgi.py`. `.gitignore` went from 196 lines
+  to 55: every entry for something Stashy can produce stays (secrets,
+  stashes, databases, logs, `CLAUDE.local.md`, the browser tool's folder) and
+  what went is Flask, Scrapy, Celery, Sage and the like. The security review
+  asked for a safety net, so `*.sqlite3`, `*.sqlite3-*`, `backups/`, `.env.*`
+  (but not `.env.example`) and `*.log.*` were added: a database or a backup
+  that lands outside `stashes/` by mistake is still kept out of a commit. **Claude's call, in
+  the tests:** `finance/tests/__init__.py` documents that a test's docstring
+  may start with the plan item it came from ("S75", "Plan 04 R4", "Phase 13
+  R4"), because that is how a test is traced back to its reason, so those
+  stay (its paragraph now lists the forms in use). Dates, "follow-up", "the
+  user's call" and the bare R-codes went from the tests too, and "R1 (Phase
+  13)" became "Phase 13 R1". CLAUDE.md's "(R1)" is in words, and a new
+  "Comments and docstrings" section holds the rule. "Done when" below is
+  read the same way: no history in application code.*
+- [x] **2.4** S21: module docstrings, `resolve_range()`, `Profile`, the
+  reminder tip. *Done 17/11/2026. A module docstring (what it is for, what it
+  must not do) on `models.py`, `forms.py`, `middleware.py`, `money.py`,
+  `context_processors.py`, `admin.py`, `urls.py`, `stashy_format.py`, the
+  `audit` admin and models, and the view modules `accounts`, `categories`,
+  `dashboard`, `imports`, `payees`, `reminders`, `reports` and
+  `transactions` (the others had one already; the `apps.py` files and the
+  twelve-line `audit/middleware.py` were left bare). `reporting.py`'s now
+  describes the whole module, `resolve_range()` and `Profile` say what they
+  do, the reminder tip reads `Reminder.DUE_SOON_DAYS`, and the dashboard's
+  empty Due-soon card no longer says "7 days": its title is "Nothing due
+  soon" and its text "...in the next few days...", since the panel's
+  subtitle above it prints the number (Claude's call, polish).*
+- [x] **2.5** S44: `payees.py`'s comments trimmed (none removed) and a
   docstring for `payee_list`; your rule for S21's pass in every file:
   keep a comment that explains something you can't see from the code,
   trim one that retells it, and never strip docstrings. In the same pass,
   S43's comment part: every comment and docstring wrapped at 72, then
   ruff's `W505` (`max-doc-length = 72`) switched on so it stays that way.
+  *Done 17/11/2026. `payees.py` as written in S44, and
+  `categories_alphabetical()`'s docstring cut by a third. A script that flags
+  a comment whose words mostly appear in the code under it found nothing
+  else to trim (only section labels such as `# Accounts` in `urls.py`), so
+  the "trim" half stopped there; it did not read every comment of every
+  file. S43's half: all 1,735 over-long comment and docstring lines were
+  rewrapped to 72 by a script that changes only whitespace (before it writes
+  a file it checks that the code is identical and that every comment keeps
+  its words in order), a dash used as punctuation never starts a line, and
+  `W505` with `max-doc-length = 72` is on in `pyproject.toml`. Eleven
+  one-line docstrings that were 73 to 75 columns with their quotes were
+  shortened by hand, because `ruff format` moves the closing quotes back onto
+  the text line.*
 - [x] **2.6** S25: the import's date-detection comment reworded, and a
   test with ambiguous rows before the deciding one. *Done 16/11/2026. The
   test has a day-first and a month-first file; the month-first one is the
@@ -1595,9 +1659,11 @@ too much for one review, and Phase 1 went the same way), each one a commit:
   isn't a 500 page; a test.
 
 **Done when:** the suite is green (fewer tests than 723 was the aim when this
-was written; today's count is 1,115, down from 1,134 before part B, since
+was written; today's count is 1,119, down from 1,134 before part B, since
 history-only tests and duplicates went and a few new ones came), and a grep for the
-history patterns finds nothing outside `plans/` and `DEVLOG.md`.
+history patterns finds nothing in the application code outside `plans/` and
+`DEVLOG.md` (tests keep their plan references, see 2.3). *Parts A to C are
+done; what is left of the phase is the three admin items, 2.19 to 2.21.*
 
 ## Phase 3 — Python structure  (S40, S43, S15, S16, S17, S18, S20, S42, S45, S47, S48, S63–S66, S49, S71, S82, S89, S101, S109)
 

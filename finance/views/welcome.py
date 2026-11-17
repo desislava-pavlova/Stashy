@@ -1,7 +1,9 @@
-"""The post-login welcome wizard: four steps run once, right after a brand new stash's first
-login - money & region, starter categories, watched expenses, first account. Each step saves
-on Next; Profile.welcome_step tracks how far along, so closing Stashy mid-setup resumes at the
-right step next time (RequireSetupMiddleware enforces this everywhere else in the app).
+"""The post-login welcome wizard: four steps run once, right after a
+brand new stash's first login - money & region, starter categories,
+watched expenses, first account. Each step saves on Next;
+Profile.welcome_step tracks how far along, so closing Stashy mid-setup
+resumes at the right step next time (RequireSetupMiddleware enforces
+this everywhere else in the app).
 """
 
 from django.contrib import messages
@@ -28,8 +30,9 @@ def welcome_step(request, step):
     profile = request.stashy_profile
     if profile.setup_finished:
         return redirect("finance:dashboard")
-    # Only an already-completed step, or the very next one, can be viewed - typing a later
-    # step's URL by hand just bounces back to wherever setup actually is.
+    # Only an already-completed step, or the very next one, can be
+    # viewed - typing a later step's URL by hand just bounces back to
+    # wherever setup actually is.
     if step < 1 or step > STEP_COUNT or step > profile.welcome_step + 1:
         return _to_step(min(max(step, 1), profile.welcome_step + 1))
 
@@ -61,8 +64,9 @@ def _step_categories(request, profile, step):
     available = starter_categories.available_sheets()
     if request.method == "POST":
         sheet = request.POST.get("sheet")
-        # available is empty only when starter_categories.xlsx itself is missing - "required"
-        # then means nothing, so an explicit "skip" is the only way forward.
+        # available is empty only when starter_categories.xlsx itself is
+        # missing - "required" then means nothing, so an explicit "skip"
+        # is the only way forward.
         if sheet in available or (not available and "skip" in request.POST):
             if sheet in available:
                 created = starter_categories.add_starter_categories(sheet)

@@ -1,5 +1,6 @@
-"""Exchange rates: converting with the latest known rate, totalling accounts kept in
-different currencies, and fetching the latest rates from Frankfurter."""
+"""Exchange rates: converting with the latest known rate, totalling
+accounts kept in different currencies, and fetching the latest rates
+from Frankfurter."""
 
 import io
 import json
@@ -40,7 +41,8 @@ class CurrencyConversionTests(StashTestCase):
         )
 
     def test_on_the_same_day_a_typed_rate_beats_a_fetched_one_whichever_was_saved_first(self):
-        # The sort breaks a tie on the row's id, so the order the rows were saved in must not matter.
+        # The sort breaks a tie on the row's id, so the order the rows
+        # were saved in must not matter.
         manual, fetched = ExchangeRate.Source.MANUAL, ExchangeRate.Source.FRANKFURTER
         for saved_first in ((manual, fetched), (fetched, manual)):
             with self.subTest(saved_first=saved_first[0]):
@@ -77,9 +79,10 @@ class CurrencyConversionTests(StashTestCase):
 
 
 def frankfurter_replies(payload, raw=None):
-    """Stands in for urllib's urlopen(): the reply is `payload` as JSON (or the bytes `raw`, for a
-    reply that isn't JSON), in something a `with` block opens and json.load() reads. Nothing
-    here touches the internet."""
+    """Stands in for urllib's urlopen(): the reply is `payload` as JSON
+    (or the bytes `raw`, for a reply that isn't JSON), in something a
+    `with` block opens and json.load() reads. Nothing here touches the
+    internet."""
     response = mock.MagicMock()
     response.__enter__.return_value = io.BytesIO(raw if raw is not None else json.dumps(payload).encode())
     return mock.patch("finance.currency.urllib.request.urlopen", return_value=response)

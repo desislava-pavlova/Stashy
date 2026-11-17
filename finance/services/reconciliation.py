@@ -1,4 +1,5 @@
-"""Reconciling an account against a bank statement (Phase 8's Quicken-style flow)."""
+"""Reconciling an account against a bank statement, the way Quicken does
+it."""
 
 from collections.abc import Iterable
 from datetime import date
@@ -14,8 +15,9 @@ from ..money import CENT, ZERO
 
 
 class UnacceptedDifferenceError(Exception):
-    """The checked transactions don't add up to the statement balance, and the user hasn't
-    agreed to an adjustment for the gap. Nothing was saved."""
+    """The checked transactions don't add up to the statement balance,
+    and the user hasn't agreed to an adjustment for the gap. Nothing was
+    saved."""
 
     def __init__(self, difference: Decimal):
         super().__init__(f"Unaccepted reconciliation difference of {difference}")
@@ -31,8 +33,9 @@ def reconcile(
 ) -> Reconciliation:
     """Mark `transactions` reconciled and record the reconciliation.
 
-    A gap between the statement and the checked transactions raises UnacceptedDifferenceError,
-    unless `accept_difference` is set: then an adjustment transaction closes the gap.
+    A gap between the statement and the checked transactions raises
+    UnacceptedDifferenceError, unless `accept_difference` is set: then
+    an adjustment transaction closes the gap.
     """
     transactions = list(transactions)
     opening_balance = account.reconciled_balance()
@@ -48,8 +51,9 @@ def reconcile(
             txn.reconciled = True
             txn.save(update_fields=["reconciled"])
         if gap != ZERO:
-            # Not real income/spending - excluded from reports the same way a transfer or
-            # opening balance is (D1/D7), since it's a bookkeeping correction, not a purchase.
+            # Not real income/spending - excluded from reports the same
+            # way a transfer or opening balance is (D1/D7), since it's a
+            # bookkeeping correction, not a purchase.
             adjustment = Transaction.objects.create(
                 account=account,
                 date=statement_date,

@@ -1,6 +1,7 @@
-"""Categories: unique names and the one-level subcategory rule, types, display names and
-grouping, the category list (search, usage, mass re-categorize, delete), the category
-dropdowns in forms, and the starter categories."""
+"""Categories: unique names and the one-level subcategory rule, types,
+display names and grouping, the category list (search, usage, mass
+re-categorize, delete), the category dropdowns in forms, and the starter
+categories."""
 
 from datetime import date
 from decimal import Decimal
@@ -85,7 +86,8 @@ class GroupedCategoriesTests(StashTestCase):
         self.assertEqual([c.name for c in groups[2]["categories"]], [account.transfer_category.name])
 
     def test_a_category_type_that_differs_from_data_still_groups_by_its_own_type(self):
-        # Grouping reads each row's own category_type - it doesn't try to inherit a parent's.
+        # Grouping reads each row's own category_type - it doesn't try
+        # to inherit a parent's.
         parent = Category.objects.create(name="Parent", category_type=Type.INCOME)
         child = Category.objects.create(name="Child", parent=parent, category_type=Type.EXPENSE)
         groups = {g["key"]: [c.name for c in g["categories"]] for g in grouped_categories([parent, child])}
@@ -207,8 +209,9 @@ class CategoryUsageAndRecategorizeTests(LoggedInTestCase):
         self.assertEqual(self.txns[1].category, self.household)
 
     def test_only_this_categorys_own_transactions_move_whatever_ids_are_sent(self):
-        # A hand-made form can name any transaction; the ids that are too big for the database (the
-        # biggest is longer than Python turns into a number) are dropped, and another category's
+        # A hand-made form can name any transaction; the ids that are
+        # too big for the database (the biggest is longer than Python
+        # turns into a number) are dropped, and another category's
         # transaction is left where it is.
         travel = Category.objects.create(name="Travel", category_type=Type.EXPENSE)
         elsewhere = Transaction.objects.create(
@@ -236,8 +239,10 @@ class CategoryUsageAndRecategorizeTests(LoggedInTestCase):
 
 
 class CategoryNameOrderTests(StashTestCase):
-    """S4: names are sorted on `name_key`, which folds case in every alphabet. SQLite's own lower()
-    folds only A-Z, so a dropdown held "Аптека, Вода, бензин, яйца" instead of "Аптека, бензин, Вода, яйца"."""
+    """S4: names are sorted on `name_key`, which folds case in every
+    alphabet. SQLite's own lower() folds only A-Z, so a dropdown held
+    "Аптека, Вода, бензин, яйца" instead of "Аптека, бензин, Вода,
+    яйца"."""
 
     @classmethod
     def setUpTestData(cls):
@@ -259,12 +264,14 @@ class CategoryNameOrderTests(StashTestCase):
 
 
 class CategoriesAlphabeticalOrderTests(StashTestCase):
-    """S4, the ways a dropdown order can still go wrong: a subcategory sorted by its "Parent > Child"
-    label, a name sorted by its spelling instead of its `name_key`, or the Transfer group sorted by
-    name instead of last."""
+    """S4, the ways a dropdown order can still go wrong: a subcategory
+    sorted by its "Parent > Child" label, a name sorted by its spelling
+    instead of its `name_key`, or the Transfer group sorted by name
+    instead of last."""
 
     def make(self, name, parent=None, kind=Type.EXPENSE):
-        # A subcategory always has its parent's type (see Category.create_subcategory()).
+        # A subcategory always has its parent's type (see
+        # Category.create_subcategory()).
         return Category.objects.create(
             name=name, parent=parent, category_type=parent.category_type if parent else kind
         )
@@ -273,7 +280,8 @@ class CategoriesAlphabeticalOrderTests(StashTestCase):
         return [c.name for c in categories_alphabetical(Category.objects.all())]
 
     def test_a_subcategory_sorts_with_its_parent_not_by_its_label(self):
-        # As a label, "Car > Fuel" would come after "Car insurance": ">" sorts after a space.
+        # As a label, "Car > Fuel" would come after "Car insurance": ">"
+        # sorts after a space.
         car = self.make("Car")
         self.make("Car insurance")
         self.make("Fuel", parent=car)
@@ -298,7 +306,8 @@ class CategoriesAlphabeticalOrderTests(StashTestCase):
         self.make("apple")
         Account.objects.create(name="Wallet")
         Account.objects.create(name="Bank")
-        # "[" sorts before every letter, so by name alone the Transfer categories would come first.
+        # "[" sorts before every letter, so by name alone the Transfer
+        # categories would come first.
         self.assertEqual(self.names(), ["Zebra pay", "apple", "[Bank]", "[Wallet]"])
 
     def test_the_transaction_form_offers_the_same_order(self):
@@ -319,7 +328,8 @@ class SystemManagedCategoryStillGuardedTests(LoggedInTestCase):
 
 
 class CategoryUniquenessTests(StashTestCase):
-    """2.3 (F3): top-level names are unique too, and both rules ignore case."""
+    """2.3 (F3): top-level names are unique too, and both rules ignore
+    case."""
 
     def test_the_database_rejects_a_second_top_level_category_in_another_case(self):
         Category.objects.create(name="Food", category_type=EXPENSE)
@@ -358,7 +368,8 @@ class CategoryUniquenessTests(StashTestCase):
 
 
 class OneLevelRuleTests(StashTestCase):
-    """2.6 (F13): the one-level subcategory rule lives on the model, so the admin keeps it too."""
+    """2.6 (F13): the one-level subcategory rule lives on the model, so
+    the admin keeps it too."""
 
     @classmethod
     def setUpTestData(cls):
@@ -452,7 +463,7 @@ class CategoryDeleteTests(LoggedInWithAccountTestCase):
 
     def test_deleting_keeps_transactions_uncategorized(self):
         self.client.post(reverse("finance:category_delete", args=[self.food.pk]))
-        # The account's own transfer category (Phase 3) is unrelated and stays.
+        # The account's own transfer category is unrelated and stays.
         self.assertFalse(Category.objects.filter(account__isnull=True).exists())
         self.txn.refresh_from_db()
         self.assertIsNone(self.txn.category)
@@ -478,8 +489,9 @@ class UsageEmptyStylingTests(LoggedInWithAccountTestCase):
         used = Category.objects.create(name="Used", category_type=Category.CategoryType.EXPENSE)
         Transaction.objects.create(account=self.account, date=date(2026, 1, 1), category=used, amount=Decimal("-1.00"))
         response = self.client.get(reverse("finance:category_list"))
-        # The account's own transfer category always has 0 usage, so some "usage-empty" will
-        # exist regardless - check the specific "Used" row's link isn't the pale class.
+        # The account's own transfer category always has 0 usage, so
+        # some "usage-empty" will exist regardless - check the specific
+        # "Used" row's link isn't the pale class.
         content = response.content.decode()
         used_index = content.index("Used<")
         nearby = content[used_index : used_index + 400]
@@ -499,8 +511,9 @@ class CategoryDropdownOrderingTests(LoggedInWithAccountTestCase):
         Category.objects.create(name="Haircut", parent=personal, category_type=Category.CategoryType.EXPENSE)
         form = TransactionForm()
         names = [str(c) for c in form.fields["category"].queryset]
-        # "Personal Care" and its own "Haircut" subcategory land next to each other, not split
-        # into a top-level block and a separate subcategories block.
+        # "Personal Care" and its own "Haircut" subcategory land next to
+        # each other, not split into a top-level block and a separate
+        # subcategories block.
         personal_index = names.index("Personal Care")
         self.assertEqual(names[personal_index + 1], "Personal Care > Haircut")
 
@@ -527,7 +540,8 @@ class IndentedCategoryDropdownTests(LoggedInWithAccountTestCase):
 
 
 class NewSubcategoryTypeTests(StarterCategoriesFileMixin, StashTestCase):
-    """6.9 (F38): a new subcategory takes its main category's type, wherever it's created."""
+    """6.9 (F38): a new subcategory takes its main category's type,
+    wherever it's created."""
 
     def setUp(self):
         self.use_a_starter_categories_file()
@@ -612,8 +626,9 @@ class StarterCategoriesXlsxTests(StarterCategoriesFileMixin, StashTestCase):
 
 
 class TheRealStarterCategoriesFileTests(SimpleTestCase):
-    """Every test above swaps in a file of its own, so none of them would notice the real one
-    going missing or moving (plan 03, S70: it lives beside the code that reads it)."""
+    """Every test above swaps in a file of its own, so none of them
+    would notice the real one going missing or moving (it lives beside
+    the code that reads it)."""
 
     def test_the_file_is_in_the_finance_folder_not_the_project_root(self):
         path = starter_categories.starter_categories_path()
@@ -624,11 +639,13 @@ class TheRealStarterCategoriesFileTests(SimpleTestCase):
         self.assertEqual(starter_categories.available_sheets(), ["Basic", "Extended"])
 
     def test_every_row_of_the_real_file_is_income_or_expense_and_a_category_keeps_one_type(self):
-        """The reader treats any type that isn't "income" as an expense, so a typo ("Incme")
-        would quietly make an income category an expense, and a main category named in two rows
-        with two types quietly takes the first row's. The file is edited by hand ("edit that file
-        to change" the lists, says the README), so this is what would notice a slip. It checks
-        the rules, not the contents: adding or renaming categories is fine."""
+        """The reader treats any type that isn't "income" as an expense,
+        so a typo ("Incme") would quietly make an income category an
+        expense, and a main category named in two rows with two types
+        quietly takes the first row's. The file is edited by hand ("edit
+        that file to change" the lists, says the README), so this is
+        what would notice a slip. It checks the rules, not the contents:
+        adding or renaming categories is fine."""
         for sheet_name in starter_categories.SHEET_CHOICES:
             workbook = load_workbook(starter_categories.starter_categories_path(), read_only=True, data_only=True)
             try:

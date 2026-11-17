@@ -1,3 +1,8 @@
+"""Template filters that show money, dates and report colours the way
+the viewer's stash wants them (`regional`), so a template never formats
+by hand: `money`, `moneyc`, `sdate`, `diff_tint` and the rest.
+"""
+
 from decimal import InvalidOperation
 
 from django import template
@@ -11,29 +16,32 @@ register = template.Library()
 
 @register.filter
 def currency_symbol(code):
-    """The symbol shown for a currency code ("EUR" -> "€"), not the bare code - same table
-    |moneyc already uses, for the few spots (e.g. a chart, JS-rendered) that need just the
-    symbol on its own rather than a full formatted amount."""
+    """The symbol shown for a currency code ("EUR" -> "€"), not the bare
+    code - same table |moneyc already uses, for the few spots (e.g. a
+    chart, JS-rendered) that need just the symbol on its own rather than
+    a full formatted amount."""
     return CURRENCY_SYMBOLS.get(code, code)
 
 
 @register.filter
 def currency_codes(accounts):
-    """The currencies of `accounts`, each once, alphabetically: "GBP, USD". For a warning that
-    names the currencies left out of a total, not one entry per account."""
+    """The currencies of `accounts`, each once and in alphabetical
+    order, like "GBP, USD". For a warning that names the currencies left
+    out of a total, not one entry per account."""
     return ", ".join(sorted({account.currency for account in accounts}))
 
 
 @register.filter
 def rate_source(code):
-    """An exchange rate's source the way people read it ("Typed in", "Frankfurter (ECB)"), not the
-    code stored in the database."""
+    """An exchange rate's source the way people read it ("Typed in",
+    "Frankfurter (ECB)"), not the code stored in the database."""
     return dict(ExchangeRate.Source.choices).get(code, code)
 
 
 @register.filter
 def money(value, decimals=2):
-    """Format a number in the viewer's number style — 10 000.50 by default (D10)."""
+    """Format a number in the viewer's number style — 10 000.50 by
+    default (D10)."""
     if value is None or value == "":
         return ""
     try:
@@ -44,12 +52,15 @@ def money(value, decimals=2):
 
 @register.filter
 def moneyc(value, currency):
-    """Format an amount with its currency's symbol — $9.66 rather than a bare 9.66 (D2).
+    """Format an amount with its currency's symbol — $9.66 rather than a
+    bare 9.66 (D2).
 
-    Use this instead of |money wherever one specific currency applies (an account's own
-    balance/transactions, or an amount already converted to the main currency). Leave
-    plain |money for amounts with no single currency attached, e.g. a memorized payee's
-    default amount, which can come from transactions in different accounts/currencies.
+    Use this instead of |money wherever one specific currency applies
+    (an account's own balance/transactions, or an amount already
+    converted to the main currency). Leave plain |money for amounts with
+    no single currency attached, e.g. a memorized payee's default
+    amount, which can come from transactions in different
+    accounts/currencies.
     """
     if value is None or value == "":
         return ""
@@ -63,13 +74,16 @@ def moneyc(value, currency):
 
 @register.filter
 def amount_class(value, signed=True):
-    """CSS class for a signed amount ("amount-negative"/"amount-positive"). Pass signed=False
-    for a column that should always be styled as spending (negative-styled), whatever the
-    sign - used by the report tables, where an expense-only column holds spending as a
-    positive number (and a category that netted to a refund as a negative one, which keeps the
-    same colour), but a mixed income/expense or plain-difference column still needs its own
-    sign to decide the color. None (R4: no earlier data to average) is neither - a plain muted
-    class, same as the "—" placeholder text shown for it."""
+    """CSS class for a signed amount
+    ("amount-negative"/"amount-positive"). Pass signed=False for a
+    column that should always be styled as spending (negative-styled),
+    whatever the sign - used by the report tables, where an expense-only
+    column holds spending as a positive number (and a category that
+    netted to a refund as a negative one, which keeps the same colour),
+    but a mixed income/expense or plain-difference column still needs
+    its own sign to decide the color. None (no earlier data to average)
+    is neither - a plain muted class, same as the "—" placeholder text
+    shown for it."""
     if value is None:
         return "text-muted"
     if not signed:
@@ -79,8 +93,9 @@ def amount_class(value, signed=True):
 
 @register.filter
 def abs_value(value):
-    """abs() for templates — used to show a signed amount unsigned in a Payment/Deposit column (D3),
-    where the column itself already says which direction the money moved."""
+    """abs() for templates — used to show a signed amount unsigned in a
+    Payment/Deposit column (D3), where the column itself already says
+    which direction the money moved."""
     try:
         return abs(value)
     except TypeError:
@@ -89,22 +104,26 @@ def abs_value(value):
 
 @register.filter
 def sdate(value):
-    """Format a date/datetime in the viewer's date format (D10) — use instead of Django's |date for stored dates."""
+    """Format a date/datetime in the viewer's date format (D10) — use
+    instead of Django's |date for stored dates."""
     return regional.format_date(value)
 
 
 @register.filter
 def sdatetime(value):
-    """Date + time, in the viewer's preferences — for the few places a time matters (import history, audit log)."""
+    """Date + time, in the viewer's preferences — for the few places a
+    time matters (import history, audit log)."""
     return regional.format_datetime(value)
 
 
 @register.filter
 def diff_tint(value, lower_is_good=False):
-    """Pale background class for a vs-average Difference cell: green when the change is good,
-    pink when it's bad, nothing when it's zero or there's no average to compare against. For
-    spending "good" is a fall (lower_is_good); for income, net and signed income/expense rows
-    it's a rise. Deliberately not the bold red/green text color - that is for amounts."""
+    """Pale background class for a vs-average Difference cell: green
+    when the change is good, pink when it's bad, nothing when it's zero
+    or there's no average to compare against. For spending "good" is a
+    fall (lower_is_good); for income, net and signed income/expense rows
+    it's a rise. Deliberately not the bold red/green text color - that
+    is for amounts."""
     if not value:
         return ""
     good = (value < 0) if lower_is_good else (value > 0)

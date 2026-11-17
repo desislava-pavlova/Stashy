@@ -20,6 +20,10 @@ ignore = [
 # user-facing text, and Cyrillic text in date patterns and tests.
 allowed-confusables = [" ", "–", "г"]
 
+[tool.ruff.lint.pycodestyle]
+# PEP 8 wraps comments and docstrings at 72, whatever the code's line length is (rule W505).
+max-doc-length = 72
+
 [tool.ruff.format]
 quote-style = "double"
 

@@ -6110,3 +6110,176 @@ into `currency.py` on purpose, and each turned its test red.
 `test_transactions.py`, `test_welcome.py`, the package docstring in `tests/__init__.py`
 and `audit/tests.py`, `CLAUDE.md`,
 `plans/03_structure_review.md`, `plans/README.md`, this log.
+
+## 17/11/2026 — Plan 03, Phase 2, part C: dead bits, history notes, module docstrings, and comments at 72 columns (S12, S13, S21, S44, S43's comments)
+
+**What changed:** the code lost its dead bits and its history, every module now
+says what it is for, and comments and docstrings wrap at 72 columns, with ruff
+checking it. Almost every `.py` file changed, but nearly all of that is
+whitespace inside comments. Nothing in the database changed (no migration, no
+backup of the real stash), and the only thing you can see on a page is one
+wording change. 1,115 tests became 1,119 (the front-end check added four for
+the Due-soon card and the reminder tip), ruff clean.
+- **S12, the dead bits:** `stashyDate()` in `charts.js`, `CheckRatesForm` (and
+  the `check_rates_form` the Settings view passed to a template that never used
+  it), the `.inline-add-row` CSS, `db_router.clear_current_stash_alias()`,
+  `STATICFILES_DIRS` (it pointed at a folder that doesn't exist),
+  `ReminderForm`'s copy of the amount help text, `dashboard.REMINDER_LOOKAHEAD_DAYS`
+  (it was another name for `Reminder.DUE_SOON_DAYS`) and a comment that said
+  export files end in the date (they end in the date and time).
+- **S13, the history:** a scan that looks only inside comments and docstrings
+  found 286 lines in 48 files with a date, a "Phase N", a plan or finding code
+  (S75, R4, L1) or "the user's call" in them. That is more than the 48 lines
+  the review counted on 10/10, because Phase 1 and part A had added notes of
+  their own. In the application code every one is now gone or put in words.
+  The comments that were simply wrong are fixed too (`plan 05` for the .exe,
+  `ensure_registered()` without `registry`, "same granularities as Interval",
+  "base.html's flatpickr", a "D9" that isn't transaction numbers, and
+  "settings.py" for `settings/base.py`). Django's template docstrings in
+  `stashy/urls.py`, `wsgi.py` and `asgi.py` are now one honest line each, and
+  `.gitignore` went from GitHub's 196-line Python template to the 55 lines
+  Stashy needs.
+- **S21, what was missing:** a module docstring (what it is for, what it must
+  not do) on `models.py`, `forms.py`, `middleware.py`, `money.py`, the admin
+  and the template filters, `urls.py`, and eight view modules.
+  `reporting.py`'s describes the whole module, `resolve_range()` has a
+  docstring, `Profile`'s says what it holds (it said "preferences", but it also
+  holds the owner name, the wizard step, the PIN lockout and the recovery
+  code), the reminder tip reads `Reminder.DUE_SOON_DAYS`, and the dashboard's
+  empty Due-soon card no longer says "7 days": it now reads "Nothing due soon",
+  and the number stays in the panel's subtitle above it.
+- **S44 and S43's comments:** `payees.py` has a module docstring, a docstring
+  for `payee_list`, and its four comments shortened without losing a reason.
+  Then every comment and docstring that ran past 72 columns (1,735 lines) was
+  rewrapped, and `W505` with `max-doc-length = 72` is on in `pyproject.toml`,
+  so a new long one fails `ruff check`.
+
+**Why the code looks like this:**
+- **History goes in this log and the plans, a rule goes in a comment.** A
+  comment that says "(plan 03, S75)" is a pointer to a document, and the
+  numbers clash (plan 01's R3 and plan 04's R3 are different things). A comment
+  that says what the rule is, and why, is still true next year. The exception is
+  the tests: `finance/tests/__init__.py` already says a test's docstring may
+  start with the plan item it came from, because that is how a test is traced
+  back to its reason. So those pointers stayed (the paragraph now lists the
+  forms in use), and only the dates, "follow-up", "the user's call" and the bare
+  R-codes went from the tests. That was my call; CLAUDE.md has the rule in a new
+  "Comments and docstrings" section.
+- **The scan only reads comments and docstrings.** Test data is full of dates
+  and ids, and a plain grep for `S1` finds `S1234`. The scan tokenizes each file
+  and looks at the comment tokens and the docstring nodes only. Its first run
+  skipped `finance/stashes/` because it skipped any folder called `stashes`
+  (meant for the data folder at the top). It is worth checking what a scan
+  skips before trusting its zero.
+- **The rewrap is a script that proves it changed nothing.** 957 edits by hand
+  would have been slow and would have introduced typos. The script reflows only
+  a paragraph that has a line over 72, leaves indented text (code samples,
+  tables), pragma comments and comments after code alone, and, before it
+  writes a file, checks two things: the code's syntax tree is identical
+  (docstrings compared with their whitespace collapsed), and every comment has
+  the same words in the same order. After it ran, a second comparison against a
+  copy of the project taken just before it showed all 93 files with identical
+  code.
+- **Two tools can disagree about the same text.** The script wrapped a
+  too-long one-line docstring onto two lines, and `ruff format` put the closing
+  quotes back on the text line, because it likes a one-paragraph docstring that
+  way. That made 11 docstrings 73 to 75 columns wide, which `W505` caught. I
+  shortened those by hand. It is also why CLAUDE.md says a one-line docstring
+  has to fit in 72 with its quotes.
+- **A dash must not start a line.** The code often writes " - " as a dash. When
+  the wrapper broke a line right before one, the next line began with `- `,
+  which looks like the start of a bullet list. The fix is to tie the dash to
+  the word before it while wrapping (a private placeholder character that is put
+  back as a space afterwards), and a second pass re-flowed the 10 paragraphs
+  where it had already happened.
+- **`clear_current_stash_alias()` went because only tests used it.** They used
+  it to reset the current stash after a test. `set_current_stash_alias(None)` does
+  the same, and `use_stash()` is the better tool where a test sets a stash
+  itself, because it puts back whatever was there before. The one test that
+  checked the removed function now checks that.
+- **`.gitignore` keeps what Stashy can produce.** The repo is public, so this was
+  the one change here that could leak something. Every entry for a secret or for
+  data stays (`.env`, `/stashes/`, `/_picker.sqlite3`, `db.sqlite3`, logs,
+  `CLAUDE.local.md`, `/.claude`, the browser tool's folder). What went is Flask,
+  Scrapy, Celery, Sage, marimo and so on, tools this project doesn't use. The
+  security review added a safety net that the old file never had: `*.sqlite3`,
+  `*.sqlite3-*` and `backups/` (a database or backup that lands outside
+  `stashes/` by mistake, for example if `backup_now()` is given the project
+  folder instead of a stash's), `.env.*` with `.env.example` allowed back in,
+  and `*.log.*` for the rotated logs.
+- **The empty-state wording is polish, so I changed it.** The number was typed
+  into the sentence while the line above it read the real value. Changing the
+  constant would have left "Nothing due this week" wrong. Dropping the number
+  from the sentence fixes it for good.
+
+**Teaching note — a change you can't read line by line needs a proof you can
+run.** 957 edits across 84 files can't be reviewed by eye, so the safety came
+from three machine checks instead: the code's syntax tree before and after
+(`ast.dump` of each file, with docstrings ignored), the words of every comment in
+order, and the test suite. Each one answers a question a reader would ask
+("did it touch code?", "did it lose a sentence?"), and the script refuses to write
+a file when either answer is no. The things that did go wrong (a closing quote,
+a dash at the start of a line) were about *layout*, which none of those checks
+sees, and they were found by reading real output on a scratch copy first and by
+turning `W505` on. Prove what must not change, and then look at what is allowed to.
+
+**Reviews:**
+- **Front-end check: nothing Critical.** It ran the suite (1,119 tests), rendered
+  the dashboard with an empty and with a filled Due-soon card and the reminder
+  form's help card through the test client (no leaked template syntax), and ran
+  collectstatic into scratch folders with and without STATICFILES_DIRS: the
+  same 643 files and the same manifest, and one warning fewer. It added four tests
+  and showed that the two wording ones fail against the old template. It also
+  caught a mistake of mine: I had written that data-date-format was unused. It
+  isn't: ase.html sets it and stashy.js reads it for the date picker. Only
+  stashyDate() was dead. My grep had used a glob that matched nothing, so "found
+  nothing" was a fault in the search, not a fact about the code. The plan is
+  corrected.
+- **Security review: nothing Critical.** Every .gitignore entry that protects a
+  secret or data survived, and it found no personal data in a file that gets
+  committed. Removing STATICFILES_DIRS and clear_current_stash_alias() changes
+  nothing in production (the stash is reset by use_stash() in a inally, never
+  by that function), and every POST view on Settings still has its protections.
+  Done from its notes: the .gitignore safety net above, and a docstring that said
+  a new recovery code is never stored or shown again (the view keeps it in memory
+  for a few minutes; only its hash is saved). Left for you, because I may not run
+  git: it asked for a look through the repository's history for files that should
+  never have been committed (commands in my report). Not done, your call: the
+  signed session cookie is accepted for 14 days after login even though the
+  browser-close rule ends it with the browser, so a cookie that a browser restores
+  would still work (SESSION_COOKIE_AGE would cap it).
+- **Code review: nothing Critical.** It checked that every removed name has no
+  user left, that `content.py` imports `models` without a cycle, that the reminder
+  tip is word for word the old one at 7 days, and read all the non-test comments
+  for unbalanced quotes, repeated words and references to things that no longer
+  exist. Seven comments of mine were untrue or misleading, and are fixed: a quoted
+  example split across two lines (`"€ -5"`, a "- 5" at the start of a line);
+  "dates and numbers follow the stash's formats" in `forms.py` (only dates do);
+  the accounts docstring's list of where the rules live (the opening balance and
+  the transfer are in `forms.py`); "a view never picks a stash" (the picker does;
+  what no view does is route queries); "every total ... is worked out here" in
+  `reporting.py` and the dashboard (net worth has two functions that agree only
+  because both convert through `RateTable`); and two older comments in
+  `transactions.py` that said the Transactions total has the same no-conversion
+  simplification as the Accounts page's net worth, which the Accounts page lost
+  long ago. `tests/__init__.py` now says D1 to D10 are the exception to "no codes
+  in application code". Also done from its smaller notes: the `.order_by()`
+  comment in `payee_list` (rows repeat once per transaction, not per date), two
+  comments in `stashy/urls.py`, three in `settings/base.py`, the "Imported here:"
+  wording in `apps.py`, docstrings for `set_current_stash_alias()` and
+  `current_stash_alias()`, and the "periods the same length as the range" wording
+  of the Average interval (true only for a custom range). Left alone: the 24
+  one-word last lines the rewrap leaves, a closing `"""` on its own line in some
+  docstrings, and its note that three modules sort with `name.lower()` (S109,
+  already filed). It left two stray `python` processes behind; I stopped its task
+  and checked that none was left running.
+
+**Files touched:** nearly every .py file under inance/, udit/, stashy/
+and scripts/ (comments and docstrings; the ones with real changes are
+inance/forms.py, inance/views/settings.py, inance/views/dashboard.py,
+inance/db_router.py, inance/content.py, stashy/settings/base.py and the
+tests ase.py, 	est_middleware.py, 	est_dashboard.py and 	est_pages.py),
+inance/static/finance/js/charts.js and payee-autofill.js,
+inance/static/finance/css/stashy.css, inance/templates/finance/dashboard.html,
+pyproject.toml, .gitignore, CLAUDE.md, plans/03_structure_review.md,
+plans/README.md, this log. No new files, no migration.

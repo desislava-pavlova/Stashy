@@ -1,5 +1,5 @@
-"""The Settings page: its layout, its separate form endpoints (exchange rates, Watched
-expenses), and the Change PIN and recovery code pages."""
+"""The Settings page: its layout, its separate form endpoints (exchange
+rates, Watched expenses), and the Change PIN and recovery code pages."""
 
 from datetime import date, timedelta
 from decimal import Decimal
@@ -27,8 +27,9 @@ from .base import (
 
 
 class ExchangeRateTableTests(LoggedInWithAccountTestCase):
-    """S32: the Exchange rates table writes each rate's date in the stash's date format and names
-    each source by its label, not the code stored in the database."""
+    """S32: the Exchange rates table writes each rate's date in the
+    stash's date format and names each source by its label, not the code
+    stored in the database."""
 
     @classmethod
     def setUpTestData(cls):
@@ -61,7 +62,8 @@ class ExchangeRateTableTests(LoggedInWithAccountTestCase):
 
 
 class ExchangeRateTableRowsTests(LoggedInWithAccountTestCase):
-    """The Exchange rates table row by row: which currencies it lists, and what it shows for each."""
+    """The Exchange rates table row by row: which currencies it lists,
+    and what it shows for each."""
 
     @classmethod
     def setUpTestData(cls):
@@ -149,7 +151,8 @@ class SettingsEndpointsTests(LoggedInWithAccountTestCase):
         self.assertContains(response, "No internet")
 
     def save_preferences(self, time_zone):
-        """Posts the preferences form with the currency switched to USD and `time_zone`."""
+        """Posts the preferences form with the currency switched to USD
+        and `time_zone`."""
         return self.client.post(
             reverse("finance:settings"),
             {
@@ -168,7 +171,8 @@ class SettingsEndpointsTests(LoggedInWithAccountTestCase):
         self.assertEqual(self.profile.main_currency, "USD")
 
     def test_a_time_zone_that_is_not_in_the_list_is_refused(self):
-        """Plan 03, S54: the dropdown alone didn't stop a hand-made request."""
+        """Plan 03, S54: the dropdown alone didn't stop a hand-made
+        request."""
         before = (self.profile.time_zone, self.profile.main_currency)
         response = self.save_preferences("Mars/Olympus_Mons")
         self.assertEqual(response.status_code, 200)
@@ -184,16 +188,18 @@ class SettingsEndpointsTests(LoggedInWithAccountTestCase):
         self.assertEqual((self.profile.time_zone, self.profile.main_currency), before)
 
     def test_utc_can_be_chosen(self):
-        """The list comes from the time zone database's zone.tab, which has no plain "UTC":
-        regional.time_zone_choices() adds it, and since S54 the list decides what's saved."""
+        """The list comes from the time zone database's zone.tab, which
+        has no plain "UTC": regional.time_zone_choices() adds it, and
+        since S54 the list decides what's saved."""
         response = self.save_preferences("UTC")
         self.assertRedirects(response, reverse("finance:settings"))
         self.profile.refresh_from_db()
         self.assertEqual(self.profile.time_zone, "UTC")
 
     def test_a_zone_saved_under_an_older_name_is_shown_and_kept(self):
-        """Plan 03, S77: Europe/Kiev isn't in the list (it's Europe/Kyiv now), but a stash saved
-        with it keeps it. Before, the dropdown showed Africa/Abidjan and a save stored that."""
+        """Plan 03, S77: Europe/Kiev isn't in the list (it's Europe/Kyiv
+        now), but a stash saved with it keeps it. Before, the dropdown
+        showed Africa/Abidjan and a save stored that."""
         self.profile.time_zone = "Europe/Kiev"
         self.profile.save(update_fields=["time_zone"])
         page = self.client.get(reverse("finance:settings"))
@@ -214,7 +220,8 @@ class SettingsEndpointsTests(LoggedInWithAccountTestCase):
                 self.assertEqual(self.profile.time_zone, zone)
 
     def test_a_zone_that_does_not_exist_is_not_offered_and_the_pages_still_open(self):
-        """A hand-edited stash: the pages must not break, and picking a real zone fixes it."""
+        """A hand-edited stash: the pages must not break, and picking a
+        real zone fixes it."""
         self.profile.time_zone = "Mars/Olympus_Mons"
         self.profile.save(update_fields=["time_zone"])
         for name in ("finance:dashboard", "finance:settings"):
@@ -233,8 +240,9 @@ class SettingsEndpointsTests(LoggedInWithAccountTestCase):
         self.assertEqual(self.profile.time_zone, before)
 
     def test_saving_settings_never_puts_back_an_old_lockout_or_recovery_code(self):
-        """Plan 03, S75: the page edits request.stashy_profile, read before the request's
-        write lock. Saving the whole row would put back what that copy held."""
+        """Plan 03, S75: the page edits request.stashy_profile, read
+        before the request's write lock. Saving the whole row would put
+        back what that copy held."""
         old_copies = [Profile.objects.get(pk=self.profile.pk) for _ in range(2)]
         self.profile.locked_until = timezone.now() + timedelta(minutes=security.LOCKOUT_MINUTES)
         self.profile.recovery_code_hash = "today's hash"
@@ -260,8 +268,9 @@ class SettingsEndpointsTests(LoggedInWithAccountTestCase):
         self.assertEqual((self.profile.main_currency, self.profile.watched_expenses_title), ("USD", "Bills"))
 
     def test_the_settings_page_does_not_undo_a_lockout_or_a_new_code_it_has_not_seen(self):
-        """Plan 03, S75, through the real pages: the page's own copy of the Profile is read
-        before the request takes the stash's write lock, so it can be older than the saved row."""
+        """Plan 03, S75, through the real pages: the page's own copy of
+        the Profile is read before the request takes the stash's write
+        lock, so it can be older than the saved row."""
         posts = {
             "settings": lambda: self.save_preferences("Europe/Sofia"),
             "watched": lambda: self.client.post(
@@ -287,7 +296,8 @@ class SettingsEndpointsTests(LoggedInWithAccountTestCase):
                 )
 
     def test_a_save_from_an_old_copy_writes_only_the_forms_own_columns_in_the_audit_log(self):
-        """Saving the whole row from an old copy would also log "changes" to the lockout."""
+        """Saving the whole row from an old copy would also log
+        "changes" to the lockout."""
         old_copy = Profile.objects.get(pk=self.profile.pk)
         Profile.objects.filter(pk=self.profile.pk).update(failed_pin_attempts=3, welcome_step=2)
         preferences = {
@@ -318,7 +328,8 @@ class SettingsEndpointsTests(LoggedInWithAccountTestCase):
         self.assertEqual(list(profile.watched_expenses_categories.all()), [category])
 
     def test_saving_watched_expenses_replaces_and_clears_the_chosen_categories(self):
-        """The partial save still saves the categories (a many-to-many), and not only adds."""
+        """The partial save still saves the categories (a many-to-many),
+        and not only adds."""
         expense = Category.CategoryType.EXPENSE
         water = Category.objects.create(name="Water", category_type=expense)
         power = Category.objects.create(name="Power", category_type=expense)
@@ -345,9 +356,11 @@ class SettingsEndpointsTests(LoggedInWithAccountTestCase):
         self.assertFalse(self.profile.watched_expenses_categories.exists())
 
     def test_a_category_id_too_big_for_the_database_shows_the_same_error_not_a_server_error(self):
-        """S106: SQLite refuses a number over 2**63 - 1 (an OverflowError, so a 500 page). A real
-        category sent beside it is not saved either: the form is refused as a whole. (2**63 - 1
-        itself is the boundary: it fits, so it never overflowed, and is just an unknown id.)"""
+        """S106: SQLite refuses a number over 2**63 - 1 (an
+        OverflowError, so a 500 page). A real category sent beside it is
+        not saved either: the form is refused as a whole. (2**63 - 1
+        itself is the boundary: it fits, so it never overflowed, and is
+        just an unknown id.)"""
         water = Category.objects.create(name="Water", category_type=Category.CategoryType.EXPENSE)
         for too_big in ("9" * 30, str(2**63), str(2**63 - 1)):
             with self.subTest(too_big=too_big):
@@ -362,9 +375,10 @@ class SettingsEndpointsTests(LoggedInWithAccountTestCase):
 
 
 class SafeModelMultipleChoiceFieldTests(StashTestCase):
-    """S106 at the field itself (the reconcile page and Watched expenses both use it): an id too
-    big for the database is refused like any other id that isn't a choice. Everything else the
-    field does is still Django's own."""
+    """S106 at the field itself (the reconcile page and Watched expenses
+    both use it): an id too big for the database is refused like any
+    other id that isn't a choice. Everything else the field does is
+    still Django's own."""
 
     TOO_BIG = "9" * 30
 
@@ -402,14 +416,15 @@ class SafeModelMultipleChoiceFieldTests(StashTestCase):
                 self.assertIn(f"{pk} is not one of the available choices", error.messages[0])
 
     def test_a_value_that_is_no_number_at_all_still_gets_the_usual_message(self):
-        """Django's own message and code, untouched (a string of 5,000 digits is one Python
-        refuses to turn into a number)."""
+        """Django's own message and code, untouched (a string of 5,000
+        digits is one Python refuses to turn into a number)."""
         for ids in (["abc"], ["9" * 5000]):
             with self.subTest(ids=[value[:12] for value in ids]):
                 self.assertEqual(self.refusal(ids).code, "invalid_pk_value")
 
     def test_a_too_big_id_beside_a_value_that_is_no_number_is_refused_either_way_round(self):
-        """Which of the two is named depends on the order, and doesn't matter: it is refused."""
+        """Which of the two is named depends on the order, and doesn't
+        matter: it is refused."""
         for ids in (["abc", self.TOO_BIG], [self.TOO_BIG, "abc"]):
             with self.subTest(ids=ids):
                 self.assertIn(self.refusal(ids).code, {"invalid_choice", "invalid_pk_value"})
@@ -440,8 +455,8 @@ class SettingsLayoutTests(AlexsStashTestCase):
 
 
 class PinPageTestCase(AlexsStashTestCase):
-    """Alex's stash with a real 4-digit PIN, which the Change PIN and recovery code pages ask
-    for again (plan 03, S7)."""
+    """Alex's stash with a real 4-digit PIN, which the Change PIN and
+    recovery code pages ask for again (plan 03, S7)."""
 
     PIN = "1234"
 
@@ -452,8 +467,9 @@ class PinPageTestCase(AlexsStashTestCase):
         cls.user.save()
 
     def assert_locked_out_and_logged_out(self, response):
-        """Out to the PIN screen, which says the stash is locked. The session still names the
-        stash, so the PIN screen knows which one."""
+        """Out to the PIN screen, which says the stash is locked. The
+        session still names the stash, so the PIN screen knows which
+        one."""
         self.assertRedirects(response, reverse("login"), fetch_redirect_response=False)
         self.assertNotIn("_auth_user_id", self.client.session)
         self.assertEqual(self.client.session["stash"], settings.TEST_STASH)
@@ -521,8 +537,9 @@ class ChangePinPageTests(PinPageTestCase):
         self.assertNotIn("_auth_user_id", self.client.session)
 
     def test_the_right_pin_with_a_mistyped_new_pin_changes_nothing_but_clears_earlier_tries(self):
-        """The right current PIN shows it's the owner, so the earlier wrong tries are forgotten
-        (as after logging in), even though the new PIN has to be typed again."""
+        """The right current PIN shows it's the owner, so the earlier
+        wrong tries are forgotten (as after logging in), even though the
+        new PIN has to be typed again."""
         self.profile.failed_pin_attempts = security.LOCKOUT_THRESHOLD - 1
         self.profile.save(update_fields=["failed_pin_attempts"])
         response = self.client.post(
@@ -536,7 +553,8 @@ class ChangePinPageTests(PinPageTestCase):
         self.assertEqual(self.profile.failed_pin_attempts, 0)
 
     def test_a_current_pin_that_is_not_four_digits_gets_the_pin_rule_and_is_not_counted(self):
-        """It can't be the right PIN, and it's never checked against it, so it isn't a guess."""
+        """It can't be the right PIN, and it's never checked against it,
+        so it isn't a guess."""
         response = self.client.post(reverse("finance:change_pin"), {**self.WRONG, "current_pin": "12a4"})
         self.assertContains(response, "PIN must be exactly 4 digits.")
         self.profile.refresh_from_db()
@@ -570,9 +588,11 @@ class RecoveryCodePageTests(PinPageTestCase):
         self.assertContains(response, "Write this down now")
 
     def test_after_a_django_update_checking_the_pin_still_keeps_you_logged_in_for_the_code(self):
-        """Django would re-save the stored hash in a newer format when the PIN is checked. The
-        login is tied to that hash, so the next page logged you out, and the new code (already
-        replacing the old one) was never shown. Plan 03, S87: the PIN checks never save it."""
+        """Django would re-save the stored hash in a newer format when
+        the PIN is checked. The login is tied to that hash, so the next
+        page logged you out, and the new code (already replacing the old
+        one) was never shown. Plan 03, S87: the PIN checks never save
+        it."""
         with override_settings(PASSWORD_HASHERS=REHASHING_PASSWORD_HASHERS):
             response = self.generate(follow=True)
         self.assertContains(response, "Write this down now")
@@ -648,8 +668,8 @@ class RecoveryCodePageTests(PinPageTestCase):
         self.assertLess(error, generate_button)
 
     def test_no_state_of_the_page_leaks_template_syntax(self):
-        """The every-page check in test_pages.py only sees the empty form; the page has two
-        more states."""
+        """The every-page check in test_pages.py only sees the empty
+        form; the page has two more states."""
         url = reverse("finance:recovery_code")
         states = {"PIN box": (self.client.get(url), "This replaces your recovery code")}
         states["wrong PIN"] = (self.generate(pin="0000"), "That&#x27;s not your current PIN.")
@@ -664,8 +684,8 @@ class RecoveryCodePageTests(PinPageTestCase):
 
 
 class SharedLockoutTests(PinPageTestCase):
-    """Change PIN and the recovery code page count toward one lockout, so spreading the
-    guesses over both pages gives no extra tries."""
+    """Change PIN and the recovery code page count toward one lockout,
+    so spreading the guesses over both pages gives no extra tries."""
 
     def test_wrong_pins_on_both_pages_add_up_to_one_lockout(self):
         pages = [reverse("finance:change_pin"), reverse("finance:recovery_code")]
@@ -674,9 +694,10 @@ class SharedLockoutTests(PinPageTestCase):
         self.assert_locked_out_and_logged_out(self.client.post(pages[1], ChangePinPageTests.WRONG))
 
     def test_a_request_with_an_old_copy_of_the_profile_still_counts_toward_the_lockout(self):
-        """Plan 03, S75, through the real pages: the saved row is one try short of the
-        lockout, but the request's own copy (read before the stash's write lock) says no
-        tries yet. The try must still count, or it goes missing and the lockout never comes."""
+        """Plan 03, S75, through the real pages: the saved row is one
+        try short of the lockout, but the request's own copy (read
+        before the stash's write lock) says no tries yet. The try must
+        still count, or it goes missing and the lockout never comes."""
         pages = {
             "Change PIN": (reverse("finance:change_pin"), ChangePinPageTests.WRONG),
             "recovery code": (reverse("finance:recovery_code"), {"current_pin": "0000"}),
@@ -693,7 +714,8 @@ class SharedLockoutTests(PinPageTestCase):
 
 
 class RecoveryCodeNotInCookieTests(PinPageTestCase):
-    """1.14 (F45): a new recovery code never travels in the session cookie."""
+    """1.14 (F45): a new recovery code never travels in the session
+    cookie."""
 
     def test_the_code_is_shown_once_and_never_stored_in_the_session(self):
         with mock.patch.object(security, "regenerate_recovery_code", return_value="ABCD-EFGH-JKLM"):

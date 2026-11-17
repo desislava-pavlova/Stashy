@@ -4,7 +4,7 @@ function stashyCssVar(name) {
     return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
-// Read once: the viewer's number/date preferences (D10), set on <body> by base.html.
+// The viewer's number format (D10), set on <body> by base.html and read at each call.
 function stashyNumber(value, decimals) {
     const thousands = (document.body.dataset.thousandsSeparator || ' ').replace(/ /g, ' ');
     const decimalMark = document.body.dataset.decimalSeparator || '.';
@@ -15,24 +15,16 @@ function stashyNumber(value, decimals) {
     return fraction ? grouped + decimalMark + fraction : grouped;
 }
 
-function stashyDate(isoDate) {
-    const [year, month, day] = isoDate.split('-');
-    const order = (document.body.dataset.dateFormat || 'd/m/Y').toLowerCase();
-    if (order.indexOf('y') === 0) return year + '-' + month + '-' + day;
-    if (order.indexOf('m') === 0) return month + '/' + day + '/' + year;
-    return day + '/' + month + '/' + year;
-}
-
 (function () {
     if (!window.Chart) return;
 
     // Every chart on this site sits in an explicitly-sized wrapper div (e.g. .report-chart-wrap,
-    // .donut-canvas) so it can be resized from JS (Phase 13's per-report expand sizing) or CSS
-    // breakpoints - Chart.js only fills that wrapper's height when told not to preserve its own
+    // .donut-canvas) so it can be resized from JS (each report card sizes its own wrapper) or
+    // CSS breakpoints - Chart.js only fills that wrapper's height when told not to preserve its own
     // aspect ratio instead.
     Chart.defaults.maintainAspectRatio = false;
     // Reports charts size their own wrapper from the data specifically so every category/period
-    // label stays readable (Phase 13) - never thin them out automatically.
+    // label stays readable - never thin them out automatically.
     Chart.defaults.scales.category.ticks.autoSkip = false;
 
     Chart.defaults.scales.linear.ticks.callback = function (value) {

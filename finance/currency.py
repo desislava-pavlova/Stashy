@@ -1,9 +1,10 @@
 """Currencies and exchange rates (decision D2).
 
-Rates live in ExchangeRate rows: typed in by hand, or fetched when "Check rates" is pressed
-from Frankfurter - a free service, no API key, that republishes the European Central Bank's
-daily reference rates. Nothing is fetched in the background, so without internet Stashy
-simply keeps using the last rates it knows.
+Rates live in ExchangeRate rows: typed in by hand, or fetched when
+"Check rates" is pressed from Frankfurter - a free service, no API key,
+that republishes the European Central Bank's daily reference rates.
+Nothing is fetched in the background, so without internet Stashy simply
+keeps using the last rates it knows.
 """
 
 import json
@@ -58,12 +59,14 @@ CURRENCIES = {
     "TRY": "Turkish lira",
     "ZAR": "South African rand",
 }
-# Frankfurter no longer has the lev (Bulgaria uses the euro since 2026); its rate can still be typed in by hand.
+# Frankfurter no longer has the lev (Bulgaria uses the euro since 2026);
+# its rate can still be typed in by hand.
 NOT_ON_FRANKFURTER = {"BGN"}
 CURRENCY_CHOICES = [(code, f"{code} – {name}") for code, name in CURRENCIES.items()]
 
-# Symbol shown instead of the bare ISO code in an amount (the `moneyc` template filter).
-# A currency missing here just shows its code, e.g. "9.66 XYZ" - safe, if less pretty.
+# Symbol shown instead of the bare ISO code in an amount (the `moneyc`
+# template filter). A currency missing here just shows its code, e.g.
+# "9.66 XYZ" - safe, if less pretty.
 CURRENCY_SYMBOLS = {
     "USD": "$",
     "CAD": "$",
@@ -97,14 +100,16 @@ CURRENCY_SYMBOLS = {
     "MYR": "RM",
     "IDR": "Rp",
 }
-# Most local European currencies conventionally trail the number with a space ("9.66 €");
-# everything else (mostly Latin-American/Anglo currencies) is prefixed directly ("$9.66").
-# A simplification, not a full locale database - flag if a particular currency reads oddly.
+# Most local European currencies conventionally trail the number with a
+# space ("9.66 €"); everything else (mostly Latin-American/Anglo
+# currencies) is prefixed directly ("$9.66"). A simplification, not a
+# full locale database - flag if a particular currency reads oddly.
 SUFFIX_CURRENCIES = {"EUR", "BGN", "PLN", "SEK", "NOK", "DKK", "ISK", "CZK", "HUF", "RON"}
 
 
 def format_money(amount, currency_code, decimals=2, preferences=None):
-    """Format a signed amount with its currency's symbol: "$9.66", "-$9.66", "9.66 €"."""
+    """Format a signed amount with its currency's symbol: "$9.66",
+    "-$9.66", "9.66 €"."""
     amount = Decimal(str(amount))
     negative = amount < 0
     number = regional.format_number(abs(amount), decimals=decimals, preferences=preferences)
@@ -121,10 +126,12 @@ class KnownRate:
 
 
 class RateTable:
-    """The latest known rate from every currency into one target currency, loaded with one query.
+    """The latest known rate from every currency into one target
+    currency, loaded with one query.
 
-    A rate stored either way round counts (EUR->USD 1.16 also gives USD->EUR 1/1.16). The most
-    recent date wins; on the same date, a rate typed in by hand beats a fetched one.
+    A rate stored either way round counts (EUR->USD 1.16 also gives
+    USD->EUR 1/1.16). The most recent date wins; on the same date, a
+    rate typed in by hand beats a fetched one.
     """
 
     def __init__(self, target):
@@ -132,7 +139,8 @@ class RateTable:
         self._known = None
 
     def _load(self):
-        # Imported here: models imports this module (for CURRENCY_CHOICES) while it loads.
+        # Imported here: models imports this module (for
+        # CURRENCY_CHOICES) while it loads.
         from .models import ExchangeRate
 
         known = {}
@@ -155,7 +163,8 @@ class RateTable:
         return self._known.get(currency)
 
     def convert(self, amount, currency):
-        """`amount` of `currency` in the target currency, rounded to cents; None when no rate is known."""
+        """`amount` of `currency` in the target currency, rounded to
+        cents; None when no rate is known."""
         if currency == self.target:
             return amount
         known = self.known(currency)
@@ -165,7 +174,8 @@ class RateTable:
 def convert_balances(accounts, main_currency, rates=None):
     """Set .current_balance and .main_balance on each account.
 
-    Returns (their total in the main currency, the accounts left out because no rate is known).
+    Returns (their total in the main currency, the accounts left out
+    because no rate is known).
     """
     rates = rates or RateTable(main_currency)
     total, missing = ZERO, []
@@ -180,18 +190,22 @@ def convert_balances(accounts, main_currency, rates=None):
 
 
 class RateFetchError(Exception):
-    """Frankfurter couldn't be reached, or answered with something unusable."""
+    """Frankfurter couldn't be reached, or answered with something
+    unusable."""
 
 
 def fetch_latest_rates(main_currency, currencies):
-    """Fetch the latest rates from `main_currency` into each of `currencies` and store them.
+    """Fetch the latest rates from `main_currency` into each of
+    `currencies` and store them.
 
-    Returns (stored ExchangeRate rows, currencies Frankfurter has no rate for). Raises
-    RateFetchError when offline - nothing is stored then, so the previous rates stay in use.
-    The internet request finishes before anything is written, so the database is never
-    locked while waiting on the network.
+    Returns (stored ExchangeRate rows, currencies Frankfurter has no
+    rate for). Raises RateFetchError when offline - nothing is stored
+    then, so the previous rates stay in use. The internet request
+    finishes before anything is written, so the database is never locked
+    while waiting on the network.
     """
-    # Imported here: models imports this module (for CURRENCY_CHOICES) while it loads.
+    # Imported here: models imports this module (for CURRENCY_CHOICES)
+    # while it loads.
     from .models import ExchangeRate
 
     wanted = sorted(set(currencies) - {main_currency})
@@ -216,8 +230,9 @@ def fetch_latest_rates(main_currency, currencies):
         ) from error
 
     stored = []
-    # Short and only for the writes, on the stash's own database (`atomic()` alone would open
-    # it on `default`, the picker's empty placeholder).
+    # Short and only for the writes, on the stash's own database
+    # (`atomic()` alone would open it on `default`, the picker's empty
+    # placeholder).
     with (
         db_transaction.atomic(using=router.db_for_write(ExchangeRate)),
         system_action("Exchange rates fetched from Frankfurter (European Central Bank)"),

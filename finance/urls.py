@@ -1,3 +1,9 @@
+"""The finance app's URLs, grouped by area. Each is reversed as
+`finance:<name>`; the render check in tests/test_pages.py visits every
+one, so a new URL name has to be a page or be listed there with a
+reason.
+"""
+
 from django.urls import path
 
 from .views import (
@@ -60,10 +66,12 @@ urlpatterns = [
     path("accounts/export/", exports.export_accounts, name="export_accounts"),
     path("categories/export/", exports.export_categories, name="export_categories"),
     path("payees/export/", exports.export_payees, name="export_payees"),
-    # Reports. Every report's export is one view; the slugs are the keys of exports.REPORT_EXPORTS.
+    # Reports. Every report's export is one view; the slugs are the keys
+    # of exports.REPORT_EXPORTS.
     path("reports/", reports.reports_view, name="reports"),
     path("reports/export/<slug:report>/", exports.export_report, name="export_report"),
-    # Settings: the page itself saves the preferences; each other form on it has its own URL
+    # Settings: the page itself saves the preferences; each other form
+    # on it has its own URL
     path("settings/", settings_views.settings_view, name="settings"),
     path("settings/rates/check/", settings_views.check_rates, name="check_rates"),
     path("settings/backups/create/", settings_views.create_backup, name="create_backup"),

@@ -1,3 +1,8 @@
+"""The audit log in Django's admin: a read-only list of entries, and
+`AuditHistoryAdminMixin`, which makes every other admin's History button
+open that list filtered to the one row.
+"""
+
 from urllib.parse import urlencode
 
 from django.contrib import admin
@@ -16,9 +21,11 @@ def _text(value):
 
 
 def format_timestamp(value):
-    """The audit log's own timestamp column: year first and to the second, in the active time
-    zone (the viewer's own), with no milliseconds or offset. Unlike every other date/time in
-    the app, it never follows a date-format preference, since it reads like a database log."""
+    """The audit log's own timestamp column: year first and to the
+    second, in the active time zone (the viewer's own), with no
+    milliseconds or offset. Unlike every other date/time in the app, it
+    never follows a date-format preference, since it reads like a
+    database log."""
     if value is None or value == "":
         return ""
     local = timezone.localtime(value) if timezone.is_aware(value) else value
@@ -105,7 +112,7 @@ class AuditLogEntryAdmin(HugeNumberInAddressMixin, admin.ModelAdmin):
 
 
 class AuditHistoryAdminMixin:
-    """Point the admin's "History" button at this object's audit trail."""
+    """Point the admin's History button at the object's audit trail."""
 
     def history_view(self, request, object_id, extra_context=None):
         query = urlencode({"table": self.model._meta.db_table, "row_id": object_id})

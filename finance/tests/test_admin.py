@@ -1,7 +1,9 @@
-"""Rules the app's forms enforce also hold in the database (constraints, model validation)
-and in the Django admin: transfer categories, reminder amounts and intervals, and an
-account's currency once it has transactions. Also the admin's lists: a number in the address
-that the database or the calendar can't hold, and the number of queries a list makes."""
+"""Rules the app's forms enforce also hold in the database (constraints,
+model validation) and in the Django admin: transfer categories, reminder
+amounts and intervals, and an account's currency once it has
+transactions. Also the admin's lists: a number in the address that the
+database or the calendar can't hold, and the number of queries a list
+makes."""
 
 from datetime import date
 from decimal import Decimal
@@ -23,7 +25,8 @@ EXPENSE = Category.CategoryType.EXPENSE
 
 
 class AdminRuleTests(StashTestCase):
-    """2.8 (F54): rules the forms enforce now hold for the admin and the database too."""
+    """2.8 (F54): rules the forms enforce now hold for the admin and the
+    database too."""
 
     def test_a_transfer_category_needs_an_account(self):
         with self.assertRaises(IntegrityError), transaction.atomic(using=settings.TEST_STASH):
@@ -83,9 +86,9 @@ class AdminRuleTests(StashTestCase):
 
 
 class AdminHugeNumberTests(LoggedInAsSuperuserTestCase):
-    """S112: a value the database or the calendar can't hold, typed into an admin list's
-    address, used to be a 500 page. Django's own answer to a filter it can't use is a redirect
-    to the plain list."""
+    """S112: a value the database or the calendar can't hold, typed into
+    an admin list's address, used to be a 500 page. Django's own answer
+    to a filter it can't use is a redirect to the plain list."""
 
     HUGE = "9" * 30
 
@@ -112,8 +115,9 @@ class AdminHugeNumberTests(LoggedInAsSuperuserTestCase):
         self.assertEqual(len(response.context["cl"].result_list), 1)
 
     def test_every_admin_has_the_guard_ahead_of_djangos_own_list_code(self):
-        # Behind ModelAdmin in the bases, the mixin would be an instance check that passes and
-        # a method that never runs: ModelAdmin's own get_changelist_instance would answer first.
+        # Behind ModelAdmin in the bases, the mixin would be an instance
+        # check that passes and a method that never runs: ModelAdmin's
+        # own get_changelist_instance would answer first.
         for model, model_admin in admin.site._registry.items():
             with self.subTest(model=model._meta.label):
                 bases = type(model_admin).__mro__
@@ -128,8 +132,9 @@ class AdminHugeNumberTests(LoggedInAsSuperuserTestCase):
         self.assertNotIn(self.HUGE, message)
 
     def test_a_year_or_an_iso_year_the_calendar_cant_hold_goes_back_to_the_plain_list(self):
-        """Not a number SQLite refuses, but the same family: Django finds the other end of a year
-        by adding one to it, and the iso-year lookups check their value themselves. Both raise a
+        """Not a number SQLite refuses, but the same family: Django
+        finds the other end of a year by adding one to it, and the
+        iso-year lookups check their value themselves. Both raise a
         ValueError, which the mixin turns into the same redirect."""
         for list_name, field in (
             ("admin:finance_transaction_changelist", "date"),
@@ -145,10 +150,12 @@ class AdminHugeNumberTests(LoggedInAsSuperuserTestCase):
                     self.assert_redirected_to_the_plain_list(list_name, query)
 
     def test_a_date_past_the_end_of_the_calendar_goes_back_to_the_plain_list(self):
-        """Not a number SQLite refuses, but the same family. To find the other end of a date
-        range, Django adds a day or a month to the date typed, and the answer can fall past the
-        year 9999: that is an OverflowError too, and the mixin's second job. Year 0 and year
-        10000 are the two edges of what a date can hold, and Django refuses them itself."""
+        """Not a number SQLite refuses, but the same family. To find the
+        other end of a date range, Django adds a day or a month to the
+        date typed, and the answer can fall past the year 9999: that is
+        an OverflowError too, and the mixin's second job. Year 0 and
+        year 10000 are the two edges of what a date can hold, and Django
+        refuses them itself."""
         for list_name, field in (
             ("admin:finance_transaction_changelist", "date"),
             ("admin:audit_auditlogentry_changelist", "timestamp"),
@@ -170,16 +177,18 @@ class AdminHugeNumberTests(LoggedInAsSuperuserTestCase):
                 self.assertEqual(response.status_code, 200)
 
     def test_an_address_the_error_flag_is_already_on_gets_a_page_not_another_redirect(self):
-        """Django sends a refused address to `?e=1`. If that address is refused too, something
-        else is wrong, and Django shows its "Database error" page instead of redirecting forever:
-        the mixin must not get in the way of that."""
+        """Django sends a refused address to `?e=1`. If that address is
+        refused too, something else is wrong, and Django shows its
+        "Database error" page instead of redirecting forever: the mixin
+        must not get in the way of that."""
         response = self.client.get(reverse("admin:finance_transaction_changelist"), {"e": "1", "id__in": self.HUGE})
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "admin/invalid_setup.html")
 
 
 class AdminAccountListTests(LoggedInAsSuperuserTestCase):
-    """8.15 (F56): the admin's account list computes every balance in the same query."""
+    """8.15 (F56): the admin's account list computes every balance in
+    the same query."""
 
     def queries_with(self, count):
         create_accounts_with_a_transaction(count)

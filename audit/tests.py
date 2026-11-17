@@ -1,6 +1,7 @@
-"""The audit log: what each save and delete records (who, what and why), imports and cascaded
-deletes, the read-only admin and its timestamps, audit_suspended(), and the after-commit step
-on the stash's own database."""
+"""The audit log: what each save and delete records (who, what and why),
+imports and cascaded deletes, the read-only admin and its timestamps,
+audit_suspended(), and the after-commit step on the stash's own
+database."""
 
 import threading
 from datetime import UTC, date, datetime
@@ -58,7 +59,8 @@ class ModelChangeLoggingTests(AuditTestCase):
         self.assertEqual(entry.row_label, "Cash")
         self.assertEqual(entry.values["name"], "Cash")
         self.assertEqual(entry.values["account_type"], "cash")
-        # The opening balance becomes its own transaction, logged as automatic (D1).
+        # The opening balance becomes its own transaction, logged as
+        # automatic (D1).
         opening = self.entries(Transaction).get()
         self.assertEqual((opening.source, opening.values["amount"]), ("system", "10.5"))
         self.assertEqual(opening.operation, entry.operation)
@@ -84,7 +86,8 @@ class ModelChangeLoggingTests(AuditTestCase):
         by_column = {row.column: (row.old_value, row.new_value) for row in rows}
         self.assertEqual(by_column["name"], ("Checking", "Savings"))
         self.assertEqual(by_column["institution"], ("Old Bank", "New Bank"))
-        # Both columns changed in the same save() - same operation, same timestamp.
+        # Both columns changed in the same save() - same operation, same
+        # timestamp.
         self.assertEqual(len({row.operation for row in rows}), 1)
         self.assertEqual(len({row.timestamp for row in rows}), 1)
 
@@ -108,8 +111,9 @@ class ModelChangeLoggingTests(AuditTestCase):
         self.assertEqual((entry.source, entry.reason), ("system", "Nightly cleanup"))
 
     def test_a_new_payee_is_created_automatically_and_grouped_with_the_users_save(self):
-        # Phase 6: memory is computed live from history, not a cached field, so a transaction
-        # save no longer triggers a follow-up Payee update - only its one-time auto-creation.
+        # Memory is computed live from history, not a cached field, so a
+        # transaction save triggers no follow-up Payee update - only its
+        # one-time auto-creation.
         account = Account.objects.create(name="Checking")
         response = self.client.post(
             reverse("finance:transaction_add"),
@@ -181,11 +185,13 @@ class DeleteLoggingTests(AuditTestCase):
         deletes = self.entries(action=Action.DELETE)
         self.assertEqual(deletes.filter(table="finance_transaction").count(), 3)
         self.assertEqual(deletes.filter(table="finance_importbatch").count(), 1)
-        # The account's own transfer category (D7) is cascade-deleted along with it.
+        # The account's own transfer category (D7) is cascade-deleted
+        # along with it.
         self.assertEqual(deletes.filter(table="finance_category").count(), 1)
         self.assertEqual(deletes.filter(table="finance_account").get().values["name"], "Checking")
         self.assertEqual(len(set(self.entries().values_list("operation", flat=True))), 1)
-        # Transfer categories are never shared across accounts, so nothing elsewhere needs its link cleared.
+        # Transfer categories are never shared across accounts, so
+        # nothing elsewhere needs its link cleared.
         self.assertFalse(self.entries(action=Action.UPDATE).exists())
 
     def test_deleted_record_keeps_its_full_values(self):
@@ -245,7 +251,8 @@ class AuditAdminTests(AuditTestCase):
 
 
 class OnCommitUsesTheStashTests(LoggedInWithAccountTestCase):
-    """1.1 (F42): the audit log's after-commit step waits on the stash's own database."""
+    """1.1 (F42): the audit log's after-commit step waits on the stash's
+    own database."""
 
     def test_cleared_references_wait_for_the_routed_database(self):
         payee = Payee.objects.create(name="Corner shop")
@@ -260,7 +267,7 @@ class OnCommitUsesTheStashTests(LoggedInWithAccountTestCase):
 
 
 class AuditSkipsNameKeyTests(StashTestCase):
-    """name_key only repeats the name, so the audit log leaves it out."""
+    """name_key only repeats the name, so the audit log skips it."""
 
     def test_neither_inserts_nor_renames_log_the_key(self):
         payee = Payee.objects.create(name="Lidl")
@@ -272,7 +279,8 @@ class AuditSkipsNameKeyTests(StashTestCase):
 
 
 class AuditSuspendedTests(StashTestCase):
-    """6.3 (F17): the audit app owns its own off switch, and it affects only this thread."""
+    """6.3 (F17): the audit app owns its own off switch, and it affects
+    only this thread."""
 
     def test_nothing_is_logged_inside_the_block(self):
         before = AuditLogEntry.objects.count()

@@ -1,3 +1,10 @@
+"""The accounts pages: the list with net worth, an account's register,
+add/edit/delete, and the Transfer and Reconcile flows that start from an
+account. The rules live in `forms.py` (the opening balance, a
+transfer), the models and `services/reconciliation.py`; a view reads the
+request and picks the template.
+"""
+
 from django.contrib import messages
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse_lazy
@@ -46,8 +53,9 @@ def account_detail(request, pk):
     account = get_object_or_404(Account, pk=pk)
     transactions = account.transactions.select_related("category__parent", "payee")
     transactions, sort, sort_next = _sorted(request, transactions, ACCOUNT_REGISTER_SORT_FIELDS)
-    # The register has no date range - it always shows the account's whole history - so it
-    # follows the Transactions page's rule for an open range and splits into pages.
+    # The register has no date range - it always shows the account's
+    # whole history - so it follows the Transactions page's rule for an
+    # open range and splits into pages.
     rows, page_obj = _paged(request, transactions, split=True)
     return render(
         request,
@@ -94,7 +102,8 @@ class AccountDeleteView(DeleteView):
 
 
 def account_transfer(request, pk):
-    """The account page's Transfer button (D7): moves money between two accounts as a paired transaction."""
+    """The account page's Transfer button (D7): moves money between two
+    accounts as a paired transaction."""
     account = get_object_or_404(Account, pk=pk)
     if request.method == "POST":
         form = TransferForm(request.POST, from_account=account)
@@ -114,9 +123,10 @@ def _reconcile_review_context(account, statement_date, statement_balance, checke
         account.transactions.filter(reconciled=False, date__lte=statement_date).order_by("date", "transaction_number")
     )
     if checked_ids is None:
-        # First visit to the checklist starts with nothing checked - use "Mark all" if the
-        # statement covers everything. A retry after an unaccepted-difference error always
-        # passes the exact set actually submitted instead, even if that's empty.
+        # First visit to the checklist starts with nothing checked - use
+        # "Mark all" if the statement covers everything. A retry after
+        # an unaccepted-difference error always passes the exact set
+        # actually submitted instead, even if that's empty.
         checked_ids = set()
     for txn in candidates:
         txn.was_checked = str(txn.pk) in checked_ids
@@ -136,15 +146,17 @@ def _reconcile_review_context(account, statement_date, statement_balance, checke
 
 
 def account_reconcile(request, pk):
-    """The account page's Reconcile button: a Quicken-style two-step flow - state the
-    statement's ending balance and date, then check off the transactions it covers."""
+    """The account page's Reconcile button: a Quicken-style two-step
+    flow - state the statement's ending balance and date, then check off
+    the transactions it covers."""
     account = get_object_or_404(Account, pk=pk)
 
     if request.method == "POST" and request.POST.get("stage") == "finish":
         finish_form = ReconcileFinishForm(request.POST, account=account)
         if not finish_form.is_valid():
-            # Only a tampered or half-sent page gets here (the fields are hidden), or one whose
-            # transactions were reconciled elsewhere meanwhile - start over from step 1.
+            # Only a tampered or half-sent page gets here (the fields
+            # are hidden), or one whose transactions were reconciled
+            # elsewhere meanwhile - start over from step 1.
             messages.error(request, "Something in that reconciliation didn't come through. Please start it again.")
             return render(
                 request,

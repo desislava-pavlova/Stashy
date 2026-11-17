@@ -1,3 +1,9 @@
+"""The Transactions pages: the filtered, sorted and paged list; add,
+edit and delete (a reminder's Enter lands on the same form); and the
+quick save behind the list's Edit mode. The date range is worked out by
+`reporting.resolve_range()`, the same as on Reports.
+"""
+
 from datetime import date
 from urllib.parse import urlencode
 
@@ -22,9 +28,10 @@ from ..money import ZERO
 from ..reporting import EARLIEST_RANGE_KEY, resolve_range
 from ._helpers import AMOUNT_SORT_COLUMNS, _as_id, _as_ids, _paged, _safe_next, _sorted
 
-# Reports' date-range presets, plus "All dates": no date limits at all, so even a transaction
-# dated in the future by mistake shows up. It takes the place of Reports' "Earliest to date",
-# which a chart needs (it has to start somewhere) but a register doesn't.
+# Reports' date-range presets, plus "All dates": no date limits at all,
+# so even a transaction dated in the future by mistake shows up. It
+# takes the place of Reports' "Earliest to date", which a chart needs
+# (it has to start somewhere) but a register doesn't.
 TRANSACTION_RANGE_CHOICES = [
     ("", "All dates"),
     *(choice for choice in DateRangeFilterForm.RANGE_CHOICES if choice[0] != EARLIEST_RANGE_KEY),
@@ -42,25 +49,29 @@ TRANSACTION_LIST_SORT_FIELDS = {
 
 
 def _longer_than_a_year(start, end):
-    """Whether a date range is long enough to be split into pages: longer than one year, or
-    open at either end ("All time"). A whole calendar year, 01/01 to 31/12, is not."""
+    """Whether a date range is long enough to be split into pages:
+    longer than one year, or open at either end ("All time"). A whole
+    calendar year, 01/01 to 31/12, is not."""
     if start is None or end is None:
         return True
     try:
         return end >= start + relativedelta(years=1)
     except (ValueError, OverflowError):
-        # A start in year 9999 has no "a year later": nothing can be longer than a year after it.
+        # A start in year 9999 has no "a year later": nothing can be
+        # longer than a year after it.
         return False
 
 
 def _filtered_transactions(request):
-    """Every filter the transaction list applies, shared with its CSV/XLSX export so what you
-    export always matches what you're currently looking at."""
+    """Every filter the transaction list applies, shared with its
+    CSV/XLSX export so what you export always matches what you're
+    currently looking at."""
     transactions = Transaction.objects.select_related("account", "category__parent", "payee")
 
     account_id = request.GET.get("account", "")
-    # Category is multi-select - one or more "category" values, any mix of digit category ids
-    # and the literal "none" for uncategorized, matched with OR.
+    # Category is multi-select - one or more "category" values, any mix
+    # of digit category ids and the literal "none" for uncategorized,
+    # matched with OR.
     category_values = request.GET.getlist("category")
     status = request.GET.get("status", "")
     search = request.GET.get("q", "").strip()
@@ -78,10 +89,12 @@ def _filtered_transactions(request):
     elif range_key:
         start, end, _ = resolve_range({"range": range_key})
     elif "range" in request.GET:
-        # "All dates". The form still sends its date boxes, holding the previous range's dates.
+        # "All dates". The form still sends its date boxes, holding the
+        # previous range's dates.
         start = end = None
     elif start is None and end is None:
-        # Default view: this year, until you explicitly ask for something else.
+        # Default view: this year, until you explicitly ask for
+        # something else.
         start, end, _ = resolve_range({"range": "this_year"})
         range_key = "this_year"
     else:
@@ -126,9 +139,10 @@ def _filtered_transactions(request):
 def transaction_list(request):
     transactions, filters = _filtered_transactions(request)
     transactions, sort, sort_next = _sorted(request, transactions, TRANSACTION_LIST_SORT_FIELDS)
-    # Every page shows the total of everything the filters match, so it's taken before paging.
-    # It mixes currencies across accounts without conversion, same known simplification as the
-    # accounts page's own net worth total (D2) - accurate for a single-currency setup.
+    # Every page shows the total of everything the filters match, so
+    # it's taken before paging. It adds amounts across accounts
+    # without converting currencies, so it is only exact for a
+    # single-currency stash.
     total_amount = transactions.aggregate(total=Sum("amount"))["total"] or ZERO
     rows, page_obj = _paged(request, transactions, split=_longer_than_a_year(filters["start"], filters["end"]))
 
@@ -151,28 +165,32 @@ def transaction_list(request):
         "page_obj": page_obj,
         "transaction_count": page_obj.paginator.count if page_obj else len(rows),
         "total_amount": total_amount,
-        # Mixed currencies have no one true symbol either - the main currency is the same
-        # stand-in the accounts page's own net worth total already uses (D2).
+        # Mixed currencies have no one true symbol either - the total
+        # is shown with the main currency's symbol as a stand-in.
         "main_currency": request.stashy_profile.main_currency,
         "accounts": Account.objects.all(),
-        # Income -> Expense -> Transfer, each main category with its own subcategories right
-        # under it - the category list page's own grouping, reused so the checkbox dropdown
-        # reads exactly like that page.
+        # Income -> Expense -> Transfer, each main category with its own
+        # subcategories right under it - the category list page's own
+        # grouping, reused so the checkbox dropdown reads exactly like
+        # that page.
         "category_groups": category_groups,
         "category_filter_label": category_filter_label,
-        # Edit mode's per-row category <select> - same categories, same order, as the checkbox
-        # filter above (just flattened and stripped of transfer/system ones, which - like the
-        # transaction form - aren't picked by hand); built from the groups already fetched
-        # above rather than a second query.
+        # Edit mode's per-row category <select> - same categories, same
+        # order, as the checkbox filter above (just flattened and
+        # stripped of transfer/system ones, which - like the transaction
+        # form - aren't picked by hand); built from the groups already
+        # fetched above rather than a second query.
         "edit_categories": [
             category for group in category_groups for category in group["categories"] if category.account_id is None
         ],
         "selected_account": filters["account_id"],
         "selected_category_values": set(filters["category_values"]),
         "include_uncategorized": include_uncategorized,
-        # The "+ subcategories" chip only means something when it's unambiguous which one
-        # category it's talking about - still how the dashboard's own drill-down link (the
-        # only thing that sets with_subcategories) always arrives here, one category at a time.
+        # The "+ subcategories" chip only means something when it's
+        # unambiguous which one category it's talking about - still how
+        # the dashboard's own drill-down link (the only thing that sets
+        # with_subcategories) always arrives here, one category at a
+        # time.
         "selected_category_obj": (
             selected_categories[0]
             if filters["with_subcategories"] and len(selected_categories) == 1 and not filters["include_uncategorized"]
@@ -196,7 +214,8 @@ def transaction_form_view(request, pk=None):
     next_url = _safe_next(request, request.POST.get("next") or request.GET.get("next", ""))
     reminder = None
     reminder_id = request.POST.get("reminder") or request.GET.get("reminder")
-    # Only for a brand-new transaction - editing an existing one never carries a reminder link.
+    # Only for a brand-new transaction - editing an existing one never
+    # carries a reminder link.
     if reminder_id and not instance:
         reminder = get_object_or_404(Reminder, pk=_as_id(reminder_id))
     initial = {}
@@ -204,16 +223,17 @@ def transaction_form_view(request, pk=None):
         initial["payee_name"] = instance.payee.name
     if not instance:
         if reminder:
-            # A reminder's "Enter" - review/adjust before saving, rather than silently creating
-            # the transaction, so a reminder with no fixed amount can still be entered.
+            # A reminder's "Enter" - review/adjust before saving, rather
+            # than silently creating the transaction, so a reminder with
+            # no fixed amount can still be entered.
             initial["account"] = reminder.account_id
             if reminder.payee_id:
                 initial["payee_name"] = reminder.payee.name
             initial["category"] = reminder.category_id
             initial["amount"] = reminder.signed_amount()
-            # Prefer the memo you actually used last time for this exact payee + category
-            # combo (the payee's memorized history) over the reminder's own generic notes,
-            # if one exists.
+            # Prefer the memo you actually used last time for this exact
+            # payee + category combo (the payee's memorized history)
+            # over the reminder's own generic notes, if one exists.
             remembered_memo = None
             if reminder.payee_id and reminder.category_id:
                 match = next(
@@ -227,14 +247,15 @@ def transaction_form_view(request, pk=None):
             default_account = request.GET.get("account")
             if default_account:
                 initial["account"] = default_account
-            # "Save and add another" hands back the date just used; anything unparseable
-            # falls back to today.
+            # "Save and add another" hands back the date just used;
+            # anything unparseable falls back to today.
             try:
                 initial["date"] = date.fromisoformat(request.GET.get("date", ""))
             except ValueError:
                 initial["date"] = timezone.localdate()
-            # A preview of what Stashy would assign anyway - change the date and clear the
-            # number to have it recomputed for that date's year instead.
+            # A preview of what Stashy would assign anyway - change the
+            # date and clear the number to have it recomputed for that
+            # date's year instead.
             initial["transaction_number"] = Transaction.next_number(initial["date"])
 
     if request.method == "POST":
@@ -242,8 +263,9 @@ def transaction_form_view(request, pk=None):
         if form.is_valid():
             account = form.cleaned_data["account"]
             if not account.is_active and request.POST.get("confirm_inactive_account") != "1":
-                # Don't silently reactivate, or silently block, an inactive account someone
-                # is trying to use - ask, and only act once they say yes.
+                # Don't silently reactivate, or silently block, an
+                # inactive account someone is trying to use - ask, and
+                # only act once they say yes.
                 return render(
                     request,
                     "finance/transaction_form.html",
@@ -262,8 +284,9 @@ def transaction_form_view(request, pk=None):
                     account.save(update_fields=["is_active"])
             txn = form.save()
             if reminder:
-                # Named before mark_entered(): it moves a recurring reminder's due date on, and the
-                # message must say which date was paid (the same order reminder_skip uses).
+                # Named before mark_entered(): it moves a recurring
+                # reminder's due date on, and the message must say which
+                # date was paid (the same order reminder_skip uses).
                 label = str(reminder)
                 reminder.mark_entered(txn)
                 if reminder.frequency == Reminder.Frequency.ONE_TIME:
@@ -275,14 +298,16 @@ def transaction_form_view(request, pk=None):
             messages.success(request, "Transaction saved.")
             if not instance:
                 if "save_and_add" in request.POST:
-                    # Straight back to a blank form on the same account, ready for the next one.
+                    # Straight back to a blank form on the same account,
+                    # ready for the next one.
                     query = {"account": txn.account_id, "date": txn.date.isoformat()}
                     if next_url:
                         query["next"] = next_url
                     return redirect(f"{reverse('finance:transaction_add')}?{urlencode(query)}")
                 return redirect("finance:transaction_list")
-            # Editing: back to wherever you opened this from (the account register or the
-            # all-accounts list) if we know it; otherwise the transaction's own account.
+            # Editing: back to wherever you opened this from (the
+            # account register or the all-accounts list) if we know it;
+            # otherwise the transaction's own account.
             return redirect(next_url or reverse("finance:account_detail", kwargs={"pk": txn.account_id}))
     else:
         form = TransactionForm(instance=instance, initial=initial)
@@ -301,9 +326,10 @@ def transaction_form_view(request, pk=None):
 
 
 def _quick_edit_row(txn):
-    """The formatted values Edit mode swaps back in for a row's view-mode cells once a
-    field's autosave succeeds - same formatting the plain list rendering uses, so toggling
-    Edit mode off shows exactly what a full page reload would."""
+    """The formatted values Edit mode swaps back in for a row's
+    view-mode cells once a field's autosave succeeds - same formatting
+    the plain list rendering uses, so toggling Edit mode off shows
+    exactly what a full page reload would."""
     return {
         "date": regional.format_date(txn.date),
         "transaction_number": txn.transaction_number if txn.transaction_number is not None else "—",
@@ -319,9 +345,10 @@ def _quick_edit_row(txn):
 
 @require_POST
 def transaction_quick_edit(request, pk):
-    """Autosaves one field-change from the transactions list's Edit mode - reuses
-    TransactionForm so validation and payee resolution stay identical to the full edit page,
-    just without a page navigation."""
+    """Autosaves one field-change from the transactions list's Edit
+    mode - reuses TransactionForm so validation and payee resolution
+    stay identical to the full edit page, just without a page
+    navigation."""
     instance = get_object_or_404(Transaction, pk=pk)
     form = TransactionForm(request.POST, instance=instance)
     if not form.is_valid():
@@ -329,9 +356,10 @@ def transaction_quick_edit(request, pk):
         return JsonResponse({"ok": False, "errors": errors}, status=400)
     account = form.cleaned_data["account"]
     if not account.is_active:
-        # The full edit page offers a confirm-and-reactivate dialog for this; Edit mode's
-        # per-row autosave has no room for a confirmation step, so it points you there instead
-        # of silently reactivating an account nobody asked to reactivate.
+        # The full edit page offers a confirm-and-reactivate dialog for
+        # this; Edit mode's per-row autosave has no room for a
+        # confirmation step, so it points you there instead of silently
+        # reactivating an account nobody asked to reactivate.
         return JsonResponse(
             {
                 "ok": False,
@@ -353,7 +381,8 @@ class TransactionDeleteView(DeleteView):
         return ctx
 
     def get_success_url(self):
-        # Back to wherever the delete link was opened from (e.g. the all-accounts list),
-        # same as editing already does - otherwise falls back to the transaction's own account.
+        # Back to wherever the delete link was opened from (e.g. the
+        # all-accounts list), same as editing already does - otherwise
+        # falls back to the transaction's own account.
         next_url = _safe_next(self.request, self.request.POST.get("next", ""))
         return next_url or reverse("finance:account_detail", kwargs={"pk": self.object.account_id})

@@ -1,5 +1,5 @@
-"""Money and regional formats: reading typed amounts, the money filter, date formats, and
-each stash's own preferences."""
+"""Money and regional formats: reading typed amounts, the money filter,
+date formats, and each stash's own preferences."""
 
 import zoneinfo
 from datetime import date
@@ -49,7 +49,8 @@ class ParseAmountTests(SimpleTestCase):
 
 class ToCentTests(SimpleTestCase):
     def test_a_tiny_negative_rounds_to_zero_without_its_sign(self):
-        # S95: Decimal("-0.0033") used to come back as Decimal("-0.00"), which the CSV wrote as "-0.00".
+        # S95: Decimal("-0.0033") used to come back as Decimal("-0.00"),
+        # which the CSV wrote as "-0.00".
         for value in (Decimal("-0.0033"), Decimal("-0.004"), Decimal("-0.00"), Decimal("-5.55e-17")):
             with self.subTest(value=value):
                 result = to_cent(value)
@@ -107,7 +108,8 @@ class RegionalPreferencesTests(SimpleTestCase):
         self.assertEqual(regional.number_format_from_separators(".", ","), "dot_comma")
 
     def test_an_older_zone_name_becomes_the_one_the_list_has(self):
-        """Plan 03, S77: the time zone database keeps old names as links to the current one."""
+        """Plan 03, S77: the time zone database keeps old names as links
+        to the current one."""
         cases = [
             ("Europe/Kiev", "Europe/Kyiv"),
             ("Asia/Calcutta", "Asia/Kolkata"),
@@ -120,8 +122,9 @@ class RegionalPreferencesTests(SimpleTestCase):
         self.assertIsNone(regional.listed_zone("Mars/Olympus_Mons"))
 
     def test_the_zone_detected_on_this_computer_is_always_one_the_list_has(self):
-        """An English (US) Windows on Sofia's clock: tzlocal says Europe/Kiev, and the US has
-        no zone on that clock, so before S77 the old name was saved as it was."""
+        """An English (US) Windows on Sofia's clock: tzlocal says
+        Europe/Kiev, and the US has no zone on that clock, so before S77
+        the old name was saved as it was."""
         for country, expected in [("US", "Europe/Kyiv"), ("BG", "Europe/Sofia")]:
             with (
                 self.subTest(country=country),
@@ -136,8 +139,9 @@ class RegionalPreferencesTests(SimpleTestCase):
         self.assertNotIn("Mars/Olympus_Mons", regional.time_zone_choices(keep="Mars/Olympus_Mons"))
 
     def test_text_that_is_no_zone_never_joins_the_list_and_never_raises(self):
-        """The stored zone is plain text, so a hand-edited stash can hold anything: a path, the
-        name of a folder or of another file in the time zone database."""
+        """The stored zone is plain text, so a hand-edited stash can
+        hold anything: a path, the name of a folder or of another file
+        in the time zone database."""
         listed = regional.time_zone_choices()
         for text in ("../../etc/passwd", "/etc/passwd", "Europe", "zone.tab", "tzdata.zi", "", None):
             with self.subTest(text=text):
@@ -157,8 +161,9 @@ class RegionalPreferencesTests(SimpleTestCase):
             self.assertEqual(regional.time_zone_choices(), sorted(zoneinfo.available_timezones()))
 
     def detect_with(self, **tzlocal_gives):
-        """What this computer's settings give when tzlocal answers with `return_value=` a zone
-        name, or fails with `side_effect=` an error."""
+        """What this computer's settings give when tzlocal answers with
+        `return_value=` a zone name, or fails with `side_effect=` an
+        error."""
         with (
             mock.patch.object(regional, "_read_windows_settings", return_value=({}, "BG")),
             mock.patch.object(regional.tzlocal, "get_localzone_name", **tzlocal_gives),
@@ -186,8 +191,9 @@ class ProfileTests(StashTestCase):
         self.assertEqual(Profile.objects.filter(user=user).count(), 1)
 
     def test_a_profile_made_on_first_use_gets_the_listed_name_of_the_computers_zone(self):
-        """Plan 03, S77: a stash that gets its Profile when its user first logs in (not when it
-        was created) takes the same translated name."""
+        """Plan 03, S77: a stash that gets its Profile when its user
+        first logs in (not when it was created) takes the same
+        translated name."""
         user = get_user_model().objects.create_user("tester", password="not-a-real-password-123")
         with (
             mock.patch.object(regional, "_read_windows_settings", return_value=({}, "US")),

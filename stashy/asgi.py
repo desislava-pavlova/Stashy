@@ -1,10 +1,5 @@
-"""
-ASGI config for stashy project.
-
-It exposes the ASGI callable as a module-level variable named ``application``.
-
-For more information on this file, see
-https://docs.djangoproject.com/en/6.1/howto/deployment/asgi/
+"""The ASGI entry point, as Django generates it. Nothing uses it:
+Waitress serves Stashy through wsgi.py.
 """
 
 import os

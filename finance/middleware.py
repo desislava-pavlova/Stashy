@@ -1,3 +1,17 @@
+"""The middleware that settles, before any view runs, which stash a
+request uses and whether it may go on.
+
+StashSelectionMiddleware makes the session's stash the current one for
+the database router; RequireStashMiddleware sends someone with no stash
+to the picker; RegionalPreferencesMiddleware loads the stash's Profile
+(`request.stashy_profile`); RequireSetupMiddleware sends a new stash to
+the welcome wizard; StashAtomicRequestMiddleware wraps the view in a
+transaction on the active stash only. The order they run in is
+MIDDLEWARE in settings/base.py, and it matters. A view never routes
+queries itself: it only reads or sets the session's stash (the picker
+does), and StashSelectionMiddleware does the routing.
+"""
+
 from django.conf import settings
 from django.db import DEFAULT_DB_ALIAS, transaction
 from django.shortcuts import redirect
@@ -17,18 +31,22 @@ def _folder_of(url):
 class StashAtomicRequestMiddleware:
     """ATOMIC_REQUESTS, for the one stash this request uses.
 
-    Django's own ATOMIC_REQUESTS wraps the view in atomic() for every database that has the
-    flag. Stashes are registered at runtime and any of them could be the active one, so the
-    flag is off for them (registry.ensure_registered) and this wraps the view for the active
-    stash only - every change the view makes is kept or rolled back together, and the other
-    stashes' files are never locked. Before a stash is chosen there's no active alias, and
-    Django's normal handling of `default` applies.
+    Django's own ATOMIC_REQUESTS wraps the view in atomic() for every
+    database that has the flag. Stashes are registered at runtime and
+    any of them could be the active one, so the flag is off for them
+    (registry.ensure_registered) and this wraps the view for the active
+    stash only - every change the view makes is kept or rolled back
+    together, and the other stashes' files are never locked. Before a
+    stash is chosen there's no active alias, and Django's normal
+    handling of `default` applies.
 
-    It works in process_view (the last view middleware to run, so CSRF has already been
-    checked) and calls the view itself inside the transaction: Django skips its own
-    atomic-wrapping when a view middleware returns the response. A view marked with
-    @transaction.non_atomic_requests (no `using`) runs without a transaction, because the
-    stash's alias isn't known when the decorator runs.
+    It works in process_view (the last view middleware to run, so CSRF
+    has already been checked) and calls the view itself inside the
+    transaction: Django skips its own atomic-wrapping when a view
+    middleware returns the response. A view marked with
+    @transaction.non_atomic_requests (no `using`) runs without a
+    transaction, because the stash's alias isn't known when the
+    decorator runs.
     """
 
     def __init__(self, get_response):
@@ -49,14 +67,15 @@ class StashAtomicRequestMiddleware:
 
 
 class StashSelectionMiddleware:
-    """Decides which stash's database this request's ORM queries land in, from the session
-    rather than a file read once at process start - what lets someone switch stashes without
-    closing and reopening Stashy.bat.
-    Must run before AuthenticationMiddleware, since even loading request.user is itself a
-    routed query. Makes the session's stash the current one for the rest of the request
-    (finance.db_router.use_stash), then puts back what was current before - nothing, in a
-    server thread - so a worker thread never carries a stale stash into a later request it
-    happens to handle."""
+    """Decides which stash's database this request's ORM queries land
+    in, from the session rather than a file read once at process start -
+    what lets someone switch stashes without closing and reopening
+    Stashy.bat. Must run before AuthenticationMiddleware, since even
+    loading request.user is itself a routed query. Makes the session's
+    stash the current one for the rest of the request
+    (finance.db_router.use_stash), then puts back what was current
+    before - nothing, in a server thread - so a worker thread never
+    carries a stale stash into a later request it happens to handle."""
 
     def __init__(self, get_response):
         self.get_response = get_response
@@ -67,10 +86,11 @@ class StashSelectionMiddleware:
             if registry.is_stash(alias):
                 registry.ensure_registered(alias)
             else:
-                # Not one of the stashes on disk (its folder was deleted by hand, or the name
-                # isn't a stash's name at all: the session is signed, but a name is checked like
-                # the last-stash cookie's) - treat it as none chosen rather than routing queries
-                # at a dead or foreign alias.
+                # Not one of the stashes on disk (its folder was deleted
+                # by hand, or the name isn't a stash's name at all: the
+                # session is signed, but a name is checked like the
+                # last-stash cookie's) - treat it as none chosen rather
+                # than routing queries at a dead or foreign alias.
                 alias = None
                 request.session.pop("stash", None)
         with db_router.use_stash(alias):
@@ -78,36 +98,41 @@ class StashSelectionMiddleware:
 
 
 class RequireStashMiddleware:
-    """Nothing in the app is reachable until a stash has been
-    chosen for this session. Everything redirects to the picker until then, except the
-    picker's own pages, static files, and the admin (useful for a from-scratch troubleshooting
-    session).
+    """Nothing in the app is reachable until a stash has been chosen for
+    this session. Everything redirects to the picker until then, except
+    the picker's own pages, static files, and the admin (useful for a
+    from-scratch troubleshooting session).
 
-    Before falling back to the picker, check the "last stash used" cookie -
-    logging out flushes the session (and with it session['stash']) but that cookie survives,
-    so Stashy opens straight on that stash's own PIN screen instead of the picker. Redirects
-    back to the same URL rather than just setting the session and carrying on, so the *next*
-    request is the one StashSelectionMiddleware (which runs before this one) sees with the
-    session already populated - otherwise this request's own queries would still be routed to
-    the stash it chose before the fallback (none).
+    Before falling back to the picker, check the "last stash used"
+    cookie - logging out flushes the session (and with it
+    session['stash']) but that cookie survives, so Stashy opens straight
+    on that stash's own PIN screen instead of the picker. Redirects back
+    to the same URL rather than just setting the session and carrying
+    on, so the *next* request is the one StashSelectionMiddleware (which
+    runs before this one) sees with the session already populated -
+    otherwise this request's own queries would still be routed to the
+    stash it chose before the fallback (none).
 
-    The cookie isn't signed, so its value counts only if it's one of the stash names
-    registry.list_stashes() finds: never a path to a database somewhere else."""
+    The cookie isn't signed, so its value counts only if it's one of the
+    stash names registry.list_stashes() finds: never a path to a
+    database somewhere else."""
 
     def __init__(self, get_response):
         self.get_response = get_response
 
     @staticmethod
     def exempt_prefixes():
-        """The picker's own pages, static files and the admin. Built from the URL names, so
-        renaming a URL can't silently lock its page behind the picker."""
+        """The picker's own pages, static files and the admin. Built
+        from the URL names, so renaming a URL can't silently lock its
+        page behind the picker."""
         return (reverse("stash_picker"), settings.STATIC_URL, reverse("admin:index"))
 
     @staticmethod
     def _same_page(request):
-        """The URL this request asked for, unless it leads to another site: a path starting
-        with // ("//example.com/") is a link to example.com, so a crafted link to Stashy would
-        otherwise bounce the browser there. Then the PIN screen instead."""
+        """The URL this request asked for, unless it leads to another
+        site: a path starting with // ("//example.com/") is a link to
+        example.com, so a crafted link to Stashy would otherwise bounce
+        the browser there. Then the PIN screen instead."""
         path = request.get_full_path()
         if url_has_allowed_host_and_scheme(path, allowed_hosts={request.get_host()}):
             return path
@@ -124,18 +149,21 @@ class RequireStashMiddleware:
 
 
 class RequireSetupMiddleware:
-    """Once logged in, an unfinished welcome wizard blocks everything else -
-    redirects to wherever it left off (Profile.welcome_step), so closing Stashy mid-setup
-    resumes there next time instead of dropping into a half-configured dashboard. Placed after
-    RegionalPreferencesMiddleware in settings.py so it can reuse the Profile already fetched
-    there (`request.stashy_profile`) instead of a second query."""
+    """Once logged in, an unfinished welcome wizard blocks everything
+    else - redirects to wherever it left off (Profile.welcome_step), so
+    closing Stashy mid-setup resumes there next time instead of dropping
+    into a half-configured dashboard. Placed after
+    RegionalPreferencesMiddleware in settings.py so it can reuse the
+    Profile already fetched there (`request.stashy_profile`) instead of
+    a second query."""
 
     def __init__(self, get_response):
         self.get_response = get_response
 
     @staticmethod
     def exempt_prefixes():
-        """The wizard's own steps, static files, the admin and logging out."""
+        """The wizard's own steps, static files, the admin and logging
+        out."""
         return (
             _folder_of(reverse("finance:welcome_step", kwargs={"step": 1})),
             settings.STATIC_URL,
@@ -151,10 +179,12 @@ class RequireSetupMiddleware:
 
 
 class RegionalPreferencesMiddleware:
-    """Show every page in the logged-in person's own date, number and time zone preferences
-    (D10). Stashes the fetched Profile on the request (`request.stashy_profile`) so nothing
-    else needs to query for it again this request - the owner-name context processor
-    (finance.context_processors.stash_owner) reuses it rather than fetching a second time."""
+    """Show every page in the logged-in person's own date, number and
+    time zone preferences (D10). Stashes the fetched Profile on the
+    request (`request.stashy_profile`) so nothing else needs to query
+    for it again this request - the owner-name context processor
+    (finance.context_processors.stash_owner) reuses it rather than
+    fetching a second time."""
 
     def __init__(self, get_response):
         self.get_response = get_response

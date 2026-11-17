@@ -1,5 +1,5 @@
-"""Getting into a stash: the PIN rule, the lockout, recovery codes, a login for every page,
-the admin's login, and switching stashes."""
+"""Getting into a stash: the PIN rule, the lockout, recovery codes, a
+login for every page, the admin's login, and switching stashes."""
 
 from datetime import timedelta
 from unittest import mock
@@ -23,13 +23,15 @@ class RecoveryCodeFormatTests(SimpleTestCase):
         parts = code.split("-")
         self.assertEqual(len(parts), 3)
         self.assertTrue(all(len(p) == 4 for p in parts))
-        # No ambiguous characters (0/O/1/I) that are hard to tell apart handwritten.
+        # No ambiguous characters (0/O/1/I) that are hard to tell apart
+        # handwritten.
         self.assertFalse(set(code) & set("01OI"))
 
 
 class LockoutTests(StashTestCase):
-    """These operate on the test stash's own Profile, the way the login view does: the lockout
-    state lives on Profile, so no temporary stash is needed."""
+    """These operate on the test stash's own Profile, the way the login
+    view does: the lockout state lives on Profile, so no temporary stash
+    is needed."""
 
     @classmethod
     def setUpTestData(cls):
@@ -74,8 +76,9 @@ class LockoutTests(StashTestCase):
         self.assertEqual(self.profile.failed_pin_attempts, 0)
 
     def test_check_pin_counts_from_the_saved_number_not_an_old_copy(self):
-        """Plan 03, S75: two requests at the same moment both hold a copy read before either
-        counted. Each must count from the saved number, or one wrong PIN goes uncounted."""
+        """Plan 03, S75: two requests at the same moment both hold a
+        copy read before either counted. Each must count from the saved
+        number, or one wrong PIN goes uncounted."""
         old_copy = Profile.objects.get(pk=self.profile.pk)
         security.check_pin(self.profile, "0000")
         security.check_pin(old_copy, "0000")
@@ -135,15 +138,17 @@ class LockoutTests(StashTestCase):
         self.assertTrue(security.check_pin(old_copy, "5678"))
 
     def test_checking_a_pin_never_re_saves_its_hash(self):
-        """Plan 03, S87: the login is tied to the stored hash. Saving it again in a newer format
-        after a Django update would log you out of the very page that asked for the PIN."""
+        """Plan 03, S87: the login is tied to the stored hash. Saving it
+        again in a newer format after a Django update would log you out
+        of the very page that asked for the PIN."""
         with override_settings(PASSWORD_HASHERS=REHASHING_PASSWORD_HASHERS):
             self.assertTrue(security.check_pin(self.profile, "1234"))
         self.user.refresh_from_db()
         self.assertTrue(self.user.password.startswith("md5$"), self.user.password)
 
     def test_an_old_copy_of_a_lockout_that_has_since_been_cleared_is_not_held_to_it(self):
-        """The new read works both ways: it's the saved state that counts, not the caller's copy."""
+        """The new read works both ways: it's the saved state that
+        counts, not the caller's copy."""
         self.profile.locked_until = timezone.now() + timedelta(minutes=5)
         self.profile.save()
         old_copy = Profile.objects.get(pk=self.profile.pk)
@@ -187,7 +192,8 @@ class RecoveryCodeResetTests(StashTestCase):
         self.assertEqual(self.profile.failed_pin_attempts, 1)
 
     def test_a_right_code_works_during_a_lockout_and_ends_it(self):
-        """Plan 03, S91 (the user's call): the PIN screen offers the recovery code as the way out."""
+        """Plan 03, S91: the PIN screen offers the recovery code as the
+        way out."""
         self.profile.failed_pin_attempts = 2
         self.profile.locked_until = timezone.now() + timedelta(minutes=5)
         self.profile.save()
@@ -213,8 +219,9 @@ class RecoveryCodeResetTests(StashTestCase):
         self.assertEqual((self.profile.failed_pin_attempts, self.profile.locked_until), (0, locked_until))
 
     def test_an_old_copy_cannot_get_a_wrong_code_past_the_lockout_either_way(self):
-        """The request's copy says "not locked"; the saved row says it is. A wrong code is
-        still refused, and the lockout is left as it is."""
+        """The request's copy says "not locked"; the saved row says it
+        is. A wrong code is still refused, and the lockout is left as it
+        is."""
         old_copy = Profile.objects.get(pk=self.profile.pk)
         locked_until = timezone.now() + timedelta(minutes=5)
         self.profile.locked_until = locked_until
@@ -242,7 +249,8 @@ class RecoveryCodeResetTests(StashTestCase):
         self.assertEqual((self.profile.failed_pin_attempts, self.profile.locked_until), (0, None))
 
     def test_a_stash_without_a_recovery_code_never_accepts_one(self):
-        """Not even a blank one: an empty saved hash must never match an empty guess."""
+        """Not even a blank one: an empty saved hash must never match an
+        empty guess."""
         self.profile.recovery_code_hash = ""
         self.profile.save()
         for guess in ("", " ", "ABCD-EFGH-JKLM"):
@@ -253,8 +261,9 @@ class RecoveryCodeResetTests(StashTestCase):
 
 
 class ForgotPinPageTests(StashTestCase):
-    """The Forgot PIN page, through real requests: the one place a recovery code is used, and
-    the other page (with the PIN screen) that counts toward the lockout."""
+    """The Forgot PIN page, through real requests: the one place a
+    recovery code is used, and the other page (with the PIN screen) that
+    counts toward the lockout."""
 
     RECOVERY_CODE = "ABCD-EFGH-JKLM"
 
@@ -286,8 +295,9 @@ class ForgotPinPageTests(StashTestCase):
             self.assertNotContains(response, leaked)
 
     def test_the_pages_that_show_a_recovery_code_are_never_cached(self):
-        # S80: so the browser's Back button can't show a code again. The Forgot PIN page, both as
-        # the form and as the page that shows the new code (the create-stash page: StashCreatePageTests).
+        # S80: so the browser's Back button can't show a code again. The
+        # Forgot PIN page, both as the form and as the page that shows
+        # the new code (the create-stash page: StashCreatePageTests).
         no_store = "no-store"
         self.assertIn(no_store, self.client.get(reverse("forgot_pin"))["Cache-Control"])
         self.assertIn(no_store, self.reset()["Cache-Control"])
@@ -344,7 +354,8 @@ class ForgotPinPageTests(StashTestCase):
         self.assertTrue(security.is_locked_out(self.profile))
 
     def test_a_locked_stash_accepts_the_right_code_and_the_lockout_ends(self):
-        """Plan 03, S91 (the user's call). The PIN screen says "or reset it with your recovery code"."""
+        """Plan 03, S91. The PIN screen says "or reset it with your
+        recovery code"."""
         self.profile.failed_pin_attempts = 2
         self.profile.locked_until = timezone.now() + timedelta(minutes=security.LOCKOUT_MINUTES)
         self.profile.save(update_fields=["failed_pin_attempts", "locked_until"])
@@ -389,7 +400,8 @@ class StashCreatePageTests(StashTestCase):
     databases = {"default", settings.TEST_STASH}  # no stash is chosen yet, so Django touches `default`
 
     def test_the_page_is_never_cached(self):
-        # S80: it also shows a new stash's recovery code, which the Back button must not show again.
+        # S80: it also shows a new stash's recovery code, which the Back
+        # button must not show again.
         response = Client().get(reverse("stash_create"))
         self.assertEqual(response.status_code, 200)
         self.assertIn("no-store", response["Cache-Control"])
@@ -402,8 +414,9 @@ class ForgotPinWithoutAProfileTests(StashTestCase):
 
 
 class PinScreenLockoutTests(StashTestCase):
-    """The PIN screen's own lockout, through real requests and the real middleware: the rule
-    Change PIN and a new recovery code copy (plan 03, S7)."""
+    """The PIN screen's own lockout, through real requests and the real
+    middleware: the rule Change PIN and a new recovery code copy (plan
+    03, S7)."""
 
     @classmethod
     def setUpTestData(cls):
@@ -443,8 +456,9 @@ class PinScreenLockoutTests(StashTestCase):
         self.assertEqual(self.profile.failed_pin_attempts, 1)
 
     def test_logging_in_is_what_upgrades_an_old_pin_hash_and_you_stay_logged_in(self):
-        """Plan 03, S87: of everything that checks the PIN, only the PIN screen re-saves the
-        hash in a newer format, and it ties the new login to the new hash."""
+        """Plan 03, S87: of everything that checks the PIN, only the PIN
+        screen re-saves the hash in a newer format, and it ties the new
+        login to the new hash."""
         with override_settings(PASSWORD_HASHERS=REHASHING_PASSWORD_HASHERS):
             self.log_in("1234")
             self.user.refresh_from_db()
@@ -453,8 +467,9 @@ class PinScreenLockoutTests(StashTestCase):
 
 
 class ClosingTheBrowserTests(StashTestCase):
-    """Plan 03, Q4: closing the browser logs you out, but Stashy still remembers which stash you
-    were in, so opening it again lands on that stash's PIN screen."""
+    """Plan 03, Q4: closing the browser logs you out, but Stashy still
+    remembers which stash you were in, so opening it again lands on that
+    stash's PIN screen."""
 
     databases = {"default", settings.TEST_STASH}
 
@@ -464,7 +479,8 @@ class ClosingTheBrowserTests(StashTestCase):
         Profile.objects.create(user=cls.user, owner_name="Alex")
 
     def close_the_browser(self):
-        """A browser forgets every cookie that has no expiry date; the test client never does."""
+        """A browser forgets every cookie that has no expiry date; the
+        test client never does."""
         for name, cookie in list(self.client.cookies.items()):
             if not cookie["expires"] and not cookie["max-age"]:
                 del self.client.cookies[name]
@@ -489,8 +505,9 @@ class ClosingTheBrowserTests(StashTestCase):
 
 
 class AdminPasswordChangeTests(StashTestCase):
-    """Plan 03, S76: the admin's own change-password page knew nothing about the lockout and
-    took any password. Every stash's user is a superuser, so it was open to any login."""
+    """Plan 03, S76: the admin's own change-password page knew nothing
+    about the lockout and took any password. Every stash's user is a
+    superuser, so it was open to any login."""
 
     @classmethod
     def setUpTestData(cls):
@@ -532,7 +549,8 @@ class AdminPasswordChangeTests(StashTestCase):
         self.assertTemplateUsed(response, "finance/change_pin.html")
 
     def test_the_admin_has_no_users_page_to_set_a_password_from(self):
-        """The same hole by another door: the admin's Users page would also take any password."""
+        """The same hole by another door: the admin's Users page would
+        also take any password."""
         with self.assertRaises(NoReverseMatch):
             reverse("admin:auth_user_password_change", args=[self.user.pk])
         for url in ("/admin/auth/user/", f"/admin/auth/user/{self.user.pk}/password/"):
@@ -560,7 +578,8 @@ class SwitchStashIsPostOnlyTests(StashTestCase):
 
 
 class AdminLoginTests(StashTestCase):
-    """1.12 (F41): the admin's own login page can't be used to guess a PIN."""
+    """1.12 (F41): the admin's own login page can't be used to guess a
+    PIN."""
 
     def test_admin_login_sends_you_to_the_pin_screen_with_next(self):
         response = self.client.get("/admin/login/", {"next": "/admin/"})
@@ -578,7 +597,8 @@ class AdminLoginTests(StashTestCase):
 
 
 class LoginByDefaultTests(StashTestCase):
-    """5.6 (F49): every page needs a login unless its view says otherwise."""
+    """5.6 (F49): every page needs a login unless its view says
+    otherwise."""
 
     def test_every_finance_url_sends_an_anonymous_visitor_to_the_login_page(self):
         login_url = reverse("login")
@@ -604,8 +624,8 @@ class LoginByDefaultTests(StashTestCase):
         self.assertRedirects(response, reverse("login"), fetch_redirect_response=False)
 
     def test_the_admin_still_ends_on_the_pin_login(self):
-        # The admin checks its own login and sends you to /admin/login/, which admin_login
-        # forwards to the PIN screen.
+        # The admin checks its own login and sends you to /admin/login/,
+        # which admin_login forwards to the PIN screen.
         response = self.client.get("/admin/", follow=True)
         final_url = response.redirect_chain[-1][0]
         self.assertTrue(final_url.startswith(reverse("login")), final_url)
@@ -613,13 +633,15 @@ class LoginByDefaultTests(StashTestCase):
 
 
 class PinRuleTests(SimpleTestCase):
-    """6.7 (F35): one PIN rule and one "PINs don't match" check for every form."""
+    """6.7 (F35): one PIN rule and one "PINs don't match" check for
+    every form."""
 
     BAD_PINS = ["123", "12345", "12a4", "١٢٣٤"]
 
     def test_validate_pin_uses_the_same_rule(self):
         security.validate_pin("0000")
-        # The forms strip spaces and line breaks first; validate_pin() itself takes none.
+        # The forms strip spaces and line breaks first; validate_pin()
+        # itself takes none.
         for bad in [*self.BAD_PINS, "1234\n", "", None]:
             with self.subTest(pin=bad), self.assertRaisesMessage(StashError, "PIN must be exactly 4 digits."):
                 security.validate_pin(bad)
@@ -652,8 +674,9 @@ class PinRuleTests(SimpleTestCase):
 
 
 class CurrentPinFormRuleTests(StashTestCase):
-    """The same rules for the forms that ask for the PIN again. They check it against the
-    stash's saved Profile (security.check_pin re-reads its lockout), so they need a database."""
+    """The same rules for the forms that ask for the PIN again. They
+    check it against the stash's saved Profile (security.check_pin
+    re-reads its lockout), so they need a database."""
 
     @classmethod
     def setUpTestData(cls):

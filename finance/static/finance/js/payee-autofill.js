@@ -1,6 +1,6 @@
-// Wires a payee name input to Stashy's per-category memory (Phase 6) and to a styled
-// typeahead of known payee names (Phase 6.1 - replaces the browser's native <datalist>
-// popup, which can't be made to look like the rest of the app).
+// Wires a payee name input to Stashy's per-category memory and to a styled typeahead of
+// known payee names (instead of the browser's native <datalist> popup, which can't be made
+// to look like the rest of the app).
 function stashyPayeeAutofill(config) {
     var payeeInput = config.payeeInput;
     if (!payeeInput) return;

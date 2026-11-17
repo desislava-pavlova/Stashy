@@ -388,10 +388,6 @@ h1, h2, h3, h4, h5, h6,
 .sort-link:hover { color: var(--stashy-acorn); }
 .sort-arrow { font-size: .65rem; }
 
-/* The account register's inline "add a transaction" row. */
-.inline-add-row input, .inline-add-row select { font-size: .875rem; }
-.inline-add-row td { padding-top: .4rem; padding-bottom: .4rem; background: var(--stashy-surface-2); }
-
 /* A "0 transactions" usage count (categories, payees) reads paler than a real one, so an
    unused category/payee stands out at a glance instead of blending in with the rest. */
 .usage-empty { color: var(--stashy-line) !important; }
@@ -421,7 +417,7 @@ h1, h2, h3, h4, h5, h6,
 .register .btn-icon { padding: 0 .35rem; font-size: .8rem; line-height: 1.5; }
 /* Bootstrap sets the text color on every table cell with a stronger selector than a lone
    .amount-* class, so these cells need "td" in the selector to show red and green. Only the
-   register tables for now; the other tables wait on a decision (plan 04, R25). */
+   register tables for now; the other tables wait on a decision. */
 .register td.amount-positive { color: var(--stashy-positive); }
 .register td.amount-negative { color: var(--stashy-negative); }
 /* A reconciled row fades slightly so an unreconciled one (still needing attention) stands

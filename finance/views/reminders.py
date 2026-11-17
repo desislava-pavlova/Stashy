@@ -1,3 +1,10 @@
+"""The reminders pages: the list with its date window, add/edit/delete
+(editing a recurring reminder asks whether to change one occurrence or
+the whole series) and Skip. The schedule rules live on `Reminder` in
+models.py; entering a reminder as a transaction happens on the
+Transactions form.
+"""
+
 from datetime import date, timedelta
 
 from dateutil.relativedelta import relativedelta
@@ -14,8 +21,9 @@ from ..models import Reminder
 
 
 def _reminder_window_cutoff(window, today):
-    """Same "yearly = through 31 December" meaning as Reminder.default_generation_horizon.
-    None means no cutoff at all (the explicit "All" choice)."""
+    """Same "yearly = through 31 December" meaning as
+    Reminder.default_generation_horizon. None means no cutoff at all
+    (the explicit "All" choice)."""
     if window == "month":
         return date(today.year, today.month, 1) + relativedelta(months=1, days=-1)
     if window in ("15", "30", "90"):
@@ -27,14 +35,17 @@ def _reminder_window_cutoff(window, today):
 
 def reminder_list(request):
     today = timezone.localdate()
-    # A fresh visit (no "window" param at all) defaults to this calendar month; once anything's
-    # been picked - including "All" (window=all) - that stays sticky rather than snapping back,
-    # same "unset vs. explicitly chosen" pattern the transaction list uses for its default range.
+    # A fresh visit (no "window" param at all) defaults to this calendar
+    # month; once anything's been picked - including "All"
+    # (window=all) - that stays sticky rather than snapping back, same
+    # "unset vs. explicitly chosen" pattern the transaction list uses
+    # for its default range.
     window = request.GET.get("window")
     if window is None:
         window = "month"
-    # Paid/skipped rows show by default on "This month" (the whole month's picture) and stay
-    # hidden by default elsewhere; the form always sends an explicit 0/1 once it's used.
+    # Paid/skipped rows show by default on "This month" (the whole
+    # month's picture) and stay hidden by default elsewhere; the form
+    # always sends an explicit 0/1 once it's used.
     show_done_param = request.GET.get("show_done")
     show_done = (window == "month") if show_done_param is None else show_done_param == "1"
     reminders = Reminder.objects.select_related("account", "payee", "category__parent")
@@ -74,9 +85,10 @@ class ReminderCreateView(CreateView):
 
 
 def reminder_edit(request, pk):
-    """Edit a reminder - if it's connected to a series (it's a series head with occurrences,
-    or it's an occurrence itself), ask whether the edit applies to just this one or the whole
-    series before showing the form."""
+    """Edit a reminder - if it's connected to a series (it's a series
+    head with occurrences, or it's an occurrence itself), ask whether
+    the edit applies to just this one or the whole series before showing
+    the form."""
     reminder = get_object_or_404(Reminder, pk=pk)
     root = reminder.series if reminder.series_id else reminder
     has_connection = bool(reminder.series_id) or root.occurrences.exists()
@@ -114,8 +126,9 @@ class ReminderDeleteView(DeleteView):
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        # Only the ones that would actually be deleted - a paid/skipped occurrence is detached
-        # and kept, not removed (Reminder.delete()).
+        # Only the ones that would actually be deleted - a paid/skipped
+        # occurrence is detached and kept, not removed
+        # (Reminder.delete()).
         ctx["occurrence_count"] = self.object.occurrences.filter(
             last_entered_transaction__isnull=True, skipped=False
         ).count()
@@ -123,7 +136,8 @@ class ReminderDeleteView(DeleteView):
 
 
 def reminder_skip(request, pk):
-    """Move a reminder past its current occurrence without creating a transaction (D6)."""
+    """Move a reminder past its current occurrence without creating a
+    transaction (D6)."""
     if request.method != "POST":
         return redirect("finance:reminder_list")
     reminder = get_object_or_404(Reminder, pk=pk)

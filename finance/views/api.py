@@ -1,4 +1,5 @@
-"""Small JSON endpoints used by the transaction form's autofill JavaScript."""
+"""Small JSON endpoints used by the transaction form's autofill
+JavaScript."""
 
 from django.http import JsonResponse
 
@@ -6,9 +7,11 @@ from ..models import Payee
 
 
 def api_payee_autofill(request):
-    """Given ?name=..., return every category/memo/amount combo on record for that payee -
-    one per category, most recently used first, so a repeat-visit payee with several kinds of
-    purchase (e.g. a pharmacy: health one week, gifts another) offers each to pick from."""
+    """Given ?name=..., return every category/memo/amount combo on
+    record for that payee - one per category, most recently used first,
+    so a repeat-visit payee with several kinds of purchase (e.g. a
+    pharmacy: health one week, gifts another) offers each to pick from.
+    """
     name = request.GET.get("name", "").strip()
     if not name:
         return JsonResponse({"combos": []})
@@ -28,8 +31,9 @@ def api_payee_autofill(request):
 
 
 def api_payee_list(request):
-    # The system payees behind Opening Balance/Transfer transactions aren't something you'd
-    # type by hand, so they're left out of the everyday autocomplete noise.
+    # The system payees behind Opening Balance/Transfer transactions
+    # aren't something you'd type by hand, so they're left out of the
+    # everyday autocomplete noise.
     names = list(
         Payee.objects.filter(is_active=True).exclude(name_key__in=Payee.SYSTEM_KEYS).values_list("name", flat=True)
     )

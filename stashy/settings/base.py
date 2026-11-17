@@ -1,10 +1,13 @@
 """Stashy's settings: everything the app itself runs with.
 
-`manage.py`, Waitress (`stashy/wsgi.py`) and `Stashy.bat` use this module. `manage.py test`
-uses `stashy/settings/test.py`, which starts from this one and changes a few test-only
-values. Per-computer values (the secret key, DEBUG, allowed hosts, port) come from `.env`.
+`manage.py`, Waitress (`stashy/wsgi.py`) and `Stashy.bat` use this
+module. `manage.py test` uses `stashy/settings/test.py`, which starts
+from this one and changes a few test-only values. Per-computer values
+(the secret key, DEBUG, allowed hosts) come from `.env`, and so does
+the port, which `scripts/bootstrap.py` reads.
 
-Django's reference for every setting: https://docs.djangoproject.com/en/6.1/ref/settings/
+Django's reference for every setting:
+https://docs.djangoproject.com/en/6.1/ref/settings/
 """
 
 from pathlib import Path
@@ -13,19 +16,23 @@ from decouple import config
 from django.contrib.messages import constants as message_constants
 from django.core.exceptions import ImproperlyConfigured
 
-# --- Folders --------------------------------------------------------------------------------
-# Every folder Stashy reads or writes is named here and nowhere else, so moving the data out
-# of the program folder (plan 05, the .exe) only changes these lines.
+# --- Folders ----------------------------------------------------------
+# Every folder Stashy reads or writes is named here, so moving the data
+# out of the program folder (for a Windows .exe, say) only changes these
+# lines. (scripts/bootstrap.py runs before Django is set up, so it
+# repeats the name of the stashes folder.)
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 STASHES_DIR = BASE_DIR / "stashes"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 LOG_DIR = BASE_DIR / "logs"
 
 
-# No fallback: Stashy.bat writes a random key into .env on first run, and a missing key
-# should stop Stashy rather than quietly use a key that's public in the source code. An empty
-# one stops it too (Django itself would only notice at the first page, as an error page), and
-# so does the placeholder .env.example shipped until 14/11/2026, which is public on GitHub.
+# No fallback: Stashy.bat writes a random key into .env on first run,
+# and a missing key should stop Stashy rather than quietly use a key
+# that's public in the source code. An empty one stops it too (Django
+# itself would only notice at the first page, as an error page), and so
+# does the placeholder an older .env.example shipped with, which is
+# public on GitHub.
 SECRET_KEY = config("SECRET_KEY")
 if SECRET_KEY.strip() in ("", "change-me-to-a-long-random-string"):
     raise ImproperlyConfigured(
@@ -33,17 +40,20 @@ if SECRET_KEY.strip() in ("", "change-me-to-a-long-random-string"):
         'string, for example what this prints: python -c "import secrets; print(secrets.token_urlsafe(50))"'
     )
 
-# Off unless .env turns it on. With DEBUG on, an error shows the code and settings to
-# anyone who sees the page, so it's for working on Stashy, not for using it.
+# Off unless .env turns it on. With DEBUG on, an error shows the code
+# and settings to anyone who sees the page, so it's for working on
+# Stashy, not for using it.
 DEBUG = config("DEBUG", default=False, cast=bool)
 
-# stashy.localhost is the address Stashy.bat opens: browsers send every *.localhost name to
-# this computer by themselves. It's always allowed, whatever .env lists.
+# stashy.localhost is the address Stashy.bat opens: browsers send any
+# name ending in .localhost to this computer by themselves. It's always
+# allowed, whatever .env lists.
 ALLOWED_HOSTS = [*config("ALLOWED_HOSTS", default="localhost,127.0.0.1").split(","), "stashy.localhost"]
 
-# `manage.py check --deploy` warns about these four HTTPS settings. Stashy runs only on this
-# computer, over plain http://, so none of them can apply. They're silenced by name, so that
-# any other warning still stands out (a test runs the check).
+# `manage.py check --deploy` warns about these four HTTPS settings.
+# Stashy runs only on this computer, over plain http://, so none of them
+# can apply. They're silenced by name, so that any other warning still
+# stands out (a test runs the check).
 SILENCED_SYSTEM_CHECKS = [
     "security.W004",  # SECURE_HSTS_SECONDS: tell browsers to use only HTTPS
     "security.W008",  # SECURE_SSL_REDIRECT: send every http:// request to https://
@@ -73,7 +83,8 @@ MIDDLEWARE = [
     "django.middleware.csrf.CsrfViewMiddleware",
     "finance.middleware.StashSelectionMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
-    # Every page needs a login unless its view is marked @login_not_required.
+    # Every page needs a login unless its view is marked
+    # @login_not_required.
     "django.contrib.auth.middleware.LoginRequiredMiddleware",
     "finance.middleware.RequireStashMiddleware",
     "audit.middleware.AuditContextMiddleware",
@@ -81,7 +92,8 @@ MIDDLEWARE = [
     "finance.middleware.RequireSetupMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
-    # Last, so its process_view runs after every other one (CSRF included).
+    # Last, so its process_view runs after every other one (CSRF
+    # included).
     "finance.middleware.StashAtomicRequestMiddleware",
 ]
 
@@ -110,22 +122,27 @@ WSGI_APPLICATION = "stashy.wsgi.application"
 # Database
 # https://docs.djangoproject.com/en/6.1/ref/settings/#databases
 
-# SQLite only, no database server to install. Each stash is its own db.sqlite3 under
-# STASHES_DIR/<name>/, registered as its own connection alias (finance.stashes.ensure_registered())
-# and chosen per request, from the session, by DATABASE_ROUTERS below - so switching stashes
-# needs no restart. `default` is only the empty placeholder Django falls back to before a
-# session has picked a stash (see finance.middleware.RequireStashMiddleware); no app data
-# is ever stored in it.
+# SQLite only, no database server to install. Each stash is its own
+# db.sqlite3 under STASHES_DIR/<name>/, registered as its own connection
+# alias (finance.stashes.registry.ensure_registered()) and chosen per
+# request, from the session, by DATABASE_ROUTERS below - so switching
+# stashes needs no restart. `default` is only the empty placeholder
+# Django falls back to before a session has picked a stash (see
+# finance.middleware.RequireStashMiddleware); no app data is ever stored
+# in it.
 
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
         "NAME": BASE_DIR / "_picker.sqlite3",
-        # Every request is all-or-nothing: if anything fails part-way, nothing it changed is kept.
+        # Every request is all-or-nothing: if anything fails part-way,
+        # nothing it changed is kept. (A stash alias gets this from
+        # StashAtomicRequestMiddleware instead.)
         "ATOMIC_REQUESTS": True,
         "OPTIONS": {
-            # Take the write lock up front and wait for it, instead of failing with
-            # "database is locked" when the multi-threaded server overlaps two requests.
+            # Take the write lock up front and wait for it, instead of
+            # failing with "database is locked" when the multi-threaded
+            # server overlaps two requests.
             "transaction_mode": "IMMEDIATE",
             "timeout": 20,
         },
@@ -133,21 +150,23 @@ DATABASES = {
 }
 DATABASE_ROUTERS = ["finance.db_router.StashRouter"]
 
-# Signed-cookie sessions (not the default DB-backed ones): the session itself has to work
-# *before* a stash - the only place a DB-backed session could live - has even been chosen, to
-# hold the picker's own "which stash did you pick" state. Fine for a local, single-user app;
+# Signed-cookie sessions (not the default DB-backed ones): the session
+# itself has to work *before* a stash - the only place a DB-backed
+# session could live - has even been chosen, to hold the picker's own
+# "which stash did you pick" state. Fine for a local, single-user app;
 # session data here is small (a user id, the stash name, an auth hash).
 SESSION_ENGINE = "django.contrib.sessions.backends.signed_cookies"
 
-# A login ends when the browser closes (the user's call, 14/11/2026, plan 03 Q4; may change
-# later). Django's default kept it for two weeks, so anyone who opened the browser on this
-# computer in that time was in without the PIN. A browser set to reopen its last tabs may keep
+# A login ends when the browser closes. Django's default kept it for two
+# weeks, so anyone who opened the browser on this computer in that time
+# was in without the PIN. A browser set to reopen its last tabs may keep
 # the login too, because it keeps such cookies on purpose.
 SESSION_EXPIRE_AT_BROWSER_CLOSE = True
 
-# Django's default, spelled out because Stashy relies on it: a signed cookie can be read by
-# anyone holding it, so a secret shown once (a new recovery code) waits here, in this one
-# server process's memory, and the session only carries a random key to it.
+# Django's default, spelled out because Stashy relies on it: a signed
+# cookie can be read by anyone holding it, so a secret shown once (a new
+# recovery code) waits here, in this one server process's memory, and
+# the session only carries a random key to it.
 CACHES = {
     "default": {
         "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
@@ -155,8 +174,9 @@ CACHES = {
 }
 
 
-# No AUTH_PASSWORD_VALIDATORS: a stash's login is its 4-digit PIN, checked by
-# finance.stashes, and Django's password rules never apply to it.
+# No AUTH_PASSWORD_VALIDATORS: a stash's login is its 4-digit PIN,
+# checked by finance.stashes, and Django's password rules never apply to
+# it.
 
 
 # Internationalization
@@ -170,17 +190,19 @@ USE_I18N = True
 
 USE_TZ = True
 
-# European date formats (DD/MM/YYYY, weeks start Monday) — see stashy/formats/en/formats.py
+# European date formats (DD/MM/YYYY, weeks start Monday) — see
+# stashy/formats/en/formats.py
 FORMAT_MODULE_PATH = ["stashy.formats"]
 
 
-# Static files (CSS, JavaScript, images): served by WhiteNoise from STATIC_ROOT, which
-# Stashy.bat fills with `collectstatic` on every launch. The "Manifest" storage gives each
-# file a name containing a fingerprint of its content (stashy.3f9a1c.css), so the browser
-# can keep files cached for good and still fetches the new one the moment a file changes.
-# With DEBUG on, `{% static %}` keeps the plain names, so edits show up without collectstatic.
+# Static files (CSS, JavaScript, images): served by WhiteNoise from
+# STATIC_ROOT, which Stashy.bat fills with `collectstatic` on every
+# launch. The "Manifest" storage gives each file a name containing a
+# fingerprint of its content (stashy.3f9a1c.css), so the browser can
+# keep files cached for good and still fetches the new one the moment a
+# file changes. With DEBUG on, `{% static %}` keeps the plain names, so
+# edits show up without collectstatic.
 STATIC_URL = "static/"
-STATICFILES_DIRS = [BASE_DIR / "static"] if (BASE_DIR / "static").exists() else []
 
 STORAGES = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
@@ -197,13 +219,15 @@ LOGOUT_REDIRECT_URL = "login"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 
-# Audit log: every create/update/delete of models in these apps is recorded (see the audit app).
+# Audit log: every create/update/delete of models in these apps is
+# recorded (see the audit app).
 AUDIT_TRACKED_APPS = ["finance"]
 
 
-# Logging: warnings and errors (with the full traceback) go to the console window and to
-# LOG_DIR/stashy.log. With DEBUG off, the browser only shows the friendly 500 page, so this
-# file is where a crash's details end up. It rotates at 2 MB, keeping 3 older files.
+# Logging: warnings and errors (with the full traceback) go to the
+# console window and to LOG_DIR/stashy.log. With DEBUG off, the browser
+# only shows the friendly 500 page, so this file is where a crash's
+# details end up. It rotates at 2 MB, keeping 3 older files.
 LOG_DIR.mkdir(exist_ok=True)
 LOGGING = {
     "version": 1,
@@ -219,7 +243,8 @@ LOGGING = {
             "maxBytes": 2 * 1024 * 1024,
             "backupCount": 3,
             "encoding": "utf-8",
-            # Opens the file on the first message, so a run that logs nothing never touches it.
+            # Opens the file on the first message, so a run that logs
+            # nothing never touches it.
             "delay": True,
             "formatter": "detailed",
         },

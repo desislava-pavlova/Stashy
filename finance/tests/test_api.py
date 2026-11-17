@@ -86,8 +86,9 @@ class ApiPayeeListTests(LoggedInWithAccountTestCase):
         self.assertNotIn(Payee.TRANSFER_MONEY, names)
 
     def test_a_system_payee_typed_in_another_case_is_excluded_too(self):
-        # S53: Payee.system() reuses a payee typed as "opening balance", so the names are compared
-        # through name_key, not by exact spelling. A payee that only starts like one stays.
+        # S53: Payee.system() reuses a payee typed as "opening balance",
+        # so the names are compared through name_key, not by exact
+        # spelling. A payee that only starts like one stays.
         Payee.objects.create(name="opening balance")
         Payee.objects.create(name="TRANSFER MONEY")
         Payee.objects.create(name="Opening Balance Fee")
@@ -95,7 +96,8 @@ class ApiPayeeListTests(LoggedInWithAccountTestCase):
         self.assertEqual(names, ["Opening Balance Fee"])
 
     def test_every_system_payee_is_left_out_in_any_case(self):
-        # S53: all three names, not just the first two (Reconciliation Adjustment is the easy one to forget).
+        # S53: all three names, not just the first two (Reconciliation
+        # Adjustment is the easy one to forget).
         self.assertEqual(len(Payee.SYSTEM_NAMES), 3)
         for name in Payee.SYSTEM_NAMES:
             Payee.objects.create(name=name.upper())
@@ -104,7 +106,8 @@ class ApiPayeeListTests(LoggedInWithAccountTestCase):
         self.assertEqual(sorted(names), sorted(f"{name} fee" for name in Payee.SYSTEM_NAMES))
 
     def test_the_names_come_in_alphabetical_order_in_any_alphabet(self):
-        # S4: sorted on name_key, so "lidl" isn't after "Zara", nor a lower-case Cyrillic name after a capital one.
+        # S4: sorted on name_key, so "lidl" isn't after "Zara", nor a
+        # lower-case Cyrillic name after a capital one.
         for name in ("Zara", "lidl", "бензин", "Аптека", "Вода"):
             Payee.objects.create(name=name)
         names = json.loads(self.client.get(reverse("finance:api_payee_list")).content)["payees"]

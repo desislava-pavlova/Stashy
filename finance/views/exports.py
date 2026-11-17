@@ -1,8 +1,9 @@
-"""CSV/XLSX downloads: the four list exports (transactions, accounts, categories, payees) and
-the one view behind every report's Export button.
+"""CSV/XLSX downloads: the four list exports (transactions, accounts,
+categories, payees) and the one view behind every report's Export
+button.
 
-Every export builds rows of real values (Decimal, date, None) and hands them to
-_export_response(), which formats them for the chosen file type.
+Every export builds rows of real values (Decimal, date, None) and hands
+them to _export_response(), which formats them for the chosen file type.
 """
 
 from collections.abc import Callable
@@ -26,8 +27,9 @@ from .transactions import TRANSACTION_LIST_SORT_FIELDS, _filtered_transactions
 
 
 def _filename(stem):
-    """stashy-<stem>-2026-10-03_14-32-05: the time too, so several exports on one day get
-    their own names (the same date-and-time style as backups)."""
+    """stashy-<stem>-2026-10-03_14-32-05: the time too, so several
+    exports on one day get their own names (the same date-and-time style
+    as backups)."""
     return f"stashy-{stem}-{timezone.localtime():%Y-%m-%d_%H-%M-%S}"
 
 
@@ -35,14 +37,15 @@ def _requested_format(request):
     return request.GET.get("format", "csv")
 
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------
 # List exports
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------
 
 
 def export_transactions(request):
-    """Exports whatever the transaction list is currently filtered/sorted to - same filters,
-    so what you get matches what you were looking at."""
+    """Exports whatever the transaction list is currently
+    filtered/sorted to - same filters, so what you get matches what you
+    were looking at."""
     transactions, _filters = _filtered_transactions(request)
     transactions, _sort, _sort_next = _sorted(request, transactions, TRANSACTION_LIST_SORT_FIELDS)
     transactions = _ordered_with_ties_broken(transactions)
@@ -81,8 +84,9 @@ def export_accounts(request):
 
 
 def export_categories(request):
-    # A full export: system-managed transfer categories are included too, marked as such,
-    # rather than silently left out of "export everything".
+    # A full export: system-managed transfer categories are included
+    # too, marked as such, rather than silently left out of "export
+    # everything".
     categories = Category.objects.select_related("parent", "account")
     headers = ["Name", "Parent", "Type", "Auto-generated", "System-managed"]
     rows = [
@@ -113,18 +117,20 @@ def export_payees(request):
     return _export_response(_requested_format(request), _filename("payees"), headers, rows)
 
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------
 # Report exports: one registry, one view
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------
 #
-# Each report's builder makes the same table the Reports page shows, from the same filters.
-# A builder takes (filters, rates, profile) and returns the table, or None when there is
-# nothing to export. Adding a report export means adding one entry to REPORT_EXPORTS.
+# Each report's builder makes the same table the Reports page shows,
+# from the same filters. A builder takes (filters, rates, profile) and
+# returns the table, or None when there is nothing to export. Adding a
+# report export means adding one entry to REPORT_EXPORTS.
 
 
 def _category_rows(**kind):
-    """A builder for a "category rows" report; `kind` is expense_only=True, income_only=True,
-    or nothing for income and expense together."""
+    """A builder for a "category rows" report; `kind` is
+    expense_only=True, income_only=True, or nothing for income and
+    expense together."""
 
     def build(filters, rates, profile):
         return category_report_rows(
@@ -140,8 +146,9 @@ def _category_rows(**kind):
 
 
 def _vs_average_rows(**kind):
-    """A builder for a "current vs. average" report; `kind` is expense_only=True or
-    income_only=True (income and expense together is _income_expense_vs_average())."""
+    """A builder for a "current vs. average" report; `kind` is
+    expense_only=True or income_only=True (income and expense together
+    is _income_expense_vs_average())."""
 
     def build(filters, rates, profile):
         return category_vs_average_report_rows(
@@ -157,8 +164,8 @@ def _vs_average_rows(**kind):
 
 
 def _income_expense_vs_average(filters, rates, profile):
-    """The category rows plus the Summary rows (Income total, Expense total), the same table
-    the page builds through the same function."""
+    """The category rows plus the Summary rows (Income total, Expense
+    total), the same table the page builds through the same function."""
     return income_expense_vs_average_report_rows(
         filters["start"],
         filters["end"],
@@ -193,8 +200,9 @@ def _watched_expenses(filters, rates, profile):
 
 
 def _category_layout(table, amount_label):
-    """Category rows: one column per period plus Total, or a single amount column when the
-    report isn't subtotaled. Subcategories are indented by two spaces."""
+    """Category rows: one column per period plus Total, or a single
+    amount column when the report isn't subtotaled. Subcategories are
+    indented by two spaces."""
     periods = table["periods"]
     headers = ["Category", *([*periods, "Total"] if periods else [amount_label])]
     rows = []
@@ -221,7 +229,8 @@ def _vs_average_layout(table, amount_label):
 
 
 def _net_worth_layout(table, amount_label):
-    """A row per account group (its subtotal), each account indented under it, then Total."""
+    """A row per account group (its subtotal), each account indented
+    under it, then Total."""
     headers = ["Account"] + table["periods"]
     rows = []
     for group in table["groups"]:
@@ -235,7 +244,7 @@ def _net_worth_layout(table, amount_label):
 class ReportExport(NamedTuple):
     build: Callable  # (filters, rates, profile) -> table, or None when there's nothing to export
     layout: Callable  # (table, amount_label) -> (headers, rows)
-    filename: str  # the file is named stashy-<filename>-<YYYYMMDD>
+    filename: str  # the file is named stashy-<filename>-<date and time> (see _filename())
     amount_label: str = ""  # the single amount column's header when a category report has no subtotal
     empty_message: str = ""  # shown with a 404 when build() returns None
 
@@ -291,8 +300,9 @@ REPORT_EXPORTS = {
 
 
 def export_report(request, report):
-    """Any report on the Reports page as CSV/XLSX, with the same filters and the same
-    currency conversion as the page, so the file matches what's on screen."""
+    """Any report on the Reports page as CSV/XLSX, with the same filters
+    and the same currency conversion as the page, so the file matches
+    what's on screen."""
     export = REPORT_EXPORTS.get(report)
     if export is None:
         raise Http404("No such report.")

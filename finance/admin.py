@@ -1,3 +1,11 @@
+"""Django admin registrations: the back door for looking at and fixing
+rows by hand. The pages people use all day are the views.
+
+Every ModelAdmin here derives from `StashyModelAdmin`, which opens the
+audit log from History and turns a bad value in a list's address into a
+polite redirect (a test checks each registered admin has it).
+"""
+
 from django.contrib import admin
 from django.contrib.auth.models import Group, User
 
@@ -6,22 +14,24 @@ from stashy.admin_mixins import HugeNumberInAddressMixin
 
 from .models import Account, Category, ExchangeRate, ImportBatch, Payee, Profile, Reconciliation, Reminder, Transaction
 
-# A1: the admin is used by regular people, not a developer - Users and Groups (a single shared
-# login per stash, no group permissions) have nothing useful to show them.
+# The admin is used by regular people, not a developer - Users and
+# Groups (a single shared login per stash, no group permissions) have
+# nothing useful to show them.
 admin.site.unregister(User)
 admin.site.unregister(Group)
 
 
 class StashyModelAdmin(AuditHistoryAdminMixin, HugeNumberInAddressMixin, admin.ModelAdmin):
-    """What every admin page of Stashy's data shares: History opens the audit log, and a huge
-    number typed into a list's address is turned away politely (S112)."""
+    """What every admin page of Stashy's data shares: History opens the
+    audit log, and a huge number typed into a list's address is turned
+    away politely."""
 
 
 @admin.register(Profile)
 class ProfileAdmin(StashyModelAdmin):
-    """View-only (A1): a stash's one Profile row is edited from Settings, not here. The
-    recovery-code hash and PIN-lockout fields are left off entirely - they're operational
-    secrets/state, not preferences."""
+    """View-only: a stash's one Profile row is edited from Settings, not
+    here. The recovery-code hash and PIN-lockout fields are left off
+    entirely - they're operational secrets/state, not preferences."""
 
     list_display = ("user", "main_currency", "date_format", "number_format", "time_zone", "first_day_of_week")
     fields = (
@@ -53,11 +63,13 @@ class AccountAdmin(StashyModelAdmin):
     search_fields = ("name", "institution")
 
     def get_queryset(self, request):
-        # Every balance in the list comes from the same query, not one extra query per account.
+        # Every balance in the list comes from the same query, not one
+        # extra query per account.
         return super().get_queryset(request).with_balances()
 
     def get_readonly_fields(self, request, obj=None):
-        # Account.clean() refuses a new currency once transactions exist; show it as text instead.
+        # Account.clean() refuses a new currency once transactions
+        # exist; show it as text instead.
         if obj is not None and obj.transactions.exists():
             return (*super().get_readonly_fields(request, obj), "currency")
         return super().get_readonly_fields(request, obj)

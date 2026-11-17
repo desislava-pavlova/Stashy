@@ -1,4 +1,5 @@
-"""The welcome wizard a new stash goes through: its four steps and the order they come in."""
+"""The welcome wizard a new stash goes through: its four steps and the
+order they come in."""
 
 from datetime import timedelta
 from unittest import mock
@@ -17,8 +18,9 @@ from .base import StarterCategoriesFileMixin, StashTestCase
 
 class SetupFinishedTests(SimpleTestCase):
     def test_a_fresh_profile_default_counts_as_finished(self):
-        # Existing stashes (and every plain Profile() created outside create_stash()) start
-        # with the "already set up" default - only create_stash() sets welcome_step=0.
+        # Existing stashes (and every plain Profile() created outside
+        # create_stash()) start with the "already set up" default - only
+        # create_stash() sets welcome_step=0.
         self.assertTrue(Profile().setup_finished)
 
     def test_welcome_step_below_the_total_is_not_finished(self):
@@ -92,7 +94,8 @@ class WelcomeStepOneTests(WelcomeWizardTestCase):
         self.assertEqual(self.profile.welcome_step, 1)
 
     def test_a_time_zone_that_is_not_in_the_list_is_refused_here_too(self):
-        """Plan 03, S54: step 1 uses Settings' ProfileForm, so the same list applies."""
+        """Plan 03, S54: step 1 uses Settings' ProfileForm, so the same
+        list applies."""
         before = (self.profile.time_zone, self.profile.main_currency)
         response = self.save_step_one("Mars/Olympus_Mons")
         self.assertContains(response, "Select a valid choice. Mars/Olympus_Mons is not one of the available choices.")
@@ -105,9 +108,11 @@ class WelcomeStepOneTests(WelcomeWizardTestCase):
         self.assertContains(response, '<option value="Europe/Lisbon" selected>Europe/Lisbon</option>', html=True)
 
     def test_a_time_zone_read_from_this_computer_but_not_in_the_list_is_still_the_one_selected(self):
-        """Plan 03, S77: tzlocal gives some Windows zones names that zone.tab doesn't list
-        ("FLE Standard Time" is "Europe/Kiev"), and stashes made before detection translated
-        them hold that name. The dropdown showed Africa/Abidjan instead, and Next saved it."""
+        """Plan 03, S77: tzlocal gives some Windows zones names that
+        zone.tab doesn't list ("FLE Standard Time" is "Europe/Kiev"),
+        and stashes made before detection translated them hold that
+        name. The dropdown showed Africa/Abidjan instead, and Next saved
+        it."""
         response = self.show_step_one_with_time_zone("Europe/Kiev")
         self.assertContains(response, '<option value="Europe/Kiev" selected>Europe/Kiev</option>', html=True)
 
@@ -149,10 +154,11 @@ class WelcomeStepTwoTests(StarterCategoriesFileMixin, WelcomeWizardTestCase):
 
 
 class WelcomeStepTwoWithTheRealFileTests(WelcomeWizardTestCase):
-    """Every test above swaps in a file of its own. These use the one Stashy ships (plan 03,
-    S70: it moved from the project folder into finance/), the way a new stash's wizard does, so
-    a file that goes missing, or whose rows the step can't turn into categories, fails here and
-    not for the first person to set up a stash. They compare with the file's own rows, so
+    """Every test above swaps in a file of its own. These use the one
+    Stashy ships (finance/starter_categories.xlsx), the way a new
+    stash's wizard does, so a file that goes missing, or whose rows the
+    step can't turn into categories, fails here and not for the first
+    person to set up a stash. They compare with the file's own rows, so
     adding or renaming a category in it needs no change here."""
 
     @classmethod
@@ -163,7 +169,8 @@ class WelcomeStepTwoWithTheRealFileTests(WelcomeWizardTestCase):
 
     @staticmethod
     def rows_of(sheet_name):
-        """(type, category, subcategory or None) for each row of the shipped file's sheet."""
+        """(type, category, subcategory or None) for each row of the
+        shipped file's sheet."""
         workbook = load_workbook(starter_categories.starter_categories_path(), read_only=True, data_only=True)
         try:
             rows = workbook[sheet_name].iter_rows(min_row=2, values_only=True)
@@ -241,7 +248,8 @@ class WelcomeStepThreeTests(WelcomeWizardTestCase):
         self.assertIn(self.category, self.profile.watched_expenses_categories.all())
 
     def test_a_category_id_too_big_for_the_database_stays_on_the_step_with_an_error(self):
-        """S106: the wizard's step uses the same form as Settings, so it needs the same care."""
+        """S106: the wizard's step uses the same form as Settings, so it
+        needs the same care."""
         response = self.client.post(
             reverse("finance:welcome_step", args=[3]),
             {"watched_expenses_title": "Bills", "watched_expenses_categories": [self.category.pk, "9" * 30]},
@@ -254,8 +262,8 @@ class WelcomeStepThreeTests(WelcomeWizardTestCase):
         self.assertFalse(self.profile.watched_expenses_categories.exists())
 
     def test_coming_back_and_saving_again_replaces_or_clears_the_chosen_categories(self):
-        """Step 3 saves only the Profile's own columns now (plan 03, S75), and its categories
-        (a many-to-many) still have to be saved with them."""
+        """Step 3 saves only the Profile's own columns, and its
+        categories (a many-to-many) still have to be saved with them."""
         power = Category.objects.create(name="Power", category_type=Category.CategoryType.EXPENSE)
         self.profile.welcome_step = 3
         self.profile.save(update_fields=["welcome_step"])
@@ -270,8 +278,9 @@ class WelcomeStepThreeTests(WelcomeWizardTestCase):
                 self.assertCountEqual(self.profile.watched_expenses_categories.all(), expected)
 
     def test_title_starts_with_watched_expenses_and_the_dropdown_has_bootstrap_js(self):
-        # S46: the step used to empty the box to hide the old "Bills & Utilities" default; a neutral
-        # default needs no hiding, so the box shows it and you can keep it or type over it.
+        # S46: the step used to empty the box to hide the old "Bills &
+        # Utilities" default; a neutral default needs no hiding, so the
+        # box shows it and you can keep it or type over it.
         response = self.client.get(reverse("finance:welcome_step", args=[3]))
         title = response.context["form"]["watched_expenses_title"]
         self.assertEqual(title.value(), "Watched expenses")
@@ -287,8 +296,9 @@ class WelcomeStepThreeTests(WelcomeWizardTestCase):
 
 
 class WelcomeStepsKeepTheLoginStateTests(WelcomeWizardTestCase):
-    """Plan 03, S75: a step saved from the request's older copy of the Profile must not put
-    back an old lockout or recovery code, and still moves the wizard on."""
+    """Plan 03, S75: a step saved from the request's older copy of the
+    Profile must not put back an old lockout or recovery code, and still
+    moves the wizard on."""
 
     def test_steps_one_and_three_keep_the_lockout_and_the_recovery_code(self):
         posts = {

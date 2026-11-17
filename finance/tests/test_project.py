@@ -1,5 +1,6 @@
-"""The project around the app: settings, logging, static files, the stashy.localhost address,
-and rules the code itself follows (imports at the top, the audit app on its own)."""
+"""The project around the app: settings, logging, static files, the
+stashy.localhost address, and rules the code itself follows (imports at
+the top, the audit app on its own)."""
 
 import ast
 import copy
@@ -37,8 +38,8 @@ TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 
 
 class LogFileTests(SimpleTestCase):
-    """The app's own LOGGING (base.py, not the test settings) writes errors, with their
-    traceback, to a file."""
+    """The app's own LOGGING (base.py, not the test settings) writes
+    errors, with their traceback, to a file."""
 
     def test_errors_and_their_traceback_land_in_the_log_file(self):
         tmp = tempfile.TemporaryDirectory()
@@ -48,8 +49,8 @@ class LogFileTests(SimpleTestCase):
         config["handlers"]["file"]["filename"] = log_file
         config["root"]["handlers"] = ["file"]
         logging.config.dictConfig(config)
-        # Runs before tmp.cleanup (cleanups run last-in, first-out), which closes the file
-        # so Windows lets the folder be deleted.
+        # Runs before tmp.cleanup (cleanups run last-in, first-out),
+        # which closes the file so Windows lets the folder be deleted.
         self.addCleanup(logging.config.dictConfig, settings.LOGGING)
 
         try:
@@ -76,9 +77,11 @@ class LogFileTests(SimpleTestCase):
 
 class StaticFileTests(SimpleTestCase):
     def test_collectstatic_succeeds_with_the_apps_own_storage(self):
-        """Stashy.bat runs collectstatic on every launch, so if it fails, Stashy doesn't start.
-        Fingerprinting stops at any file a CSS or JS file points to that doesn't exist (the
-        vendored libraries' missing .map files did exactly that before StashyStaticFilesStorage)."""
+        """Stashy.bat runs collectstatic on every launch, so if it
+        fails, Stashy doesn't start. Fingerprinting stops at any file a
+        CSS or JS file points to that doesn't exist (the vendored
+        libraries' missing .map files did exactly that before
+        StashyStaticFilesStorage)."""
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         with override_settings(STATIC_ROOT=tmp.name, STORAGES=base.STORAGES):
@@ -87,14 +90,16 @@ class StaticFileTests(SimpleTestCase):
             icons = staticfiles_storage.stored_name("finance/vendor/bootstrap-icons/bootstrap-icons.min.css")
 
         self.assertRegex(stylesheet, r"^finance/css/stashy\.[0-9a-f]{12}\.css$")
-        # References inside CSS are rewritten too, so the icon font is fetched by its new name.
+        # References inside CSS are rewritten too, so the icon font is
+        # fetched by its new name.
         icons_css = (Path(tmp.name) / icons).read_text(encoding="utf-8")
         self.assertRegex(icons_css, r'url\("fonts/bootstrap-icons\.[0-9a-f]{12}\.woff2')
 
     def test_every_stashy_variable_the_stylesheet_uses_is_defined_in_it(self):
-        """An undefined `var(--stashy-x)` quietly uses its fallback, or nothing: S6's Edit-mode
-        flash named `--stashy-success-rgb`, which was never defined, so it was always Bootstrap's
-        fixed green and ignored dark mode."""
+        """An undefined `var(--stashy-x)` quietly uses its fallback, or
+        nothing: S6's Edit-mode flash named `--stashy-success-rgb`,
+        which was never defined, so it was always Bootstrap's fixed
+        green and ignored dark mode."""
         css = finders.find("finance/css/stashy.css")
         text = Path(css).read_text(encoding="utf-8")
         used = set(re.findall(r"var\(\s*(--stashy-[a-z0-9-]+)", text))
@@ -108,9 +113,10 @@ class StaticFileTests(SimpleTestCase):
         self.assertIn("var(--stashy-positive-soft)", flash)
 
     def test_every_stashy_token_the_light_theme_sets_is_set_in_the_dark_theme_too(self):
-        """A colour defined only for light mode stays that colour on the dark page. The tokens
-        that are the same in both themes (the fonts) are the only ones left out on purpose. The
-        flash above is the example: its pale green needs its own dark twin."""
+        """A colour defined only for light mode stays that colour on the
+        dark page. The tokens that are the same in both themes (the
+        fonts) are the only ones left out on purpose. The flash above is
+        the example: its pale green needs its own dark twin."""
         text = Path(finders.find("finance/css/stashy.css")).read_text(encoding="utf-8")
         light_start = text.index('[data-bs-theme="light"] {')
         dark_start = text.index('[data-bs-theme="dark"] {')
@@ -122,8 +128,9 @@ class StaticFileTests(SimpleTestCase):
         self.assertEqual(sorted(dark - light), [])
 
     def test_every_static_file_a_template_names_exists(self):
-        """With fingerprinted names, `{% static %}` raises for a file that doesn't exist, so a
-        typo would turn the whole page into an error instead of one missing image."""
+        """With fingerprinted names, `{% static %}` raises for a file
+        that doesn't exist, so a typo would turn the whole page into an
+        error instead of one missing image."""
         pattern = re.compile(r"""\{%\s*static\s+['"]([^'"]+)['"]""")
         names = set()
         for template in TEMPLATES_DIR.rglob("*.html"):
@@ -144,7 +151,8 @@ class TestSettingsTests(SimpleTestCase):
         self.assertEqual(registry.list_stashes(), [settings.TEST_STASH])
 
     def test_the_app_code_never_asks_whether_it_is_under_test(self):
-        # Plan 02, 7.1 (F19): tests run the same code paths as Stashy itself.
+        # Plan 02, 7.1 (F19): tests run the same code paths as Stashy
+        # itself.
         self.assertFalse(hasattr(base, "TESTING"))
         for folder in ("finance", "audit", "stashy"):
             for path in (Path(settings.BASE_DIR) / folder).rglob("*.py"):
@@ -161,9 +169,10 @@ class TestSettingsTests(SimpleTestCase):
         self.assertFalse(hasattr(base, "AUTH_PASSWORD_VALIDATORS"))
 
     def test_an_empty_secret_key_stops_stashy_at_the_start(self):
-        """Plan 03, S8: Django alone would start, then show an error page on the first visit.
-        "" is the line .env.example ships; only spaces count as empty too. The last value is
-        the placeholder the old .env.example shipped, public on GitHub."""
+        """Plan 03, S8: Django alone would start, then show an error
+        page on the first visit. "" is the line .env.example ships; only
+        spaces count as empty too. The last value is the placeholder the
+        old .env.example shipped, public on GitHub."""
         for value in ("", " ", "change-me-to-a-long-random-string"):
             with (
                 self.subTest(value=value),
@@ -174,21 +183,22 @@ class TestSettingsTests(SimpleTestCase):
 
 
 class DeployCheckTests(StashTestCase):
-    """Django's checks ask every database whether it supports JSON fields. That is a query, so
-    this test needs the databases the checks can reach (as PendingMigrationsTests does); in a
-    SimpleTestCase it passed only when another test had already asked."""
+    """Django's checks ask every database whether it supports JSON
+    fields. That is a query, so this test needs the databases the checks
+    can reach (as PendingMigrationsTests does); in a SimpleTestCase it
+    passed only when another test had already asked."""
 
     databases = {"default", settings.TEST_STASH}
 
     def test_the_deploy_check_only_finds_what_it_was_told_to_skip(self):
-        """Plan 03, S10: the four HTTPS warnings can't apply to Stashy and are silenced by name,
-        so a new warning fails this test."""
+        """Plan 03, S10: the four HTTPS warnings can't apply to Stashy
+        and are silenced by name, so a new warning fails this test."""
         with override_settings(SECRET_KEY=secrets.token_urlsafe(50)):
             call_command("check", deploy=True, fail_level="WARNING", stdout=StringIO(), stderr=StringIO())
 
 
 class LoginCookieTests(StashTestCase):
-    """Plan 03, Q4 (the user's call, 14/11/2026): a login lasts until the browser closes."""
+    """Plan 03, Q4: a login lasts until the browser closes."""
 
     @classmethod
     def setUpTestData(cls):
@@ -196,7 +206,8 @@ class LoginCookieTests(StashTestCase):
         Profile.objects.create(user=user, owner_name="Alex")
 
     def test_the_login_cookie_carries_no_expiry_date(self):
-        """So the browser drops it when it closes. Django's default kept it for two weeks."""
+        """So the browser drops it when it closes. Django's default kept
+        it for two weeks."""
         self.client.post(reverse("login"), {"username": settings.TEST_STASH, "password": "1234"})
         cookie = self.client.cookies[settings.SESSION_COOKIE_NAME]
         self.assertEqual(cookie["max-age"], "")
@@ -204,16 +215,19 @@ class LoginCookieTests(StashTestCase):
 
 
 class PendingMigrationsTests(StashTestCase):
-    """A model change that never got its migration. The tests build their database from the
-    migrations, so a change that adds no column (a default, a help text, an ordering) can be
-    missing without any other test noticing; Stashy.bat would then keep asking for it, or a
-    later `makemigrations` would quietly put it in an unrelated migration. `--dry-run` writes
-    nothing, and under the test settings the only databases it can see are the throwaway ones.
+    """A model change that never got its migration. The tests build
+    their database from the migrations, so a change that adds no column
+    (a default, a help text, an ordering) can be missing without any
+    other test noticing; Stashy.bat would then keep asking for it, or a
+    later `makemigrations` would quietly put it in an unrelated
+    migration. `--dry-run` writes nothing, and under the test settings
+    the only databases it can see are the throwaway ones.
 
-    The migrations are not in git yet (plan 03, phase 6), so a fresh clone has none, and then
-    every model would count as new: the test skips itself there."""
+    The migrations are not in git yet, so a fresh clone has none, and
+    then every model would count as new: the test skips itself there."""
 
-    # makemigrations looks at the migration history of every database the router knows.
+    # makemigrations looks at the migration history of every database
+    # the router knows.
     databases = {"default", settings.TEST_STASH}
 
     def test_no_model_change_is_waiting_for_its_migration(self):
@@ -229,8 +243,8 @@ class PendingMigrationsTests(StashTestCase):
 
 
 class EnvFileTests(SimpleTestCase):
-    """Plan 03, S8: .env.example ships no usable secret key, and Stashy.bat's first run
-    (scripts/bootstrap.py) makes .env from it."""
+    """Plan 03, S8: .env.example ships no usable secret key, and
+    Stashy.bat's first run (scripts/bootstrap.py) makes .env from it."""
 
     EXAMPLE = Path(settings.BASE_DIR) / ".env.example"
 
@@ -270,11 +284,13 @@ class EnvFileTests(SimpleTestCase):
 
 
 class LaunchScriptFindsTheSameStashesTests(SimpleTestCase):
-    """Plan 03, S110: scripts/bootstrap.py scans stashes/ while it is still setting things up
-    (before Django is configured), so it must find the same folders the app's own scan does.
-    Otherwise a reserved name would be migrated at launch as a database nothing has registered,
-    and Stashy would refuse to start. Both go through folder_names.stash_folders(); these tests
-    are what notices one of them going its own way again."""
+    """Plan 03, S110: scripts/bootstrap.py scans stashes/ while it is
+    still setting things up (before Django is configured), so it must
+    find the same folders the app's own scan does. Otherwise a reserved
+    name would be migrated at launch as a database nothing has
+    registered, and Stashy would refuse to start. Both go through
+    folder_names.stash_folders(); these tests are what notices one of
+    them going its own way again."""
 
     def setUp(self):
         folder = tempfile.TemporaryDirectory()
@@ -283,7 +299,8 @@ class LaunchScriptFindsTheSameStashesTests(SimpleTestCase):
         patcher = mock.patch.object(bootstrap, "ROOT", self.root)
         patcher.start()
         self.addCleanup(patcher.stop)
-        # _stash_dirs() puts ROOT on the path; this keeps the temporary folder out of it afterwards.
+        # _stash_dirs() puts ROOT on the path; this keeps the temporary
+        # folder out of it afterwards.
         patcher = mock.patch.object(sys, "path", [*sys.path])
         patcher.start()
         self.addCleanup(patcher.stop)
@@ -307,9 +324,10 @@ class LaunchScriptFindsTheSameStashesTests(SimpleTestCase):
         self.assertEqual(bootstrap._stash_dirs(), [])
 
     def test_the_app_and_the_script_find_the_same_folders(self):
-        """Each scan is checked against a fixed list above and in test_stashes.py. This one sets
-        them against each other, so a rule added to only one of them (a new kind of folder to skip)
-        is caught, whatever the fixed lists say."""
+        """Each scan is checked against a fixed list above and in
+        test_stashes.py. This one sets them against each other, so a
+        rule added to only one of them (a new kind of folder to skip) is
+        caught, whatever the fixed lists say."""
         for name in ("alex", "alex copy", "Default", "default-dan", "console", "com10"):
             self.make_folder(name)
         self.make_folder("no-database-yet", database=False)
@@ -323,10 +341,12 @@ class LaunchScriptFindsTheSameStashesTests(SimpleTestCase):
 
 
 class LaunchScriptImportsNeedNoDjangoTests(SimpleTestCase):
-    """scripts/bootstrap.py takes a few modules from the app (the backup code, the reserved
-    folder names) while it is still setting things up, before Django is configured, and each
-    says it uses the standard library only. Nothing else checks that: the suite always has Django
-    loaded, so an import of it added to one of them would pass here and break the launch."""
+    """scripts/bootstrap.py takes a few modules from the app (the backup
+    code, the reserved folder names) while it is still setting things
+    up, before Django is configured, and each says it uses the standard
+    library only. Nothing else checks that: the suite always has Django
+    loaded, so an import of it added to one of them would pass here and
+    break the launch."""
 
     @staticmethod
     def modules_the_script_takes_from_the_app():
@@ -341,8 +361,8 @@ class LaunchScriptImportsNeedNoDjangoTests(SimpleTestCase):
 
     @staticmethod
     def files_loaded_by(module):
-        """The module's own file and the `__init__.py` of every package above it, which Python
-        runs first."""
+        """The module's own file and the `__init__.py` of every package
+        above it, which Python runs first."""
         parts = module.split(".")
         root = Path(settings.BASE_DIR)
         packages = [root.joinpath(*parts[:depth], "__init__.py") for depth in range(1, len(parts))]
@@ -350,8 +370,9 @@ class LaunchScriptImportsNeedNoDjangoTests(SimpleTestCase):
 
     @staticmethod
     def imports_outside_the_standard_library(path):
-        """Every import in the file, even one inside a function. A relative import counts: it
-        names something of the app, which could be anything."""
+        """Every import in the file, even one inside a function. A
+        relative import counts: it names something of the app, which
+        could be anything."""
         found = []
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if isinstance(node, ast.Import):
@@ -367,7 +388,8 @@ class LaunchScriptImportsNeedNoDjangoTests(SimpleTestCase):
 
     def test_what_the_script_takes_from_the_app_uses_the_standard_library_only(self):
         modules = self.modules_the_script_takes_from_the_app()
-        # So that a change to how the script imports can't leave the loop below with nothing to check.
+        # So that a change to how the script imports can't leave the
+        # loop below with nothing to check.
         self.assertIn("finance.backup", modules)
         self.assertIn("finance.stashes.folder_names", modules)
         for module in modules:
@@ -387,11 +409,12 @@ class LaunchScriptImportsNeedNoDjangoTests(SimpleTestCase):
 
 
 class TestRunFolderIsRemovedAtExitTests(SimpleTestCase):
-    """Plan 03, S72: the test settings make a temporary folder for each run. Left to Python's own
-    safety net to delete it, a run with warnings switched on (python -Wa) ended with a
-    ResourceWarning, which could hide a real one. What happens at exit can only be seen from
-    outside, so this loads the settings in a Python of its own, with its temporary folder
-    pointed at a scratch folder."""
+    """Plan 03, S72: the test settings make a temporary folder for each
+    run. Left to Python's own safety net to delete it, a run with
+    warnings switched on (python -Wa) ended with a ResourceWarning,
+    which could hide a real one. What happens at exit can only be seen
+    from outside, so this loads the settings in a Python of its own,
+    with its temporary folder pointed at a scratch folder."""
 
     def test_the_folder_is_deleted_when_python_exits_and_no_warning_is_printed(self):
         scratch = tempfile.TemporaryDirectory()
@@ -409,14 +432,16 @@ class TestRunFolderIsRemovedAtExitTests(SimpleTestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn("ResourceWarning", result.stderr)
         run_folder = Path(result.stdout.strip())
-        # So that the test can't pass by the settings using some other folder entirely.
+        # So that the test can't pass by the settings using some other
+        # folder entirely.
         self.assertEqual(run_folder.parent.resolve(), Path(scratch.name).resolve())
         self.assertFalse(run_folder.exists())
 
 
 class StashyLocalhostTests(StashTestCase):
-    """Stashy.bat opens http://stashy.localhost:<port>/ (02/10/2026): browsers send every
-    *.localhost name to this computer, so the name needs no hosts-file entry."""
+    """Stashy.bat opens http://stashy.localhost:<port>/. Browsers send
+    every *.localhost name to this computer, so the name needs no
+    hosts-file entry."""
 
     def test_stashy_localhost_is_always_an_allowed_name(self):
         response = self.client.get("/no-such-page/", HTTP_HOST="stashy.localhost:8001")
@@ -452,9 +477,11 @@ class AuditStandsAloneTests(SimpleTestCase):
 
 
 class OneTodayTests(SimpleTestCase):
-    """8.1 (F8): "today" is the stash's own date (its time zone preference), so app code asks
-    timezone.localdate(), never the computer's clock. backup.py is the one exception: it runs
-    before Django is set up, and a backup's name records when the file was made here."""
+    """8.1 (F8): "today" is the stash's own date (its time zone
+    preference), so app code asks timezone.localdate(), never the
+    computer's clock. backup.py is the one exception: it runs before
+    Django is set up, and a backup's name records when the file was made
+    here."""
 
     def test_app_code_never_reads_the_computer_clock_for_today(self):
         root = Path(settings.BASE_DIR)
@@ -469,7 +496,7 @@ class OneTodayTests(SimpleTestCase):
 
 
 class NoHiddenImportCyclesTests(SimpleTestCase):
-    """6.10 (F50): every import that stays inside a function says why."""
+    """6.10 (F50): an import inside a function always says why."""
 
     def test_every_function_level_import_has_a_reason(self):
         root = Path(settings.BASE_DIR)

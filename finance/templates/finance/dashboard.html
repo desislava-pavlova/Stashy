@@ -132,7 +132,7 @@
                     <div class="num {% if reminder.reminder_type == 'income' %}amount-positive{% else %}amount-negative{% endif %}">{{ reminder.signed_amount|moneyc:reminder.account.currency|default:"—" }}</div>
                 </div>
                 {% empty %}
-                {% include "finance/includes/empty_state.html" with title="Nothing due this week" text="Bills and income coming up in the next 7 days will show up here." %}
+                {% include "finance/includes/empty_state.html" with title="Nothing due soon" text="Bills and income coming up in the next few days will show up here." %}
                 {% endfor %}
             </div>
         </section>

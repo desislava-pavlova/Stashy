@@ -1,5 +1,6 @@
-"""Checks that hold for every page: no leaked template syntax, nothing loaded from the
-internet, the error pages, the sidebar, and the help-card tips."""
+"""Checks that hold for every page: no leaked template syntax, nothing
+loaded from the internet, the error pages, the sidebar, and the
+help-card tips."""
 
 import re
 from datetime import date
@@ -24,8 +25,8 @@ from .base import (
 )
 
 
-# Public, so the crash happens for an anonymous client too: this URLconf has no login page
-# for LoginRequiredMiddleware to redirect to.
+# Public, so the crash happens for an anonymous client too: this URLconf
+# has no login page for LoginRequiredMiddleware to redirect to.
 @login_not_required
 def _broken_view(request):
     raise RuntimeError("deliberate failure for the 500 page test")
@@ -35,7 +36,7 @@ urlpatterns = [url_path("broken/", _broken_view)]
 
 
 class ErrorPageTests(StashTestCase):
-    """Tests always run with DEBUG off, the way Stashy.bat now runs too."""
+    """Tests always run with DEBUG off, the way Stashy.bat runs."""
 
     def test_a_missing_page_shows_the_friendly_404(self):
         response = self.client.get("/no-such-page/")
@@ -67,9 +68,10 @@ class ErrorPageTests(StashTestCase):
 class RenderCheckTests(LoggedInWithAccountTestCase):
     """Every page renders without leaked template syntax."""
 
-    # The URL names in finance/urls.py that are not an HTML page you open with a plain GET.
-    # Every other name must render. A new URL name has to be in one of the two groups, so a
-    # new page can't skip this check.
+    # The URL names in finance/urls.py that are not an HTML page you
+    # open with a plain GET. Every other name must render. A new URL
+    # name has to be in one of the two groups, so a new page can't skip
+    # this check.
     NOT_A_PAGE = frozenset(
         {
             # JSON.
@@ -81,7 +83,8 @@ class RenderCheckTests(LoggedInWithAccountTestCase):
             "export_payees",
             "export_report",
             "export_transactions",
-            # The restore page needs a real backup file; test_backup.py visits it.
+            # The restore page needs a real backup file; test_backup.py
+            # visits it.
             "backup_restore",
             # They only take POST and answer with a redirect or JSON.
             "check_rates",
@@ -89,7 +92,8 @@ class RenderCheckTests(LoggedInWithAccountTestCase):
             "reminder_skip",
             "save_watched_expenses",
             "transaction_quick_edit",
-            # A finished stash is sent away from the wizard; the next test visits its steps.
+            # A finished stash is sent away from the wizard; the next
+            # test visits its steps.
             "welcome_step",
         }
     )
@@ -113,7 +117,8 @@ class RenderCheckTests(LoggedInWithAccountTestCase):
         Profile.for_user(cls.user).watched_expenses_categories.add(cls.category)
 
     def pk_of(self, url_name):
-        """The id of the row this URL name is about (`account_edit` -> the account's)."""
+        """The id of the row this URL name is about (`account_edit` ->
+        the account's)."""
         rows = {
             "account": self.account,
             "category": self.category,
@@ -162,18 +167,22 @@ class RenderCheckTests(LoggedInWithAccountTestCase):
 
 
 class PublicPagesRenderCheckTests(StashTestCase):
-    """The pages you reach before logging in render without leaked template syntax too."""
+    """The pages you reach before logging in render without leaked
+    template syntax too."""
 
-    # The stash picker runs before any stash is chosen, on `default`, the empty placeholder.
+    # The stash picker runs before any stash is chosen, on `default`,
+    # the empty placeholder.
     databases = {"default", settings.TEST_STASH}
 
     @classmethod
     def setUpTestData(cls):
-        # The stash's own user and Profile, which the PIN pages look for.
+        # The stash's own user and Profile, which the PIN pages look
+        # for.
         Profile.for_user(get_user_model().objects.create_user(settings.TEST_STASH, password="1234"))
 
     def test_no_public_page_leaks_template_syntax(self):
-        # A fresh browser hasn't chosen a stash yet; self.client has (see base.py).
+        # A fresh browser hasn't chosen a stash yet; self.client has
+        # (see base.py).
         pages = {
             "stash_picker": Client().get(reverse("stash_picker")),
             "stash_create": Client().get(reverse("stash_create")),
@@ -194,6 +203,12 @@ class HelpCardTipsTests(LoggedInWithAccountTestCase):
         self.assertContains(response, "help-card")
         self.assertContains(response, "Institution is optional")
         self.assertContains(response, "Untick Is active instead of deleting it")
+
+    def test_the_reminder_tip_names_the_real_due_soon_window(self):
+        response = self.client.get(reverse("finance:reminder_add"))
+        self.assertContains(
+            response, f"Anything due within the next {Reminder.DUE_SOON_DAYS} days shows up on your dashboard."
+        )
 
     def test_the_import_page_shows_its_tips(self):
         response = self.client.get(reverse("finance:import_transactions"))

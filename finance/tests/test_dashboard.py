@@ -1,5 +1,6 @@
-"""The dashboard: the savings rate, the spending tree and donut, reminders due soon, account
-groups, the welcome for an empty stash, and converting into the main currency."""
+"""The dashboard: the savings rate, the spending tree and donut,
+reminders due soon, account groups, the welcome for an empty stash, and
+converting into the main currency."""
 
 import re
 from datetime import date
@@ -19,10 +20,12 @@ from .base import (
     LoggedInWithAccountTestCase,
     StashTestCase,
     create_reminders,
+    leaked_syntax_in,
 )
 
-# Tests that patch timezone.localdate pretend today is one of these days, so the fixed dates
-# they set up keep their meaning (overdue, due soon, this month).
+# Tests that patch timezone.localdate pretend today is one of these
+# days, so the fixed dates they set up keep their meaning (overdue, due
+# soon, this month).
 
 
 class SavingsRateTests(SimpleTestCase):
@@ -59,8 +62,9 @@ class SpendingTreeTests(StashTestCase):
 
         tree = spending_tree(date(2026, 9, 1), date(2026, 9, 30))
 
-        # Uncategorized transactions are excluded from every report (R1, Phase 13) - the two
-        # category=None rows above never show up here, on the dashboard or anywhere else.
+        # Uncategorized transactions are excluded from every report -
+        # the two category=None rows above never show up here, on the
+        # dashboard or anywhere else.
         self.assertEqual([group["name"] for group in tree], ["Rent", "Food"])
         self.assertEqual(tree[0]["total"], 500.0)
         food = tree[1]
@@ -84,8 +88,9 @@ class SpendingTreeTests(StashTestCase):
 @mock.patch("django.utils.timezone.localdate", return_value=TODAY_12_SEPT)
 class DashboardTests(LoggedInWithAccountTestCase):
     def test_shows_last_months_savings_rate(self, _):
-        # A category's type decides income vs. spending (R1, Phase 13) - amount alone no longer
-        # does, so these need real Income/Expense categories to count toward the rate.
+        # A category's type decides income vs. spending - the amount
+        # alone doesn't, so these need real Income/Expense categories to
+        # count toward the rate.
         salary = Category.objects.create(name="Salary", category_type=Category.CategoryType.INCOME)
         rent = Category.objects.create(name="Rent", category_type=Category.CategoryType.EXPENSE)
         for on, amount, category in [
@@ -145,9 +150,10 @@ class DashboardTests(LoggedInWithAccountTestCase):
 
 @mock.patch("django.utils.timezone.localdate", return_value=TODAY_12_SEPT)
 class DashboardRefundAndSavingsRateEdgeTests(LoggedInWithAccountTestCase):
-    """S33 and S50 on the dashboard: the "Saved in" tile for a negative rate and one over 100 (a
-    refund makes that possible) in every number format, the bar that must stop at both ends, the
-    Spent tile when only a refund came in, and a refund in another currency."""
+    """S33 and S50 on the dashboard: the "Saved in" tile for a negative
+    rate and one over 100 (a refund makes that possible) in every number
+    format, the bar that must stop at both ends, the Spent tile when
+    only a refund came in, and a refund in another currency."""
 
     # number format -> the rate as shown for -25.0 and for 105.0
     EXPECTED = {
@@ -167,7 +173,8 @@ class DashboardRefundAndSavingsRateEdgeTests(LoggedInWithAccountTestCase):
         Transaction.objects.create(account=account or self.account, date=on, category=category, amount=Decimal(amount))
 
     def saved_tile(self, number_format):
-        """The "Saved in August" tile as (its value's extra classes, its text, the bar's width)."""
+        """The "Saved in August" tile as (its value's extra classes, its
+        text, the bar's width)."""
         profile = Profile.for_user(self.user)
         profile.number_format = number_format
         profile.save()
@@ -232,7 +239,8 @@ class DashboardExcludesResolvedRemindersTests(LoggedInWithAccountTestCase):
 
 
 class DashboardCurrencyTests(LoggedInWithAccountTestCase):
-    """1.8 (F30): the dashboard converts into the main currency, like Reports."""
+    """1.8 (F30): the dashboard converts into the main currency, like
+    Reports."""
 
     def test_spending_in_another_currency_is_converted(self):
         today = timezone.localdate()
@@ -250,8 +258,9 @@ class DashboardCurrencyTests(LoggedInWithAccountTestCase):
 
 
 class DashboardMissingRateTests(LoggedInWithAccountTestCase):
-    """S31: an account whose currency has no known rate is left out of the net worth total, and
-    the tile says so, with the same hint the Accounts page shows."""
+    """S31: an account whose currency has no known rate is left out of
+    the net worth total, and the tile says so, with the same hint the
+    Accounts page shows."""
 
     def test_an_account_with_no_known_rate_is_flagged_under_the_net_worth_tile(self):
         Account.objects.create(name="US card", currency="USD")
@@ -281,7 +290,8 @@ class DashboardMissingRateTests(LoggedInWithAccountTestCase):
         self.assertContains(self.client.get(reverse("finance:dashboard")), "No known rate for GBP, USD")
 
     def test_two_accounts_in_one_currency_name_it_once(self):
-        # The view hands the include the accounts, not the currencies, so it must not repeat one.
+        # The view hands the include the accounts, not the currencies,
+        # so it must not repeat one.
         for name in ("US card", "US savings"):
             Account.objects.create(name=name, currency="USD")
         for page in ("finance:dashboard", "finance:account_list"):
@@ -297,14 +307,16 @@ class DashboardMissingRateTests(LoggedInWithAccountTestCase):
         for syntax in LEAKED_TEMPLATE_SYNTAX:
             self.assertNotIn(syntax, body)
             self.assertNotIn(syntax, accounts_page)
-        # From the Net worth label up to the next tile's label: that tile's text, and only it.
+        # From the Net worth label up to the next tile's label: that
+        # tile's text, and only it.
         net_worth_tile = body.split('<div class="stat-label">Net worth</div>')[1].split("stat-label")[0]
         self.assertLess(net_worth_tile.index("active account"), net_worth_tile.index("No known rate"))
         self.assertEqual(body.count("No known rate"), 1)
 
 
 class SpendingTreeRefundTests(StashTestCase):
-    """1.9 (F31): every category is its own net total; a bigger refund shows as negative."""
+    """1.9 (F31): every category is its own net total; a bigger refund
+    shows as negative."""
 
     @classmethod
     def setUpTestData(cls):
@@ -343,7 +355,8 @@ class SpendingTreeRefundTests(StashTestCase):
 
 class DashboardAccountGroupingTests(LoggedInWithAccountTestCase):
     def test_accounts_panel_groups_like_the_accounts_page_and_skips_inactive(self):
-        # self.account ("Checking") defaults to Cash - physical, same group as "Alpha cash".
+        # self.account ("Checking") defaults to Cash - physical, same
+        # group as "Alpha cash".
         Account.objects.create(name="Zeta savings", account_type=Account.AccountType.SAVINGS)
         Account.objects.create(name="Alpha cash", account_type=Account.AccountType.CASH)
         Account.objects.create(name="Debit account", account_type=Account.AccountType.DEBIT_CARD)
@@ -359,14 +372,16 @@ class DashboardAccountGroupingTests(LoggedInWithAccountTestCase):
         Account.objects.create(name="Savings", account_type=Account.AccountType.SAVINGS)
         response = self.client.get(reverse("finance:dashboard"))
         html = response.content.decode()
-        # Checking (physical/digital, default type) and Savings (illiquid) are two groups.
+        # Checking (physical/digital, default type) and Savings
+        # (illiquid) are two groups.
         self.assertEqual(html.count("account-group-divider"), 1)
 
 
 class DashboardDonutCurrencyTests(LoggedInWithAccountTestCase):
     def test_spending_panel_carries_the_currency_symbol_for_the_donut_center(self):
-        # 2026-09-14 follow-up: the donut needs the actual symbol ("€"), not the bare ISO
-        # code, to match how every other amount on the page already displays via |moneyc.
+        # The donut needs the actual symbol ("€"), not the bare ISO
+        # code, to match how every other amount on the page already
+        # displays via |moneyc.
         Transaction.objects.create(account=self.account, date=timezone.localdate(), amount=Decimal("-10.00"))
         response = self.client.get(reverse("finance:dashboard"))
         self.assertContains(response, 'data-main-currency="€"')
@@ -375,7 +390,8 @@ class DashboardDonutCurrencyTests(LoggedInWithAccountTestCase):
 
 @mock.patch("django.utils.timezone.localdate", return_value=TODAY_12_SEPT)
 class DueSoonQueryTests(LoggedInWithAccountTestCase):
-    """8.15 (F56): the "due soon" list loads each reminder's payee and category with the list."""
+    """8.15 (F56): the "due soon" list loads each reminder's payee and
+    category with the list."""
 
     def queries_with(self, count):
         create_reminders(self.account, count)
@@ -385,3 +401,47 @@ class DueSoonQueryTests(LoggedInWithAccountTestCase):
 
     def test_more_reminders_need_no_more_queries(self, _today):
         self.assertEqual(self.queries_with(1), self.queries_with(4))
+
+
+@mock.patch("django.utils.timezone.localdate", return_value=TODAY_12_SEPT)
+class DueSoonCardTests(LoggedInWithAccountTestCase):
+    """The Due-soon card's words: the subtitle names the real look-ahead
+    (Reminder.DUE_SOON_DAYS) and the empty message names no number, so
+    the two can't disagree."""
+
+    def due_soon_card(self):
+        """The card's HTML. The whole page must leak no template syntax
+        (the empty state is a branch RenderCheckTests never reaches: its
+        reminders are all due today)."""
+        page = self.client.get(reverse("finance:dashboard")).content.decode()
+        self.assertEqual(leaked_syntax_in(page), [])
+        return re.search(r'<section [^>]*aria-labelledby="due-title">.*?</section>', page, re.DOTALL).group(0)
+
+    def test_an_empty_card_says_nothing_is_due_soon(self, _):
+        card = self.due_soon_card()
+
+        self.assertIn("<h3>Nothing due soon</h3>", card)
+        self.assertIn("<p>Bills and income coming up in the next few days will show up here.</p>", card)
+        self.assertNotIn("this week", card)
+
+    def test_the_empty_message_names_no_number_and_the_subtitle_follows_the_look_ahead(self, _):
+        for days in (7, 3):
+            with self.subTest(days=days), mock.patch.object(Reminder, "DUE_SOON_DAYS", days):
+                card = self.due_soon_card()
+
+                self.assertIn(f"Next {days} days", card)
+                words = re.findall(r"<(?:h3|p)>([^<]*)</(?:h3|p)>", card)
+                self.assertEqual(len(words), 2)
+                self.assertNotRegex(" ".join(words), r"\d")
+
+    def test_a_card_with_items_lists_them_and_has_no_empty_message(self, _):
+        payee = Payee.objects.create(name="Water bill")
+        Reminder.objects.create(
+            account=self.account, payee=payee, amount=Decimal("10.00"), next_due_date=date(2026, 9, 15)
+        )
+
+        card = self.due_soon_card()
+
+        self.assertIn("Water bill", card)
+        self.assertIn("in 3 days", card)
+        self.assertNotIn("Nothing due soon", card)

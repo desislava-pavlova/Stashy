@@ -1,5 +1,5 @@
-"""Exports: CSV and Excel files of the transactions, the lists and every report, and their
-file names."""
+"""Exports: CSV and Excel files of the transactions, the lists and every
+report, and their file names."""
 
 import io
 import re
@@ -61,7 +61,8 @@ class ExportTransactionsTests(LoggedInWithAccountTestCase):
         self.assertEqual(accounts_in_export, {"Checking"})
 
     def test_export_has_every_matching_row_not_just_the_page_on_screen(self):
-        # 8.11: the export link carries the page you're on, and the export ignores it.
+        # 8.11: the export link carries the page you're on, and the
+        # export ignores it.
         Transaction.objects.bulk_create(
             Transaction(account=self.account, date=date(2026, 1, 1), amount=Decimal("-1.00")) for _ in range(1001)
         )
@@ -78,8 +79,8 @@ class ExportOtherListsTests(LoggedInWithAccountTestCase):
         self.assertIn("Checking", names)
 
     def test_categories_export_is_a_full_export_including_transfer_categories(self):
-        # 2026-09-14 follow-up: "full export of the data" - system-managed rows are included
-        # now, just marked, rather than left out silently.
+        # A "full export of the data": system-managed rows are included,
+        # just marked, rather than left out silently.
         Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
         response = self.client.get(reverse("finance:export_categories"), {"format": "csv"})
         rows = csv_rows(response)
@@ -126,7 +127,8 @@ class ExportOtherListsTests(LoggedInWithAccountTestCase):
 
 
 class ExportTests(LoggedInWithAccountTestCase):
-    """1.11 (F33, F46): exports open correctly in Excel and can't run formulas."""
+    """1.11 (F33, F46): exports open correctly in Excel and can't run
+    formulas."""
 
     @classmethod
     def setUpTestData(cls):
@@ -164,9 +166,9 @@ class ExportTests(LoggedInWithAccountTestCase):
 
 
 class ExcelControlCharacterTests(LoggedInWithAccountTestCase):
-    """S107: a worksheet can't hold most control characters, and text pasted from a PDF or a
-    bank's page can carry them. openpyxl refused the cell, so one odd memo made the whole Excel
-    export a 500 page."""
+    """S107: a worksheet can't hold most control characters, and text
+    pasted from a PDF or a bank's page can carry them. openpyxl refused
+    the cell, so one odd memo made the whole Excel export a 500 page."""
 
     @classmethod
     def setUpTestData(cls):
@@ -190,8 +192,9 @@ class ExcelControlCharacterTests(LoggedInWithAccountTestCase):
         self.assertEqual(sheet["F2"].value, "page onepage two")
 
     def test_the_two_characters_xml_forbids_beyond_the_control_ones_are_cleaned_too(self):
-        """U+FFFE and U+FFFF aren't on openpyxl's own list, but the XML writer refuses them when
-        the file is saved, so they were an error page of their own (found by the security review)."""
+        """U+FFFE and U+FFFF aren't on openpyxl's own list, but the XML
+        writer refuses them when the file is saved, so they were an
+        error page of their own (found by the security review)."""
         Transaction.objects.update(memo="a\ufffeb\uffffc")
         sheet = self.xlsx("finance:export_transactions")
         self.assertEqual(sheet["F2"].value, "abc")
@@ -202,8 +205,9 @@ class ExcelControlCharacterTests(LoggedInWithAccountTestCase):
         self.assertEqual(sheet["F2"].value, "one\ttwo\nthree\r\nfour")
 
     def test_a_list_export_with_such_a_name_works_too(self):
-        """Every export goes through the same writer: a category name needs the same care. (The
-        report exports have their own test below.)"""
+        """Every export goes through the same writer: a category name
+        needs the same care. (The report exports have their own test
+        below.)"""
         Category.objects.create(name="Fuel\x0b", category_type=Category.CategoryType.EXPENSE)
         response = self.client.get(reverse("finance:export_categories"), {"format": "xlsx"})
         self.assertEqual(response.status_code, 200)
@@ -240,8 +244,9 @@ class ExcelControlCharacterTests(LoggedInWithAccountTestCase):
                 self.assertIn(expected, self.column(self.xlsx("finance:export_report", slug), 1))
 
     def test_text_that_only_looks_like_a_formula_once_the_characters_are_gone_stays_text(self):
-        """The characters come out before the cell is told to be text, so the "=" they were
-        hiding behind can't turn the memo into a formula."""
+        """The characters come out before the cell is told to be text,
+        so the "=" they were hiding behind can't turn the memo into a
+        formula."""
         Transaction.objects.update(memo="\x0b=1+1")
         memo = self.xlsx("finance:export_transactions")["F2"]
         self.assertEqual((memo.value, memo.data_type), ("=1+1", "s"))
@@ -260,7 +265,8 @@ class ExcelControlCharacterTests(LoggedInWithAccountTestCase):
 
 
 class CsvCellTests(SimpleTestCase):
-    """S92: the CSV writer escapes text a spreadsheet would read as a formula, past any indent."""
+    """S92: the CSV writer escapes text a spreadsheet would read as a
+    formula, past any indent."""
 
     def test_text_that_starts_like_a_formula_gets_an_apostrophe(self):
         for text in ("=1+1", "+1", "-1", "@x", "\t=1", "\r=1"):
@@ -283,9 +289,10 @@ class CsvCellTests(SimpleTestCase):
 
 
 class FormulaLikeNamesInReportExportsTests(LoggedInWithAccountTestCase):
-    """S92: the layouts indent a subcategory's name with two spaces, and used to leave a name that
-    starts like a formula unescaped behind that indent. The CSV now looks past the indent; the
-    Excel file keeps every name as text."""
+    """S92: the layouts indent a subcategory's name with two spaces, and
+    used to leave a name that starts like a formula unescaped behind
+    that indent. The CSV now looks past the indent; the Excel file keeps
+    every name as text."""
 
     @classmethod
     def setUpTestData(cls):
@@ -367,7 +374,7 @@ class ReportExportTests(LoggedInWithAccountTestCase):
 
 
 class ReportExportRegistryTests(LoggedInWithAccountTestCase):
-    """5.2 (F15, F4): one registry and one view for every report export."""
+    """5.2 (F15, F4): one registry and view for every report export."""
 
     @classmethod
     def setUpTestData(cls):
@@ -411,7 +418,8 @@ class ReportExportRegistryTests(LoggedInWithAccountTestCase):
         self.assertEqual(rows[-1][0], "Total")
 
     def test_income_expense_vs_average_export_has_the_summary_rows_the_page_shows(self):
-        """S3: the page adds an Income total and an Expense total row; the export used to lack them."""
+        """S3: the page adds an Income total and an Expense total row;
+        the export used to lack them."""
         salary = Category.objects.create(name="Salary", category_type=Category.CategoryType.INCOME)
         Transaction.objects.create(
             account=self.account, date=timezone.localdate(), category=salary, amount=Decimal("100.00")
@@ -427,8 +435,9 @@ class ReportExportRegistryTests(LoggedInWithAccountTestCase):
         self.assertEqual([row[0].strip() for row in rows[1:] if row[0] != "Total"], page_names)
 
     def test_income_expense_vs_average_export_leaves_every_average_blank_with_no_earlier_periods(self):
-        """ "Earliest to date" has nothing earlier to average: the Summary rows say so like the
-        category rows do, instead of an average of 0.00."""
+        """ "Earliest to date" has nothing earlier to average: the
+        Summary rows say so like the category rows do, instead of an
+        average of 0.00."""
         _response, rows = self._csv("income-expense-vs-average", range="earliest")
         by_name = {row[0].strip(): row for row in rows[1:]}
 
@@ -451,9 +460,10 @@ class ReportExportRegistryTests(LoggedInWithAccountTestCase):
 
 
 class RefundExportTests(LoggedInWithAccountTestCase):
-    """S50 and S3 in the files: a refund nets against its category in the CSV and the Excel file,
-    a category that nets to a refund is a real negative number (never text), and the Income &
-    expense vs average file holds the same rows and numbers as the page."""
+    """S50 and S3 in the files: a refund nets against its category in
+    the CSV and the Excel file, a category that nets to a refund is a
+    real negative number (never text), and the Income & expense vs
+    average file holds the same rows and numbers as the page."""
 
     JANUARY = {"range": "custom", "start": "01/01/2026", "end": "31/01/2026"}
 
@@ -625,7 +635,8 @@ class ExportNamesCarryTheTimeTests(LoggedInWithAccountTestCase):
 
 
 class AccountExportQueryTests(LoggedInWithAccountTestCase):
-    """8.15 (F56): every balance in the accounts export comes from the same query."""
+    """8.15 (F56): every balance in the accounts export comes from the
+    same query."""
 
     def queries_with(self, count):
         create_accounts_with_a_transaction(count)

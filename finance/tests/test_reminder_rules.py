@@ -1,5 +1,6 @@
-"""Reminders as rules: the schedule and its occurrences (generating them, the end date, moving the
-due date), status, the form's own checks, entering and skipping, and what a save regenerates."""
+"""Reminders as rules: the schedule and its occurrences (generating
+them, the end date, moving the due date), status, the form's own checks,
+entering and skipping, and what a save regenerates."""
 
 from datetime import date, timedelta
 from decimal import Decimal
@@ -70,8 +71,9 @@ class StatusTests(LoggedInWithAccountTestCase):
         self.assertEqual(r.status(), "")
 
     def test_due_soon_and_overdue_outrank_a_stale_paid_link(self, _):
-        # If nobody touches the reminder again, its due date eventually becomes urgent again -
-        # the old "paid" link from a prior cycle shouldn't keep masking that.
+        # If nobody touches the reminder again, its due date eventually
+        # becomes urgent again - the old "paid" link from a prior cycle
+        # shouldn't keep masking that.
         txn = Transaction.objects.create(account=self.account, date=date(2026, 1, 1), amount=Decimal("-1.00"))
         r = Reminder.objects.create(
             account=self.account,
@@ -314,9 +316,10 @@ class AutoGenerateOccurrencesTests(LoggedInWithAccountTestCase):
         self.assertRedirects(response, reverse("finance:reminder_list"))
         root.refresh_from_db()
         self.assertEqual(root.next_due_date, date(2026, 10, 20))
-        # October's preview is now redundant with the root itself and is dropped; November
-        # and December are still within the (unchanged) end date, so both stay untouched.
-        # (plus a standing "Paid" record of September itself, which was just entered).
+        # October's preview is now redundant with the root itself and is
+        # dropped; November and December are still within the
+        # (unchanged) end date, so both stay untouched. (plus a standing
+        # "Paid" record of September itself, which was just entered).
         self.assertEqual(
             list(root.occurrences.values_list("next_due_date", flat=True)),
             [date(2026, 9, 20), date(2026, 11, 20), date(2026, 12, 20)],
@@ -350,8 +353,9 @@ class AutoGenerateOccurrencesTests(LoggedInWithAccountTestCase):
         self.assertTrue(Reminder.objects.filter(pk=october.pk).exists())
 
     def _series_with_a_september_whose_payment_was_deleted(self):
-        """S51: September was entered (so it became a Paid record and the series moved on),
-        then the transaction that paid it was deleted, leaving it unpaid and in the past."""
+        """S51: September was entered (so it became a Paid record and
+        the series moved on), then the transaction that paid it was
+        deleted, leaving it unpaid and in the past."""
         root = Reminder.objects.create(
             account=self.account,
             amount=Decimal("10.00"),
@@ -370,7 +374,8 @@ class AutoGenerateOccurrencesTests(LoggedInWithAccountTestCase):
         root, september = self._series_with_a_september_whose_payment_was_deleted()
         root.refresh_from_db()
         root.skip()
-        # Kept, and still overdue: it's a bill nobody paid, so it stays where you'll see it.
+        # Kept, and still overdue: it's a bill nobody paid, so it stays
+        # where you'll see it.
         kept = Reminder.objects.get(pk=september.pk)
         self.assertEqual(kept.status(date(2026, 10, 1)), "overdue")
 
@@ -395,8 +400,9 @@ class AutoGenerateOccurrencesTests(LoggedInWithAccountTestCase):
         form.save()
 
     def test_moving_the_due_date_later_removes_the_previews_it_skipped_over(self, _):
-        # The previews between the old and the new due date are no longer upcoming, and nobody
-        # owes them, so they go (the date you typed also stands for itself, so its preview goes).
+        # The previews between the old and the new due date are no
+        # longer upcoming, and nobody owes them, so they go (the date
+        # you typed also stands for itself, so its preview goes).
         root = Reminder.objects.create(
             account=self.account,
             amount=Decimal("10.00"),
@@ -409,7 +415,8 @@ class AutoGenerateOccurrencesTests(LoggedInWithAccountTestCase):
         self.assertEqual(list(root.occurrences.values_list("next_due_date", flat=True)), [date(2026, 12, 20)])
 
     def test_moving_the_due_date_later_keeps_an_unpaid_earlier_period(self, _):
-        # S51 still holds: the unpaid September is dated before where the due date used to be.
+        # S51 still holds: the unpaid September is dated before where
+        # the due date used to be.
         root, september = self._series_with_a_september_whose_payment_was_deleted()
         root.refresh_from_db()
         self._move_due_date(root, "20/12/2026")
@@ -417,7 +424,8 @@ class AutoGenerateOccurrencesTests(LoggedInWithAccountTestCase):
         self.assertFalse(root.occurrences.filter(next_due_date__in=[date(2026, 11, 20)]).exists())
 
     def _open_occurrence(self, root, on):
-        """An occurrence of `root` that nobody has paid or skipped, put on a date by hand."""
+        """An occurrence of `root` that nobody has paid or skipped, put
+        on a date by hand."""
         return Reminder.objects.create(
             series=root,
             frequency=Reminder.Frequency.ONE_TIME,
@@ -427,7 +435,8 @@ class AutoGenerateOccurrencesTests(LoggedInWithAccountTestCase):
         )
 
     def _occurrences(self, root):
-        """Every occurrence of `root`, oldest first, as (date, "open" | "paid" | "skipped")."""
+        """Every occurrence of `root`, oldest first, as (date, "open" |
+        "paid" | "skipped")."""
 
         def state(occurrence):
             if occurrence.last_entered_transaction_id:
@@ -437,8 +446,10 @@ class AutoGenerateOccurrencesTests(LoggedInWithAccountTestCase):
         return [(o.next_due_date, state(o)) for o in root.occurrences.order_by("next_due_date")]
 
     def test_moving_the_due_date_earlier_keeps_an_unpaid_earlier_period_and_redates_the_previews(self, _):
-        # Broken if the earlier-moving case dropped every open occurrence that is not on the new
-        # schedule (the pre-S51 rule): September would go. The previews must follow the new day (5th).
+        # Broken if the earlier-moving case dropped every open
+        # occurrence that is not on the new schedule (the pre-S51 rule):
+        # September would go. The previews must follow the new day
+        # (5th).
         root, _september = self._series_with_a_september_whose_payment_was_deleted()
         root.refresh_from_db()
         self.assertEqual(root.next_due_date, date(2026, 10, 20))
@@ -449,9 +460,11 @@ class AutoGenerateOccurrencesTests(LoggedInWithAccountTestCase):
         )
 
     def test_moving_the_due_date_back_before_an_unpaid_period_takes_it_in_as_a_preview(self, _):
-        # The rule is "on or after the earlier of the old and new due date". September 20th is
-        # after the 5th, so once the series starts on 5 September it is just a date that is not on
-        # the new schedule (5 October, 5 November, ...), like the old 20 November and 20 December.
+        # The rule is "on or after the earlier of the old and new due
+        # date". September 20th is after the 5th, so once the series
+        # starts on 5 September it is just a date that is not on the new
+        # schedule (5 October, 5 November, ...), like the old 20
+        # November and 20 December.
         root, _september = self._series_with_a_september_whose_payment_was_deleted()
         root.refresh_from_db()
         self._move_due_date(root, "05/09/2026")
@@ -477,12 +490,14 @@ class AutoGenerateOccurrencesTests(LoggedInWithAccountTestCase):
 
         self._move_due_date(root, "20/12/2026")
 
-        # October (paid) and November (skipped) lie between the old and the new due date but are
-        # records now; only the open December preview goes, because the series itself stands for it.
+        # October (paid) and November (skipped) lie between the old and
+        # the new due date but are records now; only the open December
+        # preview goes, because the series itself stands for it.
         self.assertEqual(self._occurrences(root), [(date(2026, 10, 20), "paid"), (date(2026, 11, 20), "skipped")])
 
     def test_regenerating_with_no_previous_due_date_only_drops_previews_from_the_due_date_on(self, _):
-        # The default argument: nothing is known about an earlier due date, so only the current one counts.
+        # The default argument: nothing is known about an earlier due
+        # date, so only the current one counts.
         root, _september = self._series_with_a_september_whose_payment_was_deleted()
         root.refresh_from_db()
         self._open_occurrence(root, root.next_due_date)  # on the series' own date: the series stands for it
@@ -499,7 +514,8 @@ class AutoGenerateOccurrencesTests(LoggedInWithAccountTestCase):
         root.mark_entered(payment)
         root.refresh_from_db()
         self.assertEqual(root.next_due_date, date(2026, 11, 20))
-        # September still unpaid, October now a Paid record, November absorbed by the series itself.
+        # September still unpaid, October now a Paid record, November
+        # absorbed by the series itself.
         self.assertEqual(
             self._occurrences(root),
             [(date(2026, 9, 20), "open"), (date(2026, 10, 20), "paid"), (date(2026, 12, 20), "open")],
@@ -517,7 +533,8 @@ class AutoGenerateOccurrencesTests(LoggedInWithAccountTestCase):
         )
 
     def test_an_end_of_period_series_moves_on_and_keeps_an_unpaid_earlier_period(self, _):
-        # Last-day-of-month dates differ in length (30, 31): not the same arithmetic as a plain monthly series.
+        # Last-day-of-month dates differ in length (30, 31): not the
+        # same arithmetic as a plain monthly series.
         root = Reminder.objects.create(
             account=self.account,
             amount=Decimal("10.00"),
@@ -548,7 +565,8 @@ class AutoGenerateOccurrencesTests(LoggedInWithAccountTestCase):
     def test_moving_the_due_date_later_works_for_every_frequency(self, _):
         earlier = date(2026, 1, 5)
         cases = [
-            # frequency, interval, first due, end date, new due date, what is still open afterwards
+            # frequency, interval, first due, end date, new due date,
+            # what is still open afterwards
             ("weekly", 1, date(2026, 9, 21), date(2026, 10, 19), date(2026, 10, 12), [date(2026, 10, 19)]),
             ("weekly", 2, date(2026, 9, 21), date(2026, 11, 2), date(2026, 10, 19), [date(2026, 11, 2)]),
             (
@@ -607,8 +625,9 @@ class AutoGenerateOccurrencesTests(LoggedInWithAccountTestCase):
             },
         )
         self.assertRedirects(response, reverse("finance:reminder_list"))
-        # Root and October's preview are untouched - only November was acted on, and it stays
-        # in place (per the "keep it, marked Paid" answer) rather than disappearing.
+        # Root and October's preview are untouched - only November was
+        # acted on, and it stays in place (per the "keep it, marked
+        # Paid" answer) rather than disappearing.
         root.refresh_from_db()
         self.assertEqual(root.next_due_date, date(2026, 9, 20))
         self.assertTrue(root.occurrences.filter(next_due_date=date(2026, 10, 20)).exists())
@@ -764,7 +783,8 @@ class ReminderEnterAndSkipTests(StashTestCase):
 
 
 class ReminderSaveTests(StashTestCase):
-    """6.2 (F12): a save regenerates occurrences only when it can move a date."""
+    """6.2 (F12): a save regenerates occurrences only when it can move a
+    date."""
 
     @classmethod
     def setUpTestData(cls):
@@ -804,7 +824,8 @@ class ReminderSaveTests(StashTestCase):
         self.assertEqual(reminder._stored_due_date(), date(2026, 10, 15))
 
     def test_save_hands_regenerate_the_due_date_from_before_the_save(self):
-        # Read after the save, it would be the new date and a due date moved later could not be told apart.
+        # Read after the save, it would be the new date and a due date
+        # moved later could not be told apart.
         self.reminder.next_due_date = date(2027, 1, 1)
         with mock.patch.object(Reminder, "regenerate_occurrences") as regenerate:
             self.reminder.save()

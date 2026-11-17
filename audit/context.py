@@ -1,8 +1,9 @@
-"""Who/why information for audit entries, carried implicitly through the code that makes changes.
+"""Who/why information for audit entries, carried implicitly through the
+code that makes changes.
 
-A ContextVar is like a global variable that is private to the current request
-(or thread), so model signals can find out "who is doing this and why" without
-every function having to pass that information along.
+A ContextVar is like a global variable that is private to the current
+request (or thread), so model signals can find out "who is doing this
+and why" without every function having to pass that information along.
 """
 
 import uuid
@@ -50,7 +51,8 @@ def request_context(request):
 
 @contextmanager
 def system_action(reason):
-    """Log changes made inside this block as automatic, with a human-readable reason."""
+    """Log changes made inside this block as automatic, with a
+    human-readable reason."""
     parent = _current.get()
     context = replace(parent, source=SYSTEM, reason=reason, operation=parent.operation or new_operation_id())
     with _activate(context):
@@ -59,8 +61,9 @@ def system_action(reason):
 
 @contextmanager
 def audit_suspended():
-    """Write no audit entries for changes made inside this block - for building a brand new
-    stash, where there's nothing to audit yet. Only this request (or thread) is affected: the
-    signal handlers stay connected, so every other request is still logged as usual."""
+    """Write no audit entries for changes made inside this block - for
+    building a brand new stash, where there's nothing to audit yet. Only
+    this request (or thread) is affected: the signal handlers stay
+    connected, so every other request is still logged as usual."""
     with _activate(replace(_current.get(), suspended=True)):
         yield

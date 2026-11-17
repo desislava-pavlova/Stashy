@@ -1,7 +1,9 @@
-"""Importing a bank or finance-app file (CSV, XLSX, OFX or QFX) into one account.
+"""Importing a bank or finance-app file (CSV, XLSX, OFX or QFX) into one
+account.
 
-`import_file()` is the one entry point. The whole file is read and checked before anything is
-written, so a file Stashy can't read raises `ImportFileError` and leaves nothing behind.
+`import_file()` is the one entry point. The whole file is read and
+checked before anything is written, so a file Stashy can't read raises
+`ImportFileError` and leaves nothing behind.
 """
 
 import csv
@@ -30,7 +32,8 @@ UNSUPPORTED_FILE_MESSAGE = "Unsupported file type. Please upload a .csv, .xlsx, 
 
 
 class ImportFileError(Exception):
-    """The uploaded file couldn't be read at all - the message is shown to the user as is."""
+    """The uploaded file couldn't be read at all - the message is shown
+    to the user as is."""
 
 
 @dataclass
@@ -46,11 +49,13 @@ class ImportResult:
 
 
 def import_file(upload, account: Account, date_format: str = "auto") -> ImportResult:
-    """Import every transaction in `upload` into `account`, as one ImportBatch.
+    """Import every transaction in `upload` into `account`, as one
+    ImportBatch.
 
-    A row whose Account column names another account goes there instead. `date_format` is
-    "auto" (read it off the file's own dates) or one of regional.DATE_FORMAT_CHOICES; OFX
-    files carry real dates and ignore it.
+    A row whose Account column names another account goes there instead.
+    `date_format` is "auto" (read it off the file's own dates) or one of
+    regional.DATE_FORMAT_CHOICES; OFX files carry real dates and ignore
+    it.
     """
     extension = Path(upload.name).suffix.lower().lstrip(".")
     encoding_note = ""
@@ -76,17 +81,18 @@ def import_file(upload, account: Account, date_format: str = "auto") -> ImportRe
     return result
 
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------
 # Reading the file
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------
 
 
 def _read_csv(upload):
     """(fieldnames, rows, encoding note) from an uploaded CSV.
 
-    UTF-8 first (with or without Excel's BOM). Bulgarian bank exports are often Windows-1251,
-    so that's the fallback - and the summary says so, since a
-    Western file in Windows-1252 would come out with Cyrillic letters in place of its accents.
+    UTF-8 first (with or without Excel's BOM). Bulgarian bank exports
+    are often Windows-1251, so that's the fallback - and the summary
+    says so, since a Western file in Windows-1252 would come out with
+    Cyrillic letters in place of its accents.
     """
     raw = upload.read()
     try:
@@ -111,7 +117,8 @@ def _read_csv(upload):
 
 
 def _read_xlsx(upload):
-    """(fieldnames, rows) from the first sheet of an uploaded Excel file."""
+    """(fieldnames, rows) from the first sheet of an uploaded Excel
+    file."""
     try:
         workbook = load_workbook(upload, data_only=True, read_only=True)
         all_rows = list(workbook.active.iter_rows(values_only=True))
@@ -143,7 +150,8 @@ def _read_xlsx(upload):
 
 
 def _read_ofx(upload):
-    """Every transaction in an OFX/QFX file as (date, raw amount, payee name, memo)."""
+    """Every transaction in an OFX/QFX file as (date, raw amount, payee
+    name, memo)."""
     try:
         ofx = OfxParser.parse(upload)
         return [
@@ -157,28 +165,32 @@ def _read_ofx(upload):
         ) from None
 
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------
 # Turning rows into transactions
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------
 
-# What a Reconciled cell can hold to mean "not reconciled": nothing (a blank cell, a cell of spaces,
-# or a file with no such column), n, no, false, 0, u, unreconciled, uncleared, and also c, cleared
-# and *. Anything else (R, X, reconciled, yes, TRUE, 1, ...) means reconciled.
-# Why c, cleared and * are "not": in Quicken a cleared transaction is one the bank has, not one you
-# have checked against a statement (only R means that). Imported as reconciled, it would never show
-# up in the next Reconcile checklist (S41).
-# The value decides, not the column's heading: a Yes in a column headed "Cleared" still counts.
+# What a Reconciled cell can hold to mean "not reconciled": nothing (a
+# blank cell, a cell of spaces, or a file with no such column), n, no,
+# false, 0, u, unreconciled, uncleared, and also c, cleared and *.
+# Anything else (R, X, reconciled, yes, TRUE, 1, ...) means reconciled.
+# Why c, cleared and * are "not": in Quicken a cleared transaction is
+# one the bank has, not one you have checked against a statement (only R
+# means that). Imported as reconciled, it would never show up in the
+# next Reconcile checklist. The value decides, not the column's heading:
+# a Yes in a column headed "Cleared" still counts.
 _RECONCILED_FALSE_VALUES = {"", "n", "no", "false", "0", "unreconciled", "uncleared", "u", "c", "cleared", "*"}
 
 
 def _import_rows(fieldnames, rows, account, batch, date_format="auto"):
-    """Shared row processing for CSV and XLSX imports. Recognizes Date, Num, Account, Payee,
-    Category, Memo, Amount and Reconciled columns (the layout Quicken/Money "transaction
-    report" exports use) - only Date needs to be present in a row; Num, Payee, Category, Memo
-    and Reconciled can all be blank (a blank Reconciled means not reconciled, see
-    _RECONCILED_FALSE_VALUES). Amount still has to parse, since a transaction can't be
-    saved without one, and an Account column naming an account that doesn't exist is skipped
-    rather than guessed at (D9 backlog "Accounts must already exist")."""
+    """Shared row processing for CSV and XLSX imports. Recognizes Date,
+    Num, Account, Payee, Category, Memo, Amount and Reconciled columns
+    (the layout Quicken/Money "transaction report" exports use) - only
+    Date needs to be present in a row; Num, Payee, Category, Memo and
+    Reconciled can all be blank (a blank Reconciled means not
+    reconciled, see _RECONCILED_FALSE_VALUES). Amount still has to
+    parse, since a transaction can't be saved without one, and an
+    Account column naming an account that doesn't exist is skipped
+    rather than guessed at."""
     # Normalize header names so common bank export variants all work.
     fieldmap = {name.strip().lower(): name for name in fieldnames if name}
 
@@ -273,26 +285,28 @@ def _import_ofx_rows(ofx_rows, account, batch):
             category=_guessed_category(payee),
         )
         result.created += 1
-    # OFX has no per-row account text field and no ambiguous textual dates to detect.
+    # OFX has no per-row account text field and no ambiguous textual
+    # dates to detect.
     return result
 
 
 def _known_fingerprints():
-    """Every fingerprint already stored, read in one query. Each row the import creates adds
-    its own, so a row repeated within the same file counts as a duplicate too."""
+    """Every fingerprint already stored, read in one query. Each row the
+    import creates adds its own, so a row repeated within the same file
+    counts as a duplicate too."""
     return set(Transaction.objects.exclude(import_fingerprint="").values_list("import_fingerprint", flat=True))
 
 
 def _fingerprint(account_id, txn_date, amount, payee):
-    """What makes two imported rows "the same transaction": importing a file twice skips
-    every row whose fingerprint is already stored."""
+    """What makes two imported rows "the same transaction": importing a
+    file twice skips every row whose fingerprint is already stored."""
     raw = f"{account_id}|{txn_date.isoformat()}|{amount:.2f}|{payee}".encode()
     return hashlib.sha256(raw).hexdigest()
 
 
 def _guessed_category(payee):
-    """The category to pre-fill for an imported row with no Category column value: this
-    payee's most recently used category, if any."""
+    """The category to pre-fill for an imported row with no Category
+    column value: this payee's most recently used category, if any."""
     if payee is None:
         return None
     history = payee.category_history()
@@ -303,14 +317,17 @@ _CATEGORY_SEPARATOR_RE = re.compile(r"\s*[:>]\s*")
 
 
 def _resolve_category(raw, amount):
-    """Resolve the category named in an import row, auto-creating it if Stashy doesn't already
-    have one by that name - the main real-world use of this importer is a large
-    one-time historical migration, and requiring every category to exist beforehand would be
-    exactly the kind of friction that makes migrations painful. Matching is case-insensitive,
-    so "Groceries" from a file never creates a duplicate of an existing "groceries". Understands
-    "Parent:Child" or "Parent > Child" (Quicken's and this app's own separators) for one level
-    of subcategory - a third level, if a file somehow has one, folds into the child's own name
-    rather than erroring, since this app doesn't support deeper nesting anyway.
+    """Resolve the category named in an import row, auto-creating it if
+    Stashy doesn't already have one by that name - the main real-world
+    use of this importer is a large one-time historical migration, and
+    requiring every category to exist beforehand would be exactly the
+    kind of friction that makes migrations painful. Matching is
+    case-insensitive, so "Groceries" from a file never creates a
+    duplicate of an existing "groceries". Understands "Parent:Child" or
+    "Parent > Child" (Quicken's and this app's own separators) for one
+    level of subcategory - a third level, if a file somehow has one,
+    folds into the child's own name rather than erroring, since this app
+    doesn't support deeper nesting anyway.
     """
     raw = (raw or "").strip()
     if not raw:
@@ -335,12 +352,14 @@ def _resolve_category(raw, amount):
     return child
 
 
-# The date format is guessed once for the whole file, from every row's date, before any row is
-# read. The first date that can be read only one way settles it for all the rows: a first part
-# over 12 is a day (day-first), a second part over 12 is a day (month-first), and a 4-digit
-# first part is ISO. A date with both parts 12 or under says nothing and is passed over while
-# guessing only: it is still imported, in the format the rest of the file settled. When no row
-# in the file settles it, the caller uses the profile's own format.
+# The date format is guessed once for the whole file, from every row's
+# date, before any row is read. The first date that can be read only one
+# way settles it for all the rows: a first part over 12 is a day
+# (day-first), a second part over 12 is a day (month-first), and a
+# 4-digit first part is ISO. A date with both parts 12 or under says
+# nothing and is passed over while guessing only: it is still imported,
+# in the format the rest of the file settled. When no row in the file
+# settles it, the caller uses the profile's own format.
 _DATE_SNIFF_RE = re.compile(r"^(\d{1,4})[./-](\d{1,2})[./-](\d{1,4})$")
 
 
@@ -368,13 +387,15 @@ def _parse_date(raw, formats):
     return None
 
 
-# The largest value Django guarantees a PositiveIntegerField can hold on every database.
+# The largest value Django guarantees a PositiveIntegerField can hold on
+# every database.
 _MAX_TRANSACTION_NUMBER = 2_147_483_647
 
 
 def _parse_transaction_number(raw):
-    """A Num cell as a transaction number, or None ("no number") when it isn't a whole number
-    Stashy can store - blank, negative, huge, "inf", "12.5" or plain text."""
+    """A Num cell as a transaction number, or None ("no number") when it
+    isn't a whole number Stashy can store - blank, negative, huge,
+    "inf", "12.5" or plain text."""
     try:
         number = Decimal(raw.strip())
     except (InvalidOperation, AttributeError):

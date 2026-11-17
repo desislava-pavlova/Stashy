@@ -1,5 +1,5 @@
-"""Payees: one payee per name whatever the case, what was used with each category before,
-and the payee list and detail pages."""
+"""Payees: one payee per name whatever the case, what was used with each
+category before, and the payee list and detail pages."""
 
 from datetime import date
 from decimal import Decimal
@@ -31,14 +31,16 @@ class NameKeyTests(StashTestCase):
 
 
 class PayeeIsSystemTests(StashTestCase):
-    """S53: Payee.system() reuses a payee typed in another case, so "is it one of Stashy's own"
-    is asked through name_key, not by exact spelling."""
+    """S53: Payee.system() reuses a payee typed in another case, so "is
+    it one of Stashy's own" is asked through name_key, not by exact
+    spelling."""
 
     def test_the_system_payees_in_any_case(self):
         for system_name in Payee.SYSTEM_NAMES:
             for name in (system_name, system_name.upper(), system_name.lower()):
                 with self.subTest(name=name):
-                    # The three spellings share one name_key, so only one can exist at a time.
+                    # The three spellings share one name_key, so only
+                    # one can exist at a time.
                     payee = Payee.objects.create(name=name)
                     self.assertTrue(payee.is_system)
                     payee.delete()
@@ -56,7 +58,8 @@ class PayeeIsSystemTests(StashTestCase):
 
 class PayeeDefaultOrderTests(StashTestCase):
     def test_payees_come_in_name_key_order_in_any_alphabet(self):
-        # S4: plain `name` sorts "lidl" after "Zara" and a lower-case Cyrillic name after a capital one.
+        # S4: plain `name` sorts "lidl" after "Zara" and a lower-case
+        # Cyrillic name after a capital one.
         for name in ("Zara", "lidl", "бензин", "Аптека", "Вода"):
             Payee.objects.create(name=name)
         self.assertEqual(
@@ -73,7 +76,8 @@ class PayeeUniquenessTests(StashTestCase):
             Payee.objects.create(name="LIDL")
 
     def test_the_database_rejects_a_cyrillic_case_duplicate(self):
-        # SQLite's own lower() leaves Cyrillic alone - the reason for the name_key column.
+        # SQLite's own lower() leaves Cyrillic alone - the reason for
+        # the name_key column.
         Payee.objects.create(name="Лидл")
         with self.assertRaises(IntegrityError), transaction.atomic(using=settings.TEST_STASH):
             Payee.objects.create(name="ЛИДЛ")
@@ -100,7 +104,8 @@ class PayeeUniquenessTests(StashTestCase):
 
 
 class PayeeResolutionViewTests(StashTestCase):
-    """2.4: every way in - the transaction form, the import and autofill - finds the saved payee."""
+    """2.4: every way in - the transaction form, the import and
+    autofill - finds the saved payee."""
 
     @classmethod
     def setUpTestData(cls):
@@ -154,8 +159,8 @@ class PayeeResolutionViewTests(StashTestCase):
 
 
 class PayeeHistoryTests(StashTestCase):
-    """Payee memory (Phase 6) is computed live from transaction history, per category —
-    there's no stored default to fall out of sync."""
+    """Payee memory is computed live from transaction history, per
+    category — there's no stored default to fall out of sync."""
 
     @classmethod
     def setUpTestData(cls):
@@ -198,7 +203,8 @@ class PayeeHistoryTests(StashTestCase):
         self.assertEqual([h.category for h in history], [self.household, self.groceries])
 
     def test_history_reflects_the_latest_by_date_not_by_entry_order(self):
-        # Entered second, but dated earlier - shouldn't override the later-dated one.
+        # Entered second, but dated earlier - shouldn't override the
+        # later-dated one.
         Transaction.objects.create(
             account=self.account,
             date=date(2026, 1, 20),
@@ -301,13 +307,15 @@ class PayeeListFilterAndSortTests(LoggedInWithAccountTestCase):
         self.assertEqual(names, ["Ikea", "Lidl"])
 
     def test_the_payee_header_shows_the_arrow_without_a_sort_in_the_url(self):
-        # The list is sorted by name even without ?sort=, so "Payee" shows the arrow from the start.
+        # The list is sorted by name even without ?sort=, so "Payee"
+        # shows the arrow from the start.
         response = self.client.get(reverse("finance:payee_list"))
         self.assertRegex(response.content.decode(), r"Payee\s*<i [^>]*caret-up-fill")
 
     def test_an_unknown_sort_falls_back_to_name_and_shows_its_arrow(self):
-        # S69: it sorted by name already, but kept the unknown value, so no header showed an arrow
-        # and the first click on "Payee" (which asks for sort=name) seemed to do nothing.
+        # S69: it sorted by name already, but kept the unknown value, so
+        # no header showed an arrow and the first click on "Payee"
+        # (which asks for sort=name) seemed to do nothing.
         for sort in ("nonsense", "-nonsense", "-"):
             with self.subTest(sort=sort):
                 response = self.client.get(reverse("finance:payee_list"), {"sort": sort})
@@ -316,7 +324,8 @@ class PayeeListFilterAndSortTests(LoggedInWithAccountTestCase):
                 self.assertRegex(response.content.decode(), r"Payee\s*<i [^>]*caret-up-fill")
 
     def test_a_category_filter_that_is_not_a_number_is_ignored(self):
-        # S2's family: "²" passes str.isdigit() but int() refuses it, which used to be a 500 page.
+        # S2's family: "²" passes str.isdigit() but int() refuses it,
+        # which used to be a 500 page.
         for bad in ("abc", "²", "-1", "9" * 30):
             with self.subTest(category=bad):
                 self.assertEqual({r["payee"].name for r in self.rows(category=bad)}, {"Ikea", "Lidl"})
@@ -350,8 +359,9 @@ class PayeeListFilterAndSortTests(LoggedInWithAccountTestCase):
         self.assertEqual(names, ["Ikea", "Lidl"])
 
     def test_sort_by_usage(self):
-        # Both have 1 use each until a second Lidl transaction is added - lets least-used
-        # payees sort first, for spotting ones worth deleting (2026-09-14 follow-up).
+        # Both have 1 use each until a second Lidl transaction is
+        # added - lets least-used payees sort first, for spotting ones
+        # worth deleting.
         Transaction.objects.create(
             account=self.account,
             date=date(2026, 2, 1),
@@ -380,9 +390,11 @@ class PayeeListFilterAndSortTests(LoggedInWithAccountTestCase):
 
 class PayeeListDistinctCategoriesTests(LoggedInWithAccountTestCase):
     def test_the_same_category_used_many_times_lists_once(self):
-        # This is a regression test for a real bug: Transaction's default ordering was riding
-        # along into a values().distinct() query, so every date a category was used counted as
-        # "different" - the exact category showed up once per transaction, not once overall.
+        # This is a regression test for a real bug: Transaction's
+        # default ordering was riding along into a values().distinct()
+        # query, so every date a category was used counted as
+        # "different" - the exact category showed up once per
+        # transaction, not once overall.
         water = Category.objects.create(name="Water", category_type=Category.CategoryType.EXPENSE)
         payee = Payee.objects.create(name="City Water Co")
         for day in range(1, 9):
@@ -418,8 +430,9 @@ class PayeeListCategoryOrderTests(LoggedInTestCase):
         Category.objects.create(name="Supermarket", parent=groceries, category_type=Category.CategoryType.EXPENSE)
         Category.objects.create(name="Bakery", category_type=Category.CategoryType.EXPENSE)
         response = self.client.get(reverse("finance:payee_list"))
-        # "Bakery" sorts before "Groceries", and "Supermarket" (indented) sits right after
-        # "Groceries" rather than in a separate block of subcategories.
+        # "Bakery" sorts before "Groceries", and "Supermarket"
+        # (indented) sits right after "Groceries" rather than in a
+        # separate block of subcategories.
         body = response.content.decode().replace("&nbsp;", " ")
         self.assertLess(body.index("Bakery"), body.index(">Groceries<"))
         self.assertLess(body.index(">Groceries<"), body.index(">    Supermarket<"))

@@ -1,5 +1,6 @@
-"""Forms for the multi-stash login screens - kept separate from finance/forms.py since these
-belong to the picker/login layer, not the finance app's own data forms."""
+"""Forms for the multi-stash login screens - kept separate from
+finance/forms.py since these belong to the picker/login layer, not the
+finance app's own data forms."""
 
 from django import forms
 from django.contrib.auth.forms import AuthenticationForm
@@ -23,8 +24,9 @@ def _pin_widget(autofocus=False):
 
 
 class PinField(forms.CharField):
-    """A 4-digit PIN box. Anything else gets the one message "PIN must be exactly 4 digits.",
-    from the same rule stashes.security.validate_pin() uses."""
+    """A 4-digit PIN box. Anything else gets the one message "PIN must
+    be exactly 4 digits.", from the same rule
+    stashes.security.validate_pin() uses."""
 
     default_validators = [security.pin_validator]
 
@@ -34,7 +36,8 @@ class PinField(forms.CharField):
 
 
 class PinConfirmMixin:
-    """The second PIN box must repeat the first. `pin_fields` names the pair."""
+    """The second PIN box must repeat the first. `pin_fields` names the
+    pair."""
 
     pin_fields = ("new_pin", "new_pin_confirm")
 
@@ -70,8 +73,9 @@ class StashCreateForm(PinConfirmMixin, forms.Form):
 
 
 class StashLoginForm(AuthenticationForm):
-    """The normal AuthenticationForm, restyled: username is fixed to the current stash (set
-    hidden by the view, never typed) and password becomes a 4-digit PIN field."""
+    """The normal AuthenticationForm, restyled: username is fixed to the
+    current stash (set hidden by the view, never typed) and password
+    becomes a 4-digit PIN field."""
 
     password = PinField(label="PIN", strip=False, autofocus=True)
 
@@ -98,9 +102,10 @@ class ForgotPinForm(PinConfirmMixin, forms.Form):
 
 
 class CurrentPinForm(forms.Form):
-    """The PIN asked again before a change only the stash's owner should make (a new
-    recovery code, and Change PIN below). A wrong PIN counts toward the same lockout as the
-    PIN screen (security.check_pin), so these boxes can't be used to guess it."""
+    """The PIN asked again before a change only the stash's owner should
+    make (a new recovery code, and Change PIN below). A wrong PIN counts
+    toward the same lockout as the PIN screen (security.check_pin), so
+    these boxes can't be used to guess it."""
 
     current_pin = PinField(label="Current PIN")
 
@@ -116,8 +121,9 @@ class CurrentPinForm(forms.Form):
 
 
 class ChangePinForm(PinConfirmMixin, CurrentPinForm):
-    """Settings page: change the PIN while already logged in, without needing the recovery
-    code - that's reserved for when the current PIN itself is what's been forgotten."""
+    """Settings page: change the PIN while already logged in, without
+    needing the recovery code - that's reserved for when the current PIN
+    itself is what's been forgotten."""
 
     new_pin = PinField(label="New PIN")
     new_pin_confirm = PinField(label="Confirm new PIN")

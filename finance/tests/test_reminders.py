@@ -1,6 +1,6 @@
-"""The Reminders pages: the list and its filters, entering from a reminder, editing one occurrence
-or the whole series, deleting, and the queries the list makes. The rules are in
-test_reminder_rules.py."""
+"""The Reminders pages: the list and its filters, entering from a
+reminder, editing one occurrence or the whole series, deleting, and the
+queries the list makes. The rules are in test_reminder_rules.py."""
 
 from datetime import date
 from decimal import Decimal
@@ -101,7 +101,8 @@ class EnterOpensAPrefilledFormTests(LoggedInWithAccountTestCase):
         self.assertRedirects(response, reverse("finance:reminder_list"))
         self.assertEqual(Transaction.objects.count(), 1)
         self.reminder.refresh_from_db()
-        # The recurring reminder now stands for the next, unpaid period - no stale "paid" link.
+        # The recurring reminder now stands for the next, unpaid
+        # period - no stale "paid" link.
         self.assertIsNone(self.reminder.last_entered_transaction_id)
         self.assertNotEqual(self.reminder.status(), "paid")
         self.assertEqual(self.reminder.next_due_date, date(2026, 11, 1))
@@ -123,7 +124,8 @@ class EnterOpensAPrefilledFormTests(LoggedInWithAccountTestCase):
         )
 
     def test_the_message_names_the_date_it_was_due_and_the_date_it_moved_to(self):
-        # S52: the reminder is named before it moves on, so the two dates differ.
+        # S52: the reminder is named before it moves on, so the two
+        # dates differ.
         response = self._enter(self.reminder)
         self.assertEqual(
             [str(m) for m in response.context["messages"]],
@@ -144,7 +146,8 @@ class EnterOpensAPrefilledFormTests(LoggedInWithAccountTestCase):
         self.assertEqual([str(m) for m in response.context["messages"]], ["Entered 01/10/2026 | Landlord | -500.00."])
 
     def test_entering_one_occurrence_names_it_and_leaves_the_series_where_it_is(self):
-        # An occurrence is a one-time reminder of its own: no "moved it to", and the series head stays put.
+        # An occurrence is a one-time reminder of its own: no "moved it
+        # to", and the series head stays put.
         head = Reminder.objects.create(
             account=self.account,
             payee=self.payee,
@@ -268,7 +271,8 @@ class ReminderFormFieldOrderTests(LoggedInWithAccountTestCase):
         self.assertEqual(field.label, "Last day of period")
 
     def test_the_unit_words_arrive_as_a_json_script_block(self):
-        # 8.7 (F39): data for a script goes through json_script, which escapes it, never |safe.
+        # 8.7 (F39): data for a script goes through json_script, which
+        # escapes it, never |safe.
         response = self.client.get(reverse("finance:reminder_add"))
         self.assertContains(
             response,
@@ -617,7 +621,8 @@ class EnteredPeriodStaysVisibleTests(LoggedInWithAccountTestCase):
 
 
 class ReminderSkipMessageTests(LoggedInWithAccountTestCase):
-    """The Skip message names the date that was skipped, taken before a recurring reminder moves on."""
+    """The Skip message names the date that was skipped, taken before a
+    recurring reminder moves on."""
 
     def _skip(self, **fields):
         reminder = Reminder.objects.create(
@@ -635,7 +640,8 @@ class ReminderSkipMessageTests(LoggedInWithAccountTestCase):
 
 
 class ReminderListQueryTests(LoggedInWithAccountTestCase):
-    """8.15 (F56): the reminder list loads each reminder's payee and category with the list."""
+    """8.15 (F56): the reminder list loads each reminder's payee and
+    category with the list."""
 
     def queries_with(self, count):
         create_reminders(self.account, count)

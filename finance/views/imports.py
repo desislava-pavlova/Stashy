@@ -1,3 +1,8 @@
+"""The Import page: upload a file, hand it to `services/importing.py`
+and show what came in. The reading, matching and de-duplicating are all
+in the service; this view only reports its result.
+"""
+
 from django.contrib import messages
 from django.shortcuts import redirect, render
 

@@ -1,12 +1,27 @@
-"""Helpers for turning a DateRangeFilterForm's cleaned data into a concrete
-(start, end, interval) tuple, and for bucketing/aggregating transactions for the Reports page.
+"""The report maths: the Reports page, its exports and the dashboard's
+income, spending and donut tiles add up their numbers here, so they
+can't disagree. It takes dates, an account and a currency table, and
+returns plain numbers and dicts; it never touches a request or a
+template.
 
-The rule everywhere in this file: a category's own type decides income vs.
-spending, never the sign of its amount (R1). Amounts are added up signed, so a refund (a
-positive amount in an expense category) shrinks its category, and an expense report flips the
-sign once, on the net total (_as_shown(), S50). Every total also passes
-through an optional `rates` (a currency.RateTable) so multi-currency accounts convert into the
-main currency the same way net worth already does (D2: latest known rate, not historical).
+- Date ranges: `resolve_range()` turns a filter form's answers into a
+  concrete (start, end, interval), and `vs_average_periods()` picks the
+  earlier periods a range is averaged against.
+- Totals: income and spending, per category (flat, or grouped like the
+  category list), per period column and per account (net worth), plus
+  the Watched expenses report.
+
+The rule everywhere: a category's own type decides income vs. spending,
+never the sign of its amount. Amounts are added up signed, so a refund
+(a positive amount in an expense category) shrinks its category, and an
+expense report flips the sign once, on the net total (`_as_shown()`).
+Every total also passes through an optional `rates` (a
+`currency.RateTable`), so multi-currency accounts convert into the main
+currency the same way net worth does (D2: latest known rate, not
+historical). Net worth is the exception to "one place": the dashboard
+and the Accounts page use `currency.convert_balances()` and Reports uses
+`net_worth_by_account()`. They agree because both convert through
+`RateTable`.
 """
 
 from datetime import timedelta
@@ -19,18 +34,19 @@ from django.utils import timezone
 from .models import Account, Category, Transaction, grouped_accounts, grouped_categories
 from .money import ZERO, to_cent
 
-# Default depth for "Average interval": how many periods of the current date range's own
-# length to average over, immediately preceding it (see vs_average_periods() below). The
-# Reports page's defaults (R3) are This month - no subtotal - Last 3 periods - All accounts.
+# Default depth for "Average interval": how many earlier periods to
+# average over (see vs_average_periods() below). The Reports page opens
+# on This month - no subtotal - Last 3 periods - All accounts.
 DEFAULT_LOOKBACK_PERIODS = 3
 DEFAULT_RANGE_KEY = "this_month"
 
 EARLIEST_RANGE_KEY = "earliest"
 
-# R5: past this many subtotal columns, a table/chart shows a short notice instead of trying
-# to render them all - 36 is roomy for anything anyone would actually want to read (3 years of
-# months, 9 years of quarters, 18 years of half-years) without ever being a real limit in
-# practice for normal use.
+# Past this many subtotal columns, a table/chart shows a short notice
+# instead of trying to render them all - 36 is roomy for anything anyone
+# would actually want to read (3 years of months, 9 years of quarters,
+# 18 years of half-years) without ever being a real limit in practice
+# for normal use.
 SUBTOTAL_LIMIT = 36
 _SUBTOTAL_NEXT_STEP = {"week": "month", "month": "quarter", "quarter": "half_year", "half_year": "year"}
 _SUBTOTAL_PLURAL = {
@@ -44,6 +60,17 @@ _SUBTOTAL_SINGULAR = {"month": "month", "quarter": "quarter", "half_year": "half
 
 
 def resolve_range(cleaned_data, account=None):
+    """A date-range filter's answers as (start, end, interval).
+
+    Reports and Transactions both use it. `range` is one of the Date
+    range keys: "custom" with both dates keeps them as typed, and every
+    other key works its dates out from today (the stash's own date). An
+    empty key means This month, and Last 12 months is the fallback for
+    any key it doesn't know, a "custom" with a date missing included.
+    "Earliest to date" starts at the first transaction (within
+    `account`, when given). `interval` is the Average interval, a
+    string, defaulting to the usual look-back.
+    """
     today = timezone.localdate()
     range_key = cleaned_data.get("range") or DEFAULT_RANGE_KEY
     start = cleaned_data.get("start")
@@ -83,28 +110,33 @@ def resolve_range(cleaned_data, account=None):
 
 
 def earliest_transaction_date(account=None):
-    """The date of the very first transaction (within the Account filter), or None with no
-    transactions at all - "Earliest to date" starts here (R3), and it's also where "periods
-    before the data begins don't count" (R4) trims the vs-average lookback."""
+    """The date of the very first transaction (within the Account
+    filter), or None with no transactions at all - "Earliest to date"
+    starts here, and it's also where "periods before the data begins
+    don't count" trims the vs-average lookback."""
     row = Transaction.objects.for_account(account).order_by("date").first()
     return row.date if row else None
 
 
 def _reportable(start=None, end=None, account=None, expense_only=False, income_only=False):
-    """The transactions a report counts (TransactionQuerySet.reportable(): a category, and not a
-    transfer), narrowed to the date range, the account and the kind when given."""
+    """The transactions a report counts
+    (TransactionQuerySet.reportable(): a category, and not a transfer),
+    narrowed to the date range, the account and the kind when given."""
     qs = Transaction.objects.reportable().of_kind(expense_only, income_only).for_account(account)
     return qs.in_range(start, end) if start else qs
 
 
 def _convert(amount, currency, rates):
-    """`amount` (in `currency`) converted into `rates`'s target currency, cents-rounded.
+    """`amount` (in `currency`) converted into `rates`'s target
+    currency, cents-rounded.
 
-    `rates=None` means "don't convert" (single-currency setups, and callers that only ever see
-    one currency) - amounts are trusted to already be comparable. With rates given but
-    no known rate for `currency`, the amount is left out (0) rather than silently mixed into a
-    total in the wrong currency; reports_view() separately warns once when this happens (missing
-    a rate is rare and worth a banner, not a per-row asterisk)."""
+    `rates=None` means "don't convert" (single-currency setups, and
+    callers that only ever see one currency) - amounts are trusted to
+    already be comparable. With rates given but no known rate for
+    `currency`, the amount is left out (0) rather than silently mixed
+    into a total in the wrong currency; reports_view() separately warns
+    once when this happens (missing a rate is rare and worth a banner,
+    not a per-row asterisk)."""
     if rates is None or currency == rates.target:
         return amount
     converted = rates.convert(amount, currency)
@@ -112,11 +144,13 @@ def _convert(amount, currency, rates):
 
 
 def _as_shown(amount, expense_only):
-    """A signed net total the way a report shows it. Expenses are stored negative, so an expense
-    report flips the sign once, on the net: spending reads positive, and a category whose
-    refunds beat its spending reads negative (spent 40, refunded 100 -> -60), which is also the
-    dashboard donut's rule. Income reports keep the sign they have. Never abs(): that would
-    turn a refund into spending. An average that doesn't exist (None) stays None."""
+    """A signed net total the way a report shows it. Expenses are stored
+    negative, so an expense report flips the sign once, on the net:
+    spending reads positive, and a category whose refunds beat its
+    spending reads negative (spent 40, refunded 100 -> -60), which is
+    also the dashboard donut's rule. Income reports keep the sign they
+    have. Never abs(): that would turn a refund into spending. An
+    average that doesn't exist (None) stays None."""
     if amount is None:
         return None
     return -amount if expense_only else amount
@@ -135,7 +169,8 @@ def income_and_spending(start, end, account=None, rates=None):
 
 
 def savings_rate(income, spending):
-    """Percentage of income that wasn't spent; None when there was no income to save from."""
+    """Percentage of income that wasn't spent; None when there was no
+    income to save from."""
     if income <= 0:
         return None
     return ((income - spending) / income * 100).quantize(Decimal("0.1"))
@@ -146,12 +181,14 @@ _YEAR_RANGES = {"ytd", "this_year", "last_year"}
 
 
 def vs_average_periods(start, end, lookback, range_key=None):
-    """The `lookback` earlier periods a Date range is averaged against, most recent first (R4):
-    whole earlier periods of the same kind for a calendar range - This/Last month against the
-    previous full months, This quarter against earlier quarters, year to date/this year/last
-    year against earlier full years, Last 12 months against earlier 12-month blocks. A custom
-    range (or no `range_key`) uses earlier windows the same length as [start, end]; Earliest to
-    date has nothing before it."""
+    """The `lookback` earlier periods a Date range is averaged against,
+    most recent first: whole earlier periods of the same kind for a
+    calendar range - This/Last month against the previous full months,
+    This quarter against earlier quarters, year to date/this year/last
+    year against earlier full years, Last 12 months against earlier
+    12-month blocks. A custom range (or no `range_key`) uses earlier
+    windows the same length as [start, end]; Earliest to date has
+    nothing before it."""
     if range_key == EARLIEST_RANGE_KEY:
         return []
     if range_key in _MONTH_RANGES:
@@ -175,10 +212,11 @@ def vs_average_periods(start, end, lookback, range_key=None):
 
 
 def trimmed_average_periods(start, end, lookback, account=None, range_key=None):
-    """`vs_average_periods()`, minus any period that ends before the account's first
-    transaction (R4: "periods before the data begins don't count, whatever Average interval
-    says") - computed once per page load and threaded into every vs-average function below, so
-    they all agree on the same real period count."""
+    """`vs_average_periods()`, minus any period that ends before the
+    account's first transaction ("periods before the data begins don't
+    count, whatever Average interval says") - computed once per page
+    load and threaded into every vs-average function below, so they all
+    agree on the same real period count."""
     earliest = earliest_transaction_date(account=account)
     periods = vs_average_periods(start, end, lookback, range_key=range_key)
     if not earliest:
@@ -187,11 +225,12 @@ def trimmed_average_periods(start, end, lookback, account=None, range_key=None):
 
 
 def income_and_spending_vs_average(start, end, periods, account=None, rates=None):
-    """This period's income/spending/savings-rate vs. the average of the given trailing
-    `periods` (see trimmed_average_periods()) - the same comparison category_totals_vs_average()
-    makes per category, but for the overall totals the Income & expense vs average card shows.
-    With no earlier periods there is nothing to average, so every average is None, as it is
-    per category."""
+    """This period's income/spending/savings-rate vs. the average of the
+    given trailing `periods` (see trimmed_average_periods()) - the same
+    comparison category_totals_vs_average() makes per category, but for
+    the overall totals the Income & expense vs average card shows. With
+    no earlier periods there is nothing to average, so every average is
+    None, as it is per category."""
     current = income_and_spending(start, end, account=account, rates=rates)
     current_net = current["income"] - current["spending"]
     result = {
@@ -222,11 +261,13 @@ def income_and_spending_vs_average(start, end, periods, account=None, rates=None
 
 
 def category_totals_top_level(start, end, expense_only=False, income_only=False, account=None, rates=None):
-    """Per-main-category totals for the period, transfers excluded (R1: the category's type
-    decides, not the amount's sign). A subcategory's amount is rolled into its main category's,
-    since charts show one bar per main category (R2). expense_only/income_only return each
-    net total as _as_shown() has it, sorted biggest-first (for the "by category" charts);
-    otherwise totals stay signed (income positive, expense negative), sorted low-to-high."""
+    """Per-main-category totals for the period, transfers excluded (the
+    category's type decides, not the amount's sign). A subcategory's
+    amount is rolled into its main category's, since charts show one bar
+    per main category. expense_only/income_only return each net total as
+    _as_shown() has it, sorted biggest-first (for the "by category"
+    charts); otherwise totals stay signed (income positive, expense
+    negative), sorted low-to-high."""
     qs = _reportable(start, end, account, expense_only, income_only)
 
     raw = {}
@@ -257,13 +298,15 @@ def category_totals_top_level(start, end, expense_only=False, income_only=False,
 def category_totals_vs_average(
     start, end, periods, expense_only=False, income_only=False, account=None, rates=None, top_level=False
 ):
-    """Per category: [start, end]'s total vs. the average of the given trailing `periods` (see
-    trimmed_average_periods()). Periods with no activity for a category count as zero - the
-    average always divides by len(periods), not by how many of them happened to have a row for
-    that category. A category with no activity in any earlier period averages 0 too (a month
-    without a vacation is a real zero) and is marked `no_earlier_activity`, so the table can
-    show "—" for it. Only with no earlier periods at all is the average None.
-    `top_level=True` rolls subcategories into their main category, for charts."""
+    """Per category: [start, end]'s total vs. the average of the given
+    trailing `periods` (see trimmed_average_periods()). Periods with no
+    activity for a category count as zero - the average always divides
+    by len(periods), not by how many of them happened to have a row for
+    that category. A category with no activity in any earlier period
+    averages 0 too (a month without a vacation is a real zero) and is
+    marked `no_earlier_activity`, so the table can show "—" for it. Only
+    with no earlier periods at all is the average None. `top_level=True`
+    rolls subcategories into their main category, for charts."""
     qs = _reportable(account=account, expense_only=expense_only, income_only=income_only)
 
     top_of = {}
@@ -320,9 +363,10 @@ def category_totals_vs_average(
 
 
 def subtotal_overflow_message(start, end, granularity):
-    """None when a subtotal-driven table/chart fits within SUBTOTAL_LIMIT columns; otherwise a
-    short notice pointing at the next coarser granularity, in the app's own alert style, with no
-    exact count in the text (R5)."""
+    """None when a subtotal-driven table/chart fits within
+    SUBTOTAL_LIMIT columns; otherwise a short notice pointing at the
+    next coarser granularity, in the app's own alert style, with no
+    exact count in the text."""
     if not granularity:
         return None
     if len(_period_columns(start, end, granularity)) <= SUBTOTAL_LIMIT:
@@ -335,9 +379,10 @@ def subtotal_overflow_message(start, end, granularity):
 
 
 def period_bucket(d, granularity):
-    """The (sort_key, label) of the period `d` falls into, at the given granularity. Computed
-    in plain Python rather than a DB TruncXxx - "half-year" has no Django equivalent, and
-    doing every granularity the same way keeps this and _period_columns() below in sync."""
+    """The (sort_key, label) of the period `d` falls into, at the given
+    granularity. Computed in plain Python rather than a DB TruncXxx -
+    "half-year" has no Django equivalent, and doing every granularity
+    the same way keeps this and _period_columns() below in sync."""
     if granularity == "week":
         start = d - timedelta(days=d.weekday())
         return start, start.strftime("%d %b")
@@ -357,9 +402,10 @@ def period_bucket(d, granularity):
 
 
 def _period_columns(start, end, granularity):
-    """Every period bucket touched by [start, end], in calendar order, each with the latest
-    date within the range that falls in it (a full period's real end, or `end` itself for a
-    bucket the range cuts off early) - the "as of" date Net worth needs per column."""
+    """Every period bucket touched by [start, end], in calendar order,
+    each with the latest date within the range that falls in it (a full
+    period's real end, or `end` itself for a bucket the range cuts off
+    early) - the "as of" date Net worth needs per column."""
     buckets = {}
     d = start
     while d <= end:
@@ -372,27 +418,31 @@ def _period_columns(start, end, granularity):
 
 
 def uncategorized_count(start, end, account=None):
-    """How many transactions in the period have no category - excluded from every report (R1),
-    since Category stays optional (some imports can't supply one)."""
+    """How many transactions in the period have no category - excluded
+    from every report, since Category stays optional (some imports can't
+    supply one)."""
     return Transaction.objects.in_range(start, end).filter(category__isnull=True).for_account(account).count()
 
 
 def category_report_rows(
     start, end, subtotal="", expense_only=False, income_only=False, account=None, category_ids=None, rates=None
 ):
-    """Category totals for the period, grouped and ordered like the category list page
-    (grouped_categories(): Income group then Expense group, a parent immediately followed by
-    its own subcategories) - a parent row is rolled up to include its subcategories' amounts
-    on top of its own, matching how the category list page already treats a category as
-    "itself and what's under it". Amounts are added up signed, so a refund shrinks its
-    category, and an expense report flips the sign once at the end (_as_shown()). When
-    `subtotal` is a period granularity, each row gets one value per period bucket across the
-    range plus a row-level total; otherwise each row just gets its one total for the whole
-    range (as a single-element values list).
+    """Category totals for the period, grouped and ordered like the
+    category list page (grouped_categories(): Income group then Expense
+    group, a parent immediately followed by its own subcategories) - a
+    parent row is rolled up to include its subcategories' amounts on top
+    of its own, matching how the category list page already treats a
+    category as "itself and what's under it". Amounts are added up
+    signed, so a refund shrinks its category, and an expense report
+    flips the sign once at the end (_as_shown()). When `subtotal` is a
+    period granularity, each row gets one value per period bucket across
+    the range plus a row-level total; otherwise each row just gets its
+    one total for the whole range (as a single-element values list).
 
-    Returns {"periods": [labels...], "groups": [{"name", "rows": [{"name", "is_child",
-    "values", "total"}]}], "totals": {"values": [...], "total": Decimal} or None if empty,
-    "overflow": a message instead of everything else when the subtotal has too many columns (R5)}.
+    Returns {"periods": [labels...], "groups": [{"name", "rows":
+    [{"name", "is_child", "values", "total"}]}], "totals": {"values":
+    [...], "total": Decimal} or None if empty, "overflow": a message
+    instead of everything else when the subtotal has too many columns}.
     """
     overflow = subtotal_overflow_message(start, end, subtotal) if subtotal else None
     if overflow:
@@ -463,17 +513,21 @@ def category_report_rows(
 def category_vs_average_report_rows(
     start, end, periods, expense_only=False, income_only=False, account=None, rates=None
 ):
-    """Like category_totals_vs_average(), but grouped/ordered like the category list page
-    (parent rolled up to include its subcategories) instead of sorted by amount, and with
-    each row's difference (current - average) included - shaped for the report's table
-    rather than its chart, which keeps using the amount-sorted, flat category_totals_vs_
-    average() unchanged. Averages follow category_totals_vs_average()'s rule: a category with
-    no earlier activity (counting its subcategories', for a main category) averages 0 and is
-    marked `no_earlier_activity`; only with no earlier periods at all is the average None."""
+    """Like category_totals_vs_average(), but grouped/ordered like the
+    category list page (parent rolled up to include its subcategories)
+    instead of sorted by amount, and with each row's difference
+    (current - average) included - shaped for the report's table rather
+    than its chart, which keeps using the amount-sorted, flat
+    category_totals_vs_average() unchanged. Averages follow
+    category_totals_vs_average()'s rule: a category with no earlier
+    activity (counting its subcategories', for a main category) averages
+    0 and is marked `no_earlier_activity`; only with no earlier periods
+    at all is the average None."""
     qs = _reportable(account=account, expense_only=expense_only, income_only=income_only)
 
     def totals_for(s, e):
-        """Category id -> [its total], one column wide, the shape _rollup_to_parents() takes."""
+        """Category id -> [its total], one column wide, the shape
+        _rollup_to_parents() takes."""
         totals = {}
         for row in qs.in_range(s, e).values("category_id", "amount", "account__currency"):
             amount = _convert(row["amount"], row["account__currency"], rates)
@@ -482,8 +536,9 @@ def category_vs_average_report_rows(
 
     current_by_category = totals_for(start, end)
     period_totals_list = [totals_for(s, e) for s, e in periods]
-    # Taken before the roll-up, which gives a main category an all-zero row in every period
-    # even when neither it nor its subcategories had any activity then.
+    # Taken before the roll-up, which gives a main category an all-zero
+    # row in every period even when neither it nor its subcategories had
+    # any activity then.
     active_before = {cid for pt in period_totals_list for cid in pt}
 
     all_ids = set(current_by_category)
@@ -515,10 +570,12 @@ def category_vs_average_report_rows(
         return cid in active_before or any(child in active_before for child in child_ids_by_parent.get(cid, []))
 
     result_groups = []
-    # The total's average is the sum of the main categories' averages, so the column adds up.
-    # That is the average of the earlier periods' grand totals (give or take the cents each row's
-    # own rounding moves it): a category with no earlier activity averages 0, so it adds nothing
-    # to either. With no earlier periods at all, every average is None, and so is this.
+    # The total's average is the sum of the main categories' averages,
+    # so the column adds up. That is the average of the earlier periods'
+    # grand totals (give or take the cents each row's own rounding moves
+    # it): a category with no earlier activity averages 0, so it adds
+    # nothing to either. With no earlier periods at all, every average
+    # is None, and so is this.
     totals = {"current": ZERO, "average": ZERO if periods else None}
     for group in grouped_categories(categories.values()):
         rows = []
@@ -553,8 +610,8 @@ def category_vs_average_report_rows(
 
 
 def _summary_row(row_id, name, current, average, **extra):
-    """One row of the Income & expense vs average table's Summary group, shaped like a category
-    row of category_vs_average_report_rows()."""
+    """One row of the Income & expense vs average table's Summary group,
+    shaped like a category row of category_vs_average_report_rows()."""
     return {
         "id": row_id,
         "parent_id": None,
@@ -569,11 +626,12 @@ def _summary_row(row_id, name, current, average, **extra):
 
 
 def income_expense_vs_average_report_rows(start, end, periods, account=None, rates=None, vs_average_totals=None):
-    """The Income & expense vs average table: every category's row, and a closing "Summary"
-    group with the Income total and Expense total rows. Built here once, so the page and the
-    export hold the same rows. `vs_average_totals` is income_and_spending_vs_average()'s result
-    for the same arguments when the caller already has it (the page needs it for its stat
-    row); otherwise it is worked out here."""
+    """The Income & expense vs average table: every category's row, and
+    a closing "Summary" group with the Income total and Expense total
+    rows. Built here once, so the page and the export hold the same
+    rows. `vs_average_totals` is income_and_spending_vs_average()'s
+    result for the same arguments when the caller already has it (the
+    page needs it for its stat row); otherwise it is worked out here."""
     table = category_vs_average_report_rows(start, end, periods, account=account, rates=rates)
     if vs_average_totals is None:
         vs_average_totals = income_and_spending_vs_average(start, end, periods, account=account, rates=rates)
@@ -606,9 +664,11 @@ def _with_parents(category_ids):
 
 
 def _rollup_to_parents(totals, categories, width):
-    """A copy of `totals` (category id -> one amount per column) where each parent's amounts
-    also include its subcategories', since a parent row means "itself and what's under it".
-    Every parent in `categories` with a subcategory there gets a row, even an all-zero one."""
+    """A copy of `totals` (category id -> one amount per column) where
+    each parent's amounts also include its subcategories', since a
+    parent row means "itself and what's under it". Every parent in
+    `categories` with a subcategory there gets a row, even an all-zero
+    one."""
     rolled = {cid: list(values) for cid, values in totals.items()}
     for category in categories.values():
         if category.parent_id:
@@ -619,14 +679,17 @@ def _rollup_to_parents(totals, categories, width):
 
 
 def net_worth_by_account(start, end, granularity, rates=None):
-    """Every account's running balance (D1: opening balance is itself a transaction, so a sum
-    to a date already includes it) at the end of every period bucket in the range, grouped
-    like the accounts page (grouped_accounts(): Physical Liquid, Digital Liquid, Illiquid,
-    Inactive) - each group's own rollup row stands in for a category table's "parent" row
-    (collapsible, to show/hide the individual accounts under it), plus an overall Total row
-    summing every group. Every account converts to `rates`'s target currency using the latest
-    known rate (D2's simplification, the same the accounts page and dashboard already use) -
-    an account with no known rate contributes zero and is named in "missing_accounts"."""
+    """Every account's running balance (D1: opening balance is itself a
+    transaction, so a sum to a date already includes it) at the end of
+    every period bucket in the range, grouped like the accounts page
+    (grouped_accounts(): Physical Liquid, Digital Liquid, Illiquid,
+    Inactive) - each group's own rollup row stands in for a category
+    table's "parent" row (collapsible, to show/hide the individual
+    accounts under it), plus an overall Total row summing every group.
+    Every account converts to `rates`'s target currency using the latest
+    known rate (D2's simplification, the same the accounts page and
+    dashboard already use) - an account with no known rate contributes
+    zero and is named in "missing_accounts"."""
     overflow = subtotal_overflow_message(start, end, granularity)
     if overflow:
         return {"periods": [], "groups": [], "totals": [], "overflow": overflow, "missing_accounts": []}
@@ -672,9 +735,10 @@ def net_worth_by_account(start, end, granularity, rates=None):
 
 
 def _running_balances(accounts, as_of_dates):
-    """Each account's balance at the end of each of `as_of_dates` (ascending), in its own
-    currency. One query sums the transactions per account and day; walking those days in order
-    keeps a running balance per account, read off at each date."""
+    """Each account's balance at the end of each of `as_of_dates`
+    (ascending), in its own currency. One query sums the transactions
+    per account and day; walking those days in order keeps a running
+    balance per account, read off at each date."""
     balances = {account.pk: ZERO for account in accounts}
     columns = {account.pk: [] for account in accounts}
     if not as_of_dates:
@@ -700,9 +764,9 @@ def watched_expenses_category_ids(profile):
 
 
 def watched_expenses_totals(start, end, category_ids, account=None, rates=None):
-    """Spending per chosen category (R8's "Watched expenses", a Settings-configurable
-    replacement for the old hardcoded Bills & Utilities report) - None when nothing is chosen,
-    so the view can show the "go to Settings" message instead of an empty chart."""
+    """Spending per chosen category (the Watched expenses report) - None
+    when nothing is chosen, so the view can show the "go to Settings"
+    message instead of an empty chart."""
     if not category_ids:
         return None
     qs = _reportable(start, end, account, expense_only=True).filter(category_id__in=category_ids)
@@ -720,9 +784,10 @@ def watched_expenses_totals(start, end, category_ids, account=None, rates=None):
 
 
 def watched_expenses_series(start, end, category_ids, granularity="month", account=None, rates=None):
-    """One line per chosen category (R8), one point per `granularity` period - the view passes
-    the Subtotal filter (month when none is chosen), the same way Net worth's chart follows it.
-    A period with no activity for a category is a real zero point, not a gap."""
+    """One line per chosen category, one point per `granularity`
+    period - the view passes the Subtotal filter (month when none is
+    chosen), the same way Net worth's chart follows it. A period with no
+    activity for a category is a real zero point, not a gap."""
     if not category_ids:
         return []
     names = {c.pk: c.name for c in Category.objects.filter(pk__in=category_ids)}
@@ -747,19 +812,22 @@ def watched_expenses_series(start, end, category_ids, granularity="month", accou
 
 
 def spending_tree(start, end, rates=None):
-    """Spending grouped by top-level category, each broken down one level further.
+    """Spending grouped by top-level category, each broken down one
+    level further.
 
-    Shaped for the dashboard's drill-down donut. Every category is its own net total (R1: the
-    category decides, never the sign) - spent 40 and refunded 100 is -60, not +60. The donut
-    draws only positive totals but lists the negative ones too, so the totals of every group
-    still add up to the Spending tile. Amounts convert into the main currency through `rates`
-    like every report, and are summed as Decimal; they only become float at the very end, for
-    JSON.
+    Shaped for the dashboard's drill-down donut. Every category is its
+    own net total (the category decides, never the sign) - spent 40 and
+    refunded 100 is -60, not +60. The donut draws only positive totals
+    but lists the negative ones too, so the totals of every group still
+    add up to the Spending tile. Amounts convert into the main currency
+    through `rates` like every report, and are summed as Decimal; they
+    only become float at the very end, for JSON.
     """
     categories = {category.pk: category for category in Category.objects.all()}
 
     def lineage(category_id):
-        """[top-level, child, grandchild, ...] — stops if a parent loop exists in the data."""
+        """[top-level, child, grandchild, ...] — stops if a parent loop
+        exists in the data."""
         chain, seen = [], set()
         current = categories.get(category_id)
         while current is not None and current.pk not in seen:
@@ -771,7 +839,8 @@ def spending_tree(start, end, rates=None):
     spent = {}
     rows = _reportable(start, end, expense_only=True).values("category_id", "amount", "account__currency")
     for row in rows:
-        # Spending is stored negative, so a refund (positive) reduces what was spent.
+        # Spending is stored negative, so a refund (positive) reduces
+        # what was spent.
         amount = _as_shown(_convert(row["amount"], row["account__currency"], rates), expense_only=True)
         spent[row["category_id"]] = spent.get(row["category_id"], ZERO) + amount
 

@@ -1,8 +1,9 @@
 """The Settings page and everything reached from it.
 
-The page holds several separate forms. Each one posts to its own URL (preferences to the page
-itself, the others to check_rates, create_backup and save_watched_expenses), and each
-redirects back to the page when it succeeds.
+The page holds several separate forms. Each one posts to its own URL
+(preferences to the page itself, the others to check_rates,
+create_backup and save_watched_expenses), and each redirects back to the
+page when it succeeds.
 """
 
 import secrets
@@ -20,27 +21,22 @@ from django.views.decorators.http import require_POST
 from .. import backup as finance_backup
 from ..auth_forms import ChangePinForm, CurrentPinForm
 from ..currency import RateFetchError, RateTable, fetch_latest_rates
-from ..forms import (
-    CheckRatesForm,
-    ProfileForm,
-    WatchedExpensesForm,
-    convertible_currencies,
-    watched_expenses_picker_context,
-)
+from ..forms import ProfileForm, WatchedExpensesForm, convertible_currencies, watched_expenses_picker_context
 from ..models import Account
 from ..stashes import StashError, registry, security
 
 
 def _stash_backup_root(request):
-    """The folder of this session's stash, which holds its backups/ folder. The session always
-    names a stash here: finance.middleware.RequireStashMiddleware lets no finance page open
+    """The folder of this session's stash, which holds its backups/
+    folder. The session always names a stash here:
+    finance.middleware.RequireStashMiddleware lets no finance page open
     until one is chosen."""
     return registry.stash_path(request.session["stash"])
 
 
 def _current_stash_db_path(request):
-    """The db.sqlite3 file behind this session's stash - never `default`'s, which is only the
-    picker's empty placeholder."""
+    """The db.sqlite3 file behind this session's stash - never
+    `default`'s, which is only the picker's empty placeholder."""
     return registry.stash_db_path(request.session["stash"])
 
 
@@ -49,8 +45,8 @@ def _rate_currencies(profile):
 
 
 def _render_settings(request, profile, form=None, watched_form=None):
-    """The Settings page. A form that failed validation is passed in, so its errors show;
-    every other form starts fresh."""
+    """The Settings page. A form that failed validation is passed in, so
+    its errors show; every other form starts fresh."""
     rates = RateTable(profile.main_currency)
     known_rates = [(code, rates.known(code)) for code in _rate_currencies(profile) if code != profile.main_currency]
     recent_backups = finance_backup.list_backups(_stash_backup_root(request), limit=5)
@@ -61,7 +57,6 @@ def _render_settings(request, profile, form=None, watched_form=None):
             "form": form or ProfileForm(instance=profile),
             "watched_form": watched_form or WatchedExpensesForm(instance=profile),
             **watched_expenses_picker_context(profile),
-            "check_rates_form": CheckRatesForm(),
             "profile": profile,
             "known_rates": known_rates,
             "recent_backups": [{"name": p.name, "size_kb": p.stat().st_size // 1024} for p in recent_backups],
@@ -70,7 +65,8 @@ def _render_settings(request, profile, form=None, watched_form=None):
 
 
 def settings_view(request):
-    """Shows the page; a POST saves the currency and regional preferences."""
+    """Shows the page; a POST saves the currency and regional
+    preferences."""
     profile = request.stashy_profile
     form = None
     if request.method == "POST":
@@ -85,9 +81,9 @@ def settings_view(request):
 @require_POST
 @transaction.non_atomic_requests
 def check_rates(request):
-    """Runs without the per-request transaction so it never holds the stash's write lock
-    while it waits on the internet. fetch_latest_rates() takes its own short one for the
-    writes."""
+    """Runs without the per-request transaction so it never holds the
+    stash's write lock while it waits on the internet.
+    fetch_latest_rates() takes its own short one for the writes."""
     profile = request.stashy_profile
     try:
         stored, unavailable = fetch_latest_rates(profile.main_currency, _rate_currencies(profile))
@@ -107,8 +103,9 @@ def check_rates(request):
 @require_POST
 @transaction.non_atomic_requests
 def create_backup(request):
-    """Runs without the per-request transaction: the backup reads the database through its
-    own connection, and nothing here writes to it."""
+    """Runs without the per-request transaction: the backup reads the
+    database through its own connection, and nothing here writes to it.
+    """
     backup_root = _stash_backup_root(request)
     backup = finance_backup.backup_now(_current_stash_db_path(request), backup_root)
     if backup:
@@ -131,9 +128,10 @@ def save_watched_expenses(request):
 
 
 def _log_out_after_lockout(request):
-    """Too many wrong PINs on a page that asks for it again: out to the PIN screen, which says
-    how long the lockout lasts. logout() empties the session, so the stash's name goes back in
-    for the PIN screen to know which stash it is."""
+    """Too many wrong PINs on a page that asks for it again: out to the
+    PIN screen, which says how long the lockout lasts. logout() empties
+    the session, so the stash's name goes back in for the PIN screen to
+    know which stash it is."""
     stash = request.session["stash"]
     logout(request)
     request.session["stash"] = stash
@@ -141,7 +139,8 @@ def _log_out_after_lockout(request):
 
 
 def change_pin_view(request):
-    """Its own page, reached from Settings: current PIN, new PIN, confirm."""
+    """Its own page, reached from Settings: current PIN, new PIN,
+    confirm."""
     profile = request.stashy_profile
     if request.method == "POST":
         form = ChangePinForm(request.POST, profile=profile)
@@ -167,13 +166,15 @@ def _recovery_code_cache_key(token):
 
 @never_cache
 def recovery_code_view(request):
-    """Its own page: a warning, the current PIN, and Generate/Back. Generate mints a new code
-    and redirects back to this same URL - a real page reload, so refreshing afterward can't
-    regenerate a second code by resubmitting a form.
+    """Its own page: a warning, the current PIN, and Generate/Back.
+    Generate mints a new code and redirects back to this same URL - a
+    real page reload, so refreshing afterward can't regenerate a second
+    code by resubmitting a form.
 
-    The code itself waits in the server's memory cache, and the session (a signed but readable
-    cookie) only carries a random one-time key to it. The page shows it once and deletes it.
-    Stashy is one process, so the local-memory cache is shared by every request."""
+    The code itself waits in the server's memory cache, and the session
+    (a signed but readable cookie) only carries a random one-time key to
+    it. The page shows it once and deletes it. Stashy is one process, so
+    the local-memory cache is shared by every request."""
     profile = request.stashy_profile
     if request.method == "POST":
         form = CurrentPinForm(request.POST, profile=profile)
@@ -200,9 +201,10 @@ def recovery_code_view(request):
 
 
 def _backup_path_or_404(request, name):
-    """Only ever resolves to a file that's actually inside the current stash's own backups/
-    - `name` comes straight off the querystring, so this guards against it smuggling in a
-    path (e.g. "../../other-stash/db.sqlite3")."""
+    """Only ever resolves to a file that's actually inside the current
+    stash's own backups/ - `name` comes straight off the querystring, so
+    this guards against it smuggling in a path (e.g.
+    "../../other-stash/db.sqlite3")."""
     backup_root = _stash_backup_root(request)
     candidate = backup_root / "backups" / Path(name).name
     if candidate not in finance_backup.list_backups(backup_root):
@@ -212,11 +214,12 @@ def _backup_path_or_404(request, name):
 
 @transaction.non_atomic_requests
 def backup_restore(request):
-    """Restoring overwrites the live database, so this is a confirm-then-act page (like a
-    delete) rather than a one-click button on Settings - a wrong pick here is far more costly
-    than a wrong pick almost anywhere else in the app. It asks for the PIN first, like Change
-    PIN (plan 03, Q3). Runs without the per-request transaction: the restore needs the stash's
-    write lock itself."""
+    """Restoring overwrites the live database, so this is a
+    confirm-then-act page (like a delete) rather than a one-click button
+    on Settings - a wrong pick here is far more costly than a wrong pick
+    almost anywhere else in the app. It asks for the PIN first, like
+    Change PIN. Runs without the per-request transaction: the restore
+    needs the stash's write lock itself."""
     name = request.POST.get("name") or request.GET.get("name", "")
     backup_path = _backup_path_or_404(request, name)
     stash = request.session["stash"]
@@ -224,8 +227,9 @@ def backup_restore(request):
 
     if request.method == "POST":
         form = CurrentPinForm(request.POST, profile=profile)
-        # This view runs without the request's transaction, but the PIN check takes its own
-        # lock (security.check_pin), so the wrong try is counted either way.
+        # This view runs without the request's transaction, but the PIN
+        # check takes its own lock (security.check_pin), so the wrong
+        # try is counted either way.
         if form.is_valid():
             try:
                 registry.restore_stash(stash, backup_path)

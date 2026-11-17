@@ -1,7 +1,8 @@
-"""Set up (first run) and launch Stashy. Started by Stashy.bat using Stashy's own Python environment.
+"""Set up (first run) and launch Stashy. Started by Stashy.bat using
+Stashy's own Python environment.
 
-Every step is safe to repeat: anything already done is skipped, so the same
-double-click works for first-time setup and for everyday launching.
+Every step is safe to repeat: anything already done is skipped, so the
+same double-click works for first-time setup and for everyday launching.
 """
 
 import contextlib
@@ -20,8 +21,9 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def _configured_port():
-    """Read PORT=... from .env directly (no dependency needed yet - this runs before
-    install_requirements(), so python-decouple may not be installed on a brand new machine)."""
+    """Read PORT=... from .env directly (no dependency needed yet - this
+    runs before install_requirements(), so python-decouple may not be
+    installed on a brand new machine)."""
     env_file = ROOT / ".env"
     if env_file.exists():
         for line in env_file.read_text(encoding="utf-8").splitlines():
@@ -35,28 +37,32 @@ def _configured_port():
 
 HOST, PORT = "127.0.0.1", _configured_port()
 URL = f"http://{HOST}:{PORT}/"
-# What the browser opens. Browsers send any name ending in .localhost to this computer by
-# themselves, with no hosts-file entry. Windows doesn't, so Python code here (the "already
-# running?" check) keeps using URL.
+# What the browser opens. Browsers send any name ending in .localhost to
+# this computer by themselves, with no hosts-file entry. Windows
+# doesn't, so Python code here (the "already running?" check) keeps
+# using URL.
 BROWSER_URL = f"http://stashy.localhost:{PORT}/"
 
 
 def _make_project_importable():
-    """This script starts with only its own folder (scripts/) on the path, so the app's
-    standard-library-only modules (finance.backup, finance.stashes.folder_names) can't be
-    imported until the project folder is on it too. Safe to call again."""
+    """This script starts with only its own folder (scripts/) on the
+    path, so the app's standard-library-only modules (finance.backup,
+    finance.stashes.folder_names) can't be imported until the project
+    folder is on it too. Safe to call again."""
     if str(ROOT) not in sys.path:
         sys.path.insert(0, str(ROOT))
 
 
 def _stash_dirs():
-    """Every stash's own folder (Phase 12: live switching means there's no single "current"
-    stash at launch time any more - a session picks one after Stashy is already running - so
-    setup steps that used to touch just "the current stash" now loop over all of them)."""
+    """Every stash's own folder. Stashes switch live (a session picks
+    one after Stashy is already running), so there is no single
+    "current" stash at launch time: the setup steps loop over all of
+    them."""
     _make_project_importable()
-    # Imported here: it needs the project folder on the path (above), and it is the app's own
-    # definition of a stash, so this scan can't disagree with the app's (S110). A reserved name
-    # that is skipped there is skipped here: migrating one would fail, because the app never
+    # Imported here: it needs the project folder on the path (above),
+    # and it is the app's own definition of a stash, so this scan can't
+    # disagree with the app's. A reserved name that is skipped there is
+    # skipped here: migrating one would fail, because the app never
     # registers it.
     from finance.stashes.folder_names import stash_folders
 
@@ -113,15 +119,16 @@ def install_requirements():
 
 
 def env_text_from_example(example_text, secret_key):
-    """.env.example's text with `secret_key` filled in. Every other line stays as it is, so
-    .env.example is the one template for .env, and the two can't drift apart."""
+    """.env.example's text with `secret_key` filled in. Every other line
+    stays as it is, so .env.example is the one template for .env, and
+    the two can't drift apart."""
     lines = example_text.splitlines(keepends=True)
     return "".join(f"SECRET_KEY={secret_key}\n" if line.startswith("SECRET_KEY=") else line for line in lines)
 
 
 def ensure_env_file():
-    """Creates .env from .env.example, with a new secret key, on the first run. An .env that
-    already exists is never touched."""
+    """Creates .env from .env.example, with a new secret key, on the
+    first run. An .env that already exists is never touched."""
     env_file = ROOT / ".env"
     if env_file.exists():
         return
@@ -134,13 +141,15 @@ def ensure_env_file():
 
 
 def migrate_database():
-    """Migrates the picker's own placeholder database, then every stash in turn (Phase 12:
-    with no restart needed to switch stashes, any of them could be picked on this launch, so
-    all of them need to be current, not just whichever one happened to be selected last)."""
+    """Migrates the picker's own placeholder database, then every stash
+    in turn: with no restart needed to switch stashes, any of them could
+    be picked on this launch, so all of them need to be current, not
+    just whichever one happened to be selected last."""
     _make_project_importable()
-    # Imported here: it needs the project folder on the path (above). finance.backup is
-    # standard library only, so it works before Django is set up. Its backups go through
-    # SQLite's backup API and are named after the stash.
+    # Imported here: it needs the project folder on the path (above).
+    # finance.backup is standard library only, so it works before Django
+    # is set up. Its backups go through SQLite's backup API and are
+    # named after the stash.
     from finance.backup import backup_now
 
     pending = run_python("manage.py", "migrate", "--check", capture_output=True)
@@ -169,14 +178,16 @@ def collect_static_files():
 
 
 def run_quarterly_backup():
-    """No background scheduler - just checked once, here, at every launch (D8), for every
-    stash there is (Phase 12: no single "current" one any more) - nothing to back up yet if
-    none exist, the picker screen handles that."""
+    """No background scheduler - just checked once, here, at every
+    launch (D8), for every stash there is (there is no single "current"
+    one at launch) - nothing to back up yet if none exist, the picker
+    screen handles that."""
     stash_dirs = _stash_dirs()
     if not stash_dirs:
         return
     _make_project_importable()
-    # Imported here: it needs the project folder on the path (above); see migrate_database().
+    # Imported here: it needs the project folder on the path (above);
+    # see migrate_database().
     from finance.backup import quarterly_backup_if_due
 
     for stash_dir in stash_dirs:

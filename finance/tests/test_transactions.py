@@ -1,5 +1,6 @@
-"""Transactions: numbers, the add and edit forms, the list (filters, sorting, totals, Edit
-mode), deleting, and where you land after saving."""
+"""Transactions: numbers, the add and edit forms, the list (filters,
+sorting, totals, Edit mode), deleting, and where you land after saving.
+"""
 
 import csv
 import html
@@ -41,8 +42,9 @@ class TransactionNumberingTests(StashTestCase):
         self.assertEqual(next_year.transaction_number, 1)
 
     def test_numbering_is_shared_across_accounts_not_independent(self):
-        # Revised D9 (13/09/2026): one sequence per year, shared by every account - not one
-        # sequence per account. A second account's first transaction continues the same count.
+        # D9: one sequence per year, shared by every account - not one
+        # sequence per account. A second account's first transaction
+        # continues the same count.
         other = Account.objects.create(name="Savings")
         Transaction.objects.create(account=self.account, date=date(2026, 1, 1), amount=Decimal("-1.00"))
         first_on_other = Transaction.objects.create(account=other, date=date(2026, 1, 1), amount=Decimal("-1.00"))
@@ -53,14 +55,16 @@ class TransactionNumberingTests(StashTestCase):
             account=self.account, date=date(2026, 1, 1), amount=Decimal("-1.00"), transaction_number=9999
         )
         self.assertEqual(txn.transaction_number, 9999)
-        # Numbering isn't strictly unique/enforced (D9) — the next auto-assigned number just continues past it.
+        # Numbering isn't strictly unique/enforced (D9) — the next
+        # auto-assigned number just continues past it.
         following = Transaction.objects.create(account=self.account, date=date(2026, 1, 2), amount=Decimal("-1.00"))
         self.assertEqual(following.transaction_number, 10000)
 
 
 @mock.patch("django.utils.timezone.localdate", return_value=TODAY_13_SEPT)
 class DefaultViewTests(LoggedInWithAccountTestCase):
-    """The transaction list defaults to this year, until you explicitly ask otherwise."""
+    """The transaction list defaults to this year, until you explicitly
+    ask otherwise."""
 
     @classmethod
     def setUpTestData(cls):
@@ -94,8 +98,9 @@ class DefaultViewTests(LoggedInWithAccountTestCase):
 
 @mock.patch("django.utils.timezone.localdate", return_value=TODAY_13_SEPT)
 class TransactionRangeTests(LoggedInWithAccountTestCase):
-    """8.13: "All dates" takes the place of "Earliest to date". 8.14: dates typed into the
-    Start/End boxes are read in the stash's own date format."""
+    """8.13: "All dates" takes the place of "Earliest to date". 8.14:
+    dates typed into the Start/End boxes are read in the stash's own
+    date format."""
 
     @classmethod
     def setUpTestData(cls):
@@ -121,7 +126,8 @@ class TransactionRangeTests(LoggedInWithAccountTestCase):
         self.assertEqual(shown, {self.last_year.pk, self.march.pk, self.future.pk})
 
     def test_all_dates_ignores_the_dates_the_form_still_sends(self, _today):
-        # Picking "All dates" submits the form with the previous range's dates still in the boxes.
+        # Picking "All dates" submits the form with the previous range's
+        # dates still in the boxes.
         shown, response = self.shown(range="", start="01/01/2026", end="31/12/2026")
         self.assertEqual(len(shown), 3)
         self.assertIsNone(response.context["start"])
@@ -145,7 +151,8 @@ class TransactionRangeTests(LoggedInWithAccountTestCase):
         self.assertEqual(shown, {self.march.pk})
 
     def test_a_preset_still_decides_when_the_range_says_so(self, _today):
-        # The page's script switches the Range dropdown to "Custom range" as soon as a date is typed.
+        # The page's script switches the Range dropdown to "Custom
+        # range" as soon as a date is typed.
         shown, _response = self.shown(range="last_year", start="01/02/2026", end="31/03/2026")
         self.assertEqual(shown, {self.last_year.pk})
 
@@ -213,7 +220,8 @@ class SortingTests(LoggedInWithAccountTestCase):
         self.assertEqual(response.context["sort"], "")
 
     def test_only_the_clicked_amount_header_shows_its_arrow(self):
-        # S39: Payment and Deposit sort on their own, so each shows an arrow only when it's the one sorted.
+        # S39: Payment and Deposit sort on their own, so each shows an
+        # arrow only when it's the one sorted.
         for column, other in (("payment", "Deposit"), ("deposit", "Payment")):
             with self.subTest(column=column):
                 html = self.client.get(
@@ -229,7 +237,8 @@ class SortingTests(LoggedInWithAccountTestCase):
                 self.assertEqual(html.count("sort-arrow"), 1)
 
     def test_the_old_amount_sort_is_ignored_not_a_crash(self):
-        # S39: "amount" was the one sort both headers shared; a saved link to it just shows the default order.
+        # S39: "amount" was the one sort both headers shared; a saved
+        # link to it just shows the default order.
         response = self.client.get(reverse("finance:transaction_list"), {"range": "", "sort": "amount"})
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["sort"], "")
@@ -242,7 +251,8 @@ class SortingTests(LoggedInWithAccountTestCase):
 
 
 def _pages_with_amount_headers(account):
-    """The two pages that have Payment and Deposit headers, as {name: (url, query that shows every row)}."""
+    """The two pages that have Payment and Deposit headers, as {name:
+    (url, query that shows every row)}."""
     return {
         "transactions": (reverse("finance:transaction_list"), {"range": ""}),
         "register": (reverse("finance:account_detail", args=[account.pk]), {}),
@@ -250,9 +260,10 @@ def _pages_with_amount_headers(account):
 
 
 class PaymentAndDepositSortingTests(LoggedInWithAccountTestCase):
-    """S39: the Payment and Deposit headers each sort their own side, on the Transactions page and
-    on an account's register. The first click puts the biggest first, the second the smallest, and
-    the rows with nothing in that column stay at the bottom either way."""
+    """S39: the Payment and Deposit headers each sort their own side, on
+    the Transactions page and on an account's register. The first click
+    puts the biggest first, the second the smallest, and the rows with
+    nothing in that column stay at the bottom either way."""
 
     @classmethod
     def setUpTestData(cls):
@@ -277,7 +288,8 @@ class PaymentAndDepositSortingTests(LoggedInWithAccountTestCase):
         return result
 
     def assert_order(self, sort, first, rest):
-        """`first` must lead in that order; `rest` (the rows with nothing in the column) follow, any order."""
+        """`first` must lead in that order; `rest` (the rows with
+        nothing in the column) follow, any order."""
         for name, pks in self.ordered(sort).items():
             with self.subTest(page=name, sort=sort):
                 self.assertEqual(pks[: len(first)], first)
@@ -310,8 +322,10 @@ class PaymentAndDepositSortingTests(LoggedInWithAccountTestCase):
                 self.assertRegex(html, r'sort=deposit"[^>]*>Deposit')
 
     def test_the_export_is_in_the_same_order_as_the_page_ties_included(self):
-        # Rows with nothing in the sorted column tie, so the page breaks the tie by newest first (see
-        # _paged()). The export must break it the same way, or it stops matching what you were looking at.
+        # Rows with nothing in the sorted column tie, so the page breaks
+        # the tie by newest first (see _paged()). The export must break
+        # it the same way, or it stops matching what you were looking
+        # at.
         for sort in ("payment", "-payment", "deposit", "-deposit"):
             with self.subTest(sort=sort):
                 page = self.client.get(reverse("finance:transaction_list"), {"range": "", "sort": sort})
@@ -325,7 +339,8 @@ class PaymentAndDepositSortingTests(LoggedInWithAccountTestCase):
 
 
 class AmountSortEdgeCaseTests(LoggedInWithAccountTestCase):
-    """S39: amounts a cent apart, a third click on a header, and sort keys that must be ignored."""
+    """S39: amounts a cent apart, a third click on a header, and sort
+    keys that must be ignored."""
 
     @classmethod
     def setUpTestData(cls):
@@ -334,8 +349,10 @@ class AmountSortEdgeCaseTests(LoggedInWithAccountTestCase):
         def make(amount):
             return Transaction.objects.create(account=cls.account, date=date(2026, 1, 1), amount=Decimal(amount)).pk
 
-        # Made in an order that is neither smallest-first nor biggest-first, so a tie between them
-        # (which a whole-unit rounding would cause) cannot come out right by accident in both directions.
+        # Made in an order that is neither smallest-first nor
+        # biggest-first, so a tie between them (which a whole-unit
+        # rounding would cause) cannot come out right by accident in
+        # both directions.
         cls.pay_2c, cls.pay_3c, cls.pay_1c = make("-0.02"), make("-0.03"), make("-0.01")
         cls.dep_2c, cls.dep_3c, cls.dep_1c = make("0.02"), make("0.03"), make("0.01")
 
@@ -346,8 +363,9 @@ class AmountSortEdgeCaseTests(LoggedInWithAccountTestCase):
                 self.assertEqual([t.pk for t in response.context["transactions"]], expected)
 
     def test_amounts_a_cent_apart_sort_in_the_right_order(self):
-        # Rows with nothing in the sorted column come last, newest first (the tie-break), both ways.
-        # Broken if the amounts were rounded to whole units: every row on that side would tie.
+        # Rows with nothing in the sorted column come last, newest first
+        # (the tie-break), both ways. Broken if the amounts were rounded
+        # to whole units: every row on that side would tie.
         newest_deposits_first = [self.dep_1c, self.dep_3c, self.dep_2c]
         newest_payments_first = [self.pay_1c, self.pay_3c, self.pay_2c]
         self.assert_order_on_both_pages("payment", [self.pay_3c, self.pay_2c, self.pay_1c, *newest_deposits_first])
@@ -363,8 +381,9 @@ class AmountSortEdgeCaseTests(LoggedInWithAccountTestCase):
                     self.assertRegex(html, rf'sort={column}"[^>]*>{column.title()}')
 
     def test_sort_keys_that_are_not_a_column_are_ignored_on_both_pages(self):
-        # The register is as safe as the Transactions page: "amount" was a real sort until S39, and
-        # a doubled minus, other capitals or a bare minus are not columns either.
+        # The register is as safe as the Transactions page: "amount" was
+        # a real sort until S39, and a doubled minus, other capitals or
+        # a bare minus are not columns either.
         for name, (url, params) in _pages_with_amount_headers(self.account).items():
             for sort in ("amount", "-amount", "--payment", "Payment", "-", " payment"):
                 with self.subTest(page=name, sort=sort):
@@ -374,8 +393,9 @@ class AmountSortEdgeCaseTests(LoggedInWithAccountTestCase):
 
 
 class AmountSortWithFiltersTests(LoggedInWithAccountTestCase):
-    """S39: the Payment and Deposit sorts work together with the Transactions page's filters, and the
-    count and the total still describe exactly the rows the filters match."""
+    """S39: the Payment and Deposit sorts work together with the
+    Transactions page's filters, and the count and the total still
+    describe exactly the rows the filters match."""
 
     @classmethod
     def setUpTestData(cls):
@@ -402,7 +422,8 @@ class AmountSortWithFiltersTests(LoggedInWithAccountTestCase):
         expected = {
             "payment": [self.pay_30, self.pay_10, self.dep_5],
             "-payment": [self.pay_10, self.pay_30, self.dep_5],
-            # The one deposit leads both ways; the payments have no deposit and follow, newest first.
+            # The one deposit leads both ways; the payments have no
+            # deposit and follow, newest first.
             "deposit": [self.dep_5, self.pay_10, self.pay_30],
             "-deposit": [self.dep_5, self.pay_10, self.pay_30],
         }
@@ -422,24 +443,27 @@ class AmountSortWithFiltersTests(LoggedInWithAccountTestCase):
 
 @mock.patch("finance.views._helpers.TRANSACTIONS_PER_PAGE", 4)
 class AmountSortAcrossPagesTests(LoggedInWithAccountTestCase):
-    """S39: with a sort on Payment or Deposit, many rows tie (everything in the other column, and
-    equal amounts), yet across pages every row shows exactly once and the order is the one a single
-    long page would have. The page size is 4 here, so 13 rows make 4 pages."""
+    """S39: with a sort on Payment or Deposit, many rows tie (everything
+    in the other column, and equal amounts), yet across pages every row
+    shows exactly once and the order is the one a single long page would
+    have. The page size is 4 here, so 13 rows make 4 pages."""
 
     PAGES = 4
 
     @classmethod
     def setUpTestData(cls):
         super().setUpTestData()
-        # Payments and deposits, with equal amounts and a few zeros, mixed up so that no amount's
-        # rows happen to sit next to each other in the table.
+        # Payments and deposits, with equal amounts and a few zeros,
+        # mixed up so that no amount's rows happen to sit next to each
+        # other in the table.
         amounts = ["-5", "5", "0", "-5", "-2", "5", "-5", "0", "2", "-2", "-0.01", "0.02", "-7"]
         for amount in amounts:
             Transaction.objects.create(account=cls.account, date=date(2026, 1, 1), amount=Decimal(amount))
 
     def expected_pks(self, sort):
-        """What the order should be, worked out in plain Python: the column's rows by size (the first
-        click biggest first, the second smallest first), then every other row, ties newest first."""
+        """What the order should be, worked out in plain Python: the
+        column's rows by size (the first click biggest first, the second
+        smallest first), then every other row, ties newest first."""
         column, descending = sort.removeprefix("-"), sort.startswith("-")
         rows = list(Transaction.objects.all())
         in_column = [t for t in rows if (t.amount < 0 if column == "payment" else t.amount > 0)]
@@ -478,22 +502,26 @@ class AmountSortAcrossPagesTests(LoggedInWithAccountTestCase):
 
 
 class DefaultOrderTiesTests(LoggedInWithAccountTestCase):
-    """With no sort chosen, the Transactions page, the register and the export all use the model's
-    own order (newest date first), and rows that still tie come out newest first."""
+    """With no sort chosen, the Transactions page, the register and the
+    export all use the model's own order (newest date first), and rows
+    that still tie come out newest first."""
 
     @classmethod
     def setUpTestData(cls):
         super().setUpTestData()
         for day, memo in ((2, "first"), (1, "second"), (2, "third")):
             Transaction.objects.create(account=cls.account, date=date(2026, 3, day), amount=Decimal("-1"), memo=memo)
-        # Number and creation time are the other things the default order looks at: make them tie too.
+        # Number and creation time are the other things the default
+        # order looks at: make them tie too.
         Transaction.objects.update(transaction_number=1, created_at=datetime(2026, 3, 1, tzinfo=UTC))
 
-    # The two 2 March rows tie on everything, so the later one ("third") leads; 1 March is last.
+    # The two 2 March rows tie on everything, so the later one ("third")
+    # leads; 1 March is last.
     EXPECTED_MEMOS = ["third", "first", "second"]
 
     def test_the_pages_follow_the_default_order(self):
-        # Broken if it dropped the model's order: "-pk" alone would put "second" before "first".
+        # Broken if it dropped the model's order: "-pk" alone would put
+        # "second" before "first".
         for name, (url, params) in _pages_with_amount_headers(self.account).items():
             with self.subTest(page=name):
                 response = self.client.get(url, params)
@@ -506,9 +534,10 @@ class DefaultOrderTiesTests(LoggedInWithAccountTestCase):
 
 
 class NameColumnSortingTests(LoggedInWithAccountTestCase):
-    """S4: the Payee and Category columns sort on name_key, on the Transactions page and on an
-    account's register. Plain `name` put "lidl" after "Zara" and a lower-case Cyrillic name after
-    every capital one."""
+    """S4: the Payee and Category columns sort on name_key, on the
+    Transactions page and on an account's register. Plain `name` put
+    "lidl" after "Zara" and a lower-case Cyrillic name after every
+    capital one."""
 
     NAMES = ("Zara", "lidl", "бензин", "Аптека", "Вода")
     IN_ORDER = ["lidl", "Zara", "Аптека", "бензин", "Вода"]
@@ -553,7 +582,8 @@ class NameColumnSortingTests(LoggedInWithAccountTestCase):
 
 
 class AsIdTests(SimpleTestCase):
-    """S2's helper: an id from a hand-editable place is plain ASCII digits that fit SQLite, else None."""
+    """S2's helper: an id from a hand-editable place is plain ASCII
+    digits that fit SQLite, else None."""
 
     def test_ids_that_fit(self):
         for text, expected in (
@@ -592,8 +622,9 @@ class AsIdTests(SimpleTestCase):
 
 
 class HandEditedIdTests(LoggedInWithAccountTestCase):
-    """S2: whatever a hand-edited URL sends in place of an id must not become a 500 page. "²" is
-    the sneaky one: `str.isdigit()` is true for it, but `int()` refuses it."""
+    """S2: whatever a hand-edited URL sends in place of an id must not
+    become a 500 page. "²" is the sneaky one: `str.isdigit()` is true
+    for it, but `int()` refuses it."""
 
     # "9" * 4301 is longer than Python will turn into an int at all.
     BAD_IDS = ("abc", "²", "٣", "1.5", "-1", "0x10", "9" * 30, "9" * 4301)
@@ -623,7 +654,8 @@ class HandEditedIdTests(LoggedInWithAccountTestCase):
                     self.assertEqual(export.status_code, 200)
 
     def test_the_new_transaction_form_takes_a_hand_edited_account_without_an_error(self):
-        # `?account=` here goes straight into the form's starting values, not through _as_id().
+        # `?account=` here goes straight into the form's starting
+        # values, not through _as_id().
         for bad in self.BAD_IDS:
             with self.subTest(account=bad[:12]):
                 response = self.client.get(reverse("finance:transaction_add"), {"account": bad})
@@ -633,8 +665,9 @@ class HandEditedIdTests(LoggedInWithAccountTestCase):
 
 
 class MixedIdFilterTests(LoggedInWithAccountTestCase):
-    """S2: a hand-edited URL that holds some good ids and some bad ones keeps the good ones: one
-    bad id is dropped by itself, it doesn't switch the whole filter off (or on)."""
+    """S2: a hand-edited URL that holds some good ids and some bad ones
+    keeps the good ones: one bad id is dropped by itself, it doesn't
+    switch the whole filter off (or on)."""
 
     @classmethod
     def setUpTestData(cls):
@@ -691,9 +724,11 @@ class MixedIdFilterTests(LoggedInWithAccountTestCase):
         self.assertEqual(self.shown(account="abc", category=self.rent.pk), {self.in_rent.pk, self.in_savings.pk})
 
     def test_a_deleted_account_or_category_in_an_old_link(self):
-        # Characterization, not a claim that it is right. Possible bug: the two filters disagree.
-        # An account id that is a number but names nothing shows no rows, while a category id that
-        # names nothing is dropped like a bad one and shows every row (the label says "All categories").
+        # Characterization, not a claim that it is right. Possible bug:
+        # the two filters disagree. An account id that is a number but
+        # names nothing shows no rows, while a category id that names
+        # nothing is dropped like a bad one and shows every row (the
+        # label says "All categories").
         self.assertEqual(self.shown(account=999999), set())
         page = self.page(category=999999)
         self.assertEqual(len(page.context["transactions"]), 5)
@@ -701,7 +736,8 @@ class MixedIdFilterTests(LoggedInWithAccountTestCase):
 
 
 class HandEditedDateTests(LoggedInWithAccountTestCase):
-    """S93's family: a date typed into the Transactions page's URL must not become a 500 page."""
+    """S93's family: a date typed into the Transactions page's URL must
+    not become a 500 page."""
 
     def test_no_range_can_be_longer_than_a_year_after_year_9999(self):
         # start + one year overflows the calendar there.
@@ -723,8 +759,9 @@ class HandEditedDateTests(LoggedInWithAccountTestCase):
         self.assertEqual([t.pk for t in wide.context["transactions"]], [txn.pk])
 
     def test_the_new_transaction_form_takes_any_hand_edited_date(self):
-        # `?date=` is "Save and add another"'s way of handing back the date just used. A date that
-        # isn't one starts the form on today; one at the very edge of the calendar is kept.
+        # `?date=` is "Save and add another"'s way of handing back the
+        # date just used. A date that isn't one starts the form on
+        # today; one at the very edge of the calendar is kept.
         today = timezone.localdate()
         for text, expected in (
             ("9999-12-31", date(9999, 12, 31)),
@@ -745,8 +782,9 @@ class TransactionNumberFormTests(StashTestCase):
         self.assertIn("transaction_number", TransactionForm().fields)
 
     def test_the_number_box_has_no_help_text_with_an_internal_code(self):
-        # S5: the form's own text ended "...starting over each year, D9)" and no page showed it. What
-        # is left is the model's plain sentence.
+        # S5: the form's own text ended "...starting over each year,
+        # D9)" and no page showed it. What is left is the model's plain
+        # sentence.
         help_text = TransactionForm().fields["transaction_number"].help_text
         self.assertNotIn("D9", help_text)
         self.assertEqual(help_text, models.Transaction._meta.get_field("transaction_number").help_text)
@@ -771,8 +809,9 @@ class TransactionNumberFormTests(StashTestCase):
         )
         self.assertTrue(form.is_valid(), form.errors)
         saved = form.save()
-        # "Next" is computed fresh from what's in the database, including this record's own
-        # not-yet-saved old number (2) - so clearing it lands one past that, at 3, not back at 2.
+        # "Next" is computed fresh from what's in the database,
+        # including this record's own not-yet-saved old number (2) - so
+        # clearing it lands one past that, at 3, not back at 2.
         self.assertEqual(saved.transaction_number, 3)
 
     def test_a_chosen_number_is_kept(self):
@@ -890,15 +929,16 @@ class LongerThanAYearTests(SimpleTestCase):
 
 
 class TransactionPagingTests(LoggedInWithAccountTestCase):
-    """8.11: a range longer than a year shows 1,000 rows per page; the count and the total
-    always cover every page."""
+    """8.11: a range longer than a year shows 1,000 rows per page; the
+    count and the total always cover every page."""
 
     @classmethod
     def setUpTestData(cls):
         super().setUpTestData()
         cls.groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
         lidl = Payee.objects.create(name="Lidl")
-        # 1,001 rows inside 2026, all with the same payee, so a sort by payee ties on every row.
+        # 1,001 rows inside 2026, all with the same payee, so a sort by
+        # payee ties on every row.
         amounts = [-Decimal(i % 7 + 1) for i in range(1001)]
         Transaction.objects.bulk_create(
             Transaction(
@@ -1102,8 +1142,9 @@ class NewTransactionNumberPreviewTests(LoggedInWithAccountTestCase):
             account=self.account, date=timezone.localdate(), transaction_number=8, amount=Decimal("-1.00")
         )
         response = self.client.get(reverse("finance:transaction_edit", args=[txn.pk]))
-        # The highest number right now is 8, so a fresh "next available" preview would wrongly
-        # show 9 here - editing must show this transaction's own number (7) untouched instead.
+        # The highest number right now is 8, so a fresh "next available"
+        # preview would wrongly show 9 here - editing must show this
+        # transaction's own number (7) untouched instead.
         self.assertEqual(response.context["form"].initial.get("transaction_number"), 7)
 
 
@@ -1116,8 +1157,9 @@ class TransactionListDeleteAndLabelsTests(LoggedInWithAccountTestCase):
     def test_deleting_from_the_list_returns_to_the_list(self):
         txn = Transaction.objects.create(account=self.account, date=timezone.localdate(), amount=Decimal("-1.00"))
         list_url = reverse("finance:transaction_list")
-        # Real usage: the confirm-delete GET renders `next` as a hidden field, submitted with
-        # the POST - not passed as a query string on the POST itself.
+        # Real usage: the confirm-delete GET renders `next` as a hidden
+        # field, submitted with the POST - not passed as a query string
+        # on the POST itself.
         response = self.client.post(reverse("finance:transaction_delete", args=[txn.pk]), {"next": list_url})
         self.assertRedirects(response, list_url)
 
@@ -1192,7 +1234,8 @@ class SaveAndAddAnotherTests(LoggedInTestCase):
 
     @mock.patch("django.utils.timezone.now", return_value=datetime(2026, 10, 5, 12, 0, tzinfo=UTC))
     def test_today_is_the_stashs_own_date_not_the_computers(self, _now):
-        # 8.1 (F8): noon in London is already the next day in Auckland (UTC+13 in October).
+        # 8.1 (F8): noon in London is already the next day in Auckland
+        # (UTC+13 in October).
         profile = Profile.for_user(self.user)
         profile.time_zone = "Pacific/Auckland"
         profile.save()
@@ -1220,9 +1263,10 @@ class TransactionListEditModeRenderTests(LoggedInTestCase):
         self.assertIn(reverse("finance:transaction_quick_edit", args=[0]), content)
 
     def test_a_transfer_categorys_own_transaction_still_offers_it_in_the_dropdown(self):
-        # Transfer categories are excluded from the shared options list (like the full edit
-        # form) but a transaction already filed under one must still show it, selected. Edit
-        # mode adds that option from the row's data-category-label (8.10).
+        # Transfer categories are excluded from the shared options list
+        # (like the full edit form) but a transaction already filed
+        # under one must still show it, selected. Edit mode adds that
+        # option from the row's data-category-label (8.10).
         source = Account.objects.create(name="Checking")
         destination = Account.objects.create(name="Savings")
         transfer_category = destination.transfer_category
@@ -1237,7 +1281,8 @@ class TransactionListEditModeRenderTests(LoggedInTestCase):
         self.assertNotContains(response, f'<option value="{transfer_category.pk}">[Savings]</option>')
 
     def test_every_filter_sits_in_the_one_fieldset_edit_mode_locks(self):
-        # 8.10b: the script disables the fieldset (and the links) while Edit mode is on.
+        # 8.10b: the script disables the fieldset (and the links) while
+        # Edit mode is on.
         response = self.client.get(reverse("finance:transaction_list"))
         content = response.content.decode()
         start = content.index('id="transaction-filters"')
@@ -1335,9 +1380,10 @@ class TransactionQuickEditTests(LoggedInTestCase):
         self.assertEqual(response.status_code, 405)
 
     def test_every_edit_mode_control_carries_the_class_the_script_listens_for(self):
-        # The script saves a row when a control with this class changes. The Payment and Deposit
-        # boxes have no data-field (the amount is worked out from the pair), so the class is the
-        # only thing that makes a change to just one of them save.
+        # The script saves a row when a control with this class changes.
+        # The Payment and Deposit boxes have no data-field (the amount
+        # is worked out from the pair), so the class is the only thing
+        # that makes a change to just one of them save.
         content = self.client.get(reverse("finance:transaction_list")).content.decode()
         start = content.index('<template id="quick-edit-controls">')
         controls = re.findall(r"<(?:input|select)\b[^>]*>", content[start : content.index("</template>", start)])
@@ -1352,7 +1398,8 @@ class TransactionQuickEditTests(LoggedInTestCase):
         self.assertIn("closest('.quick-edit-cell')", handler)
 
     def test_a_minus_typed_into_the_payment_box_is_refused_not_saved(self):
-        # The script puts its own minus in front of the Payment box, so a minus typed there arrives doubled.
+        # The script puts its own minus in front of the Payment box, so
+        # a minus typed there arrives doubled.
         response = self._post(amount="--5")
         self.assertEqual(response.status_code, 400)
         self.assertIn("amount", response.json()["errors"])
@@ -1360,10 +1407,12 @@ class TransactionQuickEditTests(LoggedInTestCase):
         self.assertEqual(self.txn.amount, Decimal("-12.50"))
 
     def test_an_empty_amount_is_refused_not_saved_as_zero(self):
-        # S55: the script sends an empty amount when both boxes are empty (it used to send "0"),
-        # so the form's own "required" check catches it. This guards the server's half of that
-        # contract; the script's half (the queue and the empty amount) has no automated test and
-        # was checked by hand with a stand-in page.
+        # S55: the script sends an empty amount when both boxes are
+        # empty (it used to send "0"), so the form's own "required"
+        # check catches it. This guards the server's half of that
+        # contract; the script's half (the queue and the empty amount)
+        # has no automated test and was checked by hand with a stand-in
+        # page.
         response = self._post(amount="")
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()["errors"]["amount"], ["This field is required."])
@@ -1388,7 +1437,8 @@ class TransactionSearchTests(LoggedInWithAccountTestCase):
 
 
 class SafeNextTests(SimpleTestCase):
-    """1.15 (F55): only pages on this site are allowed as a "next" destination."""
+    """1.15 (F55): only pages on this site are allowed as a "next"
+    destination."""
 
     def test_off_site_destinations_are_refused(self):
         request = RequestFactory().get("/")

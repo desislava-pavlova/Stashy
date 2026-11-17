@@ -1,3 +1,12 @@
+"""Stashy's forms: one per page or action, plus the pieces they share
+(`BootstrapFormMixin` and the regional date widget).
+
+Forms do the validation, so a view only asks `is_valid()`. A rule about
+the data itself lives on the model's `clean()`, which a ModelForm runs
+for you, so the admin gets it too. Dates follow the stash's own format
+through `regional`, never a fixed one.
+"""
+
 from dateutil.relativedelta import relativedelta
 from django import forms
 from django.core.exceptions import ValidationError
@@ -24,7 +33,9 @@ from .services.importing import SUPPORTED_EXTENSIONS, UNSUPPORTED_FILE_MESSAGE
 
 
 class DateInput(forms.DateInput):
-    """A text input in the active regional date format; base.html's flatpickr matches it."""
+    """A text input in the active regional date format;
+    `stashyDatepicker()` (stashy.js) puts a date picker on it that
+    writes the same format."""
 
     def __init__(self, attrs=None):
         prefs = regional.current()
@@ -33,7 +44,8 @@ class DateInput(forms.DateInput):
 
 
 def _use_regional_dates(form):
-    """Point every DateField at the active regional format, for parsing and for its widget."""
+    """Point every DateField at the active regional format, for parsing
+    and for its widget."""
     prefs = regional.current()
     for field in form.fields.values():
         if isinstance(field, forms.DateField):
@@ -44,7 +56,8 @@ def _use_regional_dates(form):
 
 
 class BootstrapFormMixin:
-    """Adds Bootstrap 5 form-control classes to every field automatically, and regional date formats."""
+    """Adds Bootstrap 5 form-control classes to every field
+    automatically, and regional date formats."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -60,18 +73,22 @@ class BootstrapFormMixin:
 
 
 class SafeModelMultipleChoiceField(forms.ModelMultipleChoiceField):
-    """A ModelMultipleChoiceField that answers an id too big for the database like any other id
-    that isn't a choice (plan 03, S106). Django looks the ids up with `pk__in=[...]`, and SQLite
-    refuses a number over 2**63 - 1 with an OverflowError: a hand-made request got a 500 page.
-    So an id outside what the database can hold is refused first, before any query. (A
-    single-choice field already copes, because Django's `pk=` lookup returns nothing for it, and
-    ids read from a URL go through views/_helpers.py's `_as_id()`, which guards the same limit.)
+    """A ModelMultipleChoiceField that answers an id too big for the
+    database like any other id that isn't a choice. Django looks the ids
+    up with `pk__in=[...]`, and SQLite refuses a number over 2**63 - 1
+    with an OverflowError: a hand-made request got a 500 page. So an id
+    outside what the database can hold is refused first, before any
+    query. (A single-choice field already copes, because Django's `pk=`
+    lookup returns nothing for it, and ids read from a URL go through
+    views/_helpers.py's `_as_id()`, which guards the same limit.)
 
-    This overrides `_check_values()`, a private Django method, because it is the one place the
-    ids are checked; the tests for both forms using it would show a Django upgrade renaming it."""
+    This overrides `_check_values()`, a private Django method, because
+    it is the one place the ids are checked; the tests for both forms
+    using it would show a Django upgrade renaming it."""
 
     def _check_values(self, value):
-        # The pk is a BigAutoField on every model here, and this is the range that field can hold.
+        # The pk is a BigAutoField on every model here, and this is the
+        # range that field can hold.
         lowest, highest = connections[self.queryset.db].ops.integer_field_range("BigIntegerField")
         for pk in value:
             try:
@@ -89,22 +106,26 @@ class AccountForm(BootstrapFormMixin, forms.ModelForm):
     class Meta:
         model = Account
         fields = ["name", "account_type", "currency", "institution", "is_active", "notes"]
-        # Django's default Textarea is 10 rows - taller than this form needs, and (with the
-        # opening-balance fields on top, for a new account) enough to push Save off-screen.
+        # Django's default Textarea is 10 rows - taller than this form
+        # needs, and (with the opening-balance fields on top, for a new
+        # account) enough to push Save off-screen.
         widgets = {"notes": forms.Textarea(attrs={"rows": 2})}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if self.instance.pk:
-            # Currency conversion only ever uses the latest known rate, not per-transaction
-            # history, so changing it after transactions exist would misstate every past one.
+            # Currency conversion only ever uses the latest known rate,
+            # not per-transaction history, so changing it after
+            # transactions exist would misstate every past one.
             self.fields["currency"].disabled = True
 
     def clean_is_active(self):
         is_active = self.cleaned_data["is_active"]
-        # Only ever checks an *existing* account's real, already-saved balance - a brand new
-        # account (no pk yet) has no transactions to have a balance from regardless of what's
-        # typed into this same submission (AccountCreateForm.clean() below covers that case).
+        # Only ever checks an *existing* account's real, already-saved
+        # balance - a brand new account (no pk yet) has no transactions
+        # to have a balance from regardless of what's typed into this
+        # same submission (AccountCreateForm.clean() below covers that
+        # case).
         if not is_active and self.instance.pk and self.instance.balance != ZERO:
             raise ValidationError(
                 "This account still has a balance - it can't be made inactive until its balance is zero."
@@ -113,10 +134,11 @@ class AccountForm(BootstrapFormMixin, forms.ModelForm):
 
 
 class AccountCreateForm(AccountForm):
-    """Account creation also asks for an opening balance, which becomes a real transaction (D1).
-    Every new account gets one, even a zero-amount one dated today by default, so a fresh
-    account's register never starts empty, and reconciliation always
-    has a starting transaction to reconcile from."""
+    """Account creation also asks for an opening balance, which becomes
+    a real transaction (D1). Every new account gets one, even a
+    zero-amount one dated today by default, so a fresh account's
+    register never starts empty, and reconciliation always has a
+    starting transaction to reconcile from."""
 
     opening_balance = forms.DecimalField(max_digits=12, decimal_places=2, required=False, initial=0)
     opening_balance_date = forms.DateField(required=False, widget=DateInput(), initial=timezone.localdate)
@@ -164,7 +186,8 @@ class AccountCreateForm(AccountForm):
 
 
 class TransferForm(forms.Form):
-    """Backs the account page's Transfer button (D7): creates the paired transactions."""
+    """Backs the account page's Transfer button (D7): creates the paired
+    transactions."""
 
     to_account = forms.ModelChoiceField(queryset=Account.objects.none(), label="Transfer to")
     amount = forms.DecimalField(max_digits=12, decimal_places=2, min_value=CENT, help_text="Enter a positive amount.")
@@ -173,9 +196,10 @@ class TransferForm(forms.Form):
     def __init__(self, *args, from_account=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.from_account = from_account
-        # The same amount is used on both legs (no conversion happens here), so the
-        # destination must share this account's currency — otherwise "100" would leave as
-        # 100 EUR and arrive as 100 USD, silently inventing or destroying money.
+        # The same amount is used on both legs (no conversion happens
+        # here), so the destination must share this account's currency —
+        # otherwise "100" would leave as 100 EUR and arrive as 100 USD,
+        # silently inventing or destroying money.
         self.fields["to_account"].queryset = Account.objects.filter(
             is_active=True, currency=from_account.currency
         ).exclude(pk=from_account.pk)
@@ -213,7 +237,8 @@ class TransferForm(forms.Form):
 
 
 class ReconcileStartForm(forms.Form):
-    """Step 1 of the account page's Reconcile button: what your statement says."""
+    """Step 1 of the account page's Reconcile button: what your
+    statement says."""
 
     statement_date = forms.DateField(widget=DateInput(), initial=timezone.localdate)
     statement_balance = forms.DecimalField(
@@ -229,9 +254,10 @@ class ReconcileStartForm(forms.Form):
 
 
 class ReconcileFinishForm(forms.Form):
-    """Step 2's "Finish reconciling": the statement figures carried over from step 1
-    in hidden fields, plus the ticked transactions. Validated like any other form, so a
-    tampered or half-sent submission gets a message instead of a server error."""
+    """Step 2's "Finish reconciling": the statement figures carried over
+    from step 1 in hidden fields, plus the ticked transactions.
+    Validated like any other form, so a tampered or half-sent submission
+    gets a message instead of a server error."""
 
     statement_date = forms.DateField(input_formats=["%Y-%m-%d"])
     statement_balance = forms.DecimalField(max_digits=12, decimal_places=2)
@@ -244,8 +270,9 @@ class ReconcileFinishForm(forms.Form):
 
 
 class CategoryParentSelect(forms.Select):
-    """Tags each <option> with its category's own type, so JS can narrow the Parent list to
-    only categories matching whichever type is currently chosen above."""
+    """Tags each <option> with its category's own type, so JS can narrow
+    the Parent list to only categories matching whichever type is
+    currently chosen above."""
 
     def __init__(self, *args, categories_by_id=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -266,23 +293,27 @@ class CategoryForm(BootstrapFormMixin, forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Transfer is a system-managed type (D7/D4) — never chosen by hand.
+        # Transfer is a system-managed type (D7/D4) — never chosen by
+        # hand.
         self.fields["category_type"].choices = [
             choice for choice in self.fields["category_type"].choices if choice[0] != Category.CategoryType.TRANSFER
         ]
         parent_field = self.fields["parent"]
-        # Only a top-level category can be a parent (one level of subcategories, no tree) —
-        # this alone also rules out a category ever being its own ancestor.
+        # Only a top-level category can be a parent (one level of
+        # subcategories, no tree) — this alone also rules out a category
+        # ever being its own ancestor.
         parents = Category.objects.main_categories()
-        # Build the type-aware widget before assigning the queryset, so the queryset setter's
-        # own "widget.choices = ..." (Django's ModelChoiceField internals) lands on this widget.
+        # Build the type-aware widget before assigning the queryset, so
+        # the queryset setter's own "widget.choices = ..." (Django's
+        # ModelChoiceField internals) lands on this widget.
         parent_field.widget = CategoryParentSelect(
             attrs=parent_field.widget.attrs, categories_by_id={c.pk: c for c in parents}
         )
         parent_field.queryset = parents
 
-    # The one-level rule and duplicate names are checked by Category.clean(), which a ModelForm
-    # runs for you - so the admin and this form give the same messages.
+    # The one-level rule and duplicate names are checked by
+    # Category.clean(), which a ModelForm runs for you - so the admin
+    # and this form give the same messages.
 
     def clean(self):
         cleaned = super().clean()
@@ -324,9 +355,11 @@ class TransactionForm(BootstrapFormMixin, forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Transfer categories are created automatically by the Transfer button, not picked by hand
-        # here — except editing a transaction that already has one (an opening balance or transfer
-        # leg) must still offer its own category, or saving the form would reject it as invalid.
+        # Transfer categories are created automatically by the Transfer
+        # button, not picked by hand here — except editing a transaction
+        # that already has one (an opening balance or transfer leg) must
+        # still offer its own category, or saving the form would reject
+        # it as invalid.
         self.fields["category"].queryset = categories_alphabetical(
             self.fields["category"].queryset.filter(Q(account__isnull=True) | Q(pk=self.instance.category_id))
         )
@@ -336,14 +369,17 @@ class TransactionForm(BootstrapFormMixin, forms.ModelForm):
         return (self.cleaned_data.get("payee_name") or "").strip()
 
     def save(self, commit=True):
-        # Payees are resolved here, not in clean(), so a form with errors never creates one.
+        # Payees are resolved here, not in clean(), so a form with
+        # errors never creates one.
         instance = super().save(commit=False)
         name = self.cleaned_data["payee_name"]
-        # Names that differ only in case are one payee, and the spelling already saved wins.
+        # Names that differ only in case are one payee, and the spelling
+        # already saved wins.
         instance.payee = Payee.objects.resolve(name) if name else None
         if instance.transaction_number is None:
-            # Transaction.save() only auto-assigns on create; clearing the field on an edit
-            # (e.g. after moving a transaction to a different account) should renumber it too.
+            # Transaction.save() only auto-assigns on create; clearing
+            # the field on an edit (e.g. after moving a transaction to a
+            # different account) should renumber it too.
             instance.transaction_number = Transaction.next_number(instance.date)
         if commit:
             instance.save()
@@ -352,8 +388,8 @@ class TransactionForm(BootstrapFormMixin, forms.ModelForm):
 
 
 class ReminderForm(BootstrapFormMixin, forms.ModelForm):
-    # Not a model field - a friendlier affordance than "just leave the date blank" for a
-    # reminder with no end date.
+    # Not a model field - a friendlier affordance than "just leave the
+    # date blank" for a reminder with no end date.
     no_end_date = forms.BooleanField(required=False, label="No end date")
 
     class Meta:
@@ -379,9 +415,6 @@ class ReminderForm(BootstrapFormMixin, forms.ModelForm):
         labels = {
             "interval": "Every",
         }
-        help_texts = {
-            "amount": "Enter as a positive number, or leave blank for a variable-amount bill",
-        }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -391,8 +424,9 @@ class ReminderForm(BootstrapFormMixin, forms.ModelForm):
         categories = categories_alphabetical(
             Category.objects.filter(Q(account__isnull=True) | Q(pk=self.instance.category_id))
         )
-        # Picking Income/Expense narrows the Category list to that type only (same
-        # type-tagged-option pattern CategoryForm already uses for its own Parent field).
+        # Picking Income/Expense narrows the Category list to that type
+        # only (same type-tagged-option pattern CategoryForm already
+        # uses for its own Parent field).
         category_field.widget = CategoryParentSelect(
             attrs=category_field.widget.attrs, categories_by_id={c.pk: c for c in categories}
         )
@@ -406,8 +440,9 @@ class ReminderForm(BootstrapFormMixin, forms.ModelForm):
             cleaned["end_date"] = None
         if not cleaned.get("interval"):
             cleaned["interval"] = 1
-        # An auto-generated occurrence (series is set) can't become its own new recurring
-        # series head - it exists to represent one specific future date.
+        # An auto-generated occurrence (series is set) can't become its
+        # own new recurring series head - it exists to represent one
+        # specific future date.
         if self.instance.series_id and cleaned.get("frequency") != Reminder.Frequency.ONE_TIME:
             raise ValidationError(
                 "This reminder was auto-generated from a recurring one, so it can't have its "
@@ -453,18 +488,18 @@ class DateRangeFilterForm(forms.Form):
         ("earliest", "Earliest to date"),
         ("custom", "Custom range"),
     ]
-    # How many periods the same length as the selected date range to average against,
-    # immediately preceding it - not a separate bucketing granularity;
-    # see reporting.vs_average_periods().
+    # How many earlier periods to average against (the Average
+    # interval) - not a separate bucketing granularity; see
+    # reporting.vs_average_periods() for what an earlier period is.
     INTERVAL_CHOICES = [
         ("3", "Last 3 periods"),
         ("6", "Last 6 periods"),
         ("9", "Last 9 periods"),
         ("12", "Last 12 periods"),
     ]
-    # Same granularities as Interval, plus half-year - only meaningful for slicing a date
-    # range into columns (Interval instead sizes the trailing window for "vs. average", which
-    # a half-year is too coarse to average 12 months of data over usefully).
+    # How a date range is sliced into columns ("Subtotal by"). Not the
+    # same thing as Interval above, which says how many earlier periods
+    # to average against.
     SUBTOTAL_CHOICES = [
         ("", "No subtotal"),
         ("week", "Week"),
@@ -474,16 +509,18 @@ class DateRangeFilterForm(forms.Form):
         ("year", "Year"),
     ]
 
-    # A custom range outside these limits would overflow the report maths (year 1 or 9999) or make
-    # Net worth walk every day of a century (S93).
+    # A custom range outside these limits would overflow the report
+    # maths (year 1 or 9999) or make Net worth walk every day of a
+    # century.
     EARLIEST_YEAR = 1900
     LATEST_YEAR = 2100
     MAX_RANGE_YEARS = 100
 
-    # R3: reports default to This month, Last 3 periods - a fresh, unbound form
-    # shows these as selected even before any filter is submitted.
+    # Reports default to This month and Last 3 periods: a fresh, unbound
+    # form shows these as selected even before any filter is submitted.
     range = forms.ChoiceField(choices=RANGE_CHOICES, required=False, initial="this_month")
-    # data-range-date: typing a date switches Range to "Custom range" (stashy.js).
+    # data-range-date: typing a date switches Range to "Custom range"
+    # (stashy.js).
     start = forms.DateField(required=False, widget=DateInput(attrs={"data-range-date": ""}))
     end = forms.DateField(required=False, widget=DateInput(attrs={"data-range-date": ""}))
     interval = forms.ChoiceField(choices=INTERVAL_CHOICES, required=False, initial="3", label="Average interval")
@@ -515,15 +552,17 @@ class DateRangeFilterForm(forms.Form):
 
 
 class ProfileColumnsOnlyMixin:
-    """For forms that edit the stash's one Profile: save() writes only this form's own
-    columns. The Profile comes from request.stashy_profile, read before the request took the
-    stash's write lock, so saving the whole row could put back old lockout or recovery-code
-    values another request had just changed (plan 03, S75)."""
+    """For forms that edit the stash's one Profile: save() writes only
+    this form's own columns. The Profile comes from
+    request.stashy_profile, read before the request took the stash's
+    write lock, so saving the whole row could put back old lockout or
+    recovery-code values another request had just changed."""
 
     def save(self, commit=True):
         profile = super().save(commit=False)
         if commit:
-            # The form's own fields, not Meta.fields, which is None for a form written with exclude.
+            # The form's own fields, not Meta.fields, which is None for
+            # a form written with exclude.
             columns = [name for name in self.fields if not profile._meta.get_field(name).many_to_many]
             profile.save(update_fields=columns)
             self.save_m2m()
@@ -531,11 +570,12 @@ class ProfileColumnsOnlyMixin:
 
 
 class ProfileForm(ProfileColumnsOnlyMixin, BootstrapFormMixin, forms.ModelForm):
-    """The Settings page: regional preferences + main currency (D2, D10)."""
+    """The Settings page: regional preferences + main currency (D2,
+    D10)."""
 
-    # The model stores the zone as plain text. A ChoiceField refuses any zone that isn't in
-    # the list, which a dropdown on a text field wouldn't: a hand-made request could still
-    # save any text there.
+    # The model stores the zone as plain text. A ChoiceField refuses any
+    # zone that isn't in the list, which a dropdown on a text field
+    # wouldn't: a hand-made request could still save any text there.
     time_zone = forms.ChoiceField()
 
     class Meta:
@@ -544,22 +584,20 @@ class ProfileForm(ProfileColumnsOnlyMixin, BootstrapFormMixin, forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # The stash's own zone stays a choice even when the list doesn't have it, so the
-        # dropdown shows it and a save keeps it, instead of quietly taking the first zone.
+        # The stash's own zone stays a choice even when the list doesn't
+        # have it, so the dropdown shows it and a save keeps it, instead
+        # of quietly taking the first zone.
         zones = regional.time_zone_choices(keep=self.instance.time_zone)
         self.fields["time_zone"].choices = [(zone, zone) for zone in zones]
 
 
-class CheckRatesForm(forms.Form):
-    """No fields — just the button that triggers a Frankfurter fetch; needs an internet connection."""
-
-
 class WatchedExpensesForm(ProfileColumnsOnlyMixin, BootstrapFormMixin, forms.ModelForm):
-    """Settings: which expense categories the "Watched expenses" report tracks (R8), replacing
-    the old hardcoded "Bills & Utilities" report. Categories are rendered by hand in
-    includes/category_checkbox_filter.html (same tick-the-subcategories widget the Transactions
-    filter uses), not by this field's own default widget - Django still binds/validates against
-    this field's name either way."""
+    """Settings: which expense categories the "Watched expenses" report
+    tracks. Categories are rendered by hand in
+    includes/category_checkbox_filter.html (same tick-the-subcategories
+    widget the Transactions filter uses), not by this field's own
+    default widget - Django still binds/validates against this field's
+    name either way."""
 
     class Meta:
         model = Profile
@@ -576,8 +614,9 @@ class WatchedExpensesForm(ProfileColumnsOnlyMixin, BootstrapFormMixin, forms.Mod
 
 
 def watched_expenses_picker_context(profile):
-    """What the Watched-expenses category picker needs, on Settings and in the welcome wizard:
-    the expense categories in groups, the ones already chosen, and the button's label."""
+    """What the Watched-expenses category picker needs, on Settings and
+    in the welcome wizard: the expense categories in groups, the ones
+    already chosen, and the button's label."""
     chosen = list(profile.watched_expenses_categories.select_related("parent"))
     if not chosen:
         button_label = "No categories chosen"
@@ -595,5 +634,6 @@ def watched_expenses_picker_context(profile):
 
 
 def convertible_currencies(accounts):
-    """Currencies actually in use, for the settings page's 'known rates' list."""
+    """Currencies actually in use, for the settings page's 'known rates'
+    list."""
     return sorted({account.currency for account in accounts})

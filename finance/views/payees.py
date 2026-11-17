@@ -1,3 +1,8 @@
+"""The payees pages: the list (each payee's categories, number of uses
+and totals), add/edit/delete, and a payee's detail. Names are compared
+through `name_key`, so "lidl" and "LIDL" are one payee.
+"""
+
 from django.db.models import Count, Sum
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse_lazy
@@ -18,6 +23,9 @@ PAYEE_SORT_KEYS = {
 
 
 def payee_list(request):
+    """The payee list: one row per payee with its categories, number of
+    uses and totals, narrowed by the search boxes and sorted by the
+    clicked header."""
     search = request.GET.get("q", "").strip()
     category_id = request.GET.get("category", "")
     memo_filter = request.GET.get("memo", "").strip()
@@ -34,18 +42,16 @@ def payee_list(request):
     payees = list(payees)
     payee_ids = [p.pk for p in payees]
 
-    # Everything below is one query each for the whole page - every category any of these
-    # payees has ever been used with, every payee's transaction count, and every payee's
-    # running total per currency (a payee can span accounts in different currencies) -
-    # instead of walking each payee's own history one at a time (fine for a single payee's
-    # own detail page, too slow for a list that can hold well over a hundred rows).
+    # One query per kind of data for the whole page, not one per payee:
+    # the list can hold hundreds of payees, so walking each payee's own
+    # history would be far too slow.
     categories_by_payee = {}
     category_rows = (
         Transaction.objects.filter(payee_id__in=payee_ids)
         .values("payee_id", "category_id", "category__name", "category__parent__name")
-        # Transaction's default ordering (by date) would otherwise ride along into the SELECT
-        # a values().distinct() generates, silently defeating the distinct - every date/time
-        # a category was used would count as "different", not just every category.
+        # Transaction's default ordering would add its date, number
+        # and created-at columns to the DISTINCT and repeat each
+        # category once per transaction.
         .order_by()
         .distinct()
     )
@@ -85,8 +91,8 @@ def payee_list(request):
                 "categories_label": ", ".join(labels),  # sort key only - the template shows one per row
                 "category_count": len(labels),
                 "totals": totals,
-                # A rough, currency-blind number for sort order only (display always shows each
-                # currency separately) - fine for ordering rows, never shown as an actual amount.
+                # Currency-blind, for sort order only: never shown as an
+                # amount.
                 "total_sort_value": sum((amount for _, amount in totals), ZERO),
                 "usage_count": usage_by_payee.get(payee.pk, 0),
             }
@@ -94,7 +100,8 @@ def payee_list(request):
 
     sort = request.GET.get("sort", "name")
     if sort.removeprefix("-") not in PAYEE_SORT_KEYS:
-        # A hand-typed or old link: sort by name, and say so, so the Payee header shows its arrow.
+        # A hand-typed or old link: sort by name, and say so, so the
+        # Payee header shows its arrow.
         sort = "name"
     rows.sort(key=PAYEE_SORT_KEYS[sort.removeprefix("-")], reverse=sort.startswith("-"))
     sort_next = {name: (f"-{name}" if sort == name else name) for name in PAYEE_SORT_KEYS}
@@ -117,7 +124,8 @@ def payee_list(request):
 
 
 def payee_detail(request, pk):
-    """Every category ever used with this payee, and the most recent memo/amount in each."""
+    """Every category ever used with this payee, and the most recent
+    memo/amount in each."""
     payee = get_object_or_404(Payee, pk=pk)
     return render(request, "finance/payee_detail.html", {"payee": payee, "history": payee.category_history()})
 

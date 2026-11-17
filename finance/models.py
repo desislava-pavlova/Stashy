@@ -1,3 +1,13 @@
+"""Stashy's database tables, and the rules that belong with the data.
+
+Each rule lives on the model so that every way in gets it: `clean()`
+holds the checks a form or the admin shows, and `save()` keeps the
+hidden columns in step (`name_key`, a recurring reminder's
+occurrences). A model never says which stash it is in: `db_router.py`
+sends the query to the active one. Report maths doesn't belong here;
+it lives in `reporting.py`.
+"""
+
 import contextlib
 from datetime import date, timedelta
 
@@ -20,31 +30,36 @@ from .text import possessive
 
 
 def name_key(name):
-    """How Stashy compares payee, category and stash owner names: names that differ only in
-    upper/lower case are the same one. Python's casefold() knows every alphabet. SQLite's own
-    lower() and LIKE only fold A-Z, so to the database "ЛИДЛ" and "лидл" would be two
+    """How Stashy compares payee, category and stash owner names: names
+    that differ only in upper/lower case are the same one. Python's
+    casefold() knows every alphabet. SQLite's own lower() and LIKE only
+    fold A-Z, so to the database "ЛИДЛ" and "лидл" would be two
     different names."""
     return (name or "").strip().casefold()
 
 
 def _with_name_key(update_fields):
-    """save(update_fields=[..., "name"]) must write the name's key along with it."""
+    """save(update_fields=[..., "name"]) must write the name's key along
+    with it."""
     if update_fields is not None and "name" in update_fields and "name_key" not in update_fields:
         return [*update_fields, "name_key"]
     return update_fields
 
 
 class Profile(models.Model):
-    """One login's preferences: main currency (D2) and regional formats (D10)."""
+    """A stash's one settings row: who it belongs to, the main currency
+    (D2), the regional formats (D10), the welcome wizard's progress, the
+    PIN lockout and recovery code, and the Watched expenses setup."""
 
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="stashy_profile")
 
-    # Phase 15 (L1): who this stash belongs to - a person, a business or a family - shown
-    # everywhere instead of the stash's internal folder name. Set once at creation; there's no
-    # Settings field to change it (the user's own call, 16/09/2026).
+    # Who this stash belongs to - a person, a business or a family -
+    # shown everywhere instead of the stash's internal folder name. Set
+    # once at creation; there's no Settings field to change it.
     owner_name = models.CharField(max_length=60, default="", blank=True)
-    # Phase 15 (L4): 0-3 while the welcome wizard is in progress (which step is next), 4 once
-    # finished. An existing stash counts as already finished - see the migration.
+    # 0-3 while the welcome wizard is in progress (which step is next),
+    # 4 once finished. An existing stash counts as already finished -
+    # see the migration.
     WELCOME_STEPS_DONE = 4
     welcome_step = models.PositiveSmallIntegerField(default=WELCOME_STEPS_DONE)
 
@@ -59,17 +74,17 @@ class Profile(models.Model):
     number_format = models.CharField(max_length=12, choices=regional.NUMBER_FORMAT_CHOICES, default="space_dot")
     first_day_of_week = models.PositiveSmallIntegerField(choices=regional.FIRST_DAY_CHOICES, default=1)
 
-    # Multi-stash login (Phase 12): a stash's one-time recovery code, hashed the same way a
-    # password is - shown to the user once, at stash creation, never stored in the clear.
-    # Lockout state lives here too, since a stash's single Profile row is the natural place
-    # for "this stash" data that isn't a regional preference.
+    # A stash's one-time recovery code, hashed the same way a password
+    # is - shown to the user once, at stash creation, never stored in
+    # the clear. Lockout state lives here too, since a stash's single
+    # Profile row is the natural place for "this stash" data that isn't
+    # a regional preference.
     recovery_code_hash = models.CharField(max_length=128, blank=True, default="")
     failed_pin_attempts = models.PositiveSmallIntegerField(default=0)
     locked_until = models.DateTimeField(null=True, blank=True)
 
-    # "Watched expenses" (R8, Phase 13) - a Settings-configurable replacement for the old
-    # hardcoded "Bills & Utilities" report: any set of expense categories worth watching closely.
-    # The default is a neutral name since S46; a stash that kept the old "Bills & Utilities" keeps it.
+    # "Watched expenses": any set of expense categories worth watching
+    # closely, picked in Settings and reported on their own.
     watched_expenses_title = models.CharField(max_length=60, default="Watched expenses")
     watched_expenses_categories = models.ManyToManyField(
         "Category",
@@ -83,7 +98,7 @@ class Profile(models.Model):
 
     @property
     def owner_possessive(self):
-        """ "Alex" -> "Alex's"; "The Smiths" -> "The Smiths'" (L1)."""
+        """ "Alex" -> "Alex's"; "The Smiths" -> "The Smiths'"."""
         return possessive(self.owner_name)
 
     @property
@@ -92,7 +107,8 @@ class Profile(models.Model):
 
     @classmethod
     def for_user(cls, user):
-        """The login's preferences, created from this computer's regional settings the first time."""
+        """The login's preferences, created from this computer's
+        regional settings the first time."""
         profile = cls.objects.filter(user=user).first()
         if profile is not None:
             return profile
@@ -134,7 +150,8 @@ class AccountType(models.TextChoices):
     OTHER = "other", "Other"
 
 
-# (key, name, short explainer, account types), in the order accounts are listed.
+# (key, name, short explainer, account types), in the order accounts are
+# listed.
 ACCOUNT_GROUPS = [
     ("physical", "Physical Liquid", "Cash in hand", [AccountType.CASH, AccountType.COUPONS]),
     (
@@ -165,7 +182,8 @@ _GROUP_INDEX = {kind.value: index for index, group in enumerate(ACCOUNT_GROUPS) 
 
 class AccountQuerySet(models.QuerySet):
     def with_balances(self):
-        """Compute every balance in the same query instead of one extra query per account."""
+        """Compute every balance in the same query instead of one extra
+        query per account."""
         return self.annotate(
             balance_total=Coalesce(
                 Sum("transactions__amount"),
@@ -205,8 +223,9 @@ class Account(models.Model):
         super().save(*args, **kwargs)
         if name_saved:
             self._saved_name = self.name
-        # Only a new account or a new name touches the transfer category (D7); any other save,
-        # like ticking "inactive", leaves it alone.
+        # Only a new account or a new name touches the transfer category
+        # (D7); any other save, like ticking "inactive", leaves it
+        # alone.
         if sync:
             self.ensure_transfer_category()
 
@@ -216,8 +235,8 @@ class Account(models.Model):
     @classmethod
     def from_db(cls, db, field_names, values, **kwargs):
         account = super().from_db(db, field_names, values, **kwargs)
-        # The name as saved, so save() can tell whether a rename needs the transfer category
-        # renamed too.
+        # The name as saved, so save() can tell whether a rename needs
+        # the transfer category renamed too.
         account._saved_name = dict(zip(field_names, values, strict=True)).get("name")
         return account
 
@@ -227,29 +246,34 @@ class Account(models.Model):
             return
         saved_currency = Account.objects.filter(pk=self.pk).values_list("currency", flat=True).first()
         if saved_currency not in (None, self.currency) and self.transactions.exists():
-            # Conversion only ever uses the latest known rate, not per-transaction history, so a
-            # new currency would misstate every transaction already in the account.
+            # Conversion only ever uses the latest known rate, not
+            # per-transaction history, so a new currency would misstate
+            # every transaction already in the account.
             raise ValidationError({"currency": "This account already has transactions, so its currency can't change."})
 
     @property
     def balance(self):
-        """The sum of the account's transactions - its opening balance is one of them (D1)."""
+        """The sum of the account's transactions - its opening balance
+        is one of them (D1)."""
         if "balance_total" in self.__dict__:
             total = self.balance_total
         else:
             total = self.transactions.aggregate(total=Sum("amount"))["total"]
-        # SQLite adds decimals as floating point, so round away results like 9.66000000000000.
+        # SQLite adds decimals as floating point, so round away results
+        # like 9.66000000000000.
         return (total or ZERO).quantize(CENT)
 
     def reconciled_balance(self):
-        """Sum of already-reconciled transactions - the opening balance a new reconciliation
-        (Phase 8) starts from, since everything reconciled so far is the settled starting point."""
+        """Sum of already-reconciled transactions - the opening balance
+        a new reconciliation starts from, since everything reconciled so
+        far is the settled starting point."""
         total = self.transactions.filter(reconciled=True).aggregate(total=Sum("amount"))["total"]
         return (total or ZERO).quantize(CENT)
 
     @property
     def group(self):
-        """(key, name, explainer) of the account list group this account is shown in."""
+        """(key, name, explainer) of the account list group this account
+        is shown in."""
         if not self.is_active:
             return INACTIVE_GROUP
         return ACCOUNT_GROUPS[_GROUP_INDEX.get(self.account_type, len(ACCOUNT_GROUPS) - 1)][:3]
@@ -261,7 +285,8 @@ class Account(models.Model):
         )
 
     def ensure_transfer_category(self):
-        """Every account owns exactly one transfer category, named after it (D7). Returns it."""
+        """Every account owns exactly one transfer category, named after
+        it (D7). Returns it."""
         name = f"[{self.name}]"
         category = Category.objects.filter(account=self).first()
         if category is None:
@@ -277,7 +302,8 @@ class Account(models.Model):
 
 
 def grouped_accounts(accounts):
-    """Accounts split into Physical Liquid → Digital Liquid → Illiquid → Inactive, by name within each group."""
+    """Accounts split into Physical Liquid → Digital Liquid → Illiquid →
+    Inactive, by name within each group."""
     groups = []
     for account in sorted(accounts, key=lambda a: (a.group_order, a.name.lower())):
         key, name, explainer = account.group
@@ -289,8 +315,8 @@ def grouped_accounts(accounts):
 
 class CategoryQuerySet(models.QuerySet):
     def main_categories(self):
-        """Top-level categories, the ones a subcategory can go under - never an account's
-        transfer category."""
+        """Top-level categories, the ones a subcategory can go under -
+        never an account's transfer category."""
         return self.filter(parent__isnull=True, account__isnull=True)
 
 
@@ -301,9 +327,11 @@ class Category(models.Model):
         TRANSFER = "transfer", "Transfer"
 
     name = models.CharField(max_length=120)
-    # name_key(name), kept by save(): the database checks uniqueness on this column.
+    # name_key(name), kept by save(): the database checks uniqueness on
+    # this column.
     name_key = models.CharField(max_length=120, editable=False)
-    # One level of subcategories only: a subcategory can't itself have children (see clean()).
+    # One level of subcategories only: a subcategory can't itself have
+    # children (see clean()).
     parent = models.ForeignKey("self", null=True, blank=True, related_name="subcategories", on_delete=models.CASCADE)
     category_type = models.CharField(max_length=10, choices=CategoryType.choices, default=CategoryType.EXPENSE)
     account = models.OneToOneField(
@@ -315,22 +343,26 @@ class Category(models.Model):
         related_name="transfer_category",
         help_text="Set only on an account's own transfer category, which Stashy creates and deletes with the account.",
     )
-    # Set when an import (Phase 9) created this category itself because the file named one
-    # Stashy didn't already have - flagged for visibility/later cleanup rather than baked into
-    # the name forever, same idea as system-managed categories getting a badge, not a label.
+    # Set when an import created this category itself because the file
+    # named one Stashy didn't already have - flagged for
+    # visibility/later cleanup rather than baked into the name forever,
+    # same idea as system-managed categories getting a badge, not a
+    # label.
     is_auto_generated = models.BooleanField(default=False)
 
     objects = CategoryQuerySet.as_manager()
 
     class Meta:
         verbose_name_plural = "categories"
-        # name_key, not name: SQLite sorts plain text by code point, so "lidl" would come after
-        # "Zara", and it needs no join to the parent.
+        # name_key, not name: SQLite sorts plain text by code point, so
+        # "lidl" would come after "Zara", and it needs no join to the
+        # parent.
         ordering = ["name_key"]
         constraints = [
             models.UniqueConstraint(fields=["parent", "name_key"], name="unique_subcategory_name_ci"),
-            # NULL parents never clash in SQL, so top-level names need their own rule. An account's
-            # transfer category is left out: it's named after its account, and two accounts may
+            # NULL parents never clash in SQL, so top-level names need
+            # their own rule. An account's transfer category is left
+            # out: it's named after its account, and two accounts may
             # share a name.
             models.UniqueConstraint(
                 fields=["name_key"],
@@ -359,8 +391,9 @@ class Category(models.Model):
         return f"{self.parent.name} > {self.name}" if self.parent_id else self.name
 
     def create_subcategory(self, name, **fields):
-        """A new subcategory under this one. It always takes this category's type: an "Income"
-        category with an "Expense" child would only confuse the reports."""
+        """A new subcategory under this one. It always takes this
+        category's type: an "Income" category with an "Expense" child
+        would only confuse the reports."""
         return Category.objects.create(name=name, category_type=self.category_type, parent=self, **fields)
 
     def clean(self):
@@ -395,9 +428,11 @@ class Category(models.Model):
 
     @property
     def indented_name(self):
-        """For dropdowns: a subcategory is indented under its main category (which is listed
-        first, un-indented) instead of repeating the parent's name - the same look as the tick-list
-        on the Transactions filter. Non-breaking spaces, since <option> text collapses normal ones."""
+        """For dropdowns: a subcategory is indented under its main
+        category (which is listed first, un-indented) instead of
+        repeating the parent's name - the same look as the tick-list on
+        the Transactions filter. Non-breaking spaces, since <option>
+        text collapses normal ones."""
         return f"    {self.name}" if self.parent_id else self.name
 
     @property
@@ -405,7 +440,8 @@ class Category(models.Model):
         return self.account_id is not None
 
     def descendants(self):
-        """All subcategories at any depth — the ones a delete would cascade to."""
+        """All subcategories at any depth — the ones a delete would
+        cascade to."""
         found, frontier, seen = [], [self], {self.pk}
         while frontier:
             children = [
@@ -419,7 +455,8 @@ class Category(models.Model):
         return found
 
 
-# Income first, then Expense, then the system-managed Transfer categories last (Phase 4).
+# Income first, then Expense, then the system-managed Transfer
+# categories last.
 _CATEGORY_TYPE_ORDER = {
     Category.CategoryType.INCOME: 0,
     Category.CategoryType.EXPENSE: 1,
@@ -428,14 +465,13 @@ _CATEGORY_TYPE_ORDER = {
 
 
 def categories_alphabetical(queryset):
-    """Order a Category queryset so a subcategory sorts right next to its own parent instead of
-    in a separate "all subcategories" block after every top-level one - so typing a letter into
-    a <select> (its built-in type-ahead) or scanning it by eye finds every category under, say,
-    "Personal Care" together, in one alphabetical run (2026-09-14 follow-up). Grouped by type
-    first - Income, then Expense, then Transfer last (2026-09-15 follow-up) - matching the
-    category list page's own Income/Expense/Transfer grouping (grouped_categories(), below);
-    a type with no categories in the queryset simply contributes no rows, no empty group to
-    skip. For dropdowns only - the category *list page* keeps using grouped_categories() itself."""
+    """Order a Category queryset for a dropdown: Income, then Expense,
+    then Transfer (the category list page's grouping too, see
+    grouped_categories() below), and within each type every subcategory
+    right after its own parent, in one alphabetical run. So typing a
+    letter into a <select>, or scanning it by eye, finds "Personal Care"
+    and everything under it together. For dropdowns only: the category
+    list page uses grouped_categories()."""
     return queryset.annotate(
         _sort_type=Case(
             When(category_type=Category.CategoryType.INCOME, then=Value(0)),
@@ -449,8 +485,9 @@ def categories_alphabetical(queryset):
 
 
 def grouped_categories(categories):
-    """Categories split into Income -> Expense -> Transfer groups; within each group, ordered
-    by (top-level) parent name, then by subcategory name under it."""
+    """Categories split into Income -> Expense -> Transfer groups;
+    within each group, ordered by (top-level) parent name, then by
+    subcategory name under it."""
 
     def sort_key(category):
         parent_name = (category.parent.name if category.parent_id else category.name).lower()
@@ -472,13 +509,15 @@ def grouped_categories(categories):
 
 class PayeeQuerySet(models.QuerySet):
     def named(self, name):
-        """The payee called `name`, ignoring upper/lower case (at most one, by constraint)."""
+        """The payee called `name`, ignoring upper/lower case (at most
+        one, by constraint)."""
         return self.filter(name_key=name_key(name))
 
     def resolve(self, name, reason="Payee created automatically from a new payee name"):
-        """The payee called `name` in any case - the spelling already saved wins - or a new one.
-        A new payee is logged as automatic with `reason`; reason=None keeps the caller's own
-        system_action (an import's "Imported from <file>")."""
+        """The payee called `name` in any case - the spelling already
+        saved wins - or a new one. A new payee is logged as automatic
+        with `reason`; reason=None keeps the caller's own system_action
+        (an import's "Imported from <file>")."""
         payee = self.named(name).first()
         if payee is None:
             with system_action(reason) if reason else contextlib.nullcontext():
@@ -487,22 +526,26 @@ class PayeeQuerySet(models.QuerySet):
 
 
 class Payee(models.Model):
-    """A payee Stashy has seen on a transaction. Memorization (Phase 6) is computed live from
-    transaction history — one category/memo/amount per (payee, category) pair, not a cached
-    default field — so it's never stale and there's nothing to keep in sync."""
+    """A payee Stashy has seen on a transaction. Memorization is
+    computed live from transaction history — one category/memo/amount
+    per (payee, category) pair, not a cached default field — so it's
+    never stale and there's nothing to keep in sync."""
 
     # Shared payees Stashy uses for the transactions it creates for you.
     OPENING_BALANCE = "Opening Balance"
     TRANSFER_MONEY = "Transfer Money"
     RECONCILIATION_ADJUSTMENT = "Reconciliation Adjustment"
     SYSTEM_NAMES = (OPENING_BALANCE, TRANSFER_MONEY, RECONCILIATION_ADJUSTMENT)
-    # The same names the way name_key() sees them: Payee.system() reuses a payee typed in another
-    # case ("opening balance"), so a plain `name in SYSTEM_NAMES` would miss it. (Inside this
-    # generator, name_key is the module's function, not the field of that name defined below.)
+    # The same names the way name_key() sees them: Payee.system() reuses
+    # a payee typed in another case ("opening balance"), so a plain
+    # `name in SYSTEM_NAMES` would miss it. (Inside this generator,
+    # name_key is the module's function, not the field of that name
+    # defined below.)
     SYSTEM_KEYS = frozenset(name_key(name) for name in SYSTEM_NAMES)
 
     name = models.CharField(max_length=150)
-    # name_key(name), kept by save(): the database checks uniqueness on this column.
+    # name_key(name), kept by save(): the database checks uniqueness on
+    # this column.
     name_key = models.CharField(max_length=150, editable=False)
     is_active = models.BooleanField(default=True)
 
@@ -527,7 +570,8 @@ class Payee(models.Model):
 
     @property
     def is_system(self):
-        """One of the payees Stashy makes for its own transactions, in whatever case it was typed."""
+        """One of the payees Stashy makes for its own transactions, in
+        whatever case it was typed."""
         return self.name_key in self.SYSTEM_KEYS
 
     @classmethod
@@ -535,9 +579,10 @@ class Payee(models.Model):
         return cls.objects.resolve(name, reason=f"Payee '{name}' created for transactions Stashy makes")
 
     def category_history(self):
-        """One entry per category ever used with this payee (most recently used first): the
-        most recent Transaction in each — its category/memo/amount are what a new transaction
-        against this payee would offer to autofill from."""
+        """One entry per category ever used with this payee (most
+        recently used first): the most recent Transaction in each — its
+        category/memo/amount are what a new transaction against this
+        payee would offer to autofill from."""
         seen, history = set(), []
         for transaction in self.transactions.select_related("category__parent", "account").order_by(
             "-date", "-transaction_number", "-created_at"
@@ -549,20 +594,23 @@ class Payee(models.Model):
 
 
 class TransactionQuerySet(models.QuerySet):
-    """The building blocks every report query is made of (finance/reporting.py)."""
+    """The building blocks every report query is made of
+    (finance/reporting.py)."""
 
     def in_range(self, start, end):
         """Dated from `start` to `end`, both days included."""
         return self.filter(date__gte=start, date__lte=end)
 
     def reportable(self):
-        """What counts as income or spending: it has a category, and that category isn't an
-        account's Transfer category (D7). Opening balances use the Transfer category too (D1)."""
+        """What counts as income or spending: it has a category, and
+        that category isn't an account's Transfer category (D7). Opening
+        balances use the Transfer category too (D1)."""
         return self.filter(category__isnull=False).exclude(category__account__isnull=False)
 
     def of_kind(self, expense_only=False, income_only=False):
-        """Only expense or only income categories, or both when neither flag is set. The
-        category's type decides, never the amount's sign (R1)."""
+        """Only expense or only income categories, or both when neither
+        flag is set. The category's type decides, never the amount's
+        sign."""
         if expense_only:
             return self.filter(category__category_type=Category.CategoryType.EXPENSE)
         if income_only:
@@ -570,7 +618,8 @@ class TransactionQuerySet(models.QuerySet):
         return self
 
     def for_account(self, account):
-        """Only `account`'s transactions, or every account's when `account` is None."""
+        """Only `account`'s transactions, or every account's when
+        `account` is None."""
         return self.filter(account=account) if account else self
 
 
@@ -603,7 +652,8 @@ class Transaction(models.Model):
     objects = TransactionQuerySet.as_manager()
 
     class Meta:
-        # transaction_number is an integer column, so it sorts 1, 2, 10 - never "1, 10, 2" like text would (D9).
+        # transaction_number is an integer column, so it sorts 1, 2,
+        # 10 - never "1, 10, 2" like text would (D9).
         ordering = ["-date", "-transaction_number", "-created_at"]
         indexes = [
             models.Index(fields=["date"]),
@@ -624,10 +674,12 @@ class Transaction(models.Model):
 
     @staticmethod
     def next_number(on):
-        """The next transaction number for `on`'s calendar year - shared across every account,
-        not scoped to one (D9). Duplicates are allowed on purpose: numbers are editable and
-        imports reuse them. Two requests can't both read the same MAX() either, since every
-        write request holds the stash's write lock (BEGIN IMMEDIATE) from its start."""
+        """The next transaction number for `on`'s calendar year - shared
+        across every account, not scoped to one (D9). Duplicates are
+        allowed on purpose: numbers are editable and imports reuse them.
+        Two requests can't both read the same MAX() either, since every
+        write request holds the stash's write lock (BEGIN IMMEDIATE)
+        from its start."""
         highest = Transaction.objects.filter(date__year=on.year).aggregate(highest=Max("transaction_number"))[
             "highest"
         ]
@@ -635,7 +687,8 @@ class Transaction(models.Model):
 
 
 class ImportBatch(models.Model):
-    """Tracks a single CSV/OFX/QFX import run so it can be reviewed or undone."""
+    """Tracks a single CSV/OFX/QFX import run so it can be reviewed or
+    undone."""
 
     account = models.ForeignKey(Account, on_delete=models.CASCADE, related_name="import_batches")
     source_filename = models.CharField(max_length=255)
@@ -666,9 +719,8 @@ class Reminder(models.Model):
         QUARTERLY = "quarterly", "Quarterly"
         YEARLY = "yearly", "Yearly"
 
-    # Frequency value -> the unit word shown next to the "Every N ..." interval field
-    # (2026-09-14 follow-up, replacing the old fixed "Every 2 weeks" choice with a free
-    # interval - "weekly" + interval=2 now means the same thing "biweekly" used to).
+    # Frequency value -> the unit word shown next to the "Every N ..."
+    # interval field.
     FREQUENCY_UNIT_WORDS = {
         "weekly": "week(s)",
         "monthly": "month(s)",
@@ -681,17 +733,19 @@ class Reminder(models.Model):
         (Category.CategoryType.EXPENSE.value, Category.CategoryType.EXPENSE.label),
     ]
 
-    # What a "whole series" edit copies onto the series head and its still-open occurrences:
-    # the same fields regenerate_occurrences() copies onto a new occurrence. The schedule
-    # (frequency, interval, dates) stays per row, since an occurrence's own date is what makes it
-    # that occurrence.
+    # What a "whole series" edit copies onto the series head and its
+    # still-open occurrences: the same fields regenerate_occurrences()
+    # copies onto a new occurrence. The schedule (frequency, interval,
+    # dates) stays per row, since an occurrence's own date is what makes
+    # it that occurrence.
     SERIES_FIELDS = ["account", "payee", "category", "amount", "reminder_type", "notes"]
-    # What decides a recurring reminder's future dates: saving any of them regenerates its
-    # occurrences (see save()).
+    # What decides a recurring reminder's future dates: saving any of
+    # them regenerates its occurrences (see save()).
     SCHEDULE_FIELDS = frozenset({"frequency", "interval", "next_due_date", "end_date", "end_of_period"})
 
-    # "Due soon" is treated as urgent enough to need action; anything further out than this
-    # many days (and not already overdue) is either "paid" (see status()) or plain pending.
+    # "Due soon" is treated as urgent enough to need action; anything
+    # further out than this many days (and not already overdue) is
+    # either "paid" (see status()) or plain pending.
     DUE_SOON_DAYS = 7
 
     reminder_type = models.CharField(max_length=10, choices=TYPE_CHOICES, default=Category.CategoryType.EXPENSE)
@@ -707,32 +761,36 @@ class Reminder(models.Model):
         help_text="Enter as a positive number, or leave blank for a variable-amount bill",
     )
     frequency = models.CharField(max_length=10, choices=Frequency.choices, default=Frequency.ONE_TIME)
-    # How many periods between occurrences - "weekly" + interval=2 is "every 2 weeks" (2026-09-14
-    # follow-up, replacing the old fixed BIWEEKLY choice). Meaningless for ONE_TIME; always 1 there.
+    # How many periods between occurrences - "weekly" + interval=2 is
+    # "every 2 weeks". Meaningless for ONE_TIME; always 1 there.
     interval = models.PositiveSmallIntegerField(default=1, validators=[MinValueValidator(1)])
     next_due_date = models.DateField()
     end_of_period = models.BooleanField(default=False, verbose_name="Last day of period")
     end_date = models.DateField(null=True, blank=True)
-    # Points at the transaction created the last time this reminder was entered (Enter, not
-    # Skip) - the basis for the computed "paid" status (D6 follow-up, 2026-09-13). Deleting
-    # that transaction clears this automatically (SET_NULL) and the status reverts; deleting
-    # the reminder never touches the transaction, since the FK points the other way.
+    # Points at the transaction created the last time this reminder was
+    # entered (Enter, not Skip) - the basis for the computed "paid"
+    # status (D6). Deleting that transaction clears this automatically
+    # (SET_NULL) and the status reverts; deleting the reminder never
+    # touches the transaction, since the FK points the other way.
     last_entered_transaction = models.ForeignKey(
         "Transaction", null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
     )
-    # A one-time reminder has nothing to advance to once acted on, so Skip marks it done
-    # instead of moving a due date that doesn't exist for it (2026-09-14 follow-up).
+    # A one-time reminder has nothing to advance to once acted on, so
+    # Skip marks it done instead of moving a due date that doesn't exist
+    # for it.
     skipped = models.BooleanField(default=False)
-    # Set only on an auto-generated future occurrence of a recurring reminder (below), pointing
-    # back at the recurring "series head" that generated it. Null on every reminder you create
-    # by hand, recurring or not.
+    # Set only on an auto-generated future occurrence of a recurring
+    # reminder (below), pointing back at the recurring "series head"
+    # that generated it. Null on every reminder you create by hand,
+    # recurring or not.
     series = models.ForeignKey("self", null=True, blank=True, on_delete=models.CASCADE, related_name="occurrences")
     notes = models.CharField(max_length=255, blank=True)
 
     class Meta:
         ordering = ["next_due_date"]
         constraints = [
-            # The reminder's type says income or expense, so the amount itself is never negative.
+            # The reminder's type says income or expense, so the amount
+            # itself is never negative.
             models.CheckConstraint(
                 condition=Q(amount__isnull=True) | Q(amount__gte=0),
                 name="reminder_amount_not_negative",
@@ -741,39 +799,44 @@ class Reminder(models.Model):
         ]
 
     def __str__(self):
-        # No separate name (removed 13/09/2026) - identified like a pending transaction, by
-        # who it's for and how much, the same way Transaction.__str__ identifies a real one.
+        # A reminder has no name of its own: it is identified like a
+        # pending transaction, by who it's for and how much, the same
+        # way Transaction.__str__ identifies a real one.
         who = self.payee.name if self.payee_id else (self.category.full_name if self.category_id else "Reminder")
         amount = self.signed_amount()
         return f"{regional.format_date(self.next_due_date)} | {who} | {amount if amount is not None else 'varies'}"
 
     def save(self, *args, **kwargs):
-        # A recurring reminder keeps its future occurrences in sync in save() itself, not just in
-        # the form, so the admin, scripts and the shell get the same occurrences. A full save
-        # (every form and admin edit) always regenerates: that's also what moves the
-        # generation horizon forward as time passes. A save of chosen fields regenerates only
-        # if one of them is part of the schedule - marking a period paid doesn't move any date.
+        # A recurring reminder keeps its future occurrences in sync in
+        # save() itself, not just in the form, so the admin, scripts and
+        # the shell get the same occurrences. A full save (every form
+        # and admin edit) always regenerates: that's also what moves the
+        # generation horizon forward as time passes. A save of chosen
+        # fields regenerates only if one of them is part of the
+        # schedule - marking a period paid doesn't move any date.
         update_fields = kwargs.get("update_fields")
         schedule_saved = update_fields is None or not self.SCHEDULE_FIELDS.isdisjoint(update_fields)
         regenerate = self.frequency != self.Frequency.ONE_TIME and schedule_saved
-        # Read before the save overwrites it: regenerate_occurrences() must know if the due date moved.
+        # Read before the save overwrites it: regenerate_occurrences()
+        # must know if the due date moved.
         previous_due_date = self._stored_due_date() if regenerate else None
         super().save(*args, **kwargs)
         if regenerate:
             self.regenerate_occurrences(previous_due_date=previous_due_date)
 
     def _stored_due_date(self):
-        """The due date saved in the database right now, or None for a reminder not saved yet."""
+        """The due date saved in the database right now, or None for a
+        reminder not saved yet."""
         if self.pk is None:
             return None
         return Reminder.objects.filter(pk=self.pk).values_list("next_due_date", flat=True).first()
 
     def delete(self, *args, **kwargs):
-        # Deleting a whole series takes its still-open occurrences with it (series is
-        # on_delete=CASCADE) - but an occurrence you've already paid or skipped is a real
-        # historical record now, not just a preview, so it's detached (series -> null) and
-        # kept standing on its own instead of disappearing with the series (2026-09-14
-        # follow-up).
+        # Deleting a whole series takes its still-open occurrences with
+        # it (series is on_delete=CASCADE) - but an occurrence you've
+        # already paid or skipped is a real historical record now, not
+        # just a preview, so it's detached (series -> null) and kept
+        # standing on its own instead of disappearing with the series.
         if self.frequency != self.Frequency.ONE_TIME:
             resolved = self.occurrences.filter(Q(last_entered_transaction__isnull=False) | Q(skipped=True))
             with system_action(f"Occurrence detached from deleted recurring reminder ({self})"):
@@ -788,20 +851,23 @@ class Reminder(models.Model):
         return self.amount if self.reminder_type == Category.CategoryType.INCOME else -self.amount
 
     def status(self, today=None):
-        """One of "overdue", "due_soon", "paid", "skipped" or "" (= pending).
+        """One of "overdue", "due_soon", "paid", "skipped" or "" (=
+        pending).
 
-        A one-time reminder (a real one-off, or an auto-generated future occurrence of a
-        recurring one, 2026-09-14) has no next period to fall back into once it's been acted
-        on, so Paid/Skipped there is permanent - unlike a recurring reminder, which just moves
-        on to its next period and so only ever shows overdue/due soon/pending.
+        A one-time reminder (a real one-off, or an auto-generated future
+        occurrence of a recurring one) has no next period to fall back
+        into once it's been acted on, so Paid/Skipped there is
+        permanent - unlike a recurring reminder, which just moves on to
+        its next period and so only ever shows overdue/due soon/pending.
         """
         if self.skipped:
             return "skipped"
         if self.frequency == self.Frequency.ONE_TIME:
             return "paid" if self.last_entered_transaction_id else self._date_status(today)
-        # A recurring reminder always stands for its next, not-yet-entered period (entering or
-        # skipping advances it), so it is never "paid" itself - even if an older row still
-        # carries a stale link from before that was cleared on advance.
+        # A recurring reminder always stands for its next,
+        # not-yet-entered period (entering or skipping advances it), so
+        # it is never "paid" itself - even if an older row still carries
+        # a stale link from before that was cleared on advance.
         return self._date_status(today)
 
     def _date_status(self, today=None):
@@ -815,20 +881,25 @@ class Reminder(models.Model):
 
     @staticmethod
     def default_generation_horizon(today=None):
-        """How far ahead to auto-generate occurrences when a reminder has no end date:
-        90 days out, or through 31 December of this year - whichever is further. Late in the
-        year the 90-day floor wins and spills into next year; earlier in the year, year-end is
-        further out, matching what the "Yearly" filter button on the reminder list shows."""
+        """How far ahead to auto-generate occurrences when a reminder
+        has no end date: 90 days out, or through 31 December of this
+        year - whichever is further. Late in the year the 90-day floor
+        wins and spills into next year; earlier in the year, year-end is
+        further out, matching what the "Yearly" filter button on the
+        reminder list shows."""
         today = today or timezone.localdate()
         return max(today + timedelta(days=90), date(today.year, 12, 31))
 
     def _period_end(self, on):
-        """Last day of `on`'s period for this reminder's frequency, for end-of-period mode (D5).
+        """Last day of `on`'s period for this reminder's frequency, for
+        end-of-period mode (D5).
 
-        The period itself is always the natural calendar month/quarter/year `on` falls in,
-        regardless of `interval` - "every 3 months, last day of period" still means the last
-        day of whichever month it lands on, not a 3-month span. Weekly is the one case where
-        the interval genuinely changes what "the period" spans (2026-09-14 follow-up)."""
+        The period itself is always the natural calendar
+        month/quarter/year `on` falls in, regardless of `interval` -
+        "every 3 months, last day of period" still means the last day of
+        whichever month it lands on, not a 3-month span. Weekly is the
+        one case where the interval genuinely changes what "the period"
+        spans."""
         if self.frequency == self.Frequency.YEARLY:
             return date(on.year, 12, 31)
         if self.frequency == self.Frequency.QUARTERLY:
@@ -838,8 +909,9 @@ class Reminder(models.Model):
         if self.frequency == self.Frequency.MONTHLY:
             next_month = date(on.year, on.month, 1) + relativedelta(months=1)
             return next_month - timedelta(days=1)
-        # WEEKLY: last day of the `interval`-week span containing `on`, anchored so weeks
-        # start Monday (D10's convention) - interval=1 is just "last day of this week".
+        # WEEKLY: last day of the `interval`-week span containing `on`,
+        # anchored so weeks start Monday (D10's convention) - interval=1
+        # is just "last day of this week".
         week_start = on - timedelta(days=on.weekday())
         return week_start + timedelta(days=7 * self.interval - 1)
 
@@ -852,18 +924,19 @@ class Reminder(models.Model):
     _QUARTERLY_MONTH_MULTIPLIER = 3
 
     def _advance(self, from_date):
-        """The next due date after `from_date` for this reminder's own frequency/interval/
-        end-of-period settings - pure (no save), so `regenerate_occurrences` can walk it
-        forward repeatedly."""
+        """The next due date after `from_date` for this reminder's own
+        frequency/interval/ end-of-period settings - pure (no save), so
+        `regenerate_occurrences` can walk it forward repeatedly."""
         unit = self._FREQUENCY_UNITS[self.frequency]
         count = self.interval * (self._QUARTERLY_MONTH_MULTIPLIER if self.frequency == self.Frequency.QUARTERLY else 1)
         advanced = from_date + relativedelta(**{unit: count})
         return self._period_end(advanced) if self.end_of_period else advanced
 
     def record_period(self, transaction=None, skipped=False):
-        """Leave a standing Paid/Skipped record of the period this recurring reminder is about
-        to move past. Entering or skipping advances the reminder itself to the next period, so
-        without this the period you just dealt with would vanish from the list."""
+        """Leave a standing Paid/Skipped record of the period this
+        recurring reminder is about to move past. Entering or skipping
+        advances the reminder itself to the next period, so without this
+        the period you just dealt with would vanish from the list."""
         with system_action(f"Resolved period recorded for recurring reminder ({self})"):
             return Reminder.objects.create(
                 series=self,
@@ -886,8 +959,9 @@ class Reminder(models.Model):
             self.save(update_fields=["next_due_date"])  # save() -> regenerate_occurrences()
 
     def mark_entered(self, transaction):
-        """Enter (D6): `transaction` pays this reminder's current period. A one-time reminder
-        links to it and is "Paid" for good; a recurring one records the period and moves on."""
+        """Enter (D6): `transaction` pays this reminder's current
+        period. A one-time reminder links to it and is "Paid" for good;
+        a recurring one records the period and moves on."""
         if self.frequency == self.Frequency.ONE_TIME:
             self.last_entered_transaction = transaction
             self.save(update_fields=["last_entered_transaction"])
@@ -895,8 +969,9 @@ class Reminder(models.Model):
             self._move_past_period(transaction=transaction)
 
     def skip(self):
-        """Skip (D6): this period won't be paid. A one-time reminder is marked done, since it
-        has no next period; a recurring one records the period as skipped and moves on."""
+        """Skip (D6): this period won't be paid. A one-time reminder is
+        marked done, since it has no next period; a recurring one
+        records the period as skipped and moves on."""
         if self.frequency == self.Frequency.ONE_TIME:
             self.skipped = True
             self.save(update_fields=["skipped"])
@@ -904,8 +979,9 @@ class Reminder(models.Model):
             self._move_past_period(skipped=True)
 
     def apply_to_series(self):
-        """A "whole series" edit: copy this reminder's SERIES_FIELDS onto its series head (when
-        it's an occurrence) and onto every occurrence not yet paid or skipped."""
+        """A "whole series" edit: copy this reminder's SERIES_FIELDS
+        onto its series head (when it's an occurrence) and onto every
+        occurrence not yet paid or skipped."""
         root = self.series if self.series_id else self
         if root.pk != self.pk:
             for field in self.SERIES_FIELDS:
@@ -920,30 +996,36 @@ class Reminder(models.Model):
 
     def _move_past_period(self, transaction=None, skipped=False):
         self.record_period(transaction=transaction, skipped=skipped)
-        # The reminder now stands for the next period, which nobody has paid yet - an old link
-        # left from an earlier Enter would make it show as "Paid".
+        # The reminder now stands for the next period, which nobody has
+        # paid yet - an old link left from an earlier Enter would make
+        # it show as "Paid".
         if self.last_entered_transaction_id:
             self.last_entered_transaction = None
             self.save(update_fields=["last_entered_transaction"])
         self.advance_due_date()
 
     def regenerate_occurrences(self, previous_due_date=None):
-        """Keep this recurring reminder's auto-generated future occurrences in sync with its
-        own due date, frequency and end date (2026-09-14 follow-up) - one real `Reminder` row
-        per future occurrence, so each can be entered/skipped/edited on its own, same as any
-        other reminder. Only ever called on a series head (never on a one-time reminder or an
-        occurrence itself, both of which have nothing to generate).
+        """Keep this recurring reminder's auto-generated future
+        occurrences in sync with its own due date, frequency and end
+        date - one real `Reminder` row per future occurrence, so each
+        can be entered/skipped/edited on its own, same as any other
+        reminder. Only ever called on a series head (never on a one-time
+        reminder or an occurrence itself, both of which have nothing to
+        generate).
 
-        Only a preview can be dropped. Already-resolved occurrences (paid or skipped) are never
-        touched, even if a shortened end date would otherwise drop them, and a preview that
-        already exists for a wanted date is left alone too, so hand-editing one instance (e.g.
-        a higher amount one month) survives the next regeneration.
+        Only a preview can be dropped. Already-resolved occurrences
+        (paid or skipped) are never touched, even if a shortened end
+        date would otherwise drop them, and a preview that already
+        exists for a wanted date is left alone too, so hand-editing one
+        instance (e.g. a higher amount one month) survives the next
+        regeneration.
 
-        A preview is an open occurrence dated on or after this reminder's due date, or after
-        where it used to be (`previous_due_date`, when this save moved it later): the dates
-        between are ones you skipped over by hand. An open occurrence dated before both is an
-        earlier period nobody paid (its payment was deleted, S51): a real overdue bill, so it
-        stays.
+        A preview is an open occurrence dated on or after this
+        reminder's due date, or after where it used to be
+        (`previous_due_date`, when this save moved it later): the dates
+        between are ones you skipped over by hand. An open occurrence
+        dated before both is an earlier period nobody paid (its payment
+        was deleted): a real overdue bill, so it stays.
         """
         if self.frequency == self.Frequency.ONE_TIME:
             return
@@ -979,7 +1061,8 @@ class Reminder(models.Model):
 
 
 class ExchangeRate(models.Model):
-    """1 unit of base_currency was worth `rate` units of quote_currency on `date` (D2)."""
+    """1 unit of base_currency was worth `rate` units of quote_currency
+    on `date` (D2)."""
 
     class Source(models.TextChoices):
         MANUAL = "manual", "Typed in"
@@ -1008,17 +1091,18 @@ class ExchangeRate(models.Model):
 
 
 class Reconciliation(models.Model):
-    """A record of one reconciliation session (Phase 8) - kept purely as an audit trail
-    ("why is this balance off") the same way the rest of the app already treats history;
-    the actual settled/unsettled state of each transaction lives on Transaction.reconciled."""
+    """A record of one reconciliation session - kept purely as an audit
+    trail ("why is this balance off"). The actual settled/unsettled
+    state of each transaction lives on Transaction.reconciled."""
 
     account = models.ForeignKey(Account, on_delete=models.CASCADE, related_name="reconciliations")
     statement_date = models.DateField()
     statement_balance = models.DecimalField(max_digits=12, decimal_places=2)
     opening_balance = models.DecimalField(max_digits=12, decimal_places=2)
-    # Set only when the statement balance and the reconciled transactions didn't already
-    # match exactly and you chose to accept the difference (SET_NULL if that adjustment
-    # transaction is later deleted by hand - the session record itself still stands).
+    # Set only when the statement balance and the reconciled
+    # transactions didn't already match exactly and you chose to accept
+    # the difference (SET_NULL if that adjustment transaction is later
+    # deleted by hand - the session record itself still stands).
     adjustment_transaction = models.ForeignKey(
         Transaction, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
     )

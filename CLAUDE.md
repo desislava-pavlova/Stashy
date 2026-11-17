@@ -293,8 +293,7 @@ check.bat                                                        # ruff check + 
   sum of transactions. Every account owns one `[Account name]` Transfer
   category (D7).
 - Transfers and opening balances never count as income or spending. **A
-  category's type decides income vs. spending, never the amount's sign**
-  (R1).
+  category's type decides income vs. spending, never the amount's sign.**
 - Report maths adds a category's amounts **signed** and flips the sign
   once at the end, through `reporting._as_shown()`: a refund shrinks its
   category, one that beats the spending shows negative (spent 40, refunded
@@ -334,6 +333,23 @@ check.bat                                                        # ruff check + 
 - Code that changes audited data goes through model `save()`/`delete()`,
   never `queryset.update()`/`bulk_create()`, and automatic logic runs inside
   `system_action("reason")`.
+
+## Comments and docstrings
+
+- A module starts with a docstring: what it is for and what it must not
+  do. Keep a comment that explains something you can't see from the code
+  (the reason, a trap); trim one that retells the next lines; never strip a
+  docstring.
+- Application code describes a rule in words: no dates, no "Phase N", no
+  plan or finding codes (S75, R4, L1) and no "the user's call". That history
+  is DEVLOG.md's. D1 to D10 are the exception, the names of settled rules.
+  A test's docstring may start with the plan item it came from, as
+  `finance/tests/__init__.py` explains.
+- Comments and docstrings wrap at 72 columns (ruff's W505, `max-doc-length`
+  in `pyproject.toml`; code lines may run to `line-length`). A one-line
+  docstring has to fit in 72 with its quotes, because `ruff format` keeps
+  the closing quotes on the text line. A dash used as punctuation (" - ")
+  must not start a line, where it would read as a bullet.
 
 ## UI conventions
 

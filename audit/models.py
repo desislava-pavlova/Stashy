@@ -1,3 +1,5 @@
+"""The audit log's one table, filled by signals.py and never by hand."""
+
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
@@ -6,10 +8,11 @@ from .context import SYSTEM, USER
 
 
 class AuditLogEntry(models.Model):
-    """One row per database-level event (Phase 14 / A3): an INSERT or DELETE names the whole
-    row, an UPDATE gets one row per changed column. Values are stored raw - stored keys,
-    ISO dates, exact decimals - never formatted for a viewer, so the log reads like a real
-    database audit log rather than a friendly summary."""
+    """One row per database-level event: an INSERT or DELETE names the
+    whole row, an UPDATE gets one row per changed column. Values are
+    stored raw - stored keys, ISO dates, exact decimals - never
+    formatted for a viewer, so the log reads like a real database audit
+    log rather than a friendly summary."""
 
     class Action(models.TextChoices):
         INSERT = "insert", "INSERT"
@@ -34,7 +37,8 @@ class AuditLogEntry(models.Model):
     column = models.CharField(
         max_length=100, blank=True, db_index=True, help_text="Raw column name; blank for INSERT/DELETE."
     )
-    # NULL ("no value": the row didn't exist yet, or no longer does) is a different fact from "".
+    # NULL ("no value": the row didn't exist yet, or no longer does) is
+    # a different fact from "".
     old_value = models.TextField(null=True, blank=True)  # noqa: DJ001
     new_value = models.TextField(null=True, blank=True)  # noqa: DJ001
     values = models.JSONField(default=dict, blank=True, help_text="Full raw column values (INSERT/DELETE only, A4).")

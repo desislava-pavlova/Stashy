@@ -1,3 +1,8 @@
+"""The categories pages: the grouped list, add/edit/delete, and a
+category's usage (the transactions filed under it). The one-level rule
+and the duplicate-name checks live on `Category.clean()`, not here.
+"""
+
 from django.contrib import messages
 from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404, redirect, render
@@ -38,7 +43,8 @@ class CategoryCreateView(CreateView):
 
 
 class SystemManagedCategoryGuard:
-    """Blocks edit/delete of an account's own transfer category — it's managed automatically (D7)."""
+    """Blocks edit/delete of an account's own transfer category — it's
+    managed automatically (D7)."""
 
     def dispatch(self, request, *args, **kwargs):
         self.request, self.args, self.kwargs = request, args, kwargs
@@ -77,7 +83,8 @@ class CategoryDeleteView(SystemManagedCategoryGuard, DeleteView):
 
 
 def category_usage(request, pk):
-    """A category's own transactions (not its subcategories'), with a mass re-categorize tool."""
+    """A category's own transactions (not its subcategories'), with a
+    mass re-categorize tool."""
     category = get_object_or_404(Category, pk=pk)
     transactions = category.transactions.select_related("account", "payee")
 
@@ -95,7 +102,8 @@ def category_usage(request, pk):
         else:
             moved = 0
             for transaction in transactions.filter(pk__in=selected_ids):
-                # One save() per row (never queryset.update()) so each move is audited on its own.
+                # One save() per row (never queryset.update()) so each
+                # move is audited on its own.
                 transaction.category = target
                 transaction.save(update_fields=["category"])
                 moved += 1

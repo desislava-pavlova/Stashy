@@ -1,9 +1,10 @@
-"""The stash picker and login screens. These run *before* a stash's own data is reachable:
-the picker in particular has to work when this session hasn't picked a stash yet and the app
-is pointed at the placeholder database rather than any real stash.
+"""The stash picker and login screens. These run *before* a stash's own
+data is reachable: the picker in particular has to work when this
+session hasn't picked a stash yet and the app is pointed at the
+placeholder database rather than any real stash.
 
-Every page in Stashy needs a login (LoginRequiredMiddleware), so each view here that must work
-without one is marked @login_not_required.
+Every page in Stashy needs a login (LoginRequiredMiddleware), so each
+view here that must work without one is marked @login_not_required.
 """
 
 from django.contrib import messages
@@ -24,10 +25,12 @@ from ..text import possessive
 
 @login_not_required
 def stash_picker(request):
-    """Pick an existing stash (no PIN here - that's the login page). With no stashes at all,
-    there's nothing to pick, so this goes straight to creating one. Redirects away once a
-    stash is already selected for this session, since from then on switching means an explicit
-    "Choose a different stash" action, not landing back here by accident."""
+    """Pick an existing stash (no PIN here - that's the login page).
+    With no stashes at all, there's nothing to pick, so this goes
+    straight to creating one. Redirects away once a stash is already
+    selected for this session, since from then on switching means an
+    explicit "Choose a different stash" action, not landing back here by
+    accident."""
     if request.session.get("stash"):
         return redirect("login")
 
@@ -48,8 +51,8 @@ def stash_picker(request):
 @login_not_required
 @never_cache
 def stash_create(request):
-    """Create a new stash: whose it is, plus a PIN. Its own page, so "no stashes yet" can
-    land directly here."""
+    """Create a new stash: whose it is, plus a PIN. Its own page, so "no
+    stashes yet" can land directly here."""
     if request.session.get("stash"):
         return redirect("login")
 
@@ -82,32 +85,37 @@ def stash_create(request):
 @login_not_required
 @require_POST
 def switch_stash(request):
-    """Logs out and forgets this session's chosen stash, straight back to the picker - no
-    restart needed. logout() already flushes the whole session (a fresh session belonging to
-    no stash's user), which is exactly what letting go of the current stash means here too.
-    Also used by the PIN screen's "Choose a different stash" button. POST only, like
-    Django's own LogoutView: a GET could be triggered by any link or image on another site."""
+    """Logs out and forgets this session's chosen stash, straight back
+    to the picker - no restart needed. logout() already flushes the
+    whole session (a fresh session belonging to no stash's user), which
+    is exactly what letting go of the current stash means here too. Also
+    used by the PIN screen's "Choose a different stash" button. POST
+    only, like Django's own LogoutView: a GET could be triggered by any
+    link or image on another site."""
     logout(request)
     return redirect("stash_picker")
 
 
 @login_not_required
 def admin_login(request):
-    """Stands in for the Django admin's own login page, which knows nothing about Stashy's PIN
-    lockout - every stash's user is a superuser, so a 4-digit PIN could be guessed there
-    without limit. Sends you to the stash's PIN screen instead, keeping `?next=`, so every way
-    of logging in goes through StashLoginView."""
+    """Stands in for the Django admin's own login page, which knows
+    nothing about Stashy's PIN lockout - every stash's user is a
+    superuser, so a 4-digit PIN could be guessed there without limit.
+    Sends you to the stash's PIN screen instead, keeping `?next=`, so
+    every way of logging in goes through StashLoginView."""
     query = request.GET.urlencode()
     return redirect(f"{reverse('login')}?{query}" if query else reverse("login"))
 
 
-# LoginView is already marked login_not_required, but on its own dispatch(). This class
-# overrides dispatch(), so the mark has to be given again or the login page would need a login.
+# LoginView is already marked login_not_required, but on its own
+# dispatch(). This class overrides dispatch(), so the mark has to be
+# given again or the login page would need a login.
 @method_decorator(login_not_required, name="dispatch")
 class StashLoginView(LoginView):
-    """The normal Django LoginView, aimed at the one user in whatever stash is current -
-    username is fixed (the stash's own name) rather than typed, and adds the lockout this
-    app's PIN needs that Django's stock login doesn't provide on its own."""
+    """The normal Django LoginView, aimed at the one user in whatever
+    stash is current - username is fixed (the stash's own name) rather
+    than typed, and adds the lockout this app's PIN needs that Django's
+    stock login doesn't provide on its own."""
 
     form_class = StashLoginForm
     template_name = "registration/login.html"
@@ -184,8 +192,9 @@ def forgot_pin(request):
                 )
             form.add_error("recovery_code", "That recovery code isn't right.")
 
-    # After the try above, so the last wrong code shows the lockout at once. The form stays: a
-    # right recovery code still works during one (plan 03, S91).
+    # After the try above, so the last wrong code shows the lockout at
+    # once. The form stays: a right recovery code still works during
+    # one.
     locked_out = security.is_locked_out(profile)
     return render(
         request,

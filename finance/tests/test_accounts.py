@@ -1,6 +1,6 @@
-"""Accounts: opening balances, transfers between accounts and their transfer categories,
-grouping, inactive accounts, the account register's columns, the account forms, and saving
-and deleting an account."""
+"""Accounts: opening balances, transfers between accounts and their
+transfer categories, grouping, inactive accounts, the account register's
+columns, the account forms, and saving and deleting an account."""
 
 import re
 from datetime import date
@@ -68,7 +68,7 @@ class OpeningBalanceTests(LoggedInTestCase):
         self.assertEqual(opening.amount, Decimal("25.00"))
 
     def test_no_opening_balance_still_makes_a_zero_dated_today_transaction(self):
-        """2026-09-15 follow-up: every new account always gets an opening balance transaction,
+        """Every new account always gets an opening balance transaction,
         even a zero one dated today when the fields are left blank."""
         self.client.post(
             reverse("finance:account_add"),
@@ -148,8 +148,8 @@ class TransferButtonTests(LoggedInTestCase):
         self.assertIn("Checking", into.memo)
 
     def test_a_transfer_of_one_cent_goes_through(self):
-        """S1: the amount's minimum was the float 0.01, which is a hair more than a cent, so
-        exactly 0.01 was refused."""
+        """S1: the amount's minimum was the float 0.01, which is a hair
+        more than a cent, so exactly 0.01 was refused."""
         response = self.client.post(
             reverse("finance:account_transfer", args=[self.checking.pk]),
             {"to_account": self.savings.pk, "amount": "0.01", "date": "05/01/2026"},
@@ -159,8 +159,9 @@ class TransferButtonTests(LoggedInTestCase):
         self.assertEqual(Transaction.objects.get(account=self.savings).amount, Decimal("0.01"))
 
     def test_a_transfer_of_one_cent_goes_through_in_every_number_format(self):
-        """S1 with a stash's number style: the style changes how amounts are shown, but the box
-        still asks for 0.01 with a dot (a number box needs that) and still takes it."""
+        """S1 with a stash's number style: the style changes how amounts
+        are shown, but the box still asks for 0.01 with a dot (a number
+        box needs that) and still takes it."""
         url = reverse("finance:account_transfer", args=[self.checking.pk])
         for number_format in ("space_dot", "comma_dot", "dot_comma", "space_comma"):
             with self.subTest(number_format=number_format):
@@ -205,8 +206,9 @@ class TransferButtonTests(LoggedInTestCase):
 
 
 class TransferAmountLimitTests(StashTestCase):
-    """The transfer form's amount: exactly one cent is the smallest amount (S1), and nothing under
-    it, at it or below zero gets through."""
+    """The transfer form's amount: exactly one cent is the smallest
+    amount (S1), and nothing under it, at it or below zero gets through.
+    """
 
     @classmethod
     def setUpTestData(cls):
@@ -232,7 +234,8 @@ class TransferAmountLimitTests(StashTestCase):
         self.assertIn("amount", self.form("10000000000.00").errors)
 
     def test_the_message_for_too_little_names_the_limit_as_a_clean_cent(self):
-        """Not 0.01000000000000000020..., which is what the float limit used to print."""
+        """Not 0.01000000000000000020..., which is what the float limit
+        used to print."""
         self.assertEqual(self.form("0.00").errors["amount"], ["Ensure this value is greater than or equal to 0.01."])
 
 
@@ -255,15 +258,17 @@ class PaymentDepositColumnTests(LoggedInWithAccountTestCase):
         Transaction.objects.create(account=self.account, date=date(2026, 1, 2), amount=Decimal("30.00"))
         response = self.client.get(reverse("finance:account_detail", args=[self.account.pk]))
         html = response.content.decode()
-        # Payment shows unsigned (the column itself already means "money out") - no "-20.00".
+        # Payment shows unsigned (the column itself already means "money
+        # out") - no "-20.00".
         self.assertIn('amount-negative">20.00', html.replace(" ", ""))
         self.assertNotIn('amount-negative">-20.00', html.replace(" ", ""))
         self.assertIn('amount-positive">30.00', html.replace(" ", ""))
 
 
 class AccountRegisterStatusColumnTests(LoggedInWithAccountTestCase):
-    """S38: an unreconciled row shows a plain, muted dash. It used to sit in a `text-bg-light`
-    pill, which Bootstrap keeps near-white in dark mode, so the dash was barely visible there."""
+    """S38: an unreconciled row shows a plain, muted dash. It used to
+    sit in a `text-bg-light` pill, which Bootstrap keeps near-white in
+    dark mode, so the dash was barely visible there."""
 
     def register(self):
         url = reverse("finance:account_detail", args=[self.account.pk])
@@ -287,8 +292,9 @@ class AccountRegisterStatusColumnTests(LoggedInWithAccountTestCase):
 
 
 class AccountRegisterPagingTests(LoggedInWithAccountTestCase):
-    """8.11: the register has no date range, so it follows the Transactions page's rule for an
-    open range: 1,000 rows per page, and the count covers every page."""
+    """8.11: the register has no date range, so it follows the
+    Transactions page's rule for an open range: 1,000 rows per page, and
+    the count covers every page."""
 
     def test_a_long_register_has_pages_and_the_count_covers_them_all(self):
         Transaction.objects.bulk_create(
@@ -411,7 +417,8 @@ class AccountDeleteTests(LoggedInWithAccountTestCase):
 
 
 class AccountSaveTests(StashTestCase):
-    """6.1 (F12): only a new account or a new name touches its transfer category."""
+    """6.1 (F12): only a new account or a new name touches its transfer
+    category."""
 
     @classmethod
     def setUpTestData(cls):

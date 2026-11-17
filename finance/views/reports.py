@@ -1,3 +1,10 @@
+"""The Reports page: it reads the filters off the address, asks
+`reporting.py` for each report's numbers and hands them to the template.
+The filters are read by `_report_filters()`, which the exports share, so
+a downloaded file always matches what is on screen. No report maths
+belongs here.
+"""
+
 from django.shortcuts import render
 
 from .. import regional
@@ -27,19 +34,21 @@ from ..reporting import (
 
 
 def _report_filters(request):
-    """Shared by the reports page and the report export view, so both read the exact same
-    filters off the querystring - what you export always matches what's on screen.
+    """Shared by the reports page and the report export view, so both
+    read the exact same filters off the querystring - what you export
+    always matches what's on screen.
 
-    On an invalid submission, `form` is swapped for a fresh, unbound one so the widgets show
-    the defaults actually being used rather than echoing back the rejected values; the original
-    errors are kept separately in "form_errors" for the page's warning banner."""
+    On an invalid submission, `form` is swapped for a fresh, unbound one
+    so the widgets show the defaults actually being used rather than
+    echoing back the rejected values; the original errors are kept
+    separately in "form_errors" for the page's warning banner."""
     submitted = DateRangeFilterForm(request.GET or None)
     invalid = bool(request.GET) and not submitted.is_valid()
     filters = submitted.cleaned_data if submitted.is_valid() else {}
     account = filters.get("account")
     start, end, interval = resolve_range(filters, account=account)
-    # "Average interval" is how many periods the same length as [start, end] to average over,
-    # immediately preceding it - see reporting.vs_average_periods().
+    # "Average interval" is how many earlier periods to average over -
+    # see reporting.vs_average_periods() for what an earlier period is.
     try:
         lookback = int(interval)
     except (TypeError, ValueError):
@@ -54,8 +63,9 @@ def _report_filters(request):
         "lookback": lookback,
         "periods": periods,
         "average_periods": len(periods),
-        # One earlier period isn't an average, and none at all is nothing to compare with -
-        # the vs-average reports say so instead of drawing one.
+        # One earlier period isn't an average, and none at all is
+        # nothing to compare with - the vs-average reports say so
+        # instead of drawing one.
         "has_average": len(periods) >= 2,
         "subtotal": filters.get("subtotal") or "",
         "account": account,
@@ -63,21 +73,25 @@ def _report_filters(request):
 
 
 def _float_rows(rows, *decimal_keys):
-    """Copies a list of row dicts with the given Decimal keys converted to float, for the
-    JSON handed to Chart.js - keeps the original Decimal rows intact for the server-rendered
-    table (money stays Decimal for every calculation; float only at the JSON boundary)."""
+    """Copies a list of row dicts with the given Decimal keys converted
+    to float, for the JSON handed to Chart.js - keeps the original
+    Decimal rows intact for the server-rendered table (money stays
+    Decimal for every calculation; float only at the JSON boundary)."""
     return [{**row, **{key: float(row[key]) for key in decimal_keys}} for row in rows]
 
 
 def _stacked_series(periods, rows, spending_is_negative=False):
-    """Transpose category_report_rows()' per-row-per-period shape into per-period lists of
-    {name, value} - top-level categories only - what the split-by-category column charts
-    (reports 1/2 with a subtotal, and 5) draw from.
+    """Transpose category_report_rows()' per-row-per-period shape into
+    per-period lists of {name, value} - top-level categories only - what
+    the split-by-category column charts (reports 1/2 with a subtotal,
+    and 5) draw from.
 
-    Values keep their meaning: spending reads positive, and a category that netted to a refund
-    in a period reads negative, so Chart.js stacks it below the axis instead of passing it off
-    as spending. `spending_is_negative` is for report 5's expense rows, which come from the
-    signed table (spending stored negative) and are flipped here."""
+    Values keep their meaning: spending reads positive, and a category
+    that netted to a refund in a period reads negative, so Chart.js
+    stacks it below the axis instead of passing it off as spending.
+    `spending_is_negative` is for report 5's expense rows, which come
+    from the signed table (spending stored negative) and are flipped
+    here."""
     labels = periods or ["Total"]
     sign = -1 if spending_is_negative else 1
     return [
@@ -99,8 +113,9 @@ def _top_level_rows(table, group_key):
 
 
 def _vs_average_chart_rows(rows):
-    """Like _float_rows(), but "average" may legitimately be None (no earlier data) - Chart.js
-    reads a JSON null as a gap in the marker line rather than crashing on it."""
+    """Like _float_rows(), but "average" may legitimately be None (no
+    earlier data) - Chart.js reads a JSON null as a gap in the marker
+    line rather than crashing on it."""
     return [
         {
             "name": r["name"],
@@ -112,9 +127,10 @@ def _vs_average_chart_rows(rows):
 
 
 def _vs_average_stat(label, current, average, higher_is_better, formatter):
-    """current / average / difference for report 6's stat row, with a ▲▼ arrow that reflects
-    the actual direction of change and a "good"/"bad" color that depends on the metric
-    ("green means good, so spending less is green" - a falling Expense is good, a falling
+    """current / average / difference for report 6's stat row, with a ▲▼
+    arrow that reflects the actual direction of change and a
+    "good"/"bad" color that depends on the metric ("green means good, so
+    spending less is green" - a falling Expense is good, a falling
     Income isn't)."""
     if current is None or average is None:
         return {
@@ -125,7 +141,8 @@ def _vs_average_stat(label, current, average, higher_is_better, formatter):
             "good": None,
         }
     diff = current - average
-    # The arrow already says which way it moved, so the amount beside it is a plain magnitude.
+    # The arrow already says which way it moved, so the amount beside it
+    # is a plain magnitude.
     if diff == 0:
         return {
             "label": label,
@@ -158,8 +175,9 @@ def reports_view(request):
     profile = request.stashy_profile
     main_currency = profile.main_currency
     rates = RateTable(main_currency)
-    # A once-per-page-load warning - not per report, since the same missing rate would
-    # otherwise repeat itself on every card that happens to touch that currency.
+    # A once-per-page-load warning - not per report, since the same
+    # missing rate would otherwise repeat itself on every card that
+    # happens to touch that currency.
     missing_currencies = sorted(
         {a.currency for a in Account.objects.exclude(currency=main_currency) if rates.known(a.currency) is None}
     )
@@ -176,8 +194,9 @@ def reports_view(request):
     income_by_category = category_totals_top_level(start, end, income_only=True, account=account, rates=rates)
     income_table = category_report_rows(start, end, subtotal=subtotal, income_only=True, account=account, rates=rates)
 
-    # --- 3. Spending vs. average / 4. Income vs. average - charts show main categories
-    # only, tables keep subcategories ---
+    # --- 3. Spending vs. average / 4. Income vs. average ---
+    # The charts show main categories only; the tables keep
+    # subcategories.
     spending_vs_average = category_totals_vs_average(
         start, end, periods, expense_only=True, account=account, rates=rates, top_level=True
     )
@@ -191,8 +210,9 @@ def reports_view(request):
         start, end, periods, income_only=True, account=account, rates=rates
     )
 
-    # --- 5. Income & expense by category - combined signed table; the chart is a stacked
-    # column per Subtotal period, split by category ---
+    # --- 5. Income & expense by category ---
+    # One combined signed table; the chart is a stacked column per
+    # Subtotal period, split by category.
     income_expense_table = category_report_rows(start, end, subtotal=subtotal, account=account, rates=rates)
     totals = income_and_spending(start, end, account=account, rates=rates)
     savings_rate_value = savings_rate(totals["income"], totals["spending"])
@@ -206,8 +226,9 @@ def reports_view(request):
         spending_is_negative=True,
     )
 
-    # --- 6. Income & expense vs. average: Income/Expense (split by category, current period
-    # only) + Net, each with an average marker ---
+    # --- 6. Income & expense vs. average ---
+    # Income and Expense (split by category, current period only) + Net,
+    # each with an average marker.
     vs_average_totals = income_and_spending_vs_average(start, end, periods, account=account, rates=rates)
 
     def money_fmt(value):
@@ -228,15 +249,17 @@ def reports_view(request):
             "Savings rate", vs_average_totals["current_rate"], vs_average_totals["average_rate"], True, percent_fmt
         ),
     ]
-    # The table keeps the same per-category breakdown as report 5's, plus the Income total and
-    # Expense total summary rows, so the whole picture is in one table. The totals computed
-    # above are passed in rather than worked out a second time.
+    # The table keeps the same per-category breakdown as report 5's,
+    # plus the Income total and Expense total summary rows, so the whole
+    # picture is in one table. The totals computed above are passed in
+    # rather than worked out a second time.
     income_expense_vs_average_table = income_expense_vs_average_report_rows(
         start, end, periods, account=account, rates=rates, vs_average_totals=vs_average_totals
     )
 
-    # --- 7. Net worth over time - the chart plots the table's own Total row, so both follow
-    # the Subtotal filter (month when none is chosen) ---
+    # --- 7. Net worth over time ---
+    # The chart plots the table's own Total row, so both follow the
+    # Subtotal filter (month when none is chosen).
     net_worth_table = net_worth_by_account(start, end, subtotal or "month", rates=rates)
 
     # --- 8. Watched expenses (chosen in Settings) ---
@@ -330,8 +353,9 @@ def reports_view(request):
         ],
         "net_worth_table": net_worth_table,
         "watched_expenses_title": profile.watched_expenses_title,
-        # Whether categories are *chosen* - not whether any were spent in this range, which is a
-        # different question (an empty range still shows the chart and table, just at zero).
+        # Whether categories are *chosen* - not whether any were spent
+        # in this range, which is a different question (an empty range
+        # still shows the chart and table, just at zero).
         "watched_has_categories": bool(watched_category_ids),
         "watched_totals": watched_totals,
         "watched_table": watched_table,

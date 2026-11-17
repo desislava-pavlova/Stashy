@@ -1,4 +1,5 @@
-"""Stashes themselves: owner names, creating a stash, and the last-resort PIN reset."""
+"""Stashes themselves: owner names, creating a stash, and the
+last-resort PIN reset."""
 
 import sqlite3
 import tempfile
@@ -40,7 +41,8 @@ class OwnerPossessiveTests(SimpleTestCase):
 
 
 class CreateAndResetStashTests(TemporaryStashesMixin, SimpleTestCase):
-    """6.5 (F14): creating a stash and the reset_pin last resort, on a real temporary stash."""
+    """6.5 (F14): creating a stash and the reset_pin last resort, on a
+    real temporary stash."""
 
     def test_create_then_reset_the_pin(self):
         self.make_stashes()
@@ -71,9 +73,11 @@ class CreateAndResetStashTests(TemporaryStashesMixin, SimpleTestCase):
             registry.reset_pin_directly("nobody", "1234")
 
     def test_an_owner_called_default_gets_a_real_stash_of_its_own(self):
-        """S105: the folder name is also the stash's connection alias, and "default" is already
-        the picker's empty placeholder database. The stash would have been built in the
-        placeholder and its own folder left without a database, so it was never listed."""
+        """S105: the folder name is also the stash's connection alias,
+        and "default" is already the picker's empty placeholder
+        database. The stash would have been built in the placeholder and
+        its own folder left without a database, so it was never listed.
+        """
         self.make_stashes()
         folder, _ = self.create_stash("Default", "1234")
         self.assertEqual(folder, "default-2")
@@ -122,7 +126,8 @@ class CreateAndResetStashTests(TemporaryStashesMixin, SimpleTestCase):
         for owner_name, expected in [
             ("  Default  ", "default-2"),
             ("!Con!", "con-2"),
-            # Only a name that tidies up to exactly a reserved word is reserved.
+            # Only a name that tidies up to exactly a reserved word is
+            # reserved.
             ("N.U.L", "n-u-l"),
             ("Com 1", "com-1"),
         ]:
@@ -130,8 +135,9 @@ class CreateAndResetStashTests(TemporaryStashesMixin, SimpleTestCase):
                 self.assertEqual(registry._folder_name_from_owner(owner_name), expected)
 
     def test_the_pin_of_an_owner_called_default_can_be_reset_by_that_name(self):
-        """The owner name finds the stash in "default-2": nothing looks for a folder called
-        "default", and the stash's user is named after the folder it really lives in."""
+        """The owner name finds the stash in "default-2": nothing looks
+        for a folder called "default", and the stash's user is named
+        after the folder it really lives in."""
         self.make_stashes()
         folder, _ = self.create_stash("Default", "1234")
         self.assertEqual(registry.reset_pin_directly("default", "5678"), ("default-2", "Default"))
@@ -152,13 +158,14 @@ class ReservedFolderNameTests(SimpleTestCase):
                 self.assertFalse(folder_names.is_reserved_folder_name(name))
 
     def test_default_is_the_placeholder_alias_django_calls_default(self):
-        # folder_names can't import Django, so it spells the name out: this is what keeps the
-        # two from drifting apart.
+        # folder_names can't import Django, so it spells the name out:
+        # this is what keeps the two from drifting apart.
         self.assertIn(DEFAULT_DB_ALIAS, folder_names.RESERVED_FOLDER_NAMES)
 
 
 class StashFolderScanTests(TemporaryStashesMixin, SimpleTestCase):
-    """S110: the folders under stashes/ that are *not* stashes, though they hold a db.sqlite3."""
+    """S110: the folders under stashes/ that are *not* stashes, though
+    they hold a db.sqlite3."""
 
     def test_a_hand_made_default_folder_is_not_listed_as_a_stash(self):
         self.make_stashes("alex", "default-dan")
@@ -170,11 +177,13 @@ class StashFolderScanTests(TemporaryStashesMixin, SimpleTestCase):
         self.assertTrue(registry.is_stash("default-dan"))
 
     def test_the_folder_scan_ignores_upper_and_lower_case_too(self):
-        """The name check lower-cases the folder's name, and so must the scan that uses it: a
-        folder copied in as "Default" is the same folder as "default" on Windows. A name that
-        only starts or ends like a reserved one is a stash, as before. (Device names such as
-        "CON" are left out of this test on purpose: Windows can't open, copy or delete a folder
-        of that name, so the test would leave one behind.)"""
+        """The name check lower-cases the folder's name, and so must the
+        scan that uses it: a folder copied in as "Default" is the same
+        folder as "default" on Windows. A name that only starts or ends
+        like a reserved one is a stash, as before. (Device names such as
+        "CON" are left out of this test on purpose: Windows can't open,
+        copy or delete a folder of that name, so the test would leave
+        one behind.)"""
         self.make_stashes("alex", "console", "com10")
         registry.stash_path("Default").mkdir()
         sqlite3.connect(registry.stash_db_path("Default")).close()
@@ -184,13 +193,16 @@ class StashFolderScanTests(TemporaryStashesMixin, SimpleTestCase):
 
 
 class ResetPinCommandTests(TemporaryStashesMixin, SimpleTestCase):
-    """manage.py reset_pin on a real temporary stash: Alex's, in the folder "alex". Building and
-    migrating a stash takes a while, so it is built once for the class, and each test starts from
-    a copy of it as it was then (the tests change PINs, delete a Profile and rename a user)."""
+    """manage.py reset_pin on a real temporary stash: Alex's, in the
+    folder "alex". Building and migrating a stash takes a while, so it
+    is built once for the class, and each test starts from a copy of it
+    as it was then (the tests change PINs, delete a Profile and rename a
+    user)."""
 
     @classmethod
     def setUpClass(cls):
-        # Before super(): Django checks `databases` there, and the stash's alias has to exist by then.
+        # Before super(): Django checks `databases` there, and the
+        # stash's alias has to exist by then.
         tmp = tempfile.TemporaryDirectory()
         cls.addClassCleanup(tmp.cleanup)
         patcher = mock.patch.object(registry, "stashes_dir", return_value=Path(tmp.name))
@@ -205,8 +217,8 @@ class ResetPinCommandTests(TemporaryStashesMixin, SimpleTestCase):
 
     @staticmethod
     def copy_database(source, target):
-        """With SQLite's own backup, like finance/backup.py: a plain file copy could miss what
-        is still in the journal."""
+        """With SQLite's own backup, like finance/backup.py: a plain
+        file copy could miss what is still in the journal."""
         with closing(sqlite3.connect(source)) as from_database, closing(sqlite3.connect(target)) as to_database:
             from_database.backup(to_database)
 
@@ -216,8 +228,9 @@ class ResetPinCommandTests(TemporaryStashesMixin, SimpleTestCase):
         self.user = get_user_model().objects.db_manager(self.folder).get()
 
     def test_the_name_works_in_any_upper_or_lower_case(self):
-        """Plan 04, R9: "Alex" crashed on Windows, which finds the folder "alex" under that
-        name too, while the stash's user is called "alex"."""
+        """Plan 04, R9: "Alex" crashed on Windows, which finds the
+        folder "alex" under that name too, while the stash's user is
+        called "alex"."""
         for name, pin in [("Alex", "5678"), ("ALEX", "2468"), ("alex", "1357")]:
             with self.subTest(name=name):
                 call_command("reset_pin", name, pin=pin, stdout=StringIO())
@@ -226,7 +239,8 @@ class ResetPinCommandTests(TemporaryStashesMixin, SimpleTestCase):
         self.assertNotIn("Alex", connections.databases)
 
     def test_an_owner_name_unlike_its_folder_works_in_any_case_too(self):
-        """A Cyrillic owner name gets the folder "stash", so only the owner name finds it."""
+        """A Cyrillic owner name gets the folder "stash", so only the
+        owner name finds it."""
         folder, _ = self.create_stash("Юлия", "1234")
         call_command("reset_pin", "ЮЛИЯ", pin="5678", stdout=StringIO())
         self.assertEqual(folder, "stash")
@@ -243,7 +257,8 @@ class ResetPinCommandTests(TemporaryStashesMixin, SimpleTestCase):
         self.assertTrue(self.user.check_password("1234"))
 
     def test_it_says_which_stash_it_changed(self):
-        """Not just the name typed: a name could be one stash's folder and another's owner."""
+        """Not just the name typed: a name could be one stash's folder
+        and another's owner."""
         output = StringIO()
         call_command("reset_pin", "ALEX", pin="5678", stdout=output)
         self.assertIn('PIN reset for Alex\'s stash (folder "alex").', output.getvalue())
@@ -263,8 +278,8 @@ class ResetPinCommandTests(TemporaryStashesMixin, SimpleTestCase):
             call_command("reset_pin", "alex", pin="5678", stdout=StringIO())
 
     def test_without_pin_it_asks_twice_with_a_star_for_each_digit(self):
-        """Plan 03, S24: Python 3.14's getpass shows a * per key. S83: asked twice, like every
-        PIN box on the website."""
+        """Plan 03, S24: Python 3.14's getpass shows a * per key. S83:
+        asked twice, like every PIN box on the website."""
         with (
             mock.patch.object(reset_pin, "GETPASS_SHOWS_STARS", True),
             mock.patch("getpass.getpass", return_value="5678") as ask,
@@ -278,7 +293,8 @@ class ResetPinCommandTests(TemporaryStashesMixin, SimpleTestCase):
         self.assertTrue(self.user.check_password("5678"))
 
     def test_before_python_3_14_it_asks_without_stars(self):
-        """getpass has no echo_char before 3.14, and Stashy.bat still accepts 3.12 and 3.13."""
+        """getpass has no echo_char before 3.14, and Stashy.bat still
+        accepts 3.12 and 3.13."""
         with (
             mock.patch.object(reset_pin, "GETPASS_SHOWS_STARS", False),
             mock.patch("getpass.getpass", return_value="5678") as ask,
@@ -302,7 +318,8 @@ class ResetPinCommandTests(TemporaryStashesMixin, SimpleTestCase):
             self.assertRaisesMessage(CommandError, "PINs don't match. Nothing was changed.") as caught,
         ):
             call_command("reset_pin", "Alex", stdout=StringIO())
-        # What went wrong, never the PINs themselves: this message is printed in the terminal.
+        # What went wrong, never the PINs themselves: this message is
+        # printed in the terminal.
         self.assertNotIn("5678", str(caught.exception))
         self.assertNotIn("5687", str(caught.exception))
         self.user.refresh_from_db()
@@ -325,14 +342,16 @@ class ResetPinCommandTests(TemporaryStashesMixin, SimpleTestCase):
         self.assertTrue(self.user.check_password("1234"))
 
     def test_it_leaves_the_recovery_code_alone(self):
-        """It's for when the code is lost too, so it only changes the PIN and the lockout."""
+        """It's for when the code is lost too, so it only changes the
+        PIN and the lockout."""
         before = Profile.objects.using(self.folder).get().recovery_code_hash
         call_command("reset_pin", "Alex", pin="5678", stdout=StringIO())
         self.assertEqual(Profile.objects.using(self.folder).get().recovery_code_hash, before)
 
     def test_it_changes_the_named_stash_even_while_another_one_is_current(self):
-        """The command runs with no session, and the stash locked out isn't necessarily the one
-        that happens to be current: the audit entry belongs in the named stash's own log."""
+        """The command runs with no session, and the stash locked out
+        isn't necessarily the one that happens to be current: the audit
+        entry belongs in the named stash's own log."""
         sam, _ = self.create_stash("Sam", "4321")
         Profile.objects.using(self.folder).update(failed_pin_attempts=3)
 
@@ -347,7 +366,8 @@ class ResetPinCommandTests(TemporaryStashesMixin, SimpleTestCase):
         self.assertFalse(AuditLogEntry.objects.using(sam).exists())
 
     def test_clearing_the_lockout_is_in_the_stashs_audit_log(self):
-        """Plan 03, S24's note: the reset used .update(), which the audit log never sees."""
+        """Plan 03, S24's note: the reset used .update(), which the
+        audit log never sees."""
         Profile.objects.using(self.folder).update(
             failed_pin_attempts=3, locked_until=timezone.now() + timedelta(minutes=5)
         )
@@ -365,7 +385,7 @@ class ResetPinCommandTests(TemporaryStashesMixin, SimpleTestCase):
 
 
 class RestoreKeepsTodaysLoginTests(TemporaryStashesMixin, SimpleTestCase):
-    """Plan 03, Q3 (the user's call, 14/11/2026): a restore brings back data, not the PIN, the
+    """Plan 03, Q3: a restore brings back data, not the PIN, the
     recovery code or the lockout saved in the backup."""
 
     def test_the_data_goes_back_but_the_pin_the_recovery_code_and_the_lockout_stay(self):
@@ -440,9 +460,10 @@ class RestoreKeepsTodaysLoginTests(TemporaryStashesMixin, SimpleTestCase):
                 self.assertNotIn(todays_hash, f"{entry.old_value} {entry.new_value} {entry.values}")
 
     def assert_refused_and_nothing_changed(self, folder, backup_path, message):
-        """Plan 03, S88: a backup that would leave the stash unusable is refused, with a message,
-        before the live database is touched: no safety copy is made, the data and today's PIN
-        stay, and the backup file itself is left as it was."""
+        """Plan 03, S88: a backup that would leave the stash unusable is
+        refused, with a message, before the live database is touched: no
+        safety copy is made, the data and today's PIN stay, and the
+        backup file itself is left as it was."""
         before = backup_path.read_bytes()
         safety_copies = list(registry.stash_backups_dir(folder).glob("*before_restore*"))
 
@@ -470,7 +491,8 @@ class RestoreKeepsTodaysLoginTests(TemporaryStashesMixin, SimpleTestCase):
         self.assert_refused_and_nothing_changed(folder, damaged, registry.BACKUP_DAMAGED)
 
     def test_an_empty_backup_file_is_refused(self):
-        """A crash while a backup was being written can leave a file with no tables at all."""
+        """A crash while a backup was being written can leave a file
+        with no tables at all."""
         folder = self.make_alex_with_a_payee()
         empty = registry.stash_backups_dir(folder) / "alex_backup_cut_short_2026-01-01_00-00-00.sqlite3"
         empty.touch()
@@ -494,7 +516,8 @@ class RestoreKeepsTodaysLoginTests(TemporaryStashesMixin, SimpleTestCase):
         self.assert_refused_and_nothing_changed(folder, old, registry.BACKUP_WITHOUT_SETTINGS)
 
     def test_a_database_without_this_stashs_user_is_refused(self):
-        """It has tables, but nobody could log in to the stash after restoring it."""
+        """It has tables, but nobody could log in to the stash after
+        restoring it."""
         folder = self.make_alex_with_a_payee()
         other = self.back_up(folder, "other")
         with closing(sqlite3.connect(other)) as connection, connection:
@@ -503,8 +526,9 @@ class RestoreKeepsTodaysLoginTests(TemporaryStashesMixin, SimpleTestCase):
         self.assert_refused_and_nothing_changed(folder, other, registry.BACKUP_EMPTY)
 
     def backup_without_a_profile(self, folder):
-        """A backup of `folder` with its Profile row gone, then today's Profile put back with
-        the PIN 5678 and a new recovery code (returned)."""
+        """A backup of `folder` with its Profile row gone, then today's
+        Profile put back with the PIN 5678 and a new recovery code
+        (returned)."""
         with audit_suspended():
             Profile.objects.using(folder).all().delete()
         without_profile = self.back_up(folder, "noprofile")
@@ -517,8 +541,9 @@ class RestoreKeepsTodaysLoginTests(TemporaryStashesMixin, SimpleTestCase):
         return without_profile, todays_code
 
     def test_a_backup_with_no_profile_is_refused_while_the_stash_has_one(self):
-        """Today's recovery code and lockout would have no row to go back into, so the stash would
-        end with none. Refused instead, and everything today stays."""
+        """Today's recovery code and lockout would have no row to go
+        back into, so the stash would end with none. Refused instead,
+        and everything today stays."""
         folder = self.make_alex_with_a_payee()
         without_profile, todays_code = self.backup_without_a_profile(folder)
 
@@ -549,7 +574,8 @@ class RestoreKeepsTodaysLoginTests(TemporaryStashesMixin, SimpleTestCase):
             self.assertFalse(Profile.objects.exists())
 
     def change_todays_login(self, folder):
-        """Today's PIN is 5678, the recovery code a new one (returned), and one wrong try is counted."""
+        """Today's PIN is 5678, the recovery code a new one (returned),
+        and one wrong try is counted."""
         with db_router.use_stash(folder):
             profile = security.profile_for_current_stash()
             profile.user.set_password("5678")
@@ -566,8 +592,9 @@ class RestoreKeepsTodaysLoginTests(TemporaryStashesMixin, SimpleTestCase):
             self.assertEqual(profile.failed_pin_attempts, 1)
 
     def test_a_backup_from_before_an_update_still_gets_todays_login_put_back(self):
-        """Plan 03, Q3 with an older database: until it is migrated, the Profile table doesn't
-        have today's columns, and the PIN (the user's own table, unchanged) goes back first."""
+        """Plan 03, Q3 with an older database: until it is migrated, the
+        Profile table doesn't have today's columns, and the PIN (the
+        user's own table, unchanged) goes back first."""
         folder = self.make_alex()
         call_command("migrate", "finance", "0016", database=folder, verbosity=0)
         old_backup = self.back_up(folder, "before_update")
@@ -581,8 +608,9 @@ class RestoreKeepsTodaysLoginTests(TemporaryStashesMixin, SimpleTestCase):
             self.assertEqual(Profile.objects.get().owner_name, folder)  # a new column, filled in by migrating
 
     def test_todays_pin_is_back_before_the_migration_starts(self):
-        """The backup's PIN is live from the moment its file replaces the database, and a
-        migration of an old backup takes a while and can fail."""
+        """The backup's PIN is live from the moment its file replaces
+        the database, and a migration of an old backup takes a while and
+        can fail."""
         folder = self.make_alex()
         backup_path = self.back_up(folder, "test")
         self.change_todays_login(folder)
@@ -612,7 +640,8 @@ class RestoreKeepsTodaysLoginTests(TemporaryStashesMixin, SimpleTestCase):
 
 
 class NewStashRegionalSettingsTests(TemporaryStashesMixin, SimpleTestCase):
-    """Plan 03, S77: what a new stash reads from this computer is a zone the Settings list has."""
+    """Plan 03, S77: what a new stash reads from this computer is a zone
+    the Settings list has."""
 
     def test_a_new_stash_gets_the_listed_name_of_the_computers_zone(self):
         self.make_stashes()

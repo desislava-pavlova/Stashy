@@ -1,5 +1,6 @@
-# European-style date formats for the whole app (templates, forms, admin).
-# Django picks this up via FORMAT_MODULE_PATH in settings.py.
+# European-style date formats for the whole app (templates, forms,
+# admin). Django picks this up via FORMAT_MODULE_PATH in
+# settings/base.py.
 
 DATE_FORMAT = "d/m/Y"
 SHORT_DATE_FORMAT = "d/m/Y"

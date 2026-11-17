@@ -1,10 +1,12 @@
-"""Regional preferences (decision D10): how dates, numbers and times are shown.
+"""Regional preferences (decision D10): how dates, numbers and times are
+shown.
 
-They are read from this computer once, when a login's Profile is first created. After that
-they belong to the person - changed on the Settings page, never silently re-read - so nothing
-changes meaning just because a Windows setting did. RegionalPreferencesMiddleware activates
-them for each request; code running outside a request (tests, scripts) gets DEFAULTS, which
-match stashy/formats/.
+They are read from this computer once, when a login's Profile is first
+created. After that they belong to the person - changed on the Settings
+page, never silently re-read - so nothing changes meaning just because a
+Windows setting did. RegionalPreferencesMiddleware activates them for
+each request; code running outside a request (tests, scripts) gets
+DEFAULTS, which match stashy/formats/.
 """
 
 import functools
@@ -31,16 +33,19 @@ NUMBER_FORMAT_CHOICES = [
     ("dot_comma", "10.000,50"),
     ("space_comma", "10 000,50"),
 ]
-# The date picker's (JavaScript's) numbering: 0 = Sunday, 1 = Monday, 6 = Saturday.
+# The date picker's (JavaScript's) numbering: 0 = Sunday, 1 = Monday, 6
+# = Saturday.
 FIRST_DAY_CHOICES = [(1, "Monday"), (0, "Sunday"), (6, "Saturday")]
 
-# For each date format: how it's shown, which spellings are accepted when typed, and the date picker's notation.
+# For each date format: how it's shown, which spellings are accepted
+# when typed, and the date picker's notation.
 _DATE_STYLES = {
     "dmy": ("%d/%m/%Y", ("%d/%m/%Y", "%d.%m.%Y", "%d-%m-%Y", "%Y-%m-%d"), "d/m/Y"),
     "mdy": ("%m/%d/%Y", ("%m/%d/%Y", "%m-%d-%Y", "%Y-%m-%d"), "m/d/Y"),
     "ymd": ("%Y-%m-%d", ("%Y-%m-%d", "%Y/%m/%d"), "Y-m-d"),
 }
-# (thousands separator, decimal mark). The space is a non-breaking one, so an amount never wraps mid-number.
+# (thousands separator, decimal mark). The space is a non-breaking one,
+# so an amount never wraps mid-number.
 _NUMBER_STYLES = {
     "space_dot": (NBSP, "."),
     "comma_dot": (",", "."),
@@ -92,7 +97,8 @@ def current():
 
 @contextmanager
 def activate(preferences):
-    """Use these preferences, time zone included, for everything inside the block."""
+    """Use these preferences, time zone included, for everything inside
+    the block."""
     token = _current.set(preferences)
     try:
         with timezone.override(_zone(preferences.time_zone)):  # None (unknown zone) means settings.TIME_ZONE
@@ -108,11 +114,12 @@ def _zone(name):
         return None
 
 
-# --- formatting --------------------------------------------------------------
+# --- formatting -------------------------------------------------------
 
 
 def format_number(value, decimals=2, preferences=None):
-    """10000.5 -> '10 000.50' (or 10,000.50 / 10.000,50 / 10 000,50, per the preferences)."""
+    """10000.5 -> '10 000.50' (or 10,000.50 / 10.000,50 / 10 000,50, per
+    the preferences)."""
     thousands, mark = _NUMBER_STYLES.get((preferences or current()).number_format, _NUMBER_STYLES["space_dot"])
     amount = Decimal(str(value)).quantize(Decimal(1).scaleb(-decimals), rounding=ROUND_HALF_UP)
     whole, _, fraction = f"{abs(amount):.{decimals}f}".partition(".")
@@ -134,8 +141,9 @@ def format_date(value, preferences=None):
 
 
 def parse_date(text, preferences=None):
-    """A date typed in the active date format, or None. Every format also accepts YYYY-MM-DD,
-    which is how links built by the app itself carry a date."""
+    """A date typed in the active date format, or None. Every format
+    also accepts YYYY-MM-DD, which is how links built by the app itself
+    carry a date."""
     text = (text or "").strip()
     for pattern in (preferences or current()).date_input_formats if text else ():
         try:
@@ -154,11 +162,12 @@ def format_datetime(value, seconds=False, preferences=None):
     return value.strftime(f"{(preferences or current()).date_pattern} {time_pattern}")
 
 
-# --- reading this computer's settings -----------------------------------------
+# --- reading this computer's settings ---------------------------------
 
 
 def detect_from_computer():
-    """This computer's regional settings as Preferences; anything that can't be read keeps its default."""
+    """This computer's regional settings as Preferences; anything that
+    can't be read keeps its default."""
     found, country = {}, ""
     with suppress(ImportError, OSError):  # not Windows, or the settings aren't in the registry
         found, country = _read_windows_settings()
@@ -169,7 +178,8 @@ def detect_from_computer():
 
 
 def _read_windows_settings():
-    # Imported here: winreg exists only on Windows (the caller catches the ImportError).
+    # Imported here: winreg exists only on Windows (the caller catches
+    # the ImportError).
     import winreg
 
     with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Control Panel\International") as key:
@@ -191,7 +201,8 @@ def _read_windows_settings():
 
 
 def date_format_from_pattern(pattern):
-    """Windows' short date pattern ('d.M.yyyy', 'M/d/yyyy', 'yyyy-MM-dd') -> 'dmy' / 'mdy' / 'ymd'."""
+    """Windows' short date pattern ('d.M.yyyy', 'M/d/yyyy',
+    'yyyy-MM-dd') -> 'dmy' / 'mdy' / 'ymd'."""
     letters = re.sub(r"'[^']*'", "", pattern or "").lower()  # quoted text such as 'г.' isn't part of the date
     positions = {part: letters.find(part) for part in "dmy"}
     if min(positions.values()) < 0:
@@ -208,7 +219,8 @@ def number_format_from_separators(thousands, decimal_mark):
 
 
 def first_day_from_windows(value):
-    """Windows counts 0 = Monday ... 6 = Sunday; the date picker counts 0 = Sunday, 1 = Monday."""
+    """Windows counts 0 = Monday ... 6 = Sunday; the date picker counts
+    0 = Sunday, 1 = Monday."""
     try:
         day = (int(value) + 1) % 7
     except ValueError:
@@ -225,11 +237,13 @@ def _local_time_zone(country):
 
 
 def zone_for_country(zone_name, country):
-    """Prefer a zone in the person's own country when it keeps the same clock.
+    """Prefer a zone in the person's own country when it keeps the same
+    clock.
 
-    Windows only stores zones like "FLE Standard Time" (Helsinki, Kyiv, Riga, Sofia, Tallinn,
-    Vilnius), which tzlocal names after its first city, Europe/Kiev - the right clock but the
-    wrong name for someone in Sofia. The computer's region (bg-BG) settles which city is meant.
+    Windows only stores zones like "FLE Standard Time" (Helsinki, Kyiv,
+    Riga, Sofia, Tallinn, Vilnius), which tzlocal names after its first
+    city, Europe/Kiev - the right clock but the wrong name for someone
+    in Sofia. The computer's region (bg-BG) settles which city is meant.
     """
     reference = _zone(zone_name)
     if reference is None or not country:
@@ -255,9 +269,10 @@ def zones_in_country(country):
 
 
 def time_zone_choices(keep=None):
-    """The zones Settings offers: every zone in zone.tab, plus UTC. `keep`, a stash's own zone,
-    is added when the list doesn't have it but it's a real zone: a stash saved under an older
-    name keeps it until its owner picks another (plan 03, S77)."""
+    """The zones Settings offers: every zone in zone.tab, plus UTC.
+    `keep`, a stash's own zone, is added when the list doesn't have it
+    but it's a real zone: a stash saved under an older name keeps it
+    until its owner picks another."""
     names = sorted({name for _, name in _zone_table()} | {"UTC"})
     if len(names) <= 1:
         names = sorted(zoneinfo.available_timezones())
@@ -267,10 +282,11 @@ def time_zone_choices(keep=None):
 
 
 def listed_zone(name):
-    """`name` as the zone list spells it, or None. tzlocal can give an older name the list
-    doesn't have (Europe/Kiev, now Europe/Kyiv; Etc/UTC, listed as UTC), and the Settings
-    dropdown only shows listed zones. The time zone database keeps each old name as a link to
-    the current one, so this follows the links, either way round."""
+    """`name` as the zone list spells it, or None. tzlocal can give an
+    older name the list doesn't have (Europe/Kiev, now Europe/Kyiv;
+    Etc/UTC, listed as UTC), and the Settings dropdown only shows listed
+    zones. The time zone database keeps each old name as a link to the
+    current one, so this follows the links, either way round."""
     choices = set(time_zone_choices())
     if name in choices:
         return name
@@ -281,8 +297,9 @@ def listed_zone(name):
 
 
 def _time_zone_database_file(name):
-    """The text of one file from the time zone database: the tzdata package's copy, or the
-    operating system's (Linux and macOS keep one in zoneinfo.TZPATH). "" when neither has it."""
+    """The text of one file from the time zone database: the tzdata
+    package's copy, or the operating system's (Linux and macOS keep one
+    in zoneinfo.TZPATH). "" when neither has it."""
     try:
         return (resources.files("tzdata") / "zoneinfo" / name).read_text(encoding="utf-8")
     except (ModuleNotFoundError, OSError):
@@ -295,7 +312,8 @@ def _time_zone_database_file(name):
 
 @functools.cache
 def _zone_links():
-    """{old name: current name}, from tzdata.zi's link lines ("L Europe/Kyiv Europe/Kiev")."""
+    """{old name: current name}, from tzdata.zi's link lines ("L
+    Europe/Kyiv Europe/Kiev")."""
     links = {}
     for line in _time_zone_database_file("tzdata.zi").splitlines():
         parts = line.split()
@@ -306,7 +324,8 @@ def _zone_links():
 
 @functools.cache
 def _zone_table():
-    """(country code, zone name) pairs from the time zone database's zone.tab."""
+    """(country code, zone name) pairs from the time zone database's
+    zone.tab."""
     text = _time_zone_database_file("zone.tab")
     rows = []
     for line in text.splitlines():

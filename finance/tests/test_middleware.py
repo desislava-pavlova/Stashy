@@ -1,5 +1,6 @@
-"""The middleware and the stash router: which stash a request uses, its transaction, and
-the gates in front of every page (choose a stash, then finish the welcome wizard)."""
+"""The middleware and the stash router: which stash a request uses, its
+transaction, and the gates in front of every page (choose a stash, then
+finish the welcome wizard)."""
 
 import sqlite3
 import tempfile
@@ -29,14 +30,15 @@ from .base import AlexsStashTestCase, StashClient, StashTestCase, TemporaryStash
 
 
 class StashSelectionMiddlewareTests(SimpleTestCase):
-    """The current stash this middleware hands the router (a ContextVar, see
-    finance/db_router.py) is what lets a session's own stash resolve without a restart - these
-    check the plumbing around it: no stash in the session, and a session naming a stash that
-    no longer exists on disk."""
+    """The current stash this middleware hands the router (a ContextVar,
+    see finance/db_router.py) is what lets a session's own stash resolve
+    without a restart - these check the plumbing around it: no stash in
+    the session, and a session naming a stash that no longer exists on
+    disk."""
 
     def setUp(self):
         self.factory = RequestFactory()
-        self.addCleanup(db_router.clear_current_stash_alias)
+        self.addCleanup(db_router.set_current_stash_alias, None)
 
     def test_no_stash_in_session_leaves_the_alias_unset(self):
         seen = {}
@@ -62,9 +64,11 @@ class StashSelectionMiddlewareTests(SimpleTestCase):
         return seen["alias"]
 
     def test_only_the_exact_name_of_a_stash_counts_in_the_session_too(self):
-        """Plan 03, S81. The session is signed, but its stash name is checked like the last-stash
-        cookie's (S10), not as a path. Windows finds the test stash's folder under each of these
-        too (so this check is for Windows, where Stashy runs), but none is the stash's name."""
+        """Plan 03, S81. The session is signed, but its stash name is
+        checked like the last-stash cookie's (S10), not as a path.
+        Windows finds the test stash's folder under each of these too
+        (so this check is for Windows, where Stashy runs), but none is
+        the stash's name."""
         here = Path(settings.STASHES_DIR)
         for value in (
             settings.TEST_STASH.upper(),
@@ -93,8 +97,9 @@ class StashSelectionMiddlewareTests(SimpleTestCase):
 
 
 class RequireStashMiddlewareTests(SimpleTestCase):
-    """Which stash is current lives in request.session, so these tests attach a plain dict as
-    the session - the middleware only reads and sets its "stash" key."""
+    """Which stash is current lives in request.session, so these tests
+    attach a plain dict as the session - the middleware only reads and
+    sets its "stash" key."""
 
     def setUp(self):
         self.factory = RequestFactory()
@@ -123,10 +128,11 @@ class RequireStashMiddlewareTests(SimpleTestCase):
 
 
 class RememberedStashCookieTests(SimpleTestCase):
-    """Phase 15 L3: the "last stash used" cookie lets RequireStashMiddleware skip the picker
-    and land straight on that stash's own PIN screen - a browser cookie, separate from the
-    session logout() flushes. Same pattern as RequireStashMiddlewareTests above (a plain dict
-    stands in for the session)."""
+    """Phase 15 L3: the "last stash used" cookie lets
+    RequireStashMiddleware skip the picker and land straight on that
+    stash's own PIN screen - a browser cookie, separate from the session
+    logout() flushes. Same pattern as RequireStashMiddlewareTests above
+    (a plain dict stands in for the session)."""
 
     def setUp(self):
         self.factory = RequestFactory()
@@ -154,9 +160,10 @@ class RememberedStashCookieTests(SimpleTestCase):
         self.assertNotIn("stash", request.session)
 
     def test_a_cookie_naming_a_database_outside_the_stashes_folder_falls_back_to_the_picker(self):
-        """Plan 03, S10: the cookie isn't signed, so anything could be in it. A path to any
-        folder holding a db.sqlite3 used to pass, because the stashes folder joined with an
-        absolute path is that path."""
+        """Plan 03, S10: the cookie isn't signed, so anything could be
+        in it. A path to any folder holding a db.sqlite3 used to pass,
+        because the stashes folder joined with an absolute path is that
+        path."""
         elsewhere = tempfile.TemporaryDirectory()
         self.addCleanup(elsewhere.cleanup)
         (Path(elsewhere.name) / "db.sqlite3").touch()
@@ -170,9 +177,10 @@ class RememberedStashCookieTests(SimpleTestCase):
         self.assertNotIn("stash", request.session)
 
     def test_a_path_starting_with_two_slashes_never_sends_the_browser_to_another_site(self):
-        """Security review, 14/11/2026: a browser reads "//evil.example/" as a link to
-        evil.example, so "back to the same page" would have sent it there. A raw PATH_INFO,
-        because the test client would read the // as a host name."""
+        """A browser reads "//evil.example/" as a link to evil.example,
+        so "back to the same page" would have sent it there. A raw
+        PATH_INFO, because the test client would read the // as a host
+        name."""
         with mock.patch.object(registry, "list_stashes", return_value=["alex"]):
             middleware = RequireStashMiddleware(get_response=lambda r: "should not be reached")
             request = self.factory.get("/", PATH_INFO="//evil.example/")
@@ -184,9 +192,10 @@ class RememberedStashCookieTests(SimpleTestCase):
         self.assertEqual(request.session["stash"], "alex")
 
     def test_no_way_of_writing_a_link_to_another_site_gets_the_browser_there(self):
-        """The same check for other spellings, with and without a query string. What comes back
-        is either the PIN screen or a path on this site (a backslash is escaped, so a browser
-        can't read it as a slash)."""
+        """The same check for other spellings, with and without a query
+        string. What comes back is either the PIN screen or a path on
+        this site (a backslash is escaped, so a browser can't read it as
+        a slash)."""
         cases = [
             {"PATH_INFO": "///evil.example/"},
             {"PATH_INFO": "//evil.example/", "QUERY_STRING": "next=/"},
@@ -224,9 +233,10 @@ class RememberedStashCookieTests(SimpleTestCase):
         self.assertEqual(response.url, reverse("stash_picker"))
 
     def test_the_pickers_own_urls_stay_exempt_even_with_a_remembered_cookie(self):
-        # A cookie doesn't force-select a stash on the picker's own pages - picking one there
-        # is still an explicit action, per stash_picker()'s "already selected -> redirect to
-        # login" guard, not something this middleware should short-circuit.
+        # A cookie doesn't force-select a stash on the picker's own
+        # pages - picking one there is still an explicit action, per
+        # stash_picker()'s "already selected -> redirect to login"
+        # guard, not something this middleware should short-circuit.
         with mock.patch.object(registry, "list_stashes", return_value=["alex"]):
             middleware = RequireStashMiddleware(get_response=lambda r: "ok")
             request = self.factory.get("/stashes/")
@@ -238,14 +248,16 @@ class RememberedStashCookieTests(SimpleTestCase):
 
 
 class AHandMadeDefaultFolderIsNeverChosenTests(TemporaryStashesMixin, SimpleTestCase):
-    """Plan 03, S110: a folder called "default" under stashes/ is not a stash, even holding a
-    db.sqlite3. A browser can name a stash in two places, the session and the last-stash cookie,
-    and both must refuse it: chosen, it would send every query to the picker's empty placeholder
-    database (which is what "default" is) instead of to a stash."""
+    """Plan 03, S110: a folder called "default" under stashes/ is not a
+    stash, even holding a db.sqlite3. A browser can name a stash in two
+    places, the session and the last-stash cookie, and both must refuse
+    it: chosen, it would send every query to the picker's empty
+    placeholder database (which is what "default" is) instead of to a
+    stash."""
 
     def setUp(self):
         self.factory = RequestFactory()
-        self.addCleanup(db_router.clear_current_stash_alias)
+        self.addCleanup(db_router.set_current_stash_alias, None)
         self.make_stashes("alex")
         registry.stash_path("default").mkdir()
         sqlite3.connect(registry.stash_db_path("default")).close()
@@ -305,15 +317,16 @@ class RequireSetupMiddlewareTests(SimpleTestCase):
         self.assertEqual(middleware(request), "ok")
 
     def test_no_profile_on_the_request_passes_through(self):
-        # Regional preferences middleware never sets stashy_profile for an unauthenticated
-        # request - nothing here for this middleware to act on either.
+        # Regional preferences middleware never sets stashy_profile for
+        # an unauthenticated request - nothing here for this middleware
+        # to act on either.
         middleware = RequireSetupMiddleware(get_response=lambda r: "ok")
         request = self.factory.get("/transactions/")
         self.assertEqual(middleware(request), "ok")
 
 
 class StashAtomicRequestTests(TemporaryStashesMixin, SimpleTestCase):
-    """1.1/1.2 (F1): only the stash the request uses gets a transaction."""
+    """1.1/1.2 (F1): only the request's own stash gets a transaction."""
 
     def setUp(self):
         self.make_stashes("alpha", "beta")
@@ -372,7 +385,8 @@ class StashAtomicRequestTests(TemporaryStashesMixin, SimpleTestCase):
 
 
 class MiddlewareExemptPrefixesTests(SimpleTestCase):
-    """5.6: the prefixes come from the URL names and settings, and match the old strings."""
+    """5.6: the prefixes come from the URL names and settings, and match
+    the old strings."""
 
     def test_require_stash_exempts_the_picker_static_files_and_the_admin(self):
         self.assertEqual(RequireStashMiddleware.exempt_prefixes(), ("/stashes/", "/static/", "/admin/"))
@@ -386,29 +400,31 @@ class MiddlewareExemptPrefixesTests(SimpleTestCase):
 class RouterContextVarTests(SimpleTestCase):
     """6.4 (F18): the current stash is private to its own thread."""
 
-    def tearDown(self):
-        db_router.clear_current_stash_alias()
-
     def test_another_thread_does_not_see_this_threads_stash(self):
-        db_router.set_current_stash_alias("alpha")
         seen = {}
-        thread = threading.Thread(target=lambda: seen.update(other=db_router.current_stash_alias()))
-        thread.start()
-        thread.join()
-        self.assertEqual(db_router.current_stash_alias(), "alpha")
+        with db_router.use_stash("alpha"):
+            thread = threading.Thread(target=lambda: seen.update(other=db_router.current_stash_alias()))
+            thread.start()
+            thread.join()
+            self.assertEqual(db_router.current_stash_alias(), "alpha")
         self.assertIsNone(seen["other"])
 
-    def test_clearing_goes_back_to_no_stash(self):
-        db_router.set_current_stash_alias("alpha")
-        db_router.clear_current_stash_alias()
-        self.assertIsNone(db_router.current_stash_alias())
+    def test_leaving_a_block_puts_back_the_stash_that_was_current_before(self):
+        before = db_router.current_stash_alias()
+        with db_router.use_stash("alpha"):
+            with db_router.use_stash("beta"):
+                self.assertEqual(db_router.current_stash_alias(), "beta")
+            self.assertEqual(db_router.current_stash_alias(), "alpha")
+        self.assertEqual(db_router.current_stash_alias(), before)
 
 
 class MiddlewareChainTests(StashTestCase):
-    """7.2 (F19): the whole middleware chain, the way a browser meets it. `Client()` is a fresh
-    browser that hasn't chosen a stash yet; self.client has (see base.py)."""
+    """7.2 (F19): the whole middleware chain, the way a browser meets
+    it. `Client()` is a fresh browser that hasn't chosen a stash yet;
+    self.client has (see base.py)."""
 
-    # The picker runs before any stash is chosen, on `default`, the empty placeholder.
+    # The picker runs before any stash is chosen, on `default`, the
+    # empty placeholder.
     databases = {"default", settings.TEST_STASH}
 
     def test_with_no_stash_chosen_every_page_goes_to_the_picker(self):
@@ -418,9 +434,10 @@ class MiddlewareChainTests(StashTestCase):
                 self.assertRedirects(response, reverse("stash_picker"), fetch_redirect_response=False)
 
     def test_a_session_naming_a_stash_that_does_not_exist_ends_up_at_the_picker(self):
-        """S81, through every middleware: the dead name is dropped from the session before the
-        gates look at it. Left in, the picker would answer "already chosen" and the PIN screen
-        would look for a stash that isn't there."""
+        """S81, through every middleware: the dead name is dropped from
+        the session before the gates look at it. Left in, the picker
+        would answer "already chosen" and the PIN screen would look for
+        a stash that isn't there."""
         for name in ("finance:dashboard", "login", "stash_picker"):
             with self.subTest(page=name):
                 browser = StashClient()
@@ -431,7 +448,8 @@ class MiddlewareChainTests(StashTestCase):
         self.assertNotIn("ghost", connections.databases)
 
     def test_a_dead_session_stash_does_not_hide_the_remembered_one(self):
-        """The dropped name leaves "no stash chosen", so the last-stash cookie still gets its turn."""
+        """The dropped name leaves "no stash chosen", so the last-stash
+        cookie still gets its turn."""
         browser = StashClient()
         browser.choose_stash("ghost")
         browser.cookies[registry.LAST_STASH_COOKIE] = settings.TEST_STASH
@@ -440,10 +458,12 @@ class MiddlewareChainTests(StashTestCase):
         self.assertEqual(response.context["stash_name"], settings.TEST_STASH)
 
     def test_only_the_exact_stash_name_opens_a_stash_from_the_session_or_the_cookie(self):
-        """S81 and S10, through every middleware. Windows finds the test stash's folder under each
-        of these names, but none is the stash's name, so none may open it or register a second
-        connection to its database. The stash's user is named after the folder's exact spelling,
-        so the PIN screen could never log in to a stash opened under another spelling."""
+        """S81 and S10, through every middleware. Windows finds the test
+        stash's folder under each of these names, but none is the
+        stash's name, so none may open it or register a second
+        connection to its database. The stash's user is named after the
+        folder's exact spelling, so the PIN screen could never log in to
+        a stash opened under another spelling."""
         here = Path(settings.STASHES_DIR)
         for value in (
             settings.TEST_STASH.upper(),
@@ -469,7 +489,8 @@ class MiddlewareChainTests(StashTestCase):
         browser = Client()
         browser.cookies[registry.LAST_STASH_COOKIE] = settings.TEST_STASH
         response = browser.get(reverse("finance:dashboard"), follow=True)
-        # First the same page again with the stash chosen, then the PIN screen: not logged in.
+        # First the same page again with the stash chosen, then the PIN
+        # screen: not logged in.
         self.assertEqual(response.redirect_chain[0], (reverse("finance:dashboard"), 302))
         self.assertTemplateUsed(response, "registration/login.html")
         self.assertEqual(response.context["stash_name"], settings.TEST_STASH)
@@ -507,8 +528,9 @@ class MiddlewareChainTests(StashTestCase):
 
 
 class ProfileFetchedOnceTests(AlexsStashTestCase):
-    """8.4 (F29): RegionalPreferencesMiddleware fetches the Profile, and the views and the
-    templates reuse it (request.stashy_profile) instead of asking the database again."""
+    """8.4 (F29): RegionalPreferencesMiddleware fetches the Profile, and
+    the views and the templates reuse it (request.stashy_profile)
+    instead of asking the database again."""
 
     def test_each_page_reads_the_profile_once(self):
         pages = ("dashboard", "account_list", "transaction_list", "reports", "settings")

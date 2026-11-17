@@ -1,5 +1,5 @@
-"""Backups: the backup files, the quarterly backup, Settings' "Back up now", and restoring a
-stash from a backup."""
+"""Backups: the backup files, the quarterly backup, Settings' "Back up
+now", and restoring a stash from a backup."""
 
 import sqlite3
 import tempfile
@@ -30,8 +30,9 @@ from .base import (
 
 
 def write_db(path, content):
-    """A real (tiny) SQLite database holding one text value - backups go through SQLite's own
-    backup API, so the files have to be real databases."""
+    """A real (tiny) SQLite database holding one text value - backups go
+    through SQLite's own backup API, so the files have to be real
+    databases."""
     with sqlite3.connect(path) as connection:
         connection.execute("CREATE TABLE IF NOT EXISTS note (content TEXT)")
         connection.execute("DELETE FROM note")
@@ -73,9 +74,10 @@ class BackupHelperTests(SimpleTestCase):
         self.assertIsNone(finance_backup.backup_now(missing, self.root))
 
     def test_two_backups_in_the_same_second_keep_both_files(self):
-        """Plan 03, S86: a double-clicked Restore takes a safety copy for each click. The name
-        is stamped to the second, and the second copy used to overwrite the first, which held
-        the data from before the restore."""
+        """Plan 03, S86: a double-clicked Restore takes a safety copy
+        for each click. The name is stamped to the second, and the
+        second copy used to overwrite the first, which held the data
+        from before the restore."""
         the_moment = datetime(2026, 11, 14, 12, 0, 0)
         with mock.patch.object(finance_backup, "datetime") as clock:
             clock.now.return_value = the_moment
@@ -117,8 +119,9 @@ class BackupHelperTests(SimpleTestCase):
         self.assertIsNotNone(result)
 
     def test_quarterly_backup_still_recognizes_the_old_pre_rename_filename_scheme(self):
-        # Old backups are never renamed when the naming scheme changes - the due-check still
-        # has to see them, or it would back up again right away even though one just happened.
+        # Old backups are never renamed when the naming scheme changes -
+        # the due-check still has to see them, or it would back up again
+        # right away even though one just happened.
         backups_dir = self.root / "backups"
         backups_dir.mkdir()
         recent_stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -139,8 +142,9 @@ class BackupHelperTests(SimpleTestCase):
         self.assertEqual(read_db(safety_copies[0]), "current (about to be overwritten) content")
 
     def test_a_connection_left_open_sees_the_restored_data(self):
-        # The running server keeps connections open across requests. SQLite's backup API
-        # rewrites the file in a way those connections notice, unlike a plain file copy.
+        # The running server keeps connections open across requests.
+        # SQLite's backup API rewrites the file in a way those
+        # connections notice, unlike a plain file copy.
         target = finance_backup.backup_now(self.db, self.root, tag="manual")
         write_db(self.db, "changed after the backup")
         open_connection = sqlite3.connect(self.db)
@@ -164,9 +168,10 @@ class BackupHelperTests(SimpleTestCase):
 
 
 class ManualBackupButtonTests(LoggedInWithAccountTestCase):
-    # The test stash's db.sqlite3 is an empty placeholder (its data lives in the test runner's
-    # in-memory database), so these patch finance.backup.backup_now itself - the file-copying
-    # logic is covered directly by BackupHelperTests above.
+    # The test stash's db.sqlite3 is an empty placeholder (its data
+    # lives in the test runner's in-memory database), so these patch
+    # finance.backup.backup_now itself - the file-copying logic is
+    # covered directly by BackupHelperTests above.
     def test_back_up_now_creates_a_file_and_shows_a_message(self):
         fake_backup = registry.stash_backups_dir(settings.TEST_STASH) / "db_manual_20260101_000000.sqlite3"
         with mock.patch("finance.backup.backup_now", return_value=fake_backup):
@@ -223,8 +228,9 @@ class RestoreBackupTests(LoggedInWithAccountTestCase):
         self.assertContains(response, "Restored from")
 
     def test_a_backup_the_restore_refuses_says_why_and_the_page_carries_on(self):
-        """Plan 03, S88: the check of the file raises StashError, and the user reads it on Settings
-        instead of getting an error page."""
+        """Plan 03, S88: the check of the file raises StashError, and
+        the user reads it on Settings instead of getting an error page.
+        """
         backup = self.existing_backup()
         data = {"name": backup.name, "current_pin": self.PIN}
         with mock.patch("finance.stashes.registry.restore_stash", side_effect=StashError("It is damaged.")):
@@ -254,8 +260,9 @@ class RestoreBackupTests(LoggedInWithAccountTestCase):
         self.assertNotIn("_auth_user_id", self.client.session)
 
     def restore_url(self, backup):
-        """The page's form has no action and no name field, so a browser posts to the same URL
-        and the backup's name only ever travels in the query string."""
+        """The page's form has no action and no name field, so a browser
+        posts to the same URL and the backup's name only ever travels in
+        the query string."""
         return f"{reverse('finance:backup_restore')}?{urlencode({'name': backup.name})}"
 
     def test_a_browser_style_post_finds_the_backup_in_the_query_string(self):
@@ -321,14 +328,16 @@ class RestoreBackupTests(LoggedInWithAccountTestCase):
                 self.assertEqual(method(reverse("finance:backup_restore"), {"current_pin": self.PIN}).status_code, 404)
 
     def test_an_unknown_filename_is_not_found_before_the_pin_is_looked_at(self):
-        """So this page can't be used to try PINs: nothing is counted for a backup that isn't there."""
+        """So this page can't be used to try PINs: nothing is counted
+        for a backup that isn't there."""
         response = self.client.post(self.restore_url(Path("no-such-backup.sqlite3")), {"current_pin": "0000"})
         self.assertEqual(response.status_code, 404)
         self.assertEqual(Profile.for_user(self.user).failed_pin_attempts, 0)
 
     def test_a_request_with_an_old_copy_of_the_profile_still_counts_toward_the_lockout(self):
-        """Plan 03, S75 on this page, whose request holds no transaction of its own while the
-        PIN is checked: the saved row is one try short of the lockout, the request's copy is not."""
+        """Plan 03, S75 on this page, whose request holds no transaction
+        of its own while the PIN is checked: the saved row is one try
+        short of the lockout, the request's copy is not."""
         backup = self.existing_backup()
         old_copy = Profile.objects.get(user=self.user)
         Profile.objects.filter(user=self.user).update(failed_pin_attempts=security.LOCKOUT_THRESHOLD - 1)
@@ -341,9 +350,10 @@ class RestoreBackupTests(LoggedInWithAccountTestCase):
         self.assertTrue(security.is_locked_out(Profile.objects.get(user=self.user)))
 
     def test_after_a_django_update_checking_the_pin_does_not_log_you_out_of_the_restore(self):
-        """Plan 03, S87: Django would re-save the PIN's hash in a newer format when it is
-        checked, and the login is tied to that hash, so the page after the restore would be the
-        PIN screen. The PIN checks no longer save it (security.check_pin)."""
+        """Plan 03, S87: Django would re-save the PIN's hash in a newer
+        format when it is checked, and the login is tied to that hash,
+        so the page after the restore would be the PIN screen. The PIN
+        checks no longer save it (security.check_pin)."""
         backup = self.existing_backup()
         with (
             override_settings(PASSWORD_HASHERS=REHASHING_PASSWORD_HASHERS),
@@ -414,7 +424,8 @@ class BackupNamesCarryTheStashTests(SimpleTestCase):
         self.assertIsNotNone(finance_backup.quarterly_backup_if_due(alex / "db.sqlite3", alex))
 
     def test_a_manual_backup_is_never_mistaken_for_a_quarterly_one(self):
-        # A stash may even be called "quarterly": only the tag after "backup_" counts.
+        # A stash may even be called "quarterly": only the tag after
+        # "backup_" counts.
         quarterly = self._stash("quarterly")
         finance_backup.backup_now(quarterly / "db.sqlite3", quarterly, tag="manual")
         self.assertIsNotNone(finance_backup.quarterly_backup_if_due(quarterly / "db.sqlite3", quarterly))
@@ -428,7 +439,8 @@ class BackupNamesCarryTheStashTests(SimpleTestCase):
 
 
 class RestoreBringsBackTodaysSchemaTests(TemporaryStashesMixin, SimpleTestCase):
-    """1.3 (F44): a backup taken before an update is migrated as soon as it's restored."""
+    """1.3 (F44): a backup taken before an update is migrated as soon as
+    it's restored."""
 
     def test_restoring_a_pre_update_backup_migrates_it(self):
         self.make_stashes()
@@ -449,9 +461,11 @@ class RestoreBringsBackTodaysSchemaTests(TemporaryStashesMixin, SimpleTestCase):
 
 
 class RestoreThroughThePageTests(TemporaryStashesMixin, SimpleTestCase):
-    """The whole path with nothing mocked: the page's form, the PIN check, the restore itself and
-    the page after it. The restore rewrites a real stash file, so this uses a temporary stash (as
-    RestoreKeepsTodaysLoginTests does) instead of the test stash's in-memory database."""
+    """The whole path with nothing mocked: the page's form, the PIN
+    check, the restore itself and the page after it. The restore
+    rewrites a real stash file, so this uses a temporary stash (as
+    RestoreKeepsTodaysLoginTests does) instead of the test stash's
+    in-memory database."""
 
     client_class = StashClient
 
@@ -479,7 +493,8 @@ class RestoreThroughThePageTests(TemporaryStashesMixin, SimpleTestCase):
         response = self.client.post(url, {"current_pin": "5678"})
         self.assertRedirects(response, reverse("finance:settings"), fetch_redirect_response=False)
 
-        # Still logged in: the backup's old PIN was not brought back with the data.
+        # Still logged in: the backup's old PIN was not brought back
+        # with the data.
         settings_page = self.client.get(reverse("finance:settings"))
         self.assertEqual(settings_page.status_code, 200)
         self.assertContains(settings_page, "Restored from")

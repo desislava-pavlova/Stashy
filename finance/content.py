@@ -1,8 +1,12 @@
-"""The "Stashy tips" shown in the help card beside a form (finance/includes/help_card.html).
+"""The "Stashy tips" shown in the help card beside a form
+(finance/includes/help_card.html).
 
-Plain text kept out of the views: it's wording, not logic, so it lives in one place where it
-is easy to find and change. Each list is passed to a template as `tips`.
+Plain text kept out of the views: it's wording, not logic, so it lives
+in one place where it is easy to find and change. Each list is passed to
+a template as `tips`.
 """
+
+from .models import Reminder
 
 ACCOUNT_TIPS = [
     "Opening balance is what the account held on the day you start tracking it in Stashy"
@@ -23,7 +27,7 @@ PAYEE_TIPS = [
 REMINDER_TIPS = [
     "Reminders never create transactions on their own — press Enter when a bill is actually paid.",
     "Pick the account the money leaves from, or arrives in for income.",
-    "Anything due within the next 7 days shows up on your dashboard.",
+    f"Anything due within the next {Reminder.DUE_SOON_DAYS} days shows up on your dashboard.",
 ]
 TRANSACTION_TIPS = [
     "Type a payee you've used before and Stashy fills in the category, memo and amount.",

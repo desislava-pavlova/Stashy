@@ -1,7 +1,8 @@
-"""Starter categories (Phase 15 / L5): `starter_categories.xlsx`, next to this module, with two
-sheets - Basic and Extended - each with Type | Category | Subcategory columns. Read only by
-the welcome wizard's Categories step; there's no button to run this again afterwards - delete
-what you don't want instead.
+"""Starter categories: `starter_categories.xlsx`, next to this module,
+with two sheets - Basic and Extended - each with Type | Category |
+Subcategory columns. Read only by the welcome wizard's Categories step;
+there's no button to run this again afterwards - delete what you don't
+want instead.
 """
 
 from pathlib import Path
@@ -15,13 +16,15 @@ SHEET_CHOICES = ["Basic", "Extended"]
 
 
 def starter_categories_path():
-    # Beside this module, not at the project's top level: only this code reads the file (S70).
+    # Beside this module, not at the project's top level: only this code
+    # reads the file.
     return Path(__file__).with_name(STARTER_CATEGORIES_FILENAME)
 
 
 def available_sheets():
-    """Which of Basic/Extended can actually be offered right now - [] if the file itself is
-    missing, so the welcome step can disable choices cleanly instead of erroring."""
+    """Which of Basic/Extended can actually be offered right now - [] if
+    the file itself is missing, so the welcome step can disable choices
+    cleanly instead of erroring."""
     path = starter_categories_path()
     if not path.exists():
         return []
@@ -34,7 +37,8 @@ def available_sheets():
 
 
 def _read_rows(sheet_name):
-    """(type, category, subcategory_or_None) for every non-blank row, in file order."""
+    """(type, category, subcategory_or_None) for every non-blank row, in
+    file order."""
     workbook = load_workbook(starter_categories_path(), read_only=True, data_only=True)
     try:
         sheet = workbook[sheet_name]
@@ -55,11 +59,13 @@ def _read_rows(sheet_name):
 
 
 def add_starter_categories(sheet_name):
-    """Creates every category (and subcategory) from the given sheet that doesn't already
-    exist (matched by name, case-insensitive, among main categories for a parent, or among
-    that parent's own children for a subcategory) - safe to run more than once. A subcategory
-    takes its main category's type, the same rule as the importer, whatever its own row says.
-    Returns the list of names actually created, or None if the sheet isn't available."""
+    """Creates every category (and subcategory) from the given sheet
+    that doesn't already exist (matched by name, case-insensitive, among
+    main categories for a parent, or among that parent's own children
+    for a subcategory) - safe to run more than once. A subcategory takes
+    its main category's type, the same rule as the importer, whatever
+    its own row says. Returns the list of names actually created, or
+    None if the sheet isn't available."""
     if sheet_name not in available_sheets():
         return None
 

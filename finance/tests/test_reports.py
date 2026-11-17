@@ -1,5 +1,6 @@
-"""The Reports page: its filters and defaults, the tables and their markup, the averages and
-their tints, the notices, and Watched expenses."""
+"""The Reports page: its filters and defaults, the tables and their
+markup, the averages and their tints, the notices, and Watched expenses.
+"""
 
 import re
 from datetime import date, timedelta
@@ -26,12 +27,14 @@ EXPENSE, INCOME = Category.CategoryType.EXPENSE, Category.CategoryType.INCOME
 
 
 def _row_html(page, opening_tag):
-    """The inside of the table row of the rendered `page` that starts with `opening_tag`."""
+    """The inside of the table row of the rendered `page` that starts
+    with `opening_tag`."""
     return re.search(re.escape(opening_tag) + r"(.*?)</tr>", page, re.S).group(1)
 
 
 def _amount_cells(row_html):
-    """The text of a table row's amount cells, without the currency symbol."""
+    """The text of a table row's amount cells, without the currency
+    symbol."""
     cells = re.findall(r'<td class="text-end[^"]*">([^<]*)</td>', row_html)
     return [cell.strip().removesuffix("€").strip() for cell in cells]
 
@@ -42,7 +45,7 @@ class ReportsViewTests(LoggedInWithAccountTestCase):
         self.assertEqual(response.status_code, 200)
 
     def test_defaults_to_this_month(self):
-        # R3 (Phase 13): This month - no subtotal - Last 3 periods - All accounts.
+        # This month - no subtotal - Last 3 periods - All accounts.
         response = self.client.get(reverse("finance:reports"))
         today = timezone.localdate()
         self.assertEqual(response.context["start"], today.replace(day=1))
@@ -83,7 +86,8 @@ class ReportsCustomRangeErrorTests(LoggedInWithAccountTestCase):
         self.assertContains(response, "custom range needs both a start and an end date")
 
     def test_a_range_outside_1900_to_2100_shows_the_warning_not_an_error_page(self):
-        # S93: year 1 overflowed `start - timedelta(days=1)`, and year 9999 overflowed the period columns.
+        # S93: year 1 overflowed `start - timedelta(days=1)`, and year
+        # 9999 overflowed the period columns.
         for start, end in (("01/01/0001", "01/01/0002"), ("01/01/2026", "31/12/9999"), ("01/01/1899", "01/01/1900")):
             with self.subTest(start=start, end=end):
                 response = self.client.get(reverse("finance:reports"), {"range": "custom", "start": start, "end": end})
@@ -98,7 +102,8 @@ class ReportsCustomRangeErrorTests(LoggedInWithAccountTestCase):
         self.assertContains(response, "A custom range can cover at most 100 years.")
 
     def test_the_exports_fall_back_to_the_default_filters_like_the_page(self):
-        # Same as the export with no filters at all (some, like Watched expenses with nothing chosen, answer 404).
+        # Same as the export with no filters at all (some, like Watched
+        # expenses with nothing chosen, answer 404).
         for report in REPORT_EXPORTS:
             with self.subTest(report=report):
                 url = reverse("finance:export_report", args=[report])
@@ -123,8 +128,9 @@ class ReportsCustomRangeErrorTests(LoggedInWithAccountTestCase):
         self.assertEqual((response.context["start"], response.context["end"]), (date(2026, 2, 1), date(2026, 3, 31)))
 
     def test_the_date_boxes_switch_the_range_to_custom_and_earliest_to_date_stays(self):
-        # 8.14: stashy.js switches Range to "Custom range" when a date is typed. 8.13 removes
-        # "Earliest to date" from the Transactions page only.
+        # 8.14: stashy.js switches Range to "Custom range" when a date
+        # is typed. 8.13 removes "Earliest to date" from the
+        # Transactions page only.
         response = self.client.get(reverse("finance:reports"))
         self.assertEqual(response.content.decode().count("data-range-date"), 2)
         self.assertContains(response, '<option value="earliest">Earliest to date</option>', html=True)
@@ -160,7 +166,8 @@ class DateRangeFilterFormTests(SimpleTestCase):
                 self.assertFalse(DateRangeFilterForm({"range": "custom", "start": start, "end": end}).is_valid())
 
     def test_a_preset_range_ignores_dates_outside_the_window(self):
-        # Only a custom range reads the date boxes; a preset must not be refused for what they hold.
+        # Only a custom range reads the date boxes; a preset must not be
+        # refused for what they hold.
         form = DateRangeFilterForm({"range": "this_month", "start": "01/01/0001", "end": "31/12/9999"})
         self.assertTrue(form.is_valid(), form.errors)
 
@@ -191,16 +198,18 @@ class ReportsPageMarkupTests(LoggedInWithAccountTestCase):
         response = self.client.get(reverse("finance:reports"))
         body = response.content.decode()
         self.assertIn('data-cat-parent="incexp-', body)
-        # Every subcategory row (data-cat-parent) is hidden until its own chevron is clicked -
-        # not just present somewhere hidden for an unrelated reason.
+        # Every subcategory row (data-cat-parent) is hidden until its
+        # own chevron is clicked - not just present somewhere hidden for
+        # an unrelated reason.
         start = body.index('data-cat-parent="incexp-')
         row_start = body.rindex("<tr", 0, start)
         row_end = body.index(">", start)
         self.assertIn("hidden", body[row_start:row_end])
 
     def test_export_is_hidden_until_a_report_is_expanded(self):
-        # No Bootstrap display-utility class here - "d-inline-block" carries "!important" on
-        # display, which silently overrides the "hidden" attribute's own display:none.
+        # No Bootstrap display-utility class here - "d-inline-block"
+        # carries "!important" on display, which silently overrides the
+        # "hidden" attribute's own display:none.
         response = self.client.get(reverse("finance:reports"))
         body = response.content.decode()
         self.assertIn('class="report-export" hidden', body)
@@ -244,8 +253,9 @@ class ReportsPageExpandButtonTests(LoggedInWithAccountTestCase):
 
 class ReportsCollapseButtonLabelTests(SimpleTestCase):
     def test_expand_button_relabels_to_collapse(self):
-        # The relabel happens client-side (reports.js), not in the server-rendered HTML, which
-        # always starts on "Expand" - check the script itself rather than a page fetch.
+        # The relabel happens client-side (reports.js), not in the
+        # server-rendered HTML, which always starts on "Expand" - check
+        # the script itself rather than a page fetch.
         js = (Path(settings.BASE_DIR) / "finance" / "static" / "finance" / "js" / "reports.js").read_text(
             encoding="utf-8"
         )
@@ -269,7 +279,7 @@ class UncategorizedNoticeTests(LoggedInWithAccountTestCase):
 
 
 class ReportFixesAfterFirstLookTests(LoggedInWithAccountTestCase):
-    """Bugs the user found on the real page after Phase 13 shipped (15/09/2026)."""
+    """Bugs found on the real Reports page."""
 
     @classmethod
     def setUpTestData(cls):
@@ -280,16 +290,18 @@ class ReportFixesAfterFirstLookTests(LoggedInWithAccountTestCase):
         )
 
     def test_show_hide_all_is_hidden_until_a_report_is_expanded(self):
-        # Like Export: it acts on the table, which isn't on screen until the card is expanded.
-        # The button sits in a plain wrapper div - "hidden" on the button itself would lose to
-        # Bootstrap's own .btn display rule.
+        # Like Export: it acts on the table, which isn't on screen until
+        # the card is expanded. The button sits in a plain wrapper div -
+        # "hidden" on the button itself would lose to Bootstrap's own
+        # .btn display rule.
         response = self.client.get(reverse("finance:reports"))
         body = response.content.decode()
         self.assertIn('class="report-showhide" hidden', body)
         self.assertEqual(body.count("report-showhide-btn"), body.count('class="report-showhide" hidden'))
 
     def test_subtotal_reaches_the_category_charts(self):
-        # Without it every chart got data-subtotal="" and never switched to columns.
+        # Without it every chart got data-subtotal="" and never switched
+        # to columns.
         response = self.client.get(reverse("finance:reports"), {"range": "this_year", "subtotal": "month"})
         self.assertContains(response, 'id="spendingByCategoryChart" data-subtotal="month"')
         self.assertContains(response, 'id="incomeByCategoryChart" data-subtotal="month"')
@@ -375,15 +387,17 @@ class RefundsOnTheReportsPageTests(LoggedInWithAccountTestCase):
 
         response = self.get_page()
 
-        # A table cell in the spending colour, not the Net or Expense stat above the tables.
+        # A table cell in the spending colour, not the Net or Expense
+        # stat above the tables.
         self.assertContains(response, '<td class="text-end amount-negative">-60.00')
         for leaked in LEAKED_TEMPLATE_SYNTAX:
             self.assertNotContains(response, leaked)
 
 
 class RefundEdgeCasesOnTheReportsPageTests(LoggedInWithAccountTestCase):
-    """S50 on the page itself: table rows, the Watched expenses card, the Account filter and the
-    vs-average tables, read from the context and from the rendered HTML."""
+    """S50 on the page itself: table rows, the Watched expenses card,
+    the Account filter and the vs-average tables, read from the context
+    and from the rendered HTML."""
 
     @classmethod
     def setUpTestData(cls):
@@ -501,7 +515,8 @@ class RefundEdgeCasesOnTheReportsPageTests(LoggedInWithAccountTestCase):
 
 
 class SavingsRateNumberFormatTests(LoggedInWithAccountTestCase):
-    """S33: the savings rate follows the stash's number format, like every other number."""
+    """S33: the savings rate follows the stash's number format, like
+    every other number."""
 
     def setUp(self):
         super().setUp()
@@ -537,9 +552,10 @@ class SavingsRateNumberFormatTests(LoggedInWithAccountTestCase):
 
 
 class SavingsRateExtremesInEveryNumberFormatTests(LoggedInWithAccountTestCase):
-    """S33: a negative savings rate, one over 100 (refunds make that possible, S50) and one in the
-    thousands read right in every number format - the minus sign, the decimal mark and the
-    thousands separator all follow the stash's style."""
+    """S33: a negative savings rate, one over 100 (refunds make that
+    possible, S50) and one in the thousands read right in every number
+    format - the minus sign, the decimal mark and the thousands
+    separator all follow the stash's style."""
 
     # number format -> the rate as shown for -25.0, 105.0 and 1000.0
     EXPECTED = {
@@ -593,8 +609,8 @@ class SavingsRateExtremesInEveryNumberFormatTests(LoggedInWithAccountTestCase):
         self.check_every_format(2)
 
     def test_the_vs_average_stats_follow_the_style_for_a_negative_rate(self):
-        """This month saves -25.0%, last month 75.0%: the difference is the plain 100.0, no sign
-        (the arrow says which way it went)."""
+        """This month saves -25.0%, last month 75.0%: the difference is
+        the plain 100.0, no sign (the arrow says which way it went)."""
         self.add("1000.00", self.salary)
         self.add("-1250.00", self.rent)
         self.add("1000.00", self.salary, months_back=1)
@@ -637,7 +653,8 @@ class AverageDisplayTests(LoggedInWithAccountTestCase):
 
     def test_one_earlier_period_is_not_an_average_either(self):
         groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
-        # Data starting inside last month leaves exactly one whole earlier month to compare with.
+        # Data starting inside last month leaves exactly one whole
+        # earlier month to compare with.
         last_month_end = timezone.localdate().replace(day=1) - timedelta(days=1)
         Transaction.objects.create(
             account=self.account, date=last_month_end, category=groceries, amount=Decimal("-40.00")
@@ -664,8 +681,8 @@ class AverageDisplayTests(LoggedInWithAccountTestCase):
         self.assertContains(response, 'id="spendingVsAverageChart"')
 
     def test_a_category_without_earlier_activity_averages_zero(self):
-        # Plan 04 R6 (03/10/2026) replaced "no earlier activity = no average": once earlier
-        # periods exist, a category that had nothing in them averages 0.
+        # Plan 04 R6: once earlier periods exist, a category that had
+        # nothing in them averages 0, where it used to have no average.
         start, end = date(2026, 3, 1), date(2026, 3, 31)
         seen_before = Category.objects.create(name="Rent", category_type=Category.CategoryType.EXPENSE)
         brand_new = Category.objects.create(name="Gifts", category_type=Category.CategoryType.EXPENSE)
@@ -686,7 +703,8 @@ class InvalidFilterTests(LoggedInWithAccountTestCase):
     def test_invalid_custom_range_shows_the_actual_defaults_not_the_rejected_values(self):
         response = self.client.get(reverse("finance:reports"), {"range": "custom"})
         self.assertContains(response, "Your filters weren")
-        # The rejected "custom" choice isn't what's shown as selected - the real default is.
+        # The rejected "custom" choice isn't what's shown as selected -
+        # the real default is.
         self.assertNotContains(response, '<option value="custom" selected')
         self.assertContains(response, '<option value="this_month" selected')
 
@@ -699,12 +717,14 @@ class WatchedExpensesSettingsTests(LoggedInWithAccountTestCase):
         cls.electricity = Category.objects.create(name="Electricity", category_type=Category.CategoryType.EXPENSE)
 
     def test_default_title_is_watched_expenses(self):
-        # S46: it was "Bills & Utilities", a leftover from before the report was configurable.
+        # S46: it was "Bills & Utilities", a leftover from before the
+        # report was configurable.
         self.assertEqual(self.profile.watched_expenses_title, "Watched expenses")
         self.assertContains(self.client.get(reverse("finance:settings")), 'value="Watched expenses"')
 
     def test_a_title_a_stash_already_saved_is_kept(self):
-        # S46 changes only what a new profile starts with; nothing is rewritten.
+        # S46 changes only what a new profile starts with; nothing is
+        # rewritten.
         self.profile.watched_expenses_title = "Bills & Utilities"
         self.profile.save(update_fields=["watched_expenses_title"])
         self.assertEqual(Profile.objects.get(pk=self.profile.pk).watched_expenses_title, "Bills & Utilities")
@@ -825,8 +845,9 @@ class WatchedExpensesPickerTests(StashTestCase):
 
 
 class NoEarlierActivityAveragesZeroTests(LoggedInWithAccountTestCase):
-    """Plan 04 R6: with earlier periods to compare with, a category that had nothing in them
-    averages 0 - the page shows "—" for it but fills in the difference and draws the dot."""
+    """Plan 04 R6: with earlier periods to compare with, a category that
+    had nothing in them averages 0 - the page shows "—" for it but fills
+    in the difference and draws the dot."""
 
     @classmethod
     def setUpTestData(cls):
@@ -855,7 +876,8 @@ class NoEarlierActivityAveragesZeroTests(LoggedInWithAccountTestCase):
         self._three_earlier_months()
         self._spend(self.accommodation, "-583.50")
         self.assertEqual(self._csv("spending-vs-average")["Accommodation"], ["583.50", "0.00", "583.50"])
-        # Expenses are negative in the combined report, so the same gap is negative there.
+        # Expenses are negative in the combined report, so the same gap
+        # is negative there.
         self.assertEqual(self._csv("income-expense-vs-average")["Accommodation"], ["-583.50", "0.00", "-583.50"])
 
     def test_the_page_shows_a_dash_for_the_average_but_the_difference_and_a_dot(self):
@@ -866,7 +888,8 @@ class NoEarlierActivityAveragesZeroTests(LoggedInWithAccountTestCase):
         chart = {r["name"]: r for r in response.context["spending_vs_average_chart"]}
         self.assertEqual(chart["Accommodation"]["average"], 0.0)  # a dot at 0, not a gap
 
-        # The Spending vs average table's own row, read from the page's real HTML.
+        # The Spending vs average table's own row, read from the page's
+        # real HTML.
         page = response.content.decode()
         row_html = re.search(rf'<tr data-cat-id="spendavg-{self.accommodation.pk}">(.*?)</tr>', page, re.S).group(1)
         cells = [cell.strip() for cell in re.findall(r'<td class="text-end[^"]*">([^<]*)</td>', row_html)]
@@ -881,7 +904,8 @@ class NoEarlierActivityAveragesZeroTests(LoggedInWithAccountTestCase):
         self.assertEqual(self._csv("spending-vs-average")["Accommodation"], ["100.00", "200.00", "-100.00"])
 
     def test_a_main_category_whose_subcategory_is_brand_new_gets_a_dash_too(self):
-        # Folds in R2: the parent and its new subcategory both average 0 and show "—".
+        # The parent and its new subcategory both average 0 and show
+        # "—".
         food = self._category("Food")
         bakery = self._category("Bakery", parent=food)
         self._three_earlier_months()

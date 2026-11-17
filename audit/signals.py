@@ -1,12 +1,13 @@
 """Model signal handlers that write the audit log.
 
-Django sends signals around every save() and delete(), including ones made by
-automatic code, cascaded deletes and the admin. Queryset .update() and
-bulk_create() skip signals, so code that must be audited avoids them.
+Django sends signals around every save() and delete(), including ones
+made by automatic code, cascaded deletes and the admin. Queryset
+.update() and bulk_create() skip signals, so code that must be audited
+avoids them.
 
-Storage matches Phase 14 / A3: raw, database-style values (stored choice keys,
-ISO dates, exact decimals), one row per changed column on UPDATE, and one row
-naming the whole record on INSERT/DELETE (with its full values kept, A4).
+Storage is raw, database-style values (stored choice keys, ISO dates,
+exact decimals): one row per changed column on UPDATE, and one row
+naming the whole record on INSERT/DELETE (with its full values kept).
 """
 
 from dataclasses import replace
@@ -22,10 +23,10 @@ from .models import AuditLogEntry
 
 Action = AuditLogEntry.Action
 
-# A6: secrets never appear in the log, not even their hash.
+# Secrets never appear in the log, not even their hash.
 HIDDEN_FIELDS = {("finance.profile", "recovery_code_hash")}
-# Copies of another column kept only for the database's own checks: logging them would just
-# repeat that column.
+# Copies of another column kept only for the database's own checks:
+# logging them would just repeat that column.
 SKIPPED_FIELDS = {("finance.payee", "name_key"), ("finance.category", "name_key")}
 
 
@@ -42,7 +43,8 @@ def is_tracked(model):
 
 
 def _logging(model):
-    """Whether a change to `model` gets an audit entry right now (see audit_suspended())."""
+    """Whether a change to `model` gets an audit entry right now (see
+    audit_suspended())."""
     return is_tracked(model) and not current_context().suspended
 
 
@@ -54,8 +56,8 @@ def describe(obj):
 
 
 def _raw(sender, field, raw, instance=None):
-    """Turn a stored value into the raw text kept in the log - the stored value itself,
-    not a formatted-for-a-viewer version of it."""
+    """Turn a stored value into the raw text kept in the log - the
+    stored value itself, not a formatted-for-a-viewer version of it."""
     if (sender._meta.label_lower, field.name) in HIDDEN_FIELDS:
         return None if raw in (None, "") else "(hidden)"
     if raw is None or raw == "":
@@ -92,9 +94,10 @@ def _same(field, before, after):
 
 
 def _resolved_context():
-    """An operation id, generated once and reused, so every row from the same save()/m2m
-    change/cascade shares it - even outside a request, where current_context() otherwise
-    starts with an empty one and write_row would mint a fresh id for every single row."""
+    """An operation id, generated once and reused, so every row from the
+    same save()/m2m change/cascade shares it - even outside a request,
+    where current_context() otherwise starts with an empty one and
+    write_row would mint a fresh id for every single row."""
     context = current_context()
     return context if context.operation else replace(context, operation=new_operation_id())
 
@@ -133,7 +136,7 @@ def write_row(
     )
 
 
-# --- saves -----------------------------------------------------------------
+# --- saves ------------------------------------------------------------
 
 
 def remember_old_values(sender, instance, raw=False, **kwargs):
@@ -176,7 +179,7 @@ def log_save(sender, instance, created, raw=False, update_fields=None, **kwargs)
         )
 
 
-# --- deletes ---------------------------------------------------------------
+# --- deletes ----------------------------------------------------------
 
 
 def remember_deleted(sender, instance, **kwargs):
@@ -196,15 +199,17 @@ def log_delete(sender, instance, **kwargs):
 
 
 def _log_cleared_references_after_commit(instance):
-    """on_delete=SET_NULL blanks other rows with a bulk UPDATE that sends no signals, so log those here.
+    """on_delete=SET_NULL blanks other rows with a bulk UPDATE that
+    sends no signals, so log those here.
 
-    Logging waits until the delete has committed: by then, rows that were
-    themselves deleted in the same action are gone and don't get a misleading
-    "changed" entry.
+    Logging waits until the delete has committed: by then, rows that
+    were themselves deleted in the same action are gone and don't get a
+    misleading "changed" entry.
     """
     context = _resolved_context()
-    # on_commit() waits for the commit of one database only - the stash this delete writes to,
-    # not `default` (the picker's empty placeholder), which is what it uses without `using=`.
+    # on_commit() waits for the commit of one database only - the stash
+    # this delete writes to, not `default` (the picker's empty
+    # placeholder), which is what it uses without `using=`.
     using = router.db_for_write(type(instance), instance=instance)
     old_value = f"{instance.pk} ({describe(instance)})"
     reason = f"Cleared because {instance._meta.verbose_name} '{describe(instance)}' (#{instance.pk}) was deleted"
@@ -238,7 +243,7 @@ def _log_cleared_references(model, field, pks, old_value, reason, context):
         )
 
 
-# --- many-to-many (e.g. Watched expenses' categories) -----------------------
+# --- many-to-many (e.g. Watched expenses' categories) -----------------
 
 
 def _m2m_field_name(through, instance):
