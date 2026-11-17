@@ -8,7 +8,6 @@ from decimal import Decimal
 from unittest import mock
 
 from django.conf import settings
-from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db.models import signals as model_signals
 from django.test import SimpleTestCase
@@ -20,19 +19,18 @@ from audit.context import audit_suspended, system_action
 from audit.models import AuditLogEntry
 from finance import regional
 from finance.models import Account, Category, ImportBatch, Payee, Profile, Transaction
-from finance.tests.base import LoggedInWithAccountTestCase, StashTestCase
+from finance.tests.base import (
+    LoggedInAsSuperuserTestCase,
+    LoggedInWithAccountTestCase,
+    StashTestCase,
+    csv_upload,
+    post_import,
+)
 
 Action = AuditLogEntry.Action
 
 
-class AuditTestCase(StashTestCase):
-    @classmethod
-    def setUpTestData(cls):
-        cls.user = get_user_model().objects.create_superuser("tester", password="not-a-real-password-123")
-
-    def setUp(self):
-        self.client.force_login(self.user)
-
+class AuditTestCase(LoggedInAsSuperuserTestCase):
     def entries(self, model=None, **filters):
         queryset = AuditLogEntry.objects.order_by("id").filter(**filters)
         return queryset.filter(table=model._meta.db_table) if model else queryset
@@ -132,7 +130,6 @@ class ModelChangeLoggingTests(AuditTestCase):
         self.assertEqual(payee_entry.operation, transaction_entry.operation)
 
     def test_watched_expenses_categories_changes_log_one_row_per_item(self):
-
         profile = Profile.for_user(self.user)
         groceries = Category.objects.create(name="Groceries")
         takeout = Category.objects.create(name="Take-Outs")
@@ -153,7 +150,6 @@ class ModelChangeLoggingTests(AuditTestCase):
         self.assertEqual(removed.old_value, f"{groceries.pk} (Groceries)")
 
     def test_recovery_code_hash_is_never_logged(self):
-
         profile = Profile.for_user(self.user)
         profile.recovery_code_hash = "pbkdf2_sha256$some$real$hash"
         profile.save()
@@ -162,7 +158,6 @@ class ModelChangeLoggingTests(AuditTestCase):
         self.assertEqual(entry.new_value, "(hidden)")
 
     def test_failed_pin_attempts_still_logged(self):
-
         profile = Profile.for_user(self.user)
         profile.failed_pin_attempts = 1
         profile.save()
@@ -205,17 +200,15 @@ class DeleteLoggingTests(AuditTestCase):
 class ImportLoggingTests(AuditTestCase):
     def test_imported_rows_are_logged_as_automatic(self):
         account = Account.objects.create(name="Checking")
-        upload = SimpleUploadedFile("bank.csv", b"Date,Payee,Memo,Amount\n03/04/2026,Shop,,-5.00\n")
-        self.client.post(reverse("finance:import_transactions"), {"account": account.pk, "file": upload})
+        upload = csv_upload("Date,Payee,Memo,Amount\n03/04/2026,Shop,,-5.00\n")
+        post_import(self.client, account, upload)
         entry = self.entries(Transaction).get()
         self.assertEqual((entry.source, entry.reason), ("system", "Imported from bank.csv"))
 
     def test_failed_import_leaves_nothing_behind(self):
         account = Account.objects.create(name="Checking")
         upload = SimpleUploadedFile("broken.ofx", b"this is not an OFX file")
-        response = self.client.post(
-            reverse("finance:import_transactions"), {"account": account.pk, "file": upload}, follow=True
-        )
+        response = post_import(self.client, account, upload, follow=True)
         self.assertContains(response, "couldn&#x27;t read this OFX/QFX file")
         self.assertFalse(ImportBatch.objects.exists())
         self.assertFalse(self.entries(ImportBatch).exists())

@@ -7,46 +7,29 @@ from unittest import mock
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.test import Client, SimpleTestCase, override_settings
-from django.urls import NoReverseMatch, URLPattern, resolve, reverse
+from django.urls import NoReverseMatch, resolve, reverse
 from django.utils import timezone
 from django.views.generic import RedirectView
 
-from .. import urls as finance_urls
 from ..auth_forms import ChangePinForm, CurrentPinForm, ForgotPinForm, StashCreateForm
 from ..models import Profile
 from ..stashes import StashError, registry, security
-from .base import REHASHING_PASSWORD_HASHERS, StashTestCase
-
-# Values for the URL parameters, so every pattern in finance/urls.py can be reversed.
-SAMPLE_KWARGS = {"pk": 1, "step": 1, "report": "spending"}
+from .base import LEAKED_TEMPLATE_SYNTAX, REHASHING_PASSWORD_HASHERS, StashTestCase, every_finance_url
 
 
-def _every_finance_url():
-    for pattern in finance_urls.urlpatterns:
-        assert isinstance(pattern, URLPattern)
-        kwargs = {name: SAMPLE_KWARGS[name] for name in pattern.pattern.converters}
-        yield pattern.name, reverse(f"finance:{pattern.name}", kwargs=kwargs)
-
-
-class StashPathHelperTests(SimpleTestCase):
-    def test_validate_pin_requires_exactly_four_digits(self):
-        for bad in ("123", "12345", "abcd", "", None):
-            with self.assertRaises(StashError):
-                security.validate_pin(bad)
-        security.validate_pin("0000")  # does not raise
-
+class RecoveryCodeFormatTests(SimpleTestCase):
     def test_recovery_code_format(self):
         code = security._generate_recovery_code()
         parts = code.split("-")
         self.assertEqual(len(parts), 3)
         self.assertTrue(all(len(p) == 4 for p in parts))
         # No ambiguous characters (0/O/1/I) that are hard to tell apart handwritten.
-        self.assertFalse(set(code) & set("01OI-") - {"-"})
+        self.assertFalse(set(code) & set("01OI"))
 
 
 class LockoutTests(StashTestCase):
-    """These operate on the *current* (test/default) database's own Profile, exactly the way
-    the login view does - no temp stash needed, since lockout state lives on Profile."""
+    """These operate on the test stash's own Profile, the way the login view does: the lockout
+    state lives on Profile, so no temporary stash is needed."""
 
     @classmethod
     def setUpTestData(cls):
@@ -299,7 +282,7 @@ class ForgotPinPageTests(StashTestCase):
         self.assertContains(response, "For Alex&#x27;s stash")
         for field in ("recovery_code", "new_pin", "new_pin_confirm"):
             self.assertContains(response, f'name="{field}"')
-        for leaked in ("{%", "%}", "{#", "#}"):
+        for leaked in LEAKED_TEMPLATE_SYNTAX:
             self.assertNotContains(response, leaked)
 
     def test_the_pages_that_show_a_recovery_code_are_never_cached(self):
@@ -368,7 +351,7 @@ class ForgotPinPageTests(StashTestCase):
         locked_page = self.client.get(reverse("forgot_pin"))
         self.assertContains(locked_page, "your recovery code still works here")
         self.assertContains(locked_page, "Reset PIN</button>")
-        for leaked in ("{%", "%}", "{#", "#}"):
+        for leaked in LEAKED_TEMPLATE_SYNTAX:
             self.assertNotContains(locked_page, leaked)
         response = self.reset()
         self.assertContains(response, "PIN changed")
@@ -467,14 +450,6 @@ class PinScreenLockoutTests(StashTestCase):
             self.user.refresh_from_db()
             self.assertTrue(self.user.password.startswith("md5_newer$"), self.user.password)
             self.assertEqual(self.client.get(reverse("finance:dashboard")).status_code, 200)
-
-    def test_a_login_lasts_until_the_browser_closes(self):
-        """Plan 03, Q4 (the user's call, 14/11/2026): the login cookie carries no expiry date,
-        so the browser drops it when it closes. Django's default kept it for two weeks."""
-        self.log_in("1234")
-        cookie = self.client.cookies[settings.SESSION_COOKIE_NAME]
-        self.assertEqual(cookie["max-age"], "")
-        self.assertEqual(cookie["expires"], "")
 
 
 class ClosingTheBrowserTests(StashTestCase):
@@ -580,7 +555,7 @@ class SwitchStashIsPostOnlyTests(StashTestCase):
         response = self.client.get(reverse("login"))
         self.assertContains(response, f'<form method="post" action="{reverse("switch_stash")}"', html=False)
         self.assertNotContains(response, f'href="{reverse("switch_stash")}"')
-        for leaked in ("{#", "#}", "{%", "%}"):
+        for leaked in LEAKED_TEMPLATE_SYNTAX:
             self.assertNotContains(response, leaked)
 
 
@@ -607,7 +582,7 @@ class LoginByDefaultTests(StashTestCase):
 
     def test_every_finance_url_sends_an_anonymous_visitor_to_the_login_page(self):
         login_url = reverse("login")
-        for name, url in _every_finance_url():
+        for name, url in every_finance_url():
             for method in (self.client.get, self.client.post):
                 with self.subTest(name=name, method=method.__name__):
                     response = method(url)

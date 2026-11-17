@@ -1,23 +1,20 @@
 """Exports: CSV and Excel files of the transactions, the lists and every report, and their
 file names."""
 
-import csv
 import io
 import re
 from datetime import date, datetime
 from decimal import Decimal
 
-from django.conf import settings
-from django.db import connections
 from django.test import SimpleTestCase
-from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
+from django.utils import timezone
 from openpyxl import load_workbook
 
 from ..models import Account, Category, Payee, Profile, Transaction
 from ..views._helpers import _csv_cell
 from ..views.exports import REPORT_EXPORTS
-from .base import LoggedInWithAccountTestCase
+from .base import LoggedInWithAccountTestCase, create_accounts_with_a_transaction, csv_rows
 
 
 class ExportTransactionsTests(LoggedInWithAccountTestCase):
@@ -40,7 +37,7 @@ class ExportTransactionsTests(LoggedInWithAccountTestCase):
     def test_csv_export_contains_the_row(self):
         response = self.client.get(reverse("finance:export_transactions"), {"format": "csv"})
         self.assertEqual(response["Content-Type"], "text/csv; charset=utf-8")
-        rows = list(csv.reader(io.StringIO(response.content.decode("utf-8-sig"))))
+        rows = csv_rows(response)
         self.assertEqual(
             rows[0], ["Date", "Number", "Account", "Payee", "Category", "Memo", "Amount", "Currency", "Reconciled"]
         )
@@ -59,7 +56,7 @@ class ExportTransactionsTests(LoggedInWithAccountTestCase):
         response = self.client.get(
             reverse("finance:export_transactions"), {"format": "csv", "account": self.account.pk}
         )
-        rows = list(csv.reader(io.StringIO(response.content.decode())))
+        rows = csv_rows(response)
         accounts_in_export = {row[2] for row in rows[1:]}
         self.assertEqual(accounts_in_export, {"Checking"})
 
@@ -69,14 +66,14 @@ class ExportTransactionsTests(LoggedInWithAccountTestCase):
             Transaction(account=self.account, date=date(2026, 1, 1), amount=Decimal("-1.00")) for _ in range(1001)
         )
         response = self.client.get(reverse("finance:export_transactions"), {"format": "csv", "range": "", "page": 2})
-        rows = list(csv.reader(io.StringIO(response.content.decode("utf-8-sig"))))
+        rows = csv_rows(response)
         self.assertEqual(len(rows), 1 + 1002)  # the header, the rent row and the 1,001 new ones
 
 
 class ExportOtherListsTests(LoggedInWithAccountTestCase):
     def test_accounts_export_lists_every_account(self):
         response = self.client.get(reverse("finance:export_accounts"), {"format": "csv"})
-        rows = list(csv.reader(io.StringIO(response.content.decode())))
+        rows = csv_rows(response)
         names = [row[0] for row in rows[1:]]
         self.assertIn("Checking", names)
 
@@ -85,7 +82,7 @@ class ExportOtherListsTests(LoggedInWithAccountTestCase):
         # now, just marked, rather than left out silently.
         Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
         response = self.client.get(reverse("finance:export_categories"), {"format": "csv"})
-        rows = list(csv.reader(io.StringIO(response.content.decode())))
+        rows = csv_rows(response)
         by_name = {row[0]: row for row in rows[1:]}
         self.assertIn("Groceries", by_name)
         self.assertEqual(by_name["Groceries"][4], "N")
@@ -97,7 +94,7 @@ class ExportOtherListsTests(LoggedInWithAccountTestCase):
         Payee.objects.create(name="Lidl")
         Payee.system(Payee.OPENING_BALANCE)
         response = self.client.get(reverse("finance:export_payees"), {"format": "csv"})
-        rows = list(csv.reader(io.StringIO(response.content.decode())))
+        rows = csv_rows(response)
         by_name = {row[0]: row for row in rows[1:]}
         self.assertIn("Lidl", by_name)
         self.assertEqual(by_name["Lidl"][2], "N")
@@ -109,7 +106,7 @@ class ExportOtherListsTests(LoggedInWithAccountTestCase):
         Payee.objects.create(name="opening balance")
         Payee.objects.create(name="Opening Balance Fee")
         response = self.client.get(reverse("finance:export_payees"), {"format": "csv"})
-        by_name = {row[0]: row for row in list(csv.reader(io.StringIO(response.content.decode())))[1:]}
+        by_name = {row[0]: row for row in csv_rows(response)[1:]}
         self.assertEqual(by_name["opening balance"][2], "Y")
         self.assertEqual(by_name["Opening Balance Fee"][2], "N")
 
@@ -119,7 +116,7 @@ class ExportOtherListsTests(LoggedInWithAccountTestCase):
             Payee.objects.create(name=name.upper())
             Payee.objects.create(name=f"{name} fee")
         response = self.client.get(reverse("finance:export_payees"), {"format": "csv"})
-        marked = {row[0]: row[2] for row in list(csv.reader(io.StringIO(response.content.decode())))[1:]}
+        marked = {row[0]: row[2] for row in csv_rows(response)[1:]}
         self.assertEqual(
             {name for name, flag in marked.items() if flag == "Y"}, {n.upper() for n in Payee.SYSTEM_NAMES}
         )
@@ -148,9 +145,9 @@ class ExportTests(LoggedInWithAccountTestCase):
         return self.client.get(reverse("finance:export_transactions"), {"format": fmt})
 
     def test_csv_starts_with_a_bom_and_escapes_formulas_but_not_amounts(self):
-        content = self.export("csv").content.decode("utf-8")
-        self.assertTrue(content.startswith("﻿"))
-        row = list(csv.reader(io.StringIO(content.lstrip("﻿"))))[1]
+        response = self.export("csv")
+        self.assertTrue(response.content.decode("utf-8").startswith("\ufeff"))
+        row = csv_rows(response)[1]
         self.assertEqual(row[3], "Магазин")
         self.assertEqual(row[5], '\'=HYPERLINK("http://evil.example")')
         self.assertEqual(row[6], "-500.00")
@@ -234,7 +231,9 @@ class ExcelControlCharacterTests(LoggedInWithAccountTestCase):
 
     def test_report_exports_clean_the_category_and_account_names_in_their_rows_too(self):
         fuel = Category.objects.create(name="Fu\x0bel", category_type=Category.CategoryType.EXPENSE)
-        Transaction.objects.create(account=self.account, date=date.today(), category=fuel, amount=Decimal("-5.00"))
+        Transaction.objects.create(
+            account=self.account, date=timezone.localdate(), category=fuel, amount=Decimal("-5.00")
+        )
         Account.objects.create(name="Wal\x1flet")
         for slug, expected in (("spending", "Fuel"), ("spending-vs-average", "Fuel"), ("net-worth", "  Wallet")):
             with self.subTest(slug=slug):
@@ -295,13 +294,13 @@ class FormulaLikeNamesInReportExportsTests(LoggedInWithAccountTestCase):
         sub = Category.objects.create(name="+2", parent=main, category_type=Category.CategoryType.EXPENSE)
         for category in (main, sub):
             Transaction.objects.create(
-                account=cls.account, date=date.today(), category=category, amount=Decimal("-5.00")
+                account=cls.account, date=timezone.localdate(), category=category, amount=Decimal("-5.00")
             )
         Account.objects.create(name="@evil")
 
     def csv_names(self, slug):
         response = self.client.get(reverse("finance:export_report", args=[slug]), {"format": "csv"})
-        return [row[0] for row in list(csv.reader(io.StringIO(response.content.decode("utf-8-sig"))))[1:]]
+        return [row[0] for row in csv_rows(response)[1:]]
 
     def xlsx_cells(self, slug):
         response = self.client.get(reverse("finance:export_report", args=[slug]), {"format": "xlsx"})
@@ -335,13 +334,13 @@ class ReportExportTests(LoggedInWithAccountTestCase):
         super().setUpTestData()
         cls.groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
         Transaction.objects.create(
-            account=cls.account, date=date.today(), category=cls.groceries, amount=Decimal("-42.00")
+            account=cls.account, date=timezone.localdate(), category=cls.groceries, amount=Decimal("-42.00")
         )
 
     def test_spending_export_has_a_plain_amount_column_when_not_subtotaled(self):
         response = self.client.get(reverse("finance:export_report", args=["spending"]), {"format": "csv"})
 
-        rows = list(csv.reader(io.StringIO(response.content.decode("utf-8-sig"))))
+        rows = csv_rows(response)
         self.assertEqual(rows[0], ["Category", "Spending"])
 
     def test_spending_export_gets_period_columns_when_subtotaled(self):
@@ -349,7 +348,7 @@ class ReportExportTests(LoggedInWithAccountTestCase):
             reverse("finance:export_report", args=["spending"]), {"format": "csv", "subtotal": "month"}
         )
 
-        rows = list(csv.reader(io.StringIO(response.content.decode())))
+        rows = csv_rows(response)
         self.assertIn("Total", rows[0])
         self.assertGreater(len(rows[0]), 2)  # Category + at least one period + Total
 
@@ -360,7 +359,7 @@ class ReportExportTests(LoggedInWithAccountTestCase):
     def test_net_worth_export_has_a_group_row_an_account_row_and_a_total_row(self):
         response = self.client.get(reverse("finance:export_report", args=["net-worth"]), {"format": "csv"})
 
-        rows = list(csv.reader(io.StringIO(response.content.decode())))
+        rows = csv_rows(response)
         names = [row[0] for row in rows[1:]]
         self.assertIn("  Checking", names)
         self.assertIn("Physical Liquid", names)
@@ -375,17 +374,12 @@ class ReportExportRegistryTests(LoggedInWithAccountTestCase):
         super().setUpTestData()
         cls.groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
         Transaction.objects.create(
-            account=cls.account, date=date.today(), category=cls.groceries, amount=Decimal("-42.00")
+            account=cls.account, date=timezone.localdate(), category=cls.groceries, amount=Decimal("-42.00")
         )
 
     def _csv(self, slug, **params):
         response = self.client.get(reverse("finance:export_report", args=[slug]), {"format": "csv", **params})
-        return response, list(csv.reader(io.StringIO(response.content.decode("utf-8-sig"))))
-
-    def test_the_urls_are_the_same_as_before_the_merge(self):
-        for slug in REPORT_EXPORTS:
-            with self.subTest(slug=slug):
-                self.assertEqual(reverse("finance:export_report", args=[slug]), f"/reports/export/{slug}/")
+        return response, csv_rows(response)
 
     def test_every_report_exports_as_csv_and_xlsx(self):
         profile = Profile.for_user(self.user)
@@ -419,7 +413,9 @@ class ReportExportRegistryTests(LoggedInWithAccountTestCase):
     def test_income_expense_vs_average_export_has_the_summary_rows_the_page_shows(self):
         """S3: the page adds an Income total and an Expense total row; the export used to lack them."""
         salary = Category.objects.create(name="Salary", category_type=Category.CategoryType.INCOME)
-        Transaction.objects.create(account=self.account, date=date.today(), category=salary, amount=Decimal("100.00"))
+        Transaction.objects.create(
+            account=self.account, date=timezone.localdate(), category=salary, amount=Decimal("100.00")
+        )
 
         _response, rows = self._csv("income-expense-vs-average")
         by_name = {row[0]: row for row in rows[1:]}
@@ -482,7 +478,7 @@ class RefundExportTests(LoggedInWithAccountTestCase):
 
     def csv_rows(self, slug, **params):
         response = self.get_export(slug, **params)
-        return list(csv.reader(io.StringIO(response.content.decode("utf-8-sig"))))
+        return csv_rows(response)
 
     def test_a_refund_shrinks_its_category_in_the_spending_csv(self):
         self.add("-100.00")
@@ -632,15 +628,10 @@ class AccountExportQueryTests(LoggedInWithAccountTestCase):
     """8.15 (F56): every balance in the accounts export comes from the same query."""
 
     def queries_with(self, count):
-        for i in range(count):
-            account = Account.objects.create(name=f"Account {count}-{i}")
-            Transaction.objects.create(account=account, date=date(2026, 1, 5), amount=Decimal("10.00"))
-        url = reverse("finance:export_accounts")
-        self.client.get(url)  # the first page of a session also creates its Profile
-        with CaptureQueriesContext(connections[settings.TEST_STASH]) as queries:
-            response = self.client.get(url)
+        create_accounts_with_a_transaction(count)
+        response, query_count = self.get_and_count_queries(reverse("finance:export_accounts"))
         self.assertEqual(response.status_code, 200)
-        return len(queries)
+        return query_count
 
     def test_more_accounts_need_no_more_queries(self):
         self.assertEqual(self.queries_with(1), self.queries_with(4))

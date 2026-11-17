@@ -9,13 +9,14 @@ from django.conf import settings
 from django.db import connections
 from django.test import SimpleTestCase
 from django.test.utils import CaptureQueriesContext
+from django.utils import timezone
 
 from .. import reporting
 from ..currency import RateTable
 from ..forms import DateRangeFilterForm
 from ..models import Account, Category, ExchangeRate, Transaction
 from ..reporting import income_and_spending, spending_tree
-from .base import LoggedInWithAccountTestCase, StashTestCase
+from .base import LoggedInWithAccountTestCase, StashTestCase, create_accounts_with_a_transaction
 
 EXPENSE, INCOME = Category.CategoryType.EXPENSE, Category.CategoryType.INCOME
 
@@ -865,9 +866,7 @@ class NetWorthByAccountTests(LoggedInWithAccountTestCase):
 
     def test_the_number_of_queries_does_not_grow_with_accounts_or_columns(self):
         def queries_for(account_count, end):
-            for i in range(account_count):
-                account = Account.objects.create(name=f"Account {account_count}-{i}")
-                Transaction.objects.create(account=account, date=date(2026, 1, 5), amount=Decimal("10.00"))
+            create_accounts_with_a_transaction(account_count)
             with CaptureQueriesContext(connections[settings.TEST_STASH]) as queries:
                 reporting.net_worth_by_account(date(2026, 1, 1), end, "month")
             return len(queries)
@@ -881,11 +880,11 @@ class EarliestToDateRangeTests(LoggedInWithAccountTestCase):
         Transaction.objects.create(account=self.account, date=date(2022, 1, 1), amount=Decimal("5.00"))
         start, end, _ = reporting.resolve_range({"range": "earliest"})
         self.assertEqual(start, date(2021, 10, 3))
-        self.assertEqual(end, date.today())
+        self.assertEqual(end, timezone.localdate())
 
     def test_falls_back_to_today_with_no_transactions_at_all(self):
         start, _end, _ = reporting.resolve_range({"range": "earliest"})
-        self.assertEqual(start, date.today())
+        self.assertEqual(start, timezone.localdate())
 
     def test_respects_the_account_filter(self):
         other = Account.objects.create(name="Savings")

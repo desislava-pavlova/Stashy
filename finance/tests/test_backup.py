@@ -125,22 +125,6 @@ class BackupHelperTests(SimpleTestCase):
         (backups_dir / f"db_quarterly_{recent_stamp}.sqlite3").write_text("old-scheme backup")
         self.assertIsNone(finance_backup.quarterly_backup_if_due(self.db, self.root))
 
-    def test_list_backups_sorts_newest_first_across_both_naming_schemes(self):
-        backups_dir = self.root / "backups"
-        backups_dir.mkdir()
-        (backups_dir / "db_manual_20260101_000000.sqlite3").write_text("old")
-        (backups_dir / "backup_manual_2026-06-01_00-00-00.sqlite3").write_text("mid")
-        (backups_dir / "backup_manual_2026-09-14_11-57-36.sqlite3").write_text("newest")
-        names = [p.name for p in finance_backup.list_backups(self.root)]
-        self.assertEqual(
-            names,
-            [
-                "backup_manual_2026-09-14_11-57-36.sqlite3",
-                "backup_manual_2026-06-01_00-00-00.sqlite3",
-                "db_manual_20260101_000000.sqlite3",
-            ],
-        )
-
     def test_restore_from_copies_the_backup_over_the_database_and_keeps_a_safety_copy(self):
         finance_backup.backup_now(self.db, self.root, tag="manual")
         target = next((self.root / "backups").glob("*_backup_manual_*.sqlite3"))
@@ -448,9 +432,7 @@ class RestoreBringsBackTodaysSchemaTests(TemporaryStashesMixin, SimpleTestCase):
 
     def test_restoring_a_pre_update_backup_migrates_it(self):
         self.make_stashes()
-        type(self).databases |= {"alex"}
-        folder, _ = registry.create_stash("Alex", "1234")  # a stash with its user and Profile, as a backup needs
-        self.addCleanup(self._unregister, folder)
+        folder, _ = self.create_stash("Alex", "1234")  # a stash with its user and Profile, as a backup needs
         call_command("migrate", "finance", "0016", database=folder, verbosity=0)
         old_backup = finance_backup.backup_now(
             registry.stash_db_path(folder), registry.stash_path(folder), tag="before_update"
@@ -475,9 +457,7 @@ class RestoreThroughThePageTests(TemporaryStashesMixin, SimpleTestCase):
 
     def test_the_data_goes_back_and_you_stay_logged_in_with_todays_pin(self):
         self.make_stashes()
-        type(self).databases |= {"alex"}
-        folder, _ = registry.create_stash("Alex", "1234")
-        self.addCleanup(self._unregister, folder)
+        folder, _ = self.create_stash("Alex", "1234")
         with db_router.use_stash(folder):
             profile = security.profile_for_current_stash()
             profile.welcome_step = Profile.WELCOME_STEPS_DONE

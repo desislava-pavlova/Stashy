@@ -34,7 +34,8 @@ is done. Its reviews added S92–S96 (section K): S92, S93 and S95 go into
 part D, S94 and S96 into Phase 4.
 *16/11/2026:* Phase 1 is complete (parts A–E). Phase 2 is built in three
 parts, listed at its heading; part A (S68, S70, S72, S73, S74, S110, S112)
-is done.
+is done, and so is part B, the tests (S11, S25, S34, S56–S62, S85, S90,
+S104), on the same day.
 
 **Baseline (10/10/2026):** 723 tests green. `ruff check .` and
 `ruff format --check .` are clean, `manage.py check` finds nothing, and
@@ -487,7 +488,7 @@ Stashy.
 | S22 | 24/10/2026 | `audit/admin.py`, `format_timestamp()` | The audit log's time showed milliseconds and the offset (`2026-09-15 15:06:48.930 +03:00`): more than you need, and the `+03:00` kept confusing you. Now `2026-09-15 15:06:48`, still in your own time zone and year first (you chose that over the stash's date format). Overrules part of plan 01's A3 (15/09/2026). | **done 24/10/2026**, fixed before it was filed. |
 | S23 | 24/10/2026 | `audit/tests.py`, `OnCommitUsesTheStashTests` | PyCharm showed a red "Unresolved reference 'db_for_write'" in a test that runs fine: `mock.patch("audit.signals.router.db_for_write")` names a path PyCharm can't follow. Now `mock.patch.object(audit_signals.router, "db_for_write", …)`. | **done 24/10/2026**, fixed before it was filed. |
 | S24 | 11/11/2026 | `finance/management/commands/reset_pin.py`, `handle()` and the `--pin` help text | Without `--pin`, the command asks for the new PIN with `getpass`, which shows nothing at all while you type ("Omit to be prompted (input is hidden)"). You'd like a `*` for each digit, so you can see how many you've typed. Python 3.14's `getpass` can do that (`echo_char="*"`), but Stashy runs on 3.12. Fix: a small helper that reads one key at a time on the Windows console (`msvcrt.getwch()`), prints `*` per key, takes Backspace back, finishes on Enter and stops on Ctrl+C; anywhere else (input piped in, or not Windows) it falls back to plain `getpass`. The help text becomes "Leave it out to be asked (each digit shows as *)". A test feeds it keys. Proposed phase: 1, next to S7, the other PIN-entry item. Note: plan 04's R9 (the same command crashing when the owner name's case differs from the folder's) is in this file too. *11/11/2026 (you): do them together. Both are Phase 1, item 1.10.* *14/11/2026: plan 07 moved Stashy to Python 3.14, so the command uses `getpass`'s own `echo_char="*"` and needs no key reader of its own (Claude's call). `Stashy.bat` still installs on 3.12 and 3.13, which have no `echo_char`; there it asks as before, with nothing shown.* | **done 14/11/2026** (item 1.10) |
-| S25 | 11/11/2026 | `finance/services/importing.py`, `_detect_date_format()` and the comment above it | You'd like date detection to cover the whole file: one date like `1/13/2022` means every date in it is month-first. **It already works that way (Claude checked the code):** every row's date is looked at before any row is read, and the first date that can only be read one way settles the whole file, so with `1/13/2022` anywhere, `03/04/2022` is read as 4 March. Two things make it look otherwise. The comment says "Ambiguous rows … are skipped", which means skipped *while guessing*, not left out of the import. And today's tests have only one row each, so nothing proves an earlier ambiguous row follows a later deciding one. Fix: reword the comment, and add a test with ambiguous rows before the deciding one. Claude's find: a file mixing both ways (`13/01/2022` and `01/13/2022`) trusts whichever comes first. Under plan 04's R3 (a date Stashy can't read fails the import, listing the rows), such a file will fail and say which rows, which is enough. Proposed phase: 2 (documentation and tests). | open |
+| S25 | 11/11/2026 | `finance/services/importing.py`, `_detect_date_format()` and the comment above it | You'd like date detection to cover the whole file: one date like `1/13/2022` means every date in it is month-first. **It already works that way (Claude checked the code):** every row's date is looked at before any row is read, and the first date that can only be read one way settles the whole file, so with `1/13/2022` anywhere, `03/04/2022` is read as 4 March. Two things make it look otherwise. The comment says "Ambiguous rows … are skipped", which means skipped *while guessing*, not left out of the import. And today's tests have only one row each, so nothing proves an earlier ambiguous row follows a later deciding one. Fix: reword the comment, and add a test with ambiguous rows before the deciding one. Claude's find: a file mixing both ways (`13/01/2022` and `01/13/2022`) trusts whichever comes first. Under plan 04's R3 (a date Stashy can't read fails the import, listing the rows), such a file will fail and say which rows, which is enough. Proposed phase: 2 (documentation and tests). | **done 16/11/2026** (item 2.6) |
 | S26 | 11/11/2026 | `finance/templates/finance/account_reconcile_review.html`, the reconcile page | **Mark all** sits on its own line above the two tables, on the right, while **Finish reconciling** and **Cancel** are at the very bottom, on the left. You'd like one line: Mark all on the left, Finish reconciling and Cancel on the right, on the line where Mark all is now. Proposed phase: 5 (templates). | open |
 | S27 | 12/11/2026 | `finance/templates/finance/account_reconcile_start.html`, the reconcile page's first step | Today only **Opening balance** is a row with its label on the left and the amount on the right. The two statement boxes have their labels above them, fill the card's width, and the balance box has the hint "The ending balance shown on your bank or card statement." under it. You'd like all three as rows, labels on the left and values on the right, with the hint centred below. **Claude's suggestion (your choice):** the three rows as you describe, with the two boxes only as wide as a date or an amount, right-aligned, so the three values line up under each other like on a statement. The hint goes under its own label, on the left, small and grey, instead of centred below: it stays next to what it explains, and the right side stays a clean column of values. Start reconciling and Cancel go on the right, the same side as on the next page after S26. On a phone the rows fall back to the label above its box. Proposed phase: 5, with S26. *12/11/2026 (you): the hint under its label, on the left, on one line, not two. So the wording stays short ("as shown on your bank or card statement") and the label side is wide enough to hold it on one line on a normal screen; only a phone may wrap it.* | open (decided 12/11/2026) |
 | S28 | 12/11/2026 | `finance/templates/finance/` (34 pages and an `includes/` folder, all side by side) | You're uneasy that every template sits in one folder; you'd usually split them by area (transactions, reminders, …). **Claude:** both are normal in Django. One flat folder named `<thing>_<action>.html` is Django's own default (its generic views look for `finance/transaction_list.html`), and it's fine for small apps. At Stashy's size, folders per area are clearer, and the code is already split that way: `views/` has one module per area and the tests one file per area. So the templates follow the same map: `accounts/` (list, detail, delete, transfer, both reconcile steps), `categories/`, `payees/`, `transactions/`, `reminders/`, `imports/`, `reports/` (with its three report-only pieces from `includes/`), `settings/`, `dashboard/`, `welcome/`. Shared pages stay at the top of `finance/`: `base.html`, `error_page.html`, and S19's `form_page.html` and `delete_page.html`; `includes/` keeps only pieces several areas use. Two folders stay where they are, because Django looks for them by name: `registration/` (the picker and PIN pages; Django's login view looks there) and `404.html`/`500.html` at the top. Claude's call: files keep their full names (`transactions/transaction_list.html`, not `transactions/list.html`), so PyCharm's tabs and search results never show five files all called `list.html`. The work is mechanical: move the files, update each view's `template_name`, the `{% extends %}`/`{% include %}` paths and the tests that name a template. Proposed phase: 5, as its first step, so S19's new files land straight in their folders. *12/11/2026 (you): "folders it is", and you accept Claude's other suggestions here and in S19, S25 and S27.* *Later on 12/11/2026 (you): each layout sits with the pages that use it ("by use"), not all layouts together. So `welcome_base.html` goes into `welcome/` with the five steps, and the error pages' layout leaves `finance/` to sit beside `404.html` and `500.html` at the top of `finance/templates/`, renamed `error_base.html` (Stashy names its layouts `*_base.html`, like `welcome_base.html`). `404.html` and `500.html` themselves don't move: Django looks them up by exact name at the top, and moving them would need our own error handlers in `stashy/urls.py`. The only cost: `error_base.html` is outside the app's own `finance/` folder, which normally keeps names from clashing with another app's, and nothing Stashy installs has a template of that name.* | open (decided 12/11/2026) |
@@ -496,7 +497,7 @@ Stashy.
 | S31 | 12/11/2026 | `finance/views/dashboard.py`, `dashboard.html` (Net worth tile) | Found by the template review you asked for (12/11/2026), like S32-S37. The dashboard's net worth quietly leaves out every account whose currency has no known exchange rate. The Accounts page warns about this ("No known rate for USD — not included above"), and the dashboard view gets the same list (`missing_rates` from `convert_balances()`) but the page never shows it, so the total is simply lower, with no hint why. Fix: the same warning under the Net worth tile, from one small include that the Accounts page uses too (no copy-paste). A test with a USD account and no USD rate. Proposed phase: 1. | done 15/11/2026 (item 1.11) |
 | S32 | 12/11/2026 | `finance/templates/finance/settings.html`, the Exchange rates table | The "As of" date is `{{ known.date }}` without `sdate`, so it ignores the stash's date format (a month-first stash still sees day-first). "Source" shows the stored code (`manual`, `Frankfurter`) instead of its label from `ExchangeRate.Source` ("Typed in", "Frankfurter (ECB)"): the same kind of slip as S5. Fix: `sdate`, and the label instead of the code. A test with a month-first stash and a typed-in rate. Proposed phase: 1. | done 15/11/2026 (item 1.12) |
 | S33 | 12/11/2026 | `dashboard.html` ("Saved in" tile), `reports.html` (report 5's "Savings rate"), `percent_fmt()` in `finance/views/reports.py` | The savings rate is printed the Python way, so a stash with the `10.000,50` number format sees "71.2%" next to "1.200,00 €". Fix: through the stash's number format (`money:1` in the templates, the same `regional` formatting in `percent_fmt()`). A test with the `10.000,50` format. Proposed phase: 1. | **done 14/11/2026** (item 1.13) |
-| S34 | 12/11/2026 | `finance/tests/test_pages.py`, `RenderCheckTests` | The test that catches leaked template code renders only 14 pages and looks only for `{#`, `#}`, `{%`, `%}`. Not covered: the transfer page, both reconcile steps, every add/edit/delete page, category usage, payee detail, the reminder scope page, backup restore, the welcome steps, login, picker, create stash, forgot PIN, 404 and 500. The review rendered all of them and none leaks today, so this is a safety gap, not a bug. Your call (12/11/2026): "fix whatever you need here", so Claude's call on the details: every page Stashy has, plus a check that fails when a new page in `finance/urls.py` is missing from the list (with a short, commented skip list for POST-only URLs and exports), so a new page can't be forgotten; it also looks for `{{`/`}}` outside `<script>` blocks; and the test's `date.today()` becomes `timezone.localdate()`, as the rules say. Proposed phase: 2. | open |
+| S34 | 12/11/2026 | `finance/tests/test_pages.py`, `RenderCheckTests` | The test that catches leaked template code renders only 14 pages and looks only for `{#`, `#}`, `{%`, `%}`. Not covered: the transfer page, both reconcile steps, every add/edit/delete page, category usage, payee detail, the reminder scope page, backup restore, the welcome steps, login, picker, create stash, forgot PIN, 404 and 500. The review rendered all of them and none leaks today, so this is a safety gap, not a bug. Your call (12/11/2026): "fix whatever you need here", so Claude's call on the details: every page Stashy has, plus a check that fails when a new page in `finance/urls.py` is missing from the list (with a short, commented skip list for POST-only URLs and exports), so a new page can't be forgotten; it also looks for `{{`/`}}` outside `<script>` blocks; and the test's `date.today()` becomes `timezone.localdate()`, as the rules say. Proposed phase: 2. | **done 16/11/2026** (item 2.7) |
 | S35 | 12/11/2026 | Templates across `finance/` and `registration/`; `transaction-quick-edit.js`, `reports.js` | Things a screen reader or keyboard user trips over; nothing changes on screen except that clicking a label now puts you in its box. **Labels not linked to their box** (the S29 kind): Import (Account, File, Date format), the Reports filters (Date range, Subtotal by, Average interval, Account, Start, End); on Reports the "?" icon moves out of the label, so clicking it doesn't jump into the box. **Controls with no name:** the login PIN box, the reconcile tick boxes ("Reconcile Lidl 05/11/2026"), Edit mode's controls in `<template id="quick-edit-controls">`, and the pencil and bin buttons on the Accounts, Categories, Payees and Reminders lists (`aria-label="Edit"`/`"Delete"`, as Transactions already has). **Not reachable with Tab:** Reports' show/hide-subcategories arrow (`report-toggle-icon`, in both report tables and the Net worth table) becomes a real button that says whether it's open, looking the same; the "?" help icons get a name ("About Date range"). **Headings:** 15 pages use `<h3>` for their page title; they get `<h1 class="h3">` like the rest (same look). **Charts:** the 8 report charts and the dashboard donut get `role="img"` and a short description. **Transactions' Rec. tick** gets hidden "Reconciled" text. Your call (12/11/2026): none of this is yours to decide. Proposed phase: 5. | open |
 | S36 | 12/11/2026 | `account_list.html`, `transaction_form.html`, `reports.html`, `includes/sidebar_contents.html`, the transaction counts | Small on-screen slips, Claude's to fix (polish): Accounts' warning repeats a currency once per left-out account ("No known rate for USD, USD"), so each shows once (with S31's shared warning); the transaction form's browser tab says "New transaction" while its heading says "Enter reminder" (the title gets the same if/elif); Reports' error box uses internal field names ("Interval: Select a valid choice…" for the box labelled "Average interval"), so it uses the labels; the sidebar highlights Settings on Change PIN, New recovery code and Restore backup too; counts like "2500 transactions · showing 1001–2000" get the stash's thousands separator (worked out from the code, check when building). Proposed phase: 5. | open |
 | S37 | 12/11/2026 | `reports.html`, `welcome_categories.html`, `includes/head_assets.html`, `account_reconcile_review.html`, three pages with an inline width, `settings.html` | Leftovers in the templates, nothing you'd notice today: Reports' "View them" link puts display-format dates in the URL (`start|sdate`), while Stashy's own links carry YYYY-MM-DD (`regional.parse_date()`), so `date:"Y-m-d"`; "26 top-level categories" on the welcome step is typed in, so the view counts them from the spreadsheet; the `theme-color` tag is the light colour in both modes, so it gets a dark twin; reconcile's hidden balance and `data-amount` use the raw value where Transactions uses `unlocalize`, so they do too; `style="max-width: 560px;"` written into `generic_confirm_delete`, `backup_restore_confirm` and `reminder_edit_scope` becomes one class in `stashy.css` (with S19's `delete_page.html`); Settings' Restore link gets `urlencode` on the backup name (safe today: the names are plain letters, digits, `-`, `_` and `.`). Proposed phase: 5. | open |
@@ -914,7 +915,7 @@ recovery-code page losing the new code after a PIN re-hash, the old
 - **S85 — The leaked-template-syntax tuple is typed out in three test
   modules** (`test_auth.py`, `test_imports.py`, `test_transactions.py`).
   Part A moved the shared one to `tests/base.py`; those three use it.
-  Proposed: Phase 2.
+  Proposed: Phase 2. *Done 16/11/2026 (item 2.15).*
 
 - **S86 — Two restores at the same moment can destroy the safety copy.**
   A backup's file name is stamped to the second, and `backup_now()`
@@ -1014,7 +1015,7 @@ recovery-code page losing the new code after a PIN re-hash, the old
   to 40 s. `RenderCheckTests.LEAKS` in `test_pages.py` is one more copy of
   `LEAKED_TEMPLATE_SYNTAX`, and the login-lasts-until-the-browser-closes
   test sits in the lockout class, not `test_project.py`. Checklist item
-  2.16, with 2.15.
+  2.16, with 2.15. *Done 16/11/2026.*
 
 ### K. Found by the reviews of Phase 1, part B (14/11/2026)
 
@@ -1189,7 +1190,7 @@ rest:
   `default` database a question; a run with no test that sets that database
   up gets "queries to 'default' are not allowed". It passes in the full suite
   and fails alone. **Fix:** give the test the database, or mock the one query.
-  Phase 2, 2.16.
+  Phase 2, 2.16. *Done 16/11/2026.*
 - **S105 — An owner named "Default" collides with the `default` database
   alias** (database and security reviewers; older). The folder name comes
   from the owner name (`default`), and Stashy's placeholder database is the
@@ -1459,13 +1460,25 @@ too much for one review, and Phase 1 went the same way), each one a commit:
   none depends on the others. S110 also changed `scripts/bootstrap.py`,
   which scans `stashes/` on its own (see 2.17).
 - **B, the tests:** 2.1, 2.6–2.9, 2.15, 2.16 (S11, S25, S34, S56–S62, S85,
-  S90, S104). Test files only (`tests/base.py` included).
+  S90, S104). Test files only (`tests/base.py` included), plus one reworded
+  comment in `services/importing.py` (S25). **Done 16/11/2026**, suite from
+  1,134 to 1,115 tests.
 - **C, dead bits and comments:** 2.2–2.5 (S12, S13, S21, S44, S43's
   comments). Last, because it touches almost every file, and part B has
   already removed the tests that only describe history.
 
-- [ ] **2.1** S11: delete the 21 history-only tests, trim three, rename the
-  kept classes; plus the seven more from G's note.
+- [x] **2.1** S11: delete the 21 history-only tests, trim three, rename the
+  kept classes; plus the seven more from G's note. *Done 16/11/2026: the 21
+  went (counted: Category 2, Reminder 4, "biweekly" and the five tags tests,
+  the payee name column and the payee default fields, the starter button,
+  "top5-data", two account helper texts, two Settings cards, the migration
+  prefill). Three more tests were deleted outright ("vs. average of last",
+  Reminders' "Varies", "same as before the merge") and six had their
+  old-label lines dropped, keeping the real check: the Settings page's old
+  buttons and old card lines (two tests), the Reminders `<th>Name</th>` line,
+  the old Expand-button id, "Contract" and the old admin label. The classes that shared a file with a real test have clear
+  names now: `ReminderSkipTests`, `ReminderIntervalTests`, `ReminderLabelTests`,
+  `TransactionSearchTests`.*
 - [ ] **2.2** S12: remove the dead bits.
 - [ ] **2.3** S13: history notes out of the 12 files, R-codes in code and
   CLAUDE.md replaced by words, boilerplate docstrings and `.gitignore`
@@ -1478,16 +1491,57 @@ too much for one review, and Phase 1 went the same way), each one a commit:
   trim one that retells it, and never strip docstrings. In the same pass,
   S43's comment part: every comment and docstring wrapped at 72, then
   ruff's `W505` (`max-doc-length = 72`) switched on so it stays that way.
-- [ ] **2.6** S25: the import's date-detection comment reworded, and a
-  test with ambiguous rows before the deciding one.
-- [ ] **2.7** S34: the render check covers every page; `date.today()`
+- [x] **2.6** S25: the import's date-detection comment reworded, and a
+  test with ambiguous rows before the deciding one. *Done 16/11/2026. The
+  test has a day-first and a month-first file; the month-first one is the
+  one that matters, because the profile's default is day-first, so a
+  detection that did nothing would still pass the other.*
+- [x] **2.7** S34: the render check covers every page; `date.today()`
   becomes `timezone.localdate()` in every test module that compares with
-  the app's dates (G's note).
-- [ ] **2.8** S56–S61: the tests' findings: valid category trees, tests
+  the app's dates (G's note). *Done 16/11/2026. The check visits every URL
+  name in `finance/urls.py` with ids of real rows and fails if a name is
+  neither a rendered HTML page nor in the commented `NOT_A_PAGE` list, in
+  either direction (a page that starts rendering must leave the list). It
+  also visits the welcome steps, the pages you reach only by a choice or a
+  POST (the reminder's scope question, its two edit forms, reconcile's
+  checklist), and the public pages (picker, create stash, PIN screen, forgot
+  PIN); and it looks for `{{` and `}}` outside `<script>` blocks. Not in the
+  list: the restore-backup confirmation (it needs a real backup file;
+  `test_backup.py` has its own leak check) and the 404 and 500 pages
+  (`ErrorPageTests`). `date.today()` became `timezone.localdate()` in seven
+  modules, 42 places; `test_backup.py` keeps the computer's clock.*
+- [x] **2.8** S56–S61: the tests' findings: valid category trees, tests
   that check the real thing, duplicates removed, clear names, the test
-  rules, shared set-up in `base.py`.
-- [ ] **2.9** S62: tests for fetching exchange rates and for typed-in
-  rates beating fetched ones.
+  rules, shared set-up in `base.py`. *Done 16/11/2026. Claude's calls on
+  which of each duplicate pair stays: the payee tests keep
+  `PayeeResolutionViewTests` (it also gained the "new name still creates a
+  payee" test); the import's category guess keeps the one under
+  `CategoryAutoCreateTests`, now with two earlier categories so it really
+  proves "most recent"; the PIN rule keeps `PinRuleTests` (it checks the
+  message and more cases); the two backup-list tests keep the three-scheme
+  one; the session/cookie exact-name tests keep the one that goes through
+  every middleware; the import's "logged as automatic" test stays in
+  `audit/tests.py`, where the audit log is the subject. Shared helpers in
+  `base.py`: `csv_rows`, `csv_upload`, `post_import`,
+  `create_accounts_with_a_transaction`, `create_reminders`,
+  `StashTestCase.get_and_count_queries`, `StarterCategoriesFileMixin`,
+  `LoggedInAsSuperuserTestCase`, `every_finance_url`, `leaked_syntax_in`.
+  The `INCOME` alias S61 mentions is still used in all three modules, so it
+  stays. S58's last step, measuring `test_reminders.py` again: 1,455 lines
+  (1,194 when the plan was written), so it is split, by whole classes
+  (Claude's call on the name, following `test_reporting.py` and
+  `test_reports.py`): `test_reminder_rules.py` (822 lines: the schedule and
+  its occurrences, status, the form's checks, entering and skipping, what a
+  save regenerates) and `test_reminders.py` (651 lines: the pages). The same
+  tests run before and after.*
+- [x] **2.9** S62: tests for fetching exchange rates and for typed-in
+  rates beating fetched ones. *Done 16/11/2026. The second half already
+  existed in `test_currency.py` (three tests, both orders of saving, and the
+  other way round), so only the fetching needed new tests: fourteen, with
+  `urlopen` replaced, covering the reply, what is stored, the request's
+  address, the lev, nothing to fetch, a rate that is missing, zero or
+  negative, being offline, a timeout and who is asking, six kinds of unusable
+  reply and one that isn't JSON, and the audit reason.*
 - [x] **2.10** S68: `.playwright-mcp/` in `.gitignore`.
 - [x] **2.11** S70: `starter_categories.xlsx` moves into `finance/`, and
   the code, the welcome page's message, README and CLAUDE.md follow. A test
@@ -1498,13 +1552,22 @@ too much for one review, and Phase 1 went the same way), each one a commit:
   `Stashy.bat` saved with CRLF.
 - [x] **2.14** S74: README and `Stashy.bat`'s message describe the Python
   install manager.
-- [ ] **2.15** S85: the three test modules use `tests/base.py`'s
-  `LEAKED_TEMPLATE_SYNTAX`, and `test_pages.py`'s own copy too.
-- [ ] **2.16** S104: `test_the_deploy_check_only_finds_what_it_was_told_to_skip`
-  passes alone and in any subset.
-- [ ] **2.16** S90: one `TemporaryStashesMixin.create_stash()`, the
+- [x] **2.15** S85: the three test modules use `tests/base.py`'s
+  `LEAKED_TEMPLATE_SYNTAX`, and `test_pages.py`'s own copy too. *Done
+  16/11/2026.*
+- [x] **2.16** S104: `test_the_deploy_check_only_finds_what_it_was_told_to_skip`
+  passes alone and in any subset. *Done 16/11/2026: the test is in its own
+  `DeployCheckTests`, which lists the two databases the checks reach, like
+  `PendingMigrationsTests`. It failed alone on the old code and passes alone
+  now.*
+- [x] **2.16** S90: one `TemporaryStashesMixin.create_stash()`, the
   `ResetPinCommandTests` stash built once per class, and the browser-close
-  test moved to `test_project.py`.
+  test moved to `test_project.py`. *Done 16/11/2026: `create_stash()` (with
+  `allow_databases()` and a public `unregister()`) replaces nine copies of the
+  three-line set-up; `ResetPinCommandTests` builds its stash in `setUpClass`
+  and gives each test a copy of how it was then (15 tests in about 4 seconds
+  instead of one migration each); the cookie test is `LoginCookieTests` in
+  `test_project.py`.*
 - [x] **2.17** S110: `list_stashes()` skips the reserved folder names
   (now `finance/stashes/folder_names.py`), so a hand-made `default` folder
   isn't listed; a test. `scripts/bootstrap.py` had its own copy of the scan
@@ -1531,8 +1594,9 @@ too much for one review, and Phase 1 went the same way), each one a commit:
 - [ ] **2.21** S115: a bad regular expression in an admin list's address
   isn't a 500 page; a test.
 
-**Done when:** the suite is green (fewer tests than 723, since history-only
-tests and duplicates go, and a few new ones come), and a grep for the
+**Done when:** the suite is green (fewer tests than 723 was the aim when this
+was written; today's count is 1,115, down from 1,134 before part B, since
+history-only tests and duplicates went and a few new ones came), and a grep for the
 history patterns finds nothing outside `plans/` and `DEVLOG.md`.
 
 ## Phase 3 — Python structure  (S40, S43, S15, S16, S17, S18, S20, S42, S45, S47, S48, S63–S66, S49, S71, S82, S89, S101, S109)

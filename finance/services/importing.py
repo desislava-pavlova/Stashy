@@ -335,9 +335,12 @@ def _resolve_category(raw, amount):
     return child
 
 
-# A day value over 12 in either position settles day-first vs month-first; a 4-digit first
-# component is ISO. Ambiguous rows (both parts <= 12) are skipped - the caller falls back to
-# the profile's own format if nothing in the whole file was ever unambiguous.
+# The date format is guessed once for the whole file, from every row's date, before any row is
+# read. The first date that can be read only one way settles it for all the rows: a first part
+# over 12 is a day (day-first), a second part over 12 is a day (month-first), and a 4-digit
+# first part is ISO. A date with both parts 12 or under says nothing and is passed over while
+# guessing only: it is still imported, in the format the rest of the file settled. When no row
+# in the file settles it, the caller uses the profile's own format.
 _DATE_SNIFF_RE = re.compile(r"^(\d{1,4})[./-](\d{1,2})[./-](\d{1,4})$")
 
 

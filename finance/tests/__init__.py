@@ -1,6 +1,7 @@
 """Stashy's finance tests, one module per area, named after the code they test: test_accounts.py
 goes with views/accounts.py, test_backup.py with backup.py, and so on. Easy to mix up:
 test_reporting.py is the report maths (reporting.py) and test_reports.py the Reports page;
+test_reminder_rules.py is the reminder rules (on the model) and test_reminders.py the pages;
 test_settings.py is the Settings page and test_project.py Django's own settings, logging and the
 rules the code follows; test_pages.py holds checks every page must pass. base.py holds the base
 classes these tests and audit/tests.py share.

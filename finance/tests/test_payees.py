@@ -6,7 +6,6 @@ from decimal import Decimal
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import IntegrityError, transaction
 from django.urls import reverse
 
@@ -14,7 +13,7 @@ from audit.models import AuditLogEntry
 
 from ..forms import PayeeForm
 from ..models import Account, Category, Payee, Transaction, name_key
-from .base import LoggedInTestCase, LoggedInWithAccountTestCase, StashTestCase
+from .base import LoggedInTestCase, LoggedInWithAccountTestCase, StashTestCase, csv_upload, post_import
 
 
 class NameKeyTests(StashTestCase):
@@ -125,13 +124,24 @@ class PayeeResolutionViewTests(StashTestCase):
         txn = Transaction.objects.get(amount=Decimal("-12.00"))
         self.assertEqual(txn.payee, self.lidl)
         self.assertEqual(txn.payee.name, "Lidl")
+        self.assertEqual(Payee.objects.count(), 1)
+
+    def test_a_genuinely_new_name_still_creates_a_payee(self):
+        self.client.post(
+            reverse("finance:transaction_add"),
+            {
+                "account": self.account.pk,
+                "date": "05/09/2026",
+                "payee_name": "Brand New Shop",
+                "amount": "-5.00",
+            },
+        )
+        self.assertTrue(Payee.objects.named("Brand New Shop").exists())
+        self.assertEqual(Payee.objects.count(), 2)
 
     def test_an_import_reuses_the_saved_payee_and_logs_the_new_one_as_imported(self):
-        content = b"Date,Payee,Memo,Amount\n03/09/2026,LIDL,,-5.00\n04/09/2026,Rewe,,-6.00\n"
-        self.client.post(
-            reverse("finance:import_transactions"),
-            {"account": self.account.pk, "file": SimpleUploadedFile("bank.csv", content)},
-        )
+        content = "Date,Payee,Memo,Amount\n03/09/2026,LIDL,,-5.00\n04/09/2026,Rewe,,-6.00\n"
+        post_import(self.client, self.account, csv_upload(content))
         self.assertEqual(Transaction.objects.get(amount=Decimal("-5.00")).payee, self.lidl)
         self.assertEqual(Payee.objects.count(), 2)
         rewe_row = AuditLogEntry.objects.get(table="finance_payee", action="insert", row_label="Rewe")
@@ -232,14 +242,6 @@ class PayeeHistoryTests(StashTestCase):
         history = self.payee.category_history()
         self.assertEqual(len(history), 1)
         self.assertIsNone(history[0].category)
-
-
-class PayeeFormTests(StashTestCase):
-    def test_form_no_longer_has_default_fields(self):
-        form = PayeeForm()
-        for field in ("default_category", "default_memo", "default_amount"):
-            self.assertNotIn(field, form.fields)
-        self.assertIn("name", form.fields)
 
 
 class PayeeDetailTests(LoggedInWithAccountTestCase):
@@ -374,40 +376,6 @@ class PayeeListFilterAndSortTests(LoggedInWithAccountTestCase):
         self.assertEqual(row["categories_label"], "Groceries, Household")
         self.assertEqual(row["totals"], [("EUR", Decimal("-45.00"))])
         self.assertEqual(row["usage_count"], 2)
-
-
-class CaseInsensitivePayeeTests(LoggedInWithAccountTestCase):
-    def test_manual_entry_reuses_an_existing_payee_regardless_of_case(self):
-        Payee.objects.create(name="Lidl")
-        self.client.post(
-            reverse("finance:transaction_add"),
-            {
-                "account": self.account.pk,
-                "date": "05/01/2026",
-                "payee_name": "lidl",
-                "amount": "-5.00",
-            },
-        )
-        self.assertEqual(Payee.objects.filter(name__iexact="lidl").count(), 1)
-        self.assertEqual(Transaction.objects.get().payee.name, "Lidl")
-
-    def test_import_reuses_an_existing_payee_regardless_of_case(self):
-        Payee.objects.create(name="Lidl")
-        upload = SimpleUploadedFile("bank.csv", b"Date,Payee,Memo,Amount\n05/01/2026,LIDL,,-5.00\n")
-        self.client.post(reverse("finance:import_transactions"), {"account": self.account.pk, "file": upload})
-        self.assertEqual(Payee.objects.filter(name__iexact="lidl").count(), 1)
-
-    def test_a_genuinely_new_name_still_creates_a_payee(self):
-        self.client.post(
-            reverse("finance:transaction_add"),
-            {
-                "account": self.account.pk,
-                "date": "05/01/2026",
-                "payee_name": "Brand New Shop",
-                "amount": "-5.00",
-            },
-        )
-        self.assertTrue(Payee.objects.filter(name="Brand New Shop").exists())
 
 
 class PayeeListDistinctCategoriesTests(LoggedInWithAccountTestCase):

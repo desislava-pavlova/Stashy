@@ -16,13 +16,11 @@ from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from openpyxl import Workbook
 
-from audit.models import AuditLogEntry
-
 from ..forms import ImportUploadForm
-from ..models import Account, Category, ImportBatch, Payee, Transaction
+from ..models import Account, Category, ImportBatch, Payee, Transaction, name_key
 from ..services import importing
 from ..services.importing import _parse_transaction_number
-from .base import LoggedInWithAccountTestCase, StashTestCase
+from .base import LEAKED_TEMPLATE_SYNTAX, LoggedInWithAccountTestCase, StashTestCase, csv_upload, post_import
 
 EXPENSE, INCOME = Category.CategoryType.EXPENSE, Category.CategoryType.INCOME
 
@@ -44,26 +42,19 @@ NEWFILEUID:NONE
 """
 
 
-def csv_upload(text, name="bank.csv", encoding="utf-8"):
-    return SimpleUploadedFile(name, text.encode(encoding), content_type="text/csv")
-
-
 class ImportTestCase(LoggedInWithAccountTestCase):
     """Logged in with an account, plus _import(), which posts CSV text to the import page
     as bank.csv, for self.account."""
 
     def _import(self, csv_text, **extra):
-        upload = SimpleUploadedFile("bank.csv", csv_text.encode(), content_type="text/csv")
-        data = {"account": self.account.pk, "file": upload, **extra}
-        return self.client.post(reverse("finance:import_transactions"), data)
+        return post_import(self.client, self.account, csv_upload(csv_text), **extra)
 
 
 class CsvImportTests(LoggedInWithAccountTestCase):
     CSV = 'Date,Payee,Memo,Amount\n03/04/2026,Shop,,"1.234,56"\n04/04/2026,Cafe,,-19.99\n'
 
     def _import(self):
-        upload = SimpleUploadedFile("bank.csv", self.CSV.encode(), content_type="text/csv")
-        return self.client.post(reverse("finance:import_transactions"), {"account": self.account.pk, "file": upload})
+        return post_import(self.client, self.account, csv_upload(self.CSV))
 
     def test_amounts_are_exact_decimals_and_dates_are_day_first(self):
         self._import()
@@ -197,24 +188,6 @@ class ReconciledImportThroughThePageTests(ImportTestCase):
         self.assertEqual(self.reconcile_checklist().context["payments"], [])
 
 
-class ImportCategoryGuessTests(LoggedInWithAccountTestCase):
-    def test_import_guesses_the_payees_most_recent_category(self):
-
-        groceries = Category.objects.create(name="Groceries")
-        payee = Payee.objects.create(name="Lidl")
-        Transaction.objects.create(
-            account=self.account,
-            date=date(2026, 1, 1),
-            payee=payee,
-            category=groceries,
-            amount=Decimal("-10.00"),
-        )
-        upload = SimpleUploadedFile("bank.csv", b"Date,Payee,Memo,Amount\n10/01/2026,Lidl,,-20.00\n")
-        self.client.post(reverse("finance:import_transactions"), {"account": self.account.pk, "file": upload})
-        imported = Transaction.objects.get(date=date(2026, 1, 10))
-        self.assertEqual(imported.category, groceries)
-
-
 class CategoryAutoCreateTests(ImportTestCase):
     def test_an_unknown_top_level_category_is_created_and_flagged(self):
         self._import("Date,Payee,Memo,Amount,Category\n01/01/2026,Lidl,,-20.00,Groceries\n")
@@ -231,8 +204,8 @@ class CategoryAutoCreateTests(ImportTestCase):
     def test_matching_is_case_insensitive_and_does_not_duplicate(self):
         Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
         self._import("Date,Payee,Memo,Amount,Category\n01/01/2026,Lidl,,-20.00,groceries\n")
-        self.assertEqual(Category.objects.filter(name__iexact="groceries").count(), 1)
-        self.assertFalse(Category.objects.get(name__iexact="groceries").is_auto_generated)
+        self.assertEqual(Category.objects.filter(name_key=name_key("groceries")).count(), 1)
+        self.assertFalse(Category.objects.get(name_key=name_key("groceries")).is_auto_generated)
 
     def test_parent_child_with_colon_creates_a_subcategory(self):
         self._import("Date,Payee,Memo,Amount,Category\n01/01/2026,ViK,,-20.75,Bills & Utilities:Water\n")
@@ -254,20 +227,22 @@ class CategoryAutoCreateTests(ImportTestCase):
         self.assertEqual(adjustment.parent_id, income_parent.pk)
         self.assertEqual(adjustment.category_type, "income")
 
-    def test_no_category_column_falls_back_to_payee_history(self):
-
-        groceries = Category.objects.create(name="Groceries")
+    def test_no_category_column_guesses_the_payees_most_recently_used_category(self):
+        groceries = Category.objects.create(name="Groceries", category_type=EXPENSE)
+        household = Category.objects.create(name="Household", category_type=EXPENSE)
         payee = Payee.objects.create(name="Lidl")
-        Transaction.objects.create(
-            account=self.account, date=date(2026, 1, 1), payee=payee, category=groceries, amount=Decimal("-5.00")
-        )
-        self._import("Date,Payee,Memo,Amount\n02/01/2026,Lidl,,-10.00\n")
-        self.assertEqual(Transaction.objects.get(date=date(2026, 1, 2)).category, groceries)
+        for on, category in ((date(2026, 1, 1), groceries), (date(2026, 1, 8), household)):
+            Transaction.objects.create(
+                account=self.account, date=on, payee=payee, category=category, amount=Decimal("-5.00")
+            )
+        self._import("Date,Payee,Memo,Amount\n10/01/2026,Lidl,,-10.00\n")
+        self.assertEqual(Transaction.objects.get(date=date(2026, 1, 10)).category, household)
 
     def test_auto_generated_badge_shown_in_category_list(self):
+        Category.objects.create(name="Made by hand", category_type=Category.CategoryType.EXPENSE)
         self._import("Date,Payee,Memo,Amount,Category\n01/01/2026,Lidl,,-20.00,Groceries\n")
         response = self.client.get(reverse("finance:category_list"))
-        self.assertContains(response, "auto")
+        self.assertContains(response, 'title="Created automatically during an import">auto</span>', count=1)
 
 
 class AccountColumnTests(ImportTestCase):
@@ -290,20 +265,12 @@ class AccountColumnTests(ImportTestCase):
         self.assertEqual(Transaction.objects.get().account, self.account)
 
     def test_an_unknown_account_name_skips_just_that_row(self):
-        upload = SimpleUploadedFile(
-            "bank.csv",
-            (
-                b"Date,Account,Payee,Memo,Amount\n"
-                b"01/01/2026,Nonexistent Card,Employer,,100.00\n"
-                b"02/01/2026,Savings,Employer,,50.00\n"
-            ),
-            content_type="text/csv",
+        upload = csv_upload(
+            "Date,Account,Payee,Memo,Amount\n"
+            "01/01/2026,Nonexistent Card,Employer,,100.00\n"
+            "02/01/2026,Savings,Employer,,50.00\n"
         )
-        response = self.client.post(
-            reverse("finance:import_transactions"),
-            {"account": self.account.pk, "file": upload},
-            follow=True,
-        )
+        response = post_import(self.client, self.account, upload, follow=True)
         self.assertEqual(Transaction.objects.count(), 1)
         self.assertEqual(Transaction.objects.get().account, self.other)
         self.assertContains(response, "skipped")
@@ -328,6 +295,22 @@ class DateFormatDetectionTests(ImportTestCase):
         self._import("Date,Payee,Memo,Amount\n2026-01-05,Shop,,-10.00\n")
         self.assertEqual(Transaction.objects.get().date, date(2026, 1, 5))
 
+    def test_ambiguous_dates_before_the_deciding_one_are_read_the_way_it_settles(self):
+        # 03/04 and 04/05 can be read both ways. Only the last row (a 25 in the day place or the
+        # month place) settles the format, and it settles it for the rows above it.
+        day_first = "Date,Payee,Memo,Amount\n03/04/2026,Shop,,-1.00\n04/05/2026,Cafe,,-2.00\n25/01/2026,Bar,,-3.00\n"
+        month_first = day_first.replace("25/01/2026", "01/25/2026")
+        for name, file, expected in (
+            ("day-first", day_first, {"Shop": date(2026, 4, 3), "Cafe": date(2026, 5, 4)}),
+            ("month-first", month_first, {"Shop": date(2026, 3, 4), "Cafe": date(2026, 4, 5)}),
+        ):
+            with self.subTest(file=name):
+                Transaction.objects.all().delete()
+                ImportBatch.objects.all().delete()
+                self._import(file)
+                dates = {t.payee.name: t.date for t in Transaction.objects.exclude(payee__name="Bar")}
+                self.assertEqual(dates, expected)
+
     def test_an_ambiguous_file_falls_back_to_the_profile_default(self):
         # 03/04 alone could be either reading - nothing here settles it, so it falls back to
         # dmy, the default profile format in a test environment.
@@ -341,14 +324,8 @@ class DateFormatDetectionTests(ImportTestCase):
         self.assertEqual(Transaction.objects.count(), 0)
 
     def test_success_message_reports_the_format_used(self):
-        upload = SimpleUploadedFile(
-            "bank.csv", b"Date,Payee,Memo,Amount\n25/01/2026,Shop,,-10.00\n", content_type="text/csv"
-        )
-        response = self.client.post(
-            reverse("finance:import_transactions"),
-            {"account": self.account.pk, "file": upload},
-            follow=True,
-        )
+        upload = csv_upload("Date,Payee,Memo,Amount\n25/01/2026,Shop,,-10.00\n")
+        response = post_import(self.client, self.account, upload, follow=True)
         self.assertContains(response, "DD/MM/YYYY")
 
 
@@ -356,11 +333,7 @@ class ImportErrorTests(LoggedInWithAccountTestCase):
     """1.10 (F32, F47): unreadable files get a message; skipped rows are counted."""
 
     def upload(self, name, content):
-        return self.client.post(
-            reverse("finance:import_transactions"),
-            {"account": self.account.pk, "file": SimpleUploadedFile(name, content)},
-            follow=True,
-        )
+        return post_import(self.client, self.account, SimpleUploadedFile(name, content), follow=True)
 
     def test_a_windows_1251_csv_is_read_and_says_so(self):
         content = "Date,Payee,Memo,Amount\n03/09/2026,Магазин,,-5.00\n".encode("cp1251")
@@ -484,12 +457,6 @@ class ImportFileTests(StashTestCase):
                 importing.import_file(SimpleUploadedFile(name, b"not really that kind of file"), self.account)
         self.assertFalse(ImportBatch.objects.exists())
 
-    def test_imported_rows_are_logged_as_automatic(self):
-        with self.captureOnCommitCallbacks(execute=True):
-            importing.import_file(csv_upload("Date,Payee,Amount\n2026-01-05,Lidl,-3.00\n"), self.account)
-        entry = AuditLogEntry.objects.get(table=Transaction._meta.db_table)
-        self.assertEqual((entry.source, entry.reason), (AuditLogEntry.Source.AUTOMATIC, "Imported from bank.csv"))
-
     def test_an_excel_file_with_real_dates(self):
         workbook = Workbook()
         workbook.active.append(["Date", "Payee", "Memo", "Amount", "Reconciled"])
@@ -553,22 +520,17 @@ class ImportPageTests(StashTestCase):
         self.client.force_login(self.user)
 
     def test_an_unsupported_file_is_explained_on_the_form(self):
-        response = self.client.post(
-            reverse("finance:import_transactions"),
-            {"account": self.account.pk, "file": SimpleUploadedFile("statement.pdf", b"x"), "date_format": "auto"},
+        response = post_import(
+            self.client, self.account, SimpleUploadedFile("statement.pdf", b"x"), date_format="auto"
         )
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, importing.UNSUPPORTED_FILE_MESSAGE)
-        for leaked in ("{#", "#}", "{%", "%}"):
+        for leaked in LEAKED_TEMPLATE_SYNTAX:
             self.assertNotContains(response, leaked)
         self.assertFalse(ImportBatch.objects.exists())
 
     def test_a_good_file_lands_on_the_account_with_a_summary(self):
-        upload = SimpleUploadedFile("bank.csv", b"Date,Payee,Amount\n2026-01-05,Lidl,-3.00\n")
-        response = self.client.post(
-            reverse("finance:import_transactions"),
-            {"account": self.account.pk, "file": upload, "date_format": "auto"},
-            follow=True,
-        )
+        upload = csv_upload("Date,Payee,Amount\n2026-01-05,Lidl,-3.00\n")
+        response = post_import(self.client, self.account, upload, date_format="auto", follow=True)
         self.assertRedirects(response, reverse("finance:account_detail", kwargs={"pk": self.account.pk}))
         self.assertContains(response, "Imported 1 transaction (0 duplicates skipped).")

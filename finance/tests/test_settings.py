@@ -124,8 +124,6 @@ class SettingsEndpointsTests(LoggedInWithAccountTestCase):
         for name in ("settings", "check_rates", "save_watched_expenses", "create_backup"):
             with self.subTest(name=name):
                 self.assertIn(f'<form method="post" action="{reverse(f"finance:{name}")}"', page)
-        for old_button in ('name="check_rates"', 'name="backup_now"', 'name="save_watched_expenses"'):
-            self.assertNotIn(old_button, page)
 
     def test_the_new_endpoints_take_only_post(self):
         for name in ("check_rates", "create_backup", "save_watched_expenses"):
@@ -434,22 +432,11 @@ class SettingsLayoutTests(AlexsStashTestCase):
         response = self.client.get(reverse("finance:settings"))
         self.assertContains(response, "You're in Alex&#x27;s stash.")
 
-    def test_no_login_card_or_switch_stash_link(self):
-        response = self.client.get(reverse("finance:settings"))
-        self.assertNotContains(response, "Switch stash")
-        self.assertNotContains(response, "Choose a different stash")
-
-    def test_no_bullet_list_under_the_preferences_form(self):
-        response = self.client.get(reverse("finance:settings"))
-        self.assertNotContains(response, "guessed from this computer")
-
     def test_pin_and_recovery_code_card_links_to_their_own_pages(self):
         response = self.client.get(reverse("finance:settings"))
         self.assertContains(response, "PIN &amp; recovery code")
         self.assertContains(response, reverse("finance:change_pin"))
         self.assertContains(response, reverse("finance:recovery_code"))
-        self.assertNotContains(response, 'name="change_pin"')
-        self.assertNotContains(response, 'name="regenerate_recovery_code"')
 
 
 class PinPageTestCase(AlexsStashTestCase):
@@ -595,7 +582,7 @@ class RecoveryCodePageTests(PinPageTestCase):
         response = self.generate(follow=True)
         self.assertEqual(list(response.context["messages"]), [])
 
-    def test_refreshing_afterwards_loses_the_code_and_no_generate_button_reappears_yet(self):
+    def test_refreshing_afterwards_loses_the_code_and_shows_the_generate_warning_again(self):
         self.generate()
         first = self.client.get(reverse("finance:recovery_code"))
         self.assertContains(first, "Write this down now")

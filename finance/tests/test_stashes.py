@@ -1,9 +1,11 @@
 """Stashes themselves: owner names, creating a stash, and the last-resort PIN reset."""
 
 import sqlite3
+import tempfile
 from contextlib import closing
 from datetime import timedelta
 from io import StringIO
+from pathlib import Path
 from unittest import mock
 
 from django.contrib.auth import get_user_model
@@ -42,10 +44,7 @@ class CreateAndResetStashTests(TemporaryStashesMixin, SimpleTestCase):
 
     def test_create_then_reset_the_pin(self):
         self.make_stashes()
-        # create_stash() registers the alias itself, so the test allows it up front.
-        type(self).databases |= {"the-smiths"}
-        folder, code = registry.create_stash("The Smiths", "1234")
-        self.addCleanup(self._unregister, folder)
+        folder, code = self.create_stash("The Smiths", "1234")
         self.assertEqual(folder, "the-smiths")
         self.assertRegex(code, r"^[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$")
 
@@ -76,9 +75,7 @@ class CreateAndResetStashTests(TemporaryStashesMixin, SimpleTestCase):
         the picker's empty placeholder database. The stash would have been built in the
         placeholder and its own folder left without a database, so it was never listed."""
         self.make_stashes()
-        type(self).databases |= {"default-2"}
-        folder, _ = registry.create_stash("Default", "1234")
-        self.addCleanup(self._unregister, folder)
+        folder, _ = self.create_stash("Default", "1234")
         self.assertEqual(folder, "default-2")
         self.assertTrue(registry.stash_db_path("default-2").exists())
         self.assertEqual(registry.list_stashes(), ["default-2"])
@@ -136,9 +133,7 @@ class CreateAndResetStashTests(TemporaryStashesMixin, SimpleTestCase):
         """The owner name finds the stash in "default-2": nothing looks for a folder called
         "default", and the stash's user is named after the folder it really lives in."""
         self.make_stashes()
-        type(self).databases |= {"default-2"}
-        folder, _ = registry.create_stash("Default", "1234")
-        self.addCleanup(self._unregister, folder)
+        folder, _ = self.create_stash("Default", "1234")
         self.assertEqual(registry.reset_pin_directly("default", "5678"), ("default-2", "Default"))
         self.assertTrue(get_user_model().objects.db_manager(folder).get().check_password("5678"))
 
@@ -189,15 +184,36 @@ class StashFolderScanTests(TemporaryStashesMixin, SimpleTestCase):
 
 
 class ResetPinCommandTests(TemporaryStashesMixin, SimpleTestCase):
-    """manage.py reset_pin on a real temporary stash: Alex's, in the folder "alex"."""
+    """manage.py reset_pin on a real temporary stash: Alex's, in the folder "alex". Building and
+    migrating a stash takes a while, so it is built once for the class, and each test starts from
+    a copy of it as it was then (the tests change PINs, delete a Profile and rename a user)."""
+
+    @classmethod
+    def setUpClass(cls):
+        # Before super(): Django checks `databases` there, and the stash's alias has to exist by then.
+        tmp = tempfile.TemporaryDirectory()
+        cls.addClassCleanup(tmp.cleanup)
+        patcher = mock.patch.object(registry, "stashes_dir", return_value=Path(tmp.name))
+        patcher.start()
+        cls.addClassCleanup(patcher.stop)
+        cls.folder, _ = registry.create_stash("Alex", "1234")
+        cls.addClassCleanup(cls.unregister, cls.folder)
+        cls.databases = frozenset({cls.folder})
+        cls.pristine = Path(tmp.name) / "pristine.sqlite3"  # beside the stash's folder, not in it
+        cls.copy_database(registry.stash_db_path(cls.folder), cls.pristine)
+        super().setUpClass()
+
+    @staticmethod
+    def copy_database(source, target):
+        """With SQLite's own backup, like finance/backup.py: a plain file copy could miss what
+        is still in the journal."""
+        with closing(sqlite3.connect(source)) as from_database, closing(sqlite3.connect(target)) as to_database:
+            from_database.backup(to_database)
 
     def setUp(self):
-        self.make_stashes()
-        # create_stash() registers the alias itself, so the test allows it up front.
-        type(self).databases |= {"alex"}
-        folder, _ = registry.create_stash("Alex", "1234")
-        self.addCleanup(self._unregister, folder)
-        self.user = get_user_model().objects.db_manager(folder).get()
+        connections[self.folder].close()
+        self.copy_database(self.pristine, registry.stash_db_path(self.folder))
+        self.user = get_user_model().objects.db_manager(self.folder).get()
 
     def test_the_name_works_in_any_upper_or_lower_case(self):
         """Plan 04, R9: "Alex" crashed on Windows, which finds the folder "alex" under that
@@ -211,9 +227,7 @@ class ResetPinCommandTests(TemporaryStashesMixin, SimpleTestCase):
 
     def test_an_owner_name_unlike_its_folder_works_in_any_case_too(self):
         """A Cyrillic owner name gets the folder "stash", so only the owner name finds it."""
-        type(self).databases |= {"stash"}
-        folder, _ = registry.create_stash("Юлия", "1234")
-        self.addCleanup(self._unregister, folder)
+        folder, _ = self.create_stash("Юлия", "1234")
         call_command("reset_pin", "ЮЛИЯ", pin="5678", stdout=StringIO())
         self.assertEqual(folder, "stash")
         self.assertTrue(get_user_model().objects.db_manager(folder).get().check_password("5678"))
@@ -236,7 +250,7 @@ class ResetPinCommandTests(TemporaryStashesMixin, SimpleTestCase):
 
     def test_a_stash_copied_in_without_a_profile_still_gets_its_new_pin(self):
         with audit_suspended():
-            Profile.objects.using("alex").all().delete()
+            Profile.objects.using(self.folder).all().delete()
         output = StringIO()
         call_command("reset_pin", "alex", pin="5678", stdout=output)
         self.user.refresh_from_db()
@@ -244,7 +258,7 @@ class ResetPinCommandTests(TemporaryStashesMixin, SimpleTestCase):
         self.assertIn('(folder "alex")', output.getvalue())
 
     def test_a_stash_without_its_user_ends_with_a_message(self):
-        get_user_model().objects.using("alex").update(username="someone-else")
+        get_user_model().objects.using(self.folder).update(username="someone-else")
         with self.assertRaisesMessage(CommandError, "has no user of that name"):
             call_command("reset_pin", "alex", pin="5678", stdout=StringIO())
 
@@ -312,17 +326,15 @@ class ResetPinCommandTests(TemporaryStashesMixin, SimpleTestCase):
 
     def test_it_leaves_the_recovery_code_alone(self):
         """It's for when the code is lost too, so it only changes the PIN and the lockout."""
-        before = Profile.objects.using("alex").get().recovery_code_hash
+        before = Profile.objects.using(self.folder).get().recovery_code_hash
         call_command("reset_pin", "Alex", pin="5678", stdout=StringIO())
-        self.assertEqual(Profile.objects.using("alex").get().recovery_code_hash, before)
+        self.assertEqual(Profile.objects.using(self.folder).get().recovery_code_hash, before)
 
     def test_it_changes_the_named_stash_even_while_another_one_is_current(self):
         """The command runs with no session, and the stash locked out isn't necessarily the one
         that happens to be current: the audit entry belongs in the named stash's own log."""
-        type(self).databases |= {"sam"}
-        sam, _ = registry.create_stash("Sam", "4321")
-        self.addCleanup(self._unregister, sam)
-        Profile.objects.using("alex").update(failed_pin_attempts=3)
+        sam, _ = self.create_stash("Sam", "4321")
+        Profile.objects.using(self.folder).update(failed_pin_attempts=3)
 
         with db_router.use_stash(sam):
             call_command("reset_pin", "Alex", pin="5678", stdout=StringIO())
@@ -331,15 +343,17 @@ class ResetPinCommandTests(TemporaryStashesMixin, SimpleTestCase):
         self.user.refresh_from_db()
         self.assertTrue(self.user.check_password("5678"))
         self.assertTrue(get_user_model().objects.db_manager(sam).get().check_password("4321"))
-        self.assertTrue(AuditLogEntry.objects.using("alex").filter(table="finance_profile").exists())
+        self.assertTrue(AuditLogEntry.objects.using(self.folder).filter(table="finance_profile").exists())
         self.assertFalse(AuditLogEntry.objects.using(sam).exists())
 
     def test_clearing_the_lockout_is_in_the_stashs_audit_log(self):
         """Plan 03, S24's note: the reset used .update(), which the audit log never sees."""
-        Profile.objects.using("alex").update(failed_pin_attempts=3, locked_until=timezone.now() + timedelta(minutes=5))
+        Profile.objects.using(self.folder).update(
+            failed_pin_attempts=3, locked_until=timezone.now() + timedelta(minutes=5)
+        )
         registry.reset_pin_directly("Alex", "5678")
 
-        entries = AuditLogEntry.objects.using("alex").filter(table="finance_profile")
+        entries = AuditLogEntry.objects.using(self.folder).filter(table="finance_profile")
         self.assertEqual(
             sorted(entries.values_list("column", "old_value", "new_value")),
             [("failed_pin_attempts", "3", "0"), ("locked_until", mock.ANY, None)],
@@ -356,9 +370,7 @@ class RestoreKeepsTodaysLoginTests(TemporaryStashesMixin, SimpleTestCase):
 
     def test_the_data_goes_back_but_the_pin_the_recovery_code_and_the_lockout_stay(self):
         self.make_stashes()
-        type(self).databases |= {"alex"}
-        folder, code_in_the_backup = registry.create_stash("Alex", "1234")
-        self.addCleanup(self._unregister, folder)
+        folder, code_in_the_backup = self.create_stash("Alex", "1234")
         backup_path = finance_backup.backup_now(
             registry.stash_db_path(folder), registry.stash_path(folder), tag="test"
         )
@@ -384,9 +396,7 @@ class RestoreKeepsTodaysLoginTests(TemporaryStashesMixin, SimpleTestCase):
 
     def make_alex(self):
         self.make_stashes()
-        type(self).databases |= {"alex"}
-        folder, _ = registry.create_stash("Alex", "1234")
-        self.addCleanup(self._unregister, folder)
+        folder, _ = self.create_stash("Alex", "1234")
         return folder
 
     def back_up(self, folder, tag):
@@ -606,12 +616,10 @@ class NewStashRegionalSettingsTests(TemporaryStashesMixin, SimpleTestCase):
 
     def test_a_new_stash_gets_the_listed_name_of_the_computers_zone(self):
         self.make_stashes()
-        type(self).databases |= {"alex"}
         with (
             mock.patch.object(regional, "_read_windows_settings", return_value=({}, "US")),
             mock.patch.object(regional.tzlocal, "get_localzone_name", return_value="Europe/Kiev"),
         ):
-            folder, _ = registry.create_stash("Alex", "1234")
-        self.addCleanup(self._unregister, folder)
+            folder, _ = self.create_stash("Alex", "1234")
         self.assertEqual(Profile.objects.using(folder).get().time_zone, "Europe/Kyiv")
         self.assertIn(Profile.objects.using(folder).get().time_zone, regional.time_zone_choices())

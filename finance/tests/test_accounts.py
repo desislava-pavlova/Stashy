@@ -8,6 +8,7 @@ from decimal import Decimal
 from unittest import mock
 
 from django.urls import reverse
+from django.utils import timezone
 
 from ..forms import AccountCreateForm, AccountForm, CategoryForm, TransferForm
 from ..models import Account, Category, Payee, Profile, Reminder, Transaction, grouped_accounts
@@ -82,7 +83,7 @@ class OpeningBalanceTests(LoggedInTestCase):
         self.assertEqual(account.balance, Decimal("0.00"))
         opening = Transaction.objects.get(account=account)
         self.assertEqual(opening.amount, Decimal("0.00"))
-        self.assertEqual(opening.date, date.today())
+        self.assertEqual(opening.date, timezone.localdate())
         self.assertEqual(opening.payee.name, Payee.OPENING_BALANCE)
 
 
@@ -393,17 +394,6 @@ class InactiveAccountBalanceValidationTests(LoggedInTestCase):
             }
         )
         self.assertTrue(form.is_valid())
-
-
-class RemovedHelperTextTests(LoggedInTestCase):
-    def test_opening_balance_field_has_no_helper_text_on_create(self):
-        response = self.client.get(reverse("finance:account_add"))
-        self.assertNotContains(response, "What this account held")
-
-    def test_currency_field_has_no_helper_text_on_edit(self):
-        account = Account.objects.create(name="Checking")
-        response = self.client.get(reverse("finance:account_edit", args=[account.pk]))
-        self.assertNotContains(response, "Set when the account was created")
 
 
 class AccountDeleteTests(LoggedInWithAccountTestCase):

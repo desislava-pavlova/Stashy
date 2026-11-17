@@ -5944,3 +5944,169 @@ Temp folder; they are safe to delete by hand.
 `test_categories.py`, `test_stashes.py`, `test_project.py`, `test_admin.py`,
 `test_middleware.py` and `test_welcome.py`, `plans/03_structure_review.md`,
 `plans/README.md`, this log.
+
+## 16/11/2026 — Plan 03, Phase 2, part B: the tests (S11, S25, S34, S56–S62, S85, S90, S104)
+
+**What changed:** only test files, plus one reworded comment in
+`finance/services/importing.py`. Nothing in the database or on screen changed,
+so no migration, no backup of the real stash and nothing to try by hand. The
+suite went from 1,134 to 1,115 tests and from about 85 to about 70 seconds.
+- **S11:** the 21 tests that only checked that something removed stays removed
+  are gone (the `is_active` and `name` fields, "biweekly", tags, `payee_name`,
+  the old buttons, cards and helper texts, and a test that claimed to check a
+  migration but only set a many-to-many field). Three more went from G's note
+  of seven more, and six lost only their "old label is gone" lines. Classes
+  that shared a file with a real test got names that say what they check.
+- **S34:** the render check now visits every URL name in `finance/urls.py`, the
+  welcome steps, the pages you only reach by a choice or a POST, and the public
+  pages (picker, create stash, PIN screen, forgot PIN). It also looks for `{{`
+  and `}}` outside `<script>` blocks. `date.today()` became
+  `timezone.localdate()` in seven test modules.
+- **S56–S61:** two tests built a three-level category tree, which the one-level
+  rule forbids; they use a real two-level one. Five tests that couldn't fail
+  now check the real thing. About a dozen duplicate tests went (the payee case
+  tests, the PIN rule, the category guess, one pair each in the backup,
+  middleware and audit/import tests, and three in `test_pages.py`). Copied
+  set-up became shared helpers in `tests/base.py`.
+- **S62:** fourteen tests for `fetch_latest_rates()` with the network call
+  replaced. Its other half (a typed-in rate beats a fetched one) already had
+  tests.
+- **S25:** the comment above the date detection says what the code does (the
+  whole file is looked at before any row is read, and a row that can be read
+  either way is passed over *while guessing only*), and a test has the
+  ambiguous rows *before* the deciding one.
+- **S85, S90, S104:** one `TemporaryStashesMixin.create_stash()`, one copy of the
+  leaked-syntax tuple, `ResetPinCommandTests` builds its stash once per class,
+  the cookie test lives in `test_project.py`, and the deploy-check test passes
+  when run alone.
+
+**Why the code looks like this:**
+- **The render check checks its own list in both directions.** A page list typed
+  out by hand goes stale the day someone adds a page. So the test walks
+  `finance/urls.py`, renders every name it can, and compares the names that
+  weren't a page with a short, commented `NOT_A_PAGE` set (JSON, a file, POST
+  only). A new name in neither place fails; a name still in the set that now
+  renders fails too, so the list can't keep a stale excuse. The ids in the URLs
+  are real rows (`pk_of()` maps `account_edit` to the account, and so on),
+  because a page for id 1 that doesn't exist is a 404, which tests nothing.
+- **`{{` is looked for only outside `<script>`.** JavaScript legitimately has
+  `{{` in it; a template that failed to render a variable and left `{{ x }}` in
+  the page text is the leak worth catching. `leaked_syntax_in()` is one function
+  in `base.py` with the two rules, so no test retypes them.
+- **The month-first file is the one that proves S25.** The profile's default is
+  day-first. A day-first file with ambiguous rows first would read the same way
+  even if detection did nothing, so it can't fail for the right reason. The
+  month-first file (ambiguous rows, then `01/25/2026`) only passes if the last
+  row really settles the format for the rows above it.
+- **S34's `date.today()` rule is about the clock, not style.** The app's "today"
+  is `timezone.localdate()` (the stash's time zone). A test that builds a
+  transaction for the computer's today and then asks the app about "today" fails
+  for a few hours around midnight when the two zones differ. `test_backup.py`
+  keeps the computer's clock on purpose: `backup.py` is the one place that uses it.
+- **S56:** both tests now use `Category.create_subcategory()`, the way the app
+  makes one, so they can't build what `clean()` would refuse. The dashboard's
+  `spending_tree()` still has code for deeper chains. Its own test
+  (a category that is its own parent) bypasses `clean()` on purpose and stays:
+  it guards the loop, not the shape.
+- **Which of each duplicate pair stays** was my call, written next to item 2.8 in
+  the plan. The rule: the one that checks more or lives where its subject
+  lives (the audit log test stays in `audit/tests.py`).
+- **S61's helpers** are the second copy turned into a function: `post_import()`
+  takes the client and account as arguments so the audit and payee tests can
+  use it too, `get_and_count_queries()` visits a page once first because a
+  session's first visit also creates its Profile, and `csv_rows()` always
+  decodes with `utf-8-sig`, so no test sees a byte order mark by accident.
+- **S90's `create_stash()` allows the alias before it creates the stash.** The
+  test runner only lets a test touch the databases it lists, and
+  `registry.create_stash()` registers its alias itself. So the helper computes
+  the folder name first (`_folder_name_from_owner()`), allows it, then creates
+  the stash, then registers the clean-up. The clean-ups run last in, first out:
+  unregister, then delete the folder. The folder deletion was added after
+  `ResetPinCommandTests` showed why: its tests now share one temporary folder,
+  so a stash a test left behind (`stash`, `sam`) was found by the next test's
+  "is this owner name taken?" scan and its database refused.
+- **`ResetPinCommandTests` copies a finished stash instead of building ten.**
+  Migrating is the slow part. The class builds "Alex" once in `setUpClass`,
+  *before* `super().setUpClass()` because Django checks the class's `databases`
+  there and the alias has to exist by then. It keeps a copy made with SQLite's
+  own backup (a plain file copy can miss what is still in the journal, the
+  same reason `finance/backup.py` uses the backup API), and each test closes
+  the connection and copies it back. Tests that change PINs, delete a Profile or
+  rename a user can't see each other. Fifteen tests now take about four seconds.
+- **S104 had a real cause.** Django's JSON-field check asks each database
+  whether it supports JSON fields, a query on the `default` placeholder. The
+  answer is cached on the connection, so the test passed in the full suite
+  (another test had already asked) and failed alone. In a `SimpleTestCase` the
+  query is forbidden, so the test moved to a `StashTestCase` that lists the
+  databases the checks can reach, as `PendingMigrationsTests` already does.
+  It failed alone before, and passes alone now.
+- **S62 without the internet.** `frankfurter_replies()` replaces `urlopen()` with
+  something a `with` block opens and `json.load()` reads, so the real parsing
+  and the real writes run. The cases are the ones the code's own `except` names
+  (no date, no rates, a date that isn't one, a rate that isn't a number, rates
+  that aren't a table, a reply that isn't a table), plus the ones in the finding.
+- **`test_reminders.py` is split in two.** The last step of S58 was to measure
+  the file again and split it if it was still that big: it was 1,455 lines (1,194
+  when the plan was written). It follows the pair `test_reporting.py` /
+  `test_reports.py`: `test_reminder_rules.py` has the rules (the schedule and
+  its occurrences, status, the form's own checks, entering and skipping, what a
+  save regenerates; 822 lines) and `test_reminders.py` keeps the pages (651
+  lines). I moved whole classes, never single tests, and a script checked that
+  the same tests exist before and after (the same tests exist before and after). The one
+  class that mixes both, `AutoGenerateOccurrencesTests`, is almost all rules
+  (two of its 20 tests post to a page to see a series end to end), so it went
+  with the rules. Each file keeps only the `TODAY_` constants it uses, because a
+  test module never imports from another.
+
+**Teaching note — a test you have never seen fail has not been shown to work.**
+Most of this part is making tests stronger, which is easy to get wrong: a test
+that looks sharper can still pass for the wrong reason. So I put nine bugs into
+the app one at a time, from a small script that restores each file afterwards:
+a leaked comment on a page the old check never rendered, a leaked `{{` on a
+delete page, a search that ignores memos, date detection that gives up, a zero
+rate that gets stored, the lev asked for from Frankfurter, a reminder default
+that isn't one-time, a checkbox that is never ticked, and the "auto" badge on
+every category. Each one turned exactly the test written for it red. Two of
+those tests replaced weaker ones (`assertContains(response, "auto")` and
+`assertContains(response, "checked")` pass on almost any page), which is the
+reason to look at the bug side as well as the green side.
+
+**Reviews:** the code reviewer read it (twice: the first run was stopped before
+it reported) and found nothing Critical. It did not read about half of the
+older test modules in full; for those it only searched for the rule violations
+below. Its "should fix" items were copies of things part B had just moved into
+`base.py`, so they are fixed: the dated constants (`TODAY_12_SEPT` to
+`TODAY_19_SEPT`) live in `base.py` once instead of in four modules, `queries_for`
+in `test_reporting.py` uses `create_accounts_with_a_transaction()`, and the
+export test that rebuilt `csv_rows()` by hand uses it (and writes the byte order
+mark as an escape, not an invisible character). Also done: `LoggedInAsSuperuserTestCase`
+extends `LoggedInTestCase` instead of repeating its `setUp`, `NOT_A_PAGE` says the
+restore page is a page that needs a real backup file, `LoginCookieTests` no
+longer lists a database it doesn't use (I tried it without), `ResetPinCommandTests`
+uses `self.folder` for its stash's name, and three tests were added for gaps it
+found in the rate fetching (the request's timeout and User-Agent, the order of
+the unavailable list, a reply that isn't JSON). I put each of those three bugs
+into `currency.py` on purpose, and each turned its test red.
+- One suggestion was wrong, and checking it paid off: the reviewer said the skip
+  test should assert a 405 for a GET. The skip view doesn't refuse a GET; it
+  redirects to the list without skipping anything. A first version of my test
+  asserted 405 and failed. It now asserts the redirect, which is what the view
+  really does.
+- Left alone on purpose: the dozen other places that loop over
+  `LEAKED_TEMPLATE_SYNTAX` (they check the four-symbol rule they were written
+  for, and `leaked_syntax_in()` is for pages), a shared reader for the starter
+  spreadsheet (two copies of three lines), `RestoreKeepsTodaysLoginTests` still
+  building its stash per test, and the plan's two items both numbered 2.16.
+  `create_stash()` registers its clean-ups only after the stash was made, so a
+  migration that fails halfway would leave its alias registered for later tests;
+  that only matters when something is already broken.
+
+**Files touched:** `finance/services/importing.py` (a comment), the tests in
+`base.py`, `test_accounts.py`, `test_admin.py`, `test_auth.py`, `test_backup.py`,
+`test_categories.py`, `test_currency.py`, `test_dashboard.py`, `test_exports.py`,
+`test_imports.py`, `test_middleware.py`, `test_pages.py`, `test_payees.py`,
+`test_project.py`, `test_reconciliation.py`, `test_reminders.py` and the new
+`test_reminder_rules.py`, `test_reporting.py`, `test_reports.py`, `test_settings.py`, `test_stashes.py`,
+`test_transactions.py`, `test_welcome.py`, the package docstring in `tests/__init__.py`
+and `audit/tests.py`, `CLAUDE.md`,
+`plans/03_structure_review.md`, `plans/README.md`, this log.

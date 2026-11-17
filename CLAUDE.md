@@ -46,7 +46,7 @@ terms.
 ## Commands
 
 ```
-.venv\Scripts\python.exe manage.py test                          # full suite, ~75 s (1,134 tests on 16/11/2026)
+.venv\Scripts\python.exe manage.py test                          # full suite, ~70 s (1,115 tests on 17/11/2026)
 .venv\Scripts\python.exe manage.py test finance.tests.test_reminders  # one module (audit: `test audit`)
 .venv\Scripts\python.exe manage.py migrate --database <stash>    # one stash (Stashy.bat does all, with backups)
 .venv\Scripts\python.exe manage.py reset_pin <owner name>        # real, visible action - ask first
@@ -251,8 +251,10 @@ check.bat                                                        # ruff check + 
   never the signed-cookie session.
 - Tests: `finance/tests/test_<area>.py`, one module per area, named after the
   code they test (`views/<area>.py`; `reporting.py` → `test_reporting.py`,
-  while the Reports page is `test_reports.py`; Django settings, logging and
-  code-wide rules → `test_project.py`), plus `audit/tests.py`.
+  while the Reports page is `test_reports.py`; the reminder rules on the
+  model → `test_reminder_rules.py`, while the Reminders pages are
+  `test_reminders.py`; Django settings, logging and code-wide rules →
+  `test_project.py`), plus `audit/tests.py`.
   - `settings/test.py` makes a temporary `STASHES_DIR` per run holding one
     stash, `settings.TEST_STASH` ("tester"). `apps.py` registers it like any
     stash; its database is the runner's in-memory one. The folder is deleted
@@ -260,16 +262,28 @@ check.bat                                                        # ruff check + 
     code never asks whether it's under test (a test checks).
   - `finance/tests/base.py`: every database test derives from `StashTestCase`
     (or `LoggedInTestCase`, `LoggedInWithAccountTestCase`,
-    `AlexsStashTestCase`). Its queries go to the test stash and its client
-    starts with that stash chosen, so requests run the real middleware.
-    `default` is off limits unless a class adds it to `databases`, so a test's
-    own `atomic()` needs `using=settings.TEST_STASH`. Shared test constants
-    live there too (`LEAKED_TEMPLATE_SYNTAX`): a test module never imports
-    from another test module.
+    `LoggedInAsSuperuserTestCase`, `AlexsStashTestCase`). Its queries go to the
+    test stash and its client starts with that stash chosen, so requests run
+    the real middleware. `default` is off limits unless a class adds it to
+    `databases`, so a test's own `atomic()` needs `using=settings.TEST_STASH`.
+    Shared test helpers live there too (`LEAKED_TEMPLATE_SYNTAX`,
+    `leaked_syntax_in()`, `csv_rows()`, `csv_upload()`, `post_import()`,
+    `get_and_count_queries()`, `StarterCategoriesFileMixin`): a test module
+    never imports from another test module, so a second copy of anything goes
+    here instead.
   - Build shared data in `setUpTestData`; log in (and anything about the
     client, mocks or temp files) in `setUp`.
   - `TemporaryStashesMixin` gives a test extra real stash aliases in a temp
-    folder, registered the way the app does it.
+    folder, registered the way the app does it: `make_stashes()` first, then
+    `create_stash(owner, pin)` for a whole one (it allows the alias, and
+    unregisters and deletes the stash afterwards). A class that needs one
+    stash for all its tests builds it once in `setUpClass` and copies it back
+    in `setUp` (`ResetPinCommandTests`), since migrating is the slow part.
+  - `RenderCheckTests` (`test_pages.py`) visits every URL name in
+    `finance/urls.py`. A new URL name must render as an HTML page or go on its
+    `NOT_A_PAGE` list with a reason (JSON, a file, POST only); otherwise the
+    test fails. It also fails on leaked template syntax, `{{` and `}}`
+    outside `<script>` blocks included.
 
 ## Domain rules (settled with the user; don't change them silently)
 

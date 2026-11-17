@@ -1,8 +1,6 @@
 """The welcome wizard a new stash goes through: its four steps and the order they come in."""
 
-import tempfile
 from datetime import timedelta
-from pathlib import Path
 from unittest import mock
 
 from django.contrib.auth import get_user_model
@@ -10,11 +8,11 @@ from django.contrib.messages import get_messages
 from django.test import SimpleTestCase
 from django.urls import reverse
 from django.utils import timezone
-from openpyxl import Workbook, load_workbook
+from openpyxl import load_workbook
 
 from .. import starter_categories
 from ..models import Account, Category, Profile, name_key
-from .base import StashTestCase
+from .base import StarterCategoriesFileMixin, StashTestCase
 
 
 class SetupFinishedTests(SimpleTestCase):
@@ -114,7 +112,7 @@ class WelcomeStepOneTests(WelcomeWizardTestCase):
         self.assertContains(response, '<option value="Europe/Kiev" selected>Europe/Kiev</option>', html=True)
 
 
-class WelcomeStepTwoTests(WelcomeWizardTestCase):
+class WelcomeStepTwoTests(StarterCategoriesFileMixin, WelcomeWizardTestCase):
     @classmethod
     def setUpTestData(cls):
         super().setUpTestData()
@@ -123,19 +121,8 @@ class WelcomeStepTwoTests(WelcomeWizardTestCase):
 
     def setUp(self):
         super().setUp()
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
-        path = Path(self.tmp.name) / "starter_categories.xlsx"
-
-        workbook = Workbook()
-        sheet = workbook.active
-        sheet.title = "Basic"
-        sheet.append(["Type", "Category", "Subcategory"])
-        sheet.append(["Expense", "Groceries", None])
-        workbook.save(path)
-        self.patcher = mock.patch("finance.starter_categories.starter_categories_path", return_value=path)
-        self.patcher.start()
-        self.addCleanup(self.patcher.stop)
+        self.use_a_starter_categories_file()
+        self.write_starter_categories({"Basic": [("Expense", "Groceries", None)]})
 
     def test_picking_basic_creates_categories_and_advances(self):
         response = self.client.post(reverse("finance:welcome_step", args=[2]), {"sheet": "Basic"})

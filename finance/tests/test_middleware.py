@@ -214,26 +214,6 @@ class RememberedStashCookieTests(SimpleTestCase):
             response = middleware(request)
         self.assertEqual(response.url, "/reports/?range=ytd&subtotal=month")
 
-    def test_only_the_exact_stash_name_counts(self):
-        """Plan 03, S10: Windows finds the test stash's folder under each of these names too,
-        but the stash's user is named after the folder's exact spelling (plan 04, R9), so
-        the PIN screen could never log in to the stash these would open."""
-        here = Path(settings.STASHES_DIR)
-        for value in (
-            settings.TEST_STASH.upper(),
-            f"{settings.TEST_STASH}/",
-            f"../{here.name}/{settings.TEST_STASH}",
-        ):
-            with self.subTest(cookie=value):
-                self.assertTrue(registry.stash_exists(value))
-                middleware = RequireStashMiddleware(get_response=lambda r: "should not be reached")
-                request = self.factory.get("/accounts/login/")
-                request.session = {}
-                request.COOKIES = {registry.LAST_STASH_COOKIE: value}
-                response = middleware(request)
-                self.assertEqual(response.url, reverse("stash_picker"))
-                self.assertNotIn("stash", request.session)
-
     def test_no_cookie_falls_back_to_the_picker_as_before(self):
         middleware = RequireStashMiddleware(get_response=lambda r: "should not be reached")
         request = self.factory.get("/accounts/login/")
@@ -377,7 +357,6 @@ class StashAtomicRequestTests(TemporaryStashesMixin, SimpleTestCase):
             self.assertEqual(cursor.fetchone()[0], 0)
 
     def test_a_non_atomic_view_runs_without_a_transaction(self):
-
         @transaction.non_atomic_requests
         def view(request):
             return HttpResponse(str(connections["alpha"].in_atomic_block))
@@ -463,7 +442,8 @@ class MiddlewareChainTests(StashTestCase):
     def test_only_the_exact_stash_name_opens_a_stash_from_the_session_or_the_cookie(self):
         """S81 and S10, through every middleware. Windows finds the test stash's folder under each
         of these names, but none is the stash's name, so none may open it or register a second
-        connection to its database."""
+        connection to its database. The stash's user is named after the folder's exact spelling,
+        so the PIN screen could never log in to a stash opened under another spelling."""
         here = Path(settings.STASHES_DIR)
         for value in (
             settings.TEST_STASH.upper(),

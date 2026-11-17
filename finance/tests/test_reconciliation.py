@@ -164,7 +164,8 @@ class ReconcileChecklistDisplayTests(LoggedInWithAccountTestCase):
                 "statement_balance": "-40.00",
             },
         )
-        self.assertContains(response, "-40.00")
+        # The row's own cell: "-40.00" is also in the statement balance box, a hidden field.
+        self.assertContains(response, 'text-nowrap amount-negative">-40.00', count=1)
 
     def test_column_totals_shown(self):
         Transaction.objects.create(account=self.account, date=date(2026, 1, 1), amount=Decimal("100.00"))

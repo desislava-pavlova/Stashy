@@ -2,36 +2,26 @@
 grouping, the category list (search, usage, mass re-categorize, delete), the category
 dropdowns in forms, and the starter categories."""
 
-import tempfile
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
-from unittest import mock
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.test import SimpleTestCase
 from django.urls import reverse
-from openpyxl import Workbook, load_workbook
+from openpyxl import load_workbook
 
 from .. import starter_categories
 from ..forms import CategoryForm, TransactionForm
 from ..models import Account, Category, Payee, Transaction, categories_alphabetical, grouped_categories, name_key
 from ..services.importing import _resolve_category
-from .base import AlexsStashTestCase, LoggedInTestCase, LoggedInWithAccountTestCase, StashTestCase
+from .base import LoggedInTestCase, LoggedInWithAccountTestCase, StarterCategoriesFileMixin, StashTestCase
 
 Type = Category.CategoryType
 
 EXPENSE = Category.CategoryType.EXPENSE
-
-
-class IsActiveRemovedTests(StashTestCase):
-    def test_category_has_no_is_active_field(self):
-        self.assertFalse(hasattr(Category(name="x"), "is_active"))
-
-    def test_category_form_has_no_is_active_field(self):
-        self.assertNotIn("is_active", CategoryForm().fields)
 
 
 class DisplayNameTests(StashTestCase):
@@ -439,13 +429,13 @@ class CategoryDeleteTests(LoggedInWithAccountTestCase):
     @classmethod
     def setUpTestData(cls):
         super().setUpTestData()
-        cls.food = Category.objects.create(name="Food")
-        cls.groceries = Category.objects.create(name="Groceries", parent=cls.food)
-        cls.organic = Category.objects.create(name="Organic", parent=cls.groceries)
+        cls.food = Category.objects.create(name="Food", category_type=EXPENSE)
+        cls.groceries = cls.food.create_subcategory("Groceries")
+        cls.bakery = cls.food.create_subcategory("Bakery")
         cls.txn = Transaction.objects.create(
             account=cls.account,
             date=date(2026, 1, 5),
-            category=cls.organic,
+            category=cls.groceries,
             amount=Decimal("-5.00"),
         )
 
@@ -453,11 +443,11 @@ class CategoryDeleteTests(LoggedInWithAccountTestCase):
         response = self.client.get(reverse("finance:category_delete", args=[self.food.pk]))
         self.assertContains(response, "also delete 2 subcategories")
         self.assertContains(response, "Food &gt; Groceries")
-        self.assertContains(response, "Groceries &gt; Organic")
+        self.assertContains(response, "Food &gt; Bakery")
         self.assertContains(response, "1 transaction in")
 
     def test_leaf_category_shows_no_subcategory_warning(self):
-        response = self.client.get(reverse("finance:category_delete", args=[self.organic.pk]))
+        response = self.client.get(reverse("finance:category_delete", args=[self.groceries.pk]))
         self.assertNotContains(response, "subcategor")
 
     def test_deleting_keeps_transactions_uncategorized(self):
@@ -536,26 +526,14 @@ class IndentedCategoryDropdownTests(LoggedInWithAccountTestCase):
         self._assert_indented(self.client.get(reverse("finance:reminder_add")).content.decode())
 
 
-class NewSubcategoryTypeTests(StashTestCase):
+class NewSubcategoryTypeTests(StarterCategoriesFileMixin, StashTestCase):
     """6.9 (F38): a new subcategory takes its main category's type, wherever it's created."""
 
     def setUp(self):
-        tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(tmp.cleanup)
-        self.path = Path(tmp.name) / "starter_categories.xlsx"
-        patcher = mock.patch.object(starter_categories, "starter_categories_path", return_value=self.path)
-        patcher.start()
-        self.addCleanup(patcher.stop)
+        self.use_a_starter_categories_file()
 
     def _write(self, rows):
-
-        workbook = Workbook()
-        sheet = workbook.active
-        sheet.title = "Extended"
-        sheet.append(["Type", "Category", "Subcategory"])
-        for row in rows:
-            sheet.append(row)
-        workbook.save(self.path)
+        self.write_starter_categories({"Extended": rows})
 
     def test_starter_subcategory_follows_its_main_category_not_its_row(self):
         self._write([("Expense", "Gifts", None), ("Income", "Gifts", "Birthday money")])
@@ -578,25 +556,12 @@ class NewSubcategoryTypeTests(StashTestCase):
         self.assertTrue(child.is_auto_generated)
 
 
-class StarterCategoriesXlsxTests(StashTestCase):
+class StarterCategoriesXlsxTests(StarterCategoriesFileMixin, StashTestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
-        self.path = Path(self.tmp.name) / "starter_categories.xlsx"
-        self.patcher = mock.patch("finance.starter_categories.starter_categories_path", return_value=self.path)
-        self.patcher.start()
-        self.addCleanup(self.patcher.stop)
+        self.use_a_starter_categories_file()
 
     def _write(self, sheets):
-
-        workbook = Workbook()
-        workbook.remove(workbook.active)
-        for name, rows in sheets.items():
-            sheet = workbook.create_sheet(name)
-            sheet.append(["Type", "Category", "Subcategory"])
-            for row in rows:
-                sheet.append(row)
-        workbook.save(self.path)
+        self.write_starter_categories(sheets)
 
     def test_missing_file_has_no_available_sheets(self):
         self.assertEqual(starter_categories.available_sheets(), [])
@@ -639,7 +604,7 @@ class StarterCategoriesXlsxTests(StashTestCase):
         self._write({"Basic": [("Expense", "Groceries", None)]})
         created = starter_categories.add_starter_categories("Basic")
         self.assertEqual(created, [])
-        self.assertEqual(Category.objects.filter(name__iexact="groceries").count(), 1)
+        self.assertEqual(Category.objects.filter(name_key=name_key("groceries")).count(), 1)
 
     def test_unavailable_sheet_returns_none(self):
         self._write({"Basic": [("Expense", "Groceries", None)]})
@@ -682,9 +647,3 @@ class TheRealStarterCategoriesFileTests(SimpleTestCase):
             with self.subTest(sheet=sheet_name):
                 self.assertTrue(rows)
                 self.assertEqual([key for key, types in types_of_each_category.items() if len(types) > 1], [])
-
-
-class OldStarterCategoriesButtonIsGoneTests(AlexsStashTestCase):
-    def test_category_list_has_no_add_starter_categories_button(self):
-        response = self.client.get(reverse("finance:category_list"))
-        self.assertNotContains(response, "Add starter categories")

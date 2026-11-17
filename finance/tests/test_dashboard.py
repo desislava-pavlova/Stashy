@@ -6,20 +6,23 @@ from datetime import date
 from decimal import Decimal
 from unittest import mock
 
-from django.conf import settings
-from django.db import connections
 from django.test import SimpleTestCase
-from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
+from django.utils import timezone
 
 from ..models import Account, Category, ExchangeRate, Payee, Profile, Reminder, Transaction
 from ..reporting import income_and_spending, savings_rate, spending_tree
-from .base import LEAKED_TEMPLATE_SYNTAX, LoggedInWithAccountTestCase, StashTestCase
+from .base import (
+    LEAKED_TEMPLATE_SYNTAX,
+    TODAY_12_SEPT,
+    TODAY_14_SEPT,
+    LoggedInWithAccountTestCase,
+    StashTestCase,
+    create_reminders,
+)
 
 # Tests that patch timezone.localdate pretend today is one of these days, so the fixed dates
 # they set up keep their meaning (overdue, due soon, this month).
-TODAY_12_SEPT = date(2026, 9, 12)
-TODAY_14_SEPT = date(2026, 9, 14)
 
 
 class SavingsRateTests(SimpleTestCase):
@@ -37,17 +40,17 @@ class SpendingTreeTests(StashTestCase):
     @classmethod
     def setUpTestData(cls):
         cls.account = Account.objects.create(name="Checking")
-        cls.food = Category.objects.create(name="Food")
-        cls.groceries = Category.objects.create(name="Groceries", parent=cls.food)
-        cls.organic = Category.objects.create(name="Organic", parent=cls.groceries)
-        cls.rent = Category.objects.create(name="Rent")
+        cls.food = Category.objects.create(name="Food", category_type=Category.CategoryType.EXPENSE)
+        cls.groceries = cls.food.create_subcategory("Groceries")
+        cls.bakery = cls.food.create_subcategory("Bakery")
+        cls.rent = Category.objects.create(name="Rent", category_type=Category.CategoryType.EXPENSE)
 
     def add(self, amount, category, on=date(2026, 9, 5)):
         Transaction.objects.create(account=self.account, date=on, category=category, amount=Decimal(amount))
 
     def test_groups_by_top_level_category_with_one_level_of_breakdown(self):
         self.add("-30.00", self.groceries)
-        self.add("-12.50", self.organic)
+        self.add("-12.50", self.bakery)
         self.add("-7.50", self.food)
         self.add("-500.00", self.rent)
         self.add("-4.00", None)
@@ -65,7 +68,8 @@ class SpendingTreeTests(StashTestCase):
         self.assertEqual(
             food["children"],
             [
-                {"id": self.groceries.pk, "name": "Groceries", "with_subcategories": True, "total": 42.5},
+                {"id": self.groceries.pk, "name": "Groceries", "with_subcategories": True, "total": 30.0},
+                {"id": self.bakery.pk, "name": "Bakery", "with_subcategories": True, "total": 12.5},
                 {"id": self.food.pk, "name": "Food (general)", "with_subcategories": False, "total": 7.5},
             ],
         )
@@ -231,7 +235,7 @@ class DashboardCurrencyTests(LoggedInWithAccountTestCase):
     """1.8 (F30): the dashboard converts into the main currency, like Reports."""
 
     def test_spending_in_another_currency_is_converted(self):
-        today = date.today()
+        today = timezone.localdate()
         groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
         usd = Account.objects.create(name="US card", currency="USD")
         ExchangeRate.objects.create(base_currency="USD", quote_currency="EUR", rate=Decimal("0.5"), date=today)
@@ -263,7 +267,9 @@ class DashboardMissingRateTests(LoggedInWithAccountTestCase):
 
     def test_no_hint_once_the_rate_is_known(self):
         Account.objects.create(name="US card", currency="USD")
-        ExchangeRate.objects.create(base_currency="USD", quote_currency="EUR", rate=Decimal("0.5"), date=date.today())
+        ExchangeRate.objects.create(
+            base_currency="USD", quote_currency="EUR", rate=Decimal("0.5"), date=timezone.localdate()
+        )
         for name in ("finance:dashboard", "finance:account_list"):
             with self.subTest(page=name):
                 self.assertNotContains(self.client.get(reverse(name)), "No known rate")
@@ -361,35 +367,21 @@ class DashboardDonutCurrencyTests(LoggedInWithAccountTestCase):
     def test_spending_panel_carries_the_currency_symbol_for_the_donut_center(self):
         # 2026-09-14 follow-up: the donut needs the actual symbol ("€"), not the bare ISO
         # code, to match how every other amount on the page already displays via |moneyc.
-        Transaction.objects.create(account=self.account, date=date.today(), amount=Decimal("-10.00"))
+        Transaction.objects.create(account=self.account, date=timezone.localdate(), amount=Decimal("-10.00"))
         response = self.client.get(reverse("finance:dashboard"))
         self.assertContains(response, 'data-main-currency="€"')
         self.assertContains(response, 'data-currency-suffix="1"')
 
 
-@mock.patch("django.utils.timezone.localdate", return_value=date(2026, 9, 12))
+@mock.patch("django.utils.timezone.localdate", return_value=TODAY_12_SEPT)
 class DueSoonQueryTests(LoggedInWithAccountTestCase):
     """8.15 (F56): the "due soon" list loads each reminder's payee and category with the list."""
 
     def queries_with(self, count):
-        food = Category.objects.get_or_create(name="Food", category_type=Category.CategoryType.EXPENSE)[0]
-        for i in range(count):
-            Reminder.objects.create(
-                account=self.account,
-                payee=Payee.objects.create(name=f"Shop {count}-{i}")
-                if i % 2
-                else None,  # no payee: the category shows
-                category=food.create_subcategory(f"Groceries {count}-{i}"),
-                amount=Decimal("10.00"),
-                next_due_date=date(2026, 9, 14),
-                frequency="one_time",
-            )
-        url = reverse("finance:dashboard")
-        self.client.get(url)  # the first page of a session also creates its Profile
-        with CaptureQueriesContext(connections[settings.TEST_STASH]) as queries:
-            response = self.client.get(url)
+        create_reminders(self.account, count)
+        response, query_count = self.get_and_count_queries(reverse("finance:dashboard"))
         self.assertEqual(len(response.context["due_soon"]), Reminder.objects.count())
-        return len(queries)
+        return query_count
 
     def test_more_reminders_need_no_more_queries(self, _today):
         self.assertEqual(self.queries_with(1), self.queries_with(4))

@@ -11,8 +11,6 @@ from unittest import mock
 from urllib.parse import parse_qs, urlsplit
 
 from django.conf import settings
-from django.contrib import admin
-from django.contrib.auth import get_user_model
 from django.db import connections
 from django.test import RequestFactory, SimpleTestCase
 from django.test.utils import CaptureQueriesContext
@@ -24,9 +22,7 @@ from ..forms import TransactionForm
 from ..models import Account, Category, Payee, Profile, Transaction
 from ..views._helpers import _as_id, _as_ids, _safe_next
 from ..views.transactions import _longer_than_a_year
-from .base import LoggedInTestCase, LoggedInWithAccountTestCase, StashTestCase
-
-TODAY = date(2026, 9, 13)
+from .base import LEAKED_TEMPLATE_SYNTAX, TODAY_13_SEPT, LoggedInTestCase, LoggedInWithAccountTestCase, StashTestCase
 
 
 class TransactionNumberingTests(StashTestCase):
@@ -62,7 +58,7 @@ class TransactionNumberingTests(StashTestCase):
         self.assertEqual(following.transaction_number, 10000)
 
 
-@mock.patch("django.utils.timezone.localdate", return_value=TODAY)
+@mock.patch("django.utils.timezone.localdate", return_value=TODAY_13_SEPT)
 class DefaultViewTests(LoggedInWithAccountTestCase):
     """The transaction list defaults to this year, until you explicitly ask otherwise."""
 
@@ -96,7 +92,7 @@ class DefaultViewTests(LoggedInWithAccountTestCase):
         self.assertEqual(len(shown), 1)
 
 
-@mock.patch("django.utils.timezone.localdate", return_value=TODAY)
+@mock.patch("django.utils.timezone.localdate", return_value=TODAY_13_SEPT)
 class TransactionRangeTests(LoggedInWithAccountTestCase):
     """8.13: "All dates" takes the place of "Earliest to date". 8.14: dates typed into the
     Start/End boxes are read in the stash's own date format."""
@@ -859,14 +855,19 @@ class TransactionListTests(LoggedInWithAccountTestCase):
 
 class TransactionListTotalPositionTests(LoggedInWithAccountTestCase):
     def test_total_sits_in_a_flex_row_with_the_transaction_count(self):
-        response = self.client.get(reverse("finance:transaction_list"))
-        self.assertContains(response, "justify-content-between")
+        Transaction.objects.create(account=self.account, date=timezone.localdate(), amount=Decimal("-5.00"))
+        content = self.client.get(reverse("finance:transaction_list")).content.decode()
+        row = content.split("d-flex justify-content-between align-items-baseline", 1)[1].split(
+            '<div class="card">', 1
+        )[0]
+        self.assertIn("1 transaction", row)
+        self.assertIn("Total:", row)
 
 
 class TransactionListTotalTests(LoggedInWithAccountTestCase):
     def test_total_amount_is_the_sum_of_the_filtered_transactions(self):
-        Transaction.objects.create(account=self.account, date=date.today(), amount=Decimal("100.00"))
-        Transaction.objects.create(account=self.account, date=date.today(), amount=Decimal("-40.00"))
+        Transaction.objects.create(account=self.account, date=timezone.localdate(), amount=Decimal("100.00"))
+        Transaction.objects.create(account=self.account, date=timezone.localdate(), amount=Decimal("-40.00"))
         response = self.client.get(reverse("finance:transaction_list"))
         self.assertEqual(response.context["total_amount"], Decimal("60.00"))
         self.assertContains(response, "Total:")
@@ -964,7 +965,7 @@ class TransactionPagingTests(LoggedInWithAccountTestCase):
 
     def test_the_second_page_renders_cleanly(self):
         content = self.get(range="", page=2).content.decode()
-        for leaked in ("{#", "#}", "{%", "%}"):
+        for leaked in LEAKED_TEMPLATE_SYNTAX:
             self.assertNotIn(leaked, content)
         self.assertIn('aria-current="page"><span class="page-link">2</span>', content)
 
@@ -1030,7 +1031,7 @@ class InactiveAccountTransactionConfirmTests(LoggedInTestCase):
 class TransactionListTotalCurrencySymbolTests(LoggedInTestCase):
     def test_total_shows_a_currency_symbol(self):
         account = Account.objects.create(name="Checking", currency="USD")
-        Transaction.objects.create(account=account, date=date.today(), amount=Decimal("100.00"))
+        Transaction.objects.create(account=account, date=timezone.localdate(), amount=Decimal("100.00"))
         response = self.client.get(reverse("finance:transaction_list"))
         self.assertContains(response, "$100.00")
 
@@ -1088,17 +1089,17 @@ class EditRedirectTests(LoggedInWithAccountTestCase):
 class NewTransactionNumberPreviewTests(LoggedInWithAccountTestCase):
     def test_add_form_prefills_the_next_available_number(self):
         Transaction.objects.create(
-            account=self.account, date=date.today(), transaction_number=41, amount=Decimal("-1.00")
+            account=self.account, date=timezone.localdate(), transaction_number=41, amount=Decimal("-1.00")
         )
         response = self.client.get(reverse("finance:transaction_add"))
         self.assertEqual(response.context["form"].initial.get("transaction_number"), 42)
 
     def test_edit_form_shows_the_transactions_own_number_not_a_fresh_preview(self):
         txn = Transaction.objects.create(
-            account=self.account, date=date.today(), transaction_number=7, amount=Decimal("-1.00")
+            account=self.account, date=timezone.localdate(), transaction_number=7, amount=Decimal("-1.00")
         )
         Transaction.objects.create(
-            account=self.account, date=date.today(), transaction_number=8, amount=Decimal("-1.00")
+            account=self.account, date=timezone.localdate(), transaction_number=8, amount=Decimal("-1.00")
         )
         response = self.client.get(reverse("finance:transaction_edit", args=[txn.pk]))
         # The highest number right now is 8, so a fresh "next available" preview would wrongly
@@ -1108,12 +1109,12 @@ class NewTransactionNumberPreviewTests(LoggedInWithAccountTestCase):
 
 class TransactionListDeleteAndLabelsTests(LoggedInWithAccountTestCase):
     def test_delete_button_present_and_links_back_here(self):
-        txn = Transaction.objects.create(account=self.account, date=date.today(), amount=Decimal("-1.00"))
+        txn = Transaction.objects.create(account=self.account, date=timezone.localdate(), amount=Decimal("-1.00"))
         response = self.client.get(reverse("finance:transaction_list"))
         self.assertContains(response, reverse("finance:transaction_delete", args=[txn.pk]))
 
     def test_deleting_from_the_list_returns_to_the_list(self):
-        txn = Transaction.objects.create(account=self.account, date=date.today(), amount=Decimal("-1.00"))
+        txn = Transaction.objects.create(account=self.account, date=timezone.localdate(), amount=Decimal("-1.00"))
         list_url = reverse("finance:transaction_list")
         # Real usage: the confirm-delete GET renders `next` as a hidden field, submitted with
         # the POST - not passed as a query string on the POST itself.
@@ -1132,38 +1133,14 @@ class TransactionListDeleteAndLabelsTests(LoggedInWithAccountTestCase):
 
 class ReconciledRowStylingTests(LoggedInWithAccountTestCase):
     def test_reconciled_rows_get_the_faded_class(self):
-        Transaction.objects.create(account=self.account, date=date.today(), amount=Decimal("-1.00"), reconciled=True)
-        Transaction.objects.create(account=self.account, date=date.today(), amount=Decimal("-2.00"), reconciled=False)
+        Transaction.objects.create(
+            account=self.account, date=timezone.localdate(), amount=Decimal("-1.00"), reconciled=True
+        )
+        Transaction.objects.create(
+            account=self.account, date=timezone.localdate(), amount=Decimal("-2.00"), reconciled=False
+        )
         response = self.client.get(reverse("finance:transaction_list"))
         self.assertEqual(response.content.decode().count("row-reconciled"), 1)
-
-
-class TagsAreGoneTests(StashTestCase):
-    @classmethod
-    def setUpTestData(cls):
-        cls.user = get_user_model().objects.create_superuser("tester", password="not-a-real-password-123")
-
-    def setUp(self):
-        self.client.force_login(self.user)
-
-    def test_transaction_model_has_no_tags_field(self):
-        self.assertNotIn("tags", {field.name for field in Transaction._meta.get_fields()})
-
-    def test_transaction_form_has_no_tags_field(self):
-        self.assertNotIn("tags", TransactionForm().fields)
-
-    def test_transaction_form_page_does_not_mention_tags(self):
-        account = Account.objects.create(name="Checking")
-        response = self.client.get(reverse("finance:transaction_add") + f"?account={account.pk}")
-        self.assertNotContains(response, "Tags")
-
-    def test_tag_admin_is_not_registered(self):
-
-        self.assertFalse(any(model.__name__ == "Tag" for model in admin.site._registry))
-
-    def test_tag_model_no_longer_exists(self):
-
-        self.assertFalse(hasattr(models, "Tag"))
 
 
 class SaveAndAddAnotherTests(LoggedInTestCase):
@@ -1394,22 +1371,20 @@ class TransactionQuickEditTests(LoggedInTestCase):
         self.assertEqual(self.txn.amount, Decimal("-12.50"))
 
 
-class PayeeNameColumnTests(StashTestCase):
-    """2.9 (F51): the always-blank Transaction.payee_name column is gone."""
-
-    def test_the_column_is_gone(self):
-        self.assertNotIn("payee_name", [field.name for field in Transaction._meta.get_fields()])
-
-    def test_the_transactions_search_still_finds_payees_and_memos(self):
-        user = get_user_model().objects.create_user("tester", password="not-a-real-password-123")
-        self.client.force_login(user)
-        account = Account.objects.create(name="Checking")
+class TransactionSearchTests(LoggedInWithAccountTestCase):
+    def test_the_search_finds_a_payee_and_a_memo(self):
+        today = timezone.localdate()
         Transaction.objects.create(
-            account=account, date=date.today(), payee=Payee.objects.create(name="Rewe"), amount=Decimal("-4")
+            account=self.account, date=today, payee=Payee.objects.create(name="Rewe"), amount=Decimal("-4")
         )
-        response = self.client.get(reverse("finance:transaction_list"), {"q": "rewe"})
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Rewe")
+        Transaction.objects.create(account=self.account, date=today, memo="Birthday cake", amount=Decimal("-5"))
+        Transaction.objects.create(account=self.account, date=today, memo="Unrelated", amount=Decimal("-6"))
+
+        by_payee = self.client.get(reverse("finance:transaction_list"), {"q": "rewe"})
+        by_memo = self.client.get(reverse("finance:transaction_list"), {"q": "BIRTHDAY"})
+
+        self.assertEqual([t.amount for t in by_payee.context["transactions"]], [Decimal("-4")])
+        self.assertEqual([t.amount for t in by_memo.context["transactions"]], [Decimal("-5")])
 
 
 class SafeNextTests(SimpleTestCase):

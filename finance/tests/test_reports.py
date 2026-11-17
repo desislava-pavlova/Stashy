@@ -1,8 +1,6 @@
 """The Reports page: its filters and defaults, the tables and their markup, the averages and
 their tints, the notices, and Watched expenses."""
 
-import csv
-import io
 import re
 from datetime import date, timedelta
 from decimal import Decimal
@@ -22,7 +20,7 @@ from ..models import Account, Category, Profile, Transaction
 from ..regional import NBSP
 from ..templatetags.stashy_format import diff_tint
 from ..views.exports import REPORT_EXPORTS
-from .base import LEAKED_TEMPLATE_SYNTAX, LoggedInTestCase, LoggedInWithAccountTestCase, StashTestCase
+from .base import LEAKED_TEMPLATE_SYNTAX, LoggedInWithAccountTestCase, StashTestCase, csv_rows
 
 EXPENSE, INCOME = Category.CategoryType.EXPENSE, Category.CategoryType.INCOME
 
@@ -46,7 +44,7 @@ class ReportsViewTests(LoggedInWithAccountTestCase):
     def test_defaults_to_this_month(self):
         # R3 (Phase 13): This month - no subtotal - Last 3 periods - All accounts.
         response = self.client.get(reverse("finance:reports"))
-        today = date.today()
+        today = timezone.localdate()
         self.assertEqual(response.context["start"], today.replace(day=1))
         self.assertEqual(response.context["end"], today)
         self.assertEqual(response.context["average_periods"], 3)
@@ -54,7 +52,7 @@ class ReportsViewTests(LoggedInWithAccountTestCase):
     def test_savings_rate_is_shown_for_the_period(self):
         salary = Category.objects.create(name="Salary", category_type=Category.CategoryType.INCOME)
         rent = Category.objects.create(name="Rent", category_type=Category.CategoryType.EXPENSE)
-        today = date.today()
+        today = timezone.localdate()
         Transaction.objects.create(account=self.account, date=today, category=salary, amount=Decimal("1000.00"))
         Transaction.objects.create(account=self.account, date=today, category=rent, amount=Decimal("-250.00"))
         response = self.client.get(reverse("finance:reports"), {"range": "this_month"})
@@ -68,7 +66,7 @@ class ReportsViewTests(LoggedInWithAccountTestCase):
     def test_account_filter_applies_to_the_by_category_reports(self):
         other_account = Account.objects.create(name="Savings")
         groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
-        today = date.today()
+        today = timezone.localdate()
         Transaction.objects.create(account=self.account, date=today, category=groceries, amount=Decimal("-30.00"))
         Transaction.objects.create(account=other_account, date=today, category=groceries, amount=Decimal("-999.00"))
         response = self.client.get(reverse("finance:reports"), {"range": "this_month", "account": self.account.pk})
@@ -174,10 +172,12 @@ class ReportsPageMarkupTests(LoggedInWithAccountTestCase):
         groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
         Category.objects.create(name="Supermarket", parent=groceries, category_type=Category.CategoryType.EXPENSE)
         Transaction.objects.create(
-            account=cls.account, date=date.today(), category=groceries, amount=Decimal("-10.00")
+            account=cls.account, date=timezone.localdate(), category=groceries, amount=Decimal("-10.00")
         )
         subcat = Category.objects.get(name="Supermarket")
-        Transaction.objects.create(account=cls.account, date=date.today(), category=subcat, amount=Decimal("-15.00"))
+        Transaction.objects.create(
+            account=cls.account, date=timezone.localdate(), category=subcat, amount=Decimal("-15.00")
+        )
 
     def test_collapsible_toggle_and_parent_child_classes_are_present(self):
         response = self.client.get(reverse("finance:reports"))
@@ -237,23 +237,19 @@ class DateRangeFormSubtotalFieldTests(SimpleTestCase):
 
 
 class ReportsPageExpandButtonTests(LoggedInWithAccountTestCase):
-    def test_expand_button_toggles_itself_not_a_separate_back_button(self):
+    def test_the_page_has_the_expand_toggle(self):
         response = self.client.get(reverse("finance:reports"))
-        body = response.content.decode()
-        self.assertIn("data-expand-text", body)
-        self.assertNotIn("reportsBackBtn", body)
+        self.assertContains(response, "data-expand-text")
 
 
-class ReportsCollapseButtonLabelTests(LoggedInTestCase):
-    def test_expand_button_relabels_to_collapse_not_contract(self):
+class ReportsCollapseButtonLabelTests(SimpleTestCase):
+    def test_expand_button_relabels_to_collapse(self):
         # The relabel happens client-side (reports.js), not in the server-rendered HTML, which
         # always starts on "Expand" - check the script itself rather than a page fetch.
-
         js = (Path(settings.BASE_DIR) / "finance" / "static" / "finance" / "js" / "reports.js").read_text(
             encoding="utf-8"
         )
         self.assertIn("'Collapse'", js)
-        self.assertNotIn("Contract", js)
 
 
 class UncategorizedNoticeTests(LoggedInWithAccountTestCase):
@@ -263,7 +259,7 @@ class UncategorizedNoticeTests(LoggedInWithAccountTestCase):
         self.assertEqual(reporting.uncategorized_count(date(2026, 1, 1), date(2026, 1, 31)), 2)
 
     def test_reports_page_shows_a_notice_when_any_exist(self):
-        Transaction.objects.create(account=self.account, date=date.today(), amount=Decimal("-10.00"))
+        Transaction.objects.create(account=self.account, date=timezone.localdate(), amount=Decimal("-10.00"))
         response = self.client.get(reverse("finance:reports"), {"range": "this_month"})
         self.assertContains(response, "uncategorized transaction")
 
@@ -326,7 +322,7 @@ class ReportFixesAfterFirstLookTests(LoggedInWithAccountTestCase):
         self.assertEqual([p["total"] for p in series[0]["points"]], [Decimal("20.00"), Decimal("25.00")])
 
     def test_net_worth_chart_follows_the_subtotal(self):
-        Transaction.objects.create(account=self.account, date=date.today(), amount=Decimal("100.00"))
+        Transaction.objects.create(account=self.account, date=timezone.localdate(), amount=Decimal("100.00"))
         response = self.client.get(reverse("finance:reports"), {"range": "this_year", "subtotal": "quarter"})
         labels = [point["label"] for point in response.context["net_worth_chart"]]
         self.assertEqual(labels, response.context["net_worth_table"]["periods"])
@@ -343,7 +339,7 @@ class RefundsOnTheReportsPageTests(LoggedInWithAccountTestCase):
 
     def add(self, amount):
         Transaction.objects.create(
-            account=self.account, date=date.today(), category=self.groceries, amount=Decimal(amount)
+            account=self.account, date=timezone.localdate(), category=self.groceries, amount=Decimal(amount)
         )
 
     def get_page(self):
@@ -514,7 +510,7 @@ class SavingsRateNumberFormatTests(LoggedInWithAccountTestCase):
         profile.save()
         salary = Category.objects.create(name="Salary", category_type=INCOME)
         rent = Category.objects.create(name="Rent", category_type=EXPENSE)
-        this_month = date.today()
+        this_month = timezone.localdate()
         last_month = this_month.replace(day=1) - timedelta(days=1)
         for on, category, amount in [
             (this_month, salary, "2000.00"),
@@ -629,14 +625,10 @@ class SavingsRateExtremesInEveryNumberFormatTests(LoggedInWithAccountTestCase):
 
 
 class AverageDisplayTests(LoggedInWithAccountTestCase):
-    def test_no_average_period_line(self):
-        response = self.client.get(reverse("finance:reports"))
-        self.assertNotContains(response, "vs. average of last")
-
     def test_nothing_earlier_shows_the_message_instead_of_the_report(self):
         groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
         Transaction.objects.create(
-            account=self.account, date=date.today(), category=groceries, amount=Decimal("-10.00")
+            account=self.account, date=timezone.localdate(), category=groceries, amount=Decimal("-10.00")
         )
         response = self.client.get(reverse("finance:reports"), {"range": "earliest"})
         self.assertFalse(response.context["has_average"])
@@ -646,12 +638,12 @@ class AverageDisplayTests(LoggedInWithAccountTestCase):
     def test_one_earlier_period_is_not_an_average_either(self):
         groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
         # Data starting inside last month leaves exactly one whole earlier month to compare with.
-        last_month_end = date.today().replace(day=1) - timedelta(days=1)
+        last_month_end = timezone.localdate().replace(day=1) - timedelta(days=1)
         Transaction.objects.create(
             account=self.account, date=last_month_end, category=groceries, amount=Decimal("-40.00")
         )
         Transaction.objects.create(
-            account=self.account, date=date.today(), category=groceries, amount=Decimal("-10.00")
+            account=self.account, date=timezone.localdate(), category=groceries, amount=Decimal("-10.00")
         )
         response = self.client.get(reverse("finance:reports"))
         self.assertEqual(response.context["average_periods"], 1)
@@ -660,12 +652,12 @@ class AverageDisplayTests(LoggedInWithAccountTestCase):
 
     def test_two_earlier_periods_do_make_an_average(self):
         groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
-        two_months_back = (date.today().replace(day=1) - timedelta(days=1)).replace(day=1) - timedelta(days=1)
+        two_months_back = (timezone.localdate().replace(day=1) - timedelta(days=1)).replace(day=1) - timedelta(days=1)
         Transaction.objects.create(
             account=self.account, date=two_months_back, category=groceries, amount=Decimal("-40.00")
         )
         Transaction.objects.create(
-            account=self.account, date=date.today(), category=groceries, amount=Decimal("-10.00")
+            account=self.account, date=timezone.localdate(), category=groceries, amount=Decimal("-10.00")
         )
         response = self.client.get(reverse("finance:reports"))
         self.assertTrue(response.context["has_average"])
@@ -688,10 +680,6 @@ class AverageDisplayTests(LoggedInWithAccountTestCase):
         self.assertEqual(rows["Gifts"]["average"], Decimal("0.00"))
         self.assertTrue(rows["Gifts"]["no_earlier_activity"])
         self.assertFalse(rows["Rent"]["no_earlier_activity"])
-
-    def test_top_5_color_data_is_gone(self):
-        response = self.client.get(reverse("finance:reports"))
-        self.assertNotContains(response, "top5-data")
 
 
 class InvalidFilterTests(LoggedInWithAccountTestCase):
@@ -742,7 +730,7 @@ class WatchedExpensesSettingsTests(LoggedInWithAccountTestCase):
         self.assertEqual(list(self.profile.watched_expenses_categories.all()), [self.electricity])
 
         Transaction.objects.create(
-            account=self.account, date=date.today(), category=self.electricity, amount=Decimal("-40.00")
+            account=self.account, date=timezone.localdate(), category=self.electricity, amount=Decimal("-40.00")
         )
         response = self.client.get(reverse("finance:reports"), {"range": "this_month"})
         self.assertContains(response, "My bills")
@@ -753,20 +741,6 @@ class WatchedExpensesSettingsTests(LoggedInWithAccountTestCase):
 
     def test_watched_expenses_totals_none_when_nothing_chosen(self):
         self.assertIsNone(reporting.watched_expenses_totals(date(2026, 1, 1), date(2026, 1, 31), []))
-
-
-class WatchedExpensesMigrationPrefillTests(StashTestCase):
-    """The Phase 13 migration pre-fills existing "Bills & Utilities" categories into every
-    Profile's Watched expenses, so nothing looks different on day one - re-verified here at the
-    model level since the migration itself only runs once, at upgrade time."""
-
-    def test_a_profile_can_watch_a_pre_existing_bills_category(self):
-        user = get_user_model().objects.create_user("someone", password="not-a-real-password-123")
-        profile = Profile.for_user(user)
-        top = Category.objects.create(name="Bills & Utilities", category_type=Category.CategoryType.EXPENSE)
-        water = Category.objects.create(name="Water", parent=top, category_type=Category.CategoryType.EXPENSE)
-        profile.watched_expenses_categories.set([top.pk, water.pk])
-        self.assertEqual(reporting.watched_expenses_category_ids(profile), [top.pk, water.pk])
 
 
 class DiffTintFilterTests(SimpleTestCase):
@@ -875,7 +849,7 @@ class NoEarlierActivityAveragesZeroTests(LoggedInWithAccountTestCase):
 
     def _csv(self, slug):
         response = self.client.get(reverse("finance:export_report", args=[slug]), {"format": "csv"})
-        return {row[0]: row[1:] for row in csv.reader(io.StringIO(response.content.decode("utf-8-sig")))}
+        return {row[0]: row[1:] for row in csv_rows(response)}
 
     def test_the_export_has_a_zero_average_and_the_real_difference(self):
         self._three_earlier_months()

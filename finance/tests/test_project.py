@@ -18,15 +18,18 @@ from unittest import mock
 
 from django.apps import apps
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.contrib.staticfiles import finders
 from django.contrib.staticfiles.storage import staticfiles_storage
 from django.core.exceptions import ImproperlyConfigured
 from django.core.management import call_command
 from django.test import SimpleTestCase, override_settings
+from django.urls import reverse
 
 from scripts import bootstrap
 from stashy.settings import base
 
+from ..models import Profile
 from ..stashes import registry
 from .base import StashTestCase
 
@@ -169,11 +172,35 @@ class TestSettingsTests(SimpleTestCase):
             ):
                 runpy.run_path(base.__file__)
 
+
+class DeployCheckTests(StashTestCase):
+    """Django's checks ask every database whether it supports JSON fields. That is a query, so
+    this test needs the databases the checks can reach (as PendingMigrationsTests does); in a
+    SimpleTestCase it passed only when another test had already asked."""
+
+    databases = {"default", settings.TEST_STASH}
+
     def test_the_deploy_check_only_finds_what_it_was_told_to_skip(self):
         """Plan 03, S10: the four HTTPS warnings can't apply to Stashy and are silenced by name,
         so a new warning fails this test."""
         with override_settings(SECRET_KEY=secrets.token_urlsafe(50)):
             call_command("check", deploy=True, fail_level="WARNING", stdout=StringIO(), stderr=StringIO())
+
+
+class LoginCookieTests(StashTestCase):
+    """Plan 03, Q4 (the user's call, 14/11/2026): a login lasts until the browser closes."""
+
+    @classmethod
+    def setUpTestData(cls):
+        user = get_user_model().objects.create_user(settings.TEST_STASH, password="1234")
+        Profile.objects.create(user=user, owner_name="Alex")
+
+    def test_the_login_cookie_carries_no_expiry_date(self):
+        """So the browser drops it when it closes. Django's default kept it for two weeks."""
+        self.client.post(reverse("login"), {"username": settings.TEST_STASH, "password": "1234"})
+        cookie = self.client.cookies[settings.SESSION_COOKIE_NAME]
+        self.assertEqual(cookie["max-age"], "")
+        self.assertEqual(cookie["expires"], "")
 
 
 class PendingMigrationsTests(StashTestCase):
