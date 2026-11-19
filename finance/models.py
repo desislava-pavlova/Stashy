@@ -14,7 +14,7 @@ from datetime import date, timedelta
 from dateutil.relativedelta import relativedelta
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.core.validators import MinValueValidator
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.db.models import Case, F, Max, Q, Sum, Value, When
 from django.db.models.functions import Coalesce
@@ -25,6 +25,7 @@ from audit.context import system_action
 
 from . import regional
 from .currency import CURRENCY_CHOICES, DEFAULT_CURRENCY
+from .limits import MAX_REMINDER_INTERVAL, MAX_TRANSACTION_NUMBER, validate_plausible_date
 from .money import CENT, ZERO
 from .text import possessive
 
@@ -628,10 +629,11 @@ class Transaction(models.Model):
     negative amount = money out (expense/withdrawal)."""
 
     account = models.ForeignKey(Account, related_name="transactions", on_delete=models.CASCADE)
-    date = models.DateField()
+    date = models.DateField(validators=[validate_plausible_date])
     transaction_number = models.PositiveIntegerField(
         null=True,
         blank=True,
+        validators=[MaxValueValidator(MAX_TRANSACTION_NUMBER)],
         help_text="Shared across all accounts, starting again at 1 every calendar year. You can change it.",
     )
     payee = models.ForeignKey(Payee, null=True, blank=True, on_delete=models.SET_NULL, related_name="transactions")
@@ -680,10 +682,15 @@ class Transaction(models.Model):
         Two requests can't both read the same MAX() either, since every
         write request holds the stash's write lock (BEGIN IMMEDIATE)
         from its start."""
-        highest = Transaction.objects.filter(date__year=on.year).aggregate(highest=Max("transaction_number"))[
-            "highest"
-        ]
-        return (highest or 0) + 1
+        # A number above the limit (stored before the limit existed) is
+        # left out: one more than a number the database can barely hold
+        # would be one it can't, and every new transaction of the year
+        # would fail. And the answer never passes the limit itself, or
+        # the form would refuse a number nobody typed; duplicates are
+        # allowed, so the limit is given again.
+        countable = Transaction.objects.filter(date__year=on.year, transaction_number__lte=MAX_TRANSACTION_NUMBER)
+        highest = countable.aggregate(highest=Max("transaction_number"))["highest"]
+        return min((highest or 0) + 1, MAX_TRANSACTION_NUMBER)
 
 
 class ImportBatch(models.Model):
@@ -763,10 +770,12 @@ class Reminder(models.Model):
     frequency = models.CharField(max_length=10, choices=Frequency.choices, default=Frequency.ONE_TIME)
     # How many periods between occurrences - "weekly" + interval=2 is
     # "every 2 weeks". Meaningless for ONE_TIME; always 1 there.
-    interval = models.PositiveSmallIntegerField(default=1, validators=[MinValueValidator(1)])
-    next_due_date = models.DateField()
+    interval = models.PositiveSmallIntegerField(
+        default=1, validators=[MinValueValidator(1), MaxValueValidator(MAX_REMINDER_INTERVAL)]
+    )
+    next_due_date = models.DateField(validators=[validate_plausible_date])
     end_of_period = models.BooleanField(default=False, verbose_name="Last day of period")
-    end_date = models.DateField(null=True, blank=True)
+    end_date = models.DateField(null=True, blank=True, validators=[validate_plausible_date])
     # Points at the transaction created the last time this reminder was
     # entered (Enter, not Skip) - the basis for the computed "paid"
     # status (D6). Deleting that transaction clears this automatically
@@ -1073,7 +1082,7 @@ class ExchangeRate(models.Model):
     rate = models.DecimalField(
         max_digits=20, decimal_places=10, help_text="How much 1 unit of the first currency is worth in the second."
     )
-    date = models.DateField()
+    date = models.DateField(validators=[validate_plausible_date])
     source = models.CharField(max_length=12, choices=Source.choices, default=Source.MANUAL)
 
     class Meta:
@@ -1096,7 +1105,7 @@ class Reconciliation(models.Model):
     state of each transaction lives on Transaction.reconciled."""
 
     account = models.ForeignKey(Account, on_delete=models.CASCADE, related_name="reconciliations")
-    statement_date = models.DateField()
+    statement_date = models.DateField(validators=[validate_plausible_date])
     statement_balance = models.DecimalField(max_digits=12, decimal_places=2)
     opening_balance = models.DecimalField(max_digits=12, decimal_places=2)
     # Set only when the statement balance and the reconciled

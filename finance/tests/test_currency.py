@@ -128,6 +128,27 @@ class FetchLatestRatesTests(StashTestCase):
 
         self.assertEqual(list(ExchangeRate.objects.values_list("rate", flat=True)), [Decimal("1.2")])
 
+    def test_a_reply_dated_outside_the_limits_is_refused_and_nothing_is_stored(self):
+        """A rate dated 9999-12-31 would be the latest one for ever."""
+        for text in ("9999-12-31", "1899-12-31", "0001-01-01"):
+            with (
+                self.subTest(date=text),
+                frankfurter_replies({**self.REPLY, "date": text}),
+                self.assertRaises(RateFetchError),
+            ):
+                fetch_latest_rates("EUR", ["USD"])
+        self.assertFalse(ExchangeRate.objects.exists())
+
+    def test_a_rate_that_cant_be_stored_is_left_out_like_a_currency_with_no_rate(self):
+        """1e11 and 1e30 don't fit the column and broke every page that
+        converts; NaN was an uncaught error; 1e-30 is stored as zero.
+        The good one in the same reply is still stored."""
+        rates = {"GBP": "NaN", "USD": "1e11", "CHF": "1e-30", "JPY": 160.5}
+        with frankfurter_replies({**self.REPLY, "rates": rates}):
+            stored, unavailable = fetch_latest_rates("EUR", ["GBP", "USD", "CHF", "JPY"])
+        self.assertEqual(unavailable, ["CHF", "GBP", "USD"])
+        self.assertEqual([row.quote_currency for row in stored], ["JPY"])
+
     def test_a_fetched_rate_is_logged_as_an_automatic_change_with_its_reason(self):
         with frankfurter_replies(self.REPLY):
             fetch_latest_rates("EUR", ["USD"])

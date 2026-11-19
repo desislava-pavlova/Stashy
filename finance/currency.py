@@ -21,6 +21,7 @@ from django.db.models import F, Q
 from audit.context import system_action
 
 from . import regional
+from .limits import is_plausible_date, is_plausible_rate
 from .money import CENT, ZERO
 
 DEFAULT_CURRENCY = "EUR"
@@ -222,6 +223,9 @@ def fetch_latest_rates(main_currency, currencies):
         with urllib.request.urlopen(request, timeout=10) as response:
             payload = json.load(response)
         rates_date = date.fromisoformat(payload["date"])
+        if not is_plausible_date(rates_date):
+            # A rate dated 9999-12-31 would be the latest one for ever.
+            raise ValueError("date outside the limits")
         rates = {code: Decimal(str(value)) for code, value in payload["rates"].items()}
     except (OSError, ValueError, KeyError, TypeError, AttributeError, InvalidOperation) as error:
         raise RateFetchError(
@@ -239,7 +243,7 @@ def fetch_latest_rates(main_currency, currencies):
     ):
         for code in wanted:
             rate = rates.get(code)
-            if rate is None or rate <= 0:
+            if rate is None or not is_plausible_rate(rate):
                 unavailable.append(code)
                 continue
             row, _ = ExchangeRate.objects.update_or_create(

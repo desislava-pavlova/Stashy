@@ -363,7 +363,9 @@ class ImportErrorTests(LoggedInWithAccountTestCase):
         content = b"Date,Payee,Memo,Amount\n03/09/2026,Shop,,-5.00\nsomeday,Shop,,-5.00\n04/09/2026,Shop,,lots\n,,,\n"
         response = self.upload("bank.csv", content)
         self.assertContains(
-            response, "Imported 1 transaction (0 duplicates skipped). 2 rows skipped - unreadable date or amount."
+            response,
+            "Imported 1 transaction (0 duplicates skipped). 2 rows skipped - "
+            "unreadable date or amount, or a date outside 1900 to 2100.",
         )
 
     def test_a_bad_num_becomes_no_number_instead_of_a_crash(self):

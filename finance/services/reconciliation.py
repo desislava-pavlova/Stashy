@@ -10,6 +10,7 @@ from django.db import router, transaction
 from audit.context import system_action
 
 from .. import regional
+from ..limits import MAX_AMOUNT
 from ..models import Account, Payee, Reconciliation, Transaction
 from ..money import CENT, ZERO
 
@@ -24,6 +25,19 @@ class UnacceptedDifferenceError(Exception):
         self.difference = difference
 
 
+class AmountTooBigError(Exception):
+    """A figure the reconciliation would store, the gap to the statement
+    or the balance the account already has reconciled, is too big for
+    an amount. Two amounts that are each inside the limit can add up to
+    one that isn't. The database would take it, and nothing could read
+    it back: every page of the account would fail. Nothing was
+    saved."""
+
+    def __init__(self, amount: Decimal):
+        super().__init__(f"Reconciliation figure of {amount} is too big to store")
+        self.amount = amount
+
+
 def reconcile(
     account: Account,
     statement_date: date,
@@ -35,12 +49,17 @@ def reconcile(
 
     A gap between the statement and the checked transactions raises
     UnacceptedDifferenceError, unless `accept_difference` is set: then
-    an adjustment transaction closes the gap.
+    an adjustment transaction closes the gap. A gap, or an opening
+    balance, that is too big to store raises AmountTooBigError even
+    then.
     """
     transactions = list(transactions)
     opening_balance = account.reconciled_balance()
     checked_total = sum((txn.amount for txn in transactions), ZERO)
     gap = (statement_balance - (opening_balance + checked_total)).quantize(CENT)
+    for figure in (opening_balance, gap):
+        if abs(figure) > MAX_AMOUNT:
+            raise AmountTooBigError(figure)
     if gap != ZERO and not accept_difference:
         raise UnacceptedDifferenceError(gap)
 

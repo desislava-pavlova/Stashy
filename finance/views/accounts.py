@@ -14,6 +14,7 @@ from .. import regional
 from ..content import ACCOUNT_TIPS
 from ..currency import SUFFIX_CURRENCIES, convert_balances, format_money
 from ..forms import AccountCreateForm, AccountForm, ReconcileFinishForm, ReconcileStartForm, TransferForm
+from ..limits import MAX_AMOUNT
 from ..models import Account, grouped_accounts
 from ..money import ZERO
 from ..services import reconciliation
@@ -145,6 +146,21 @@ def _reconcile_review_context(account, statement_date, statement_balance, checke
     }
 
 
+def _reconcile_refusal(error, account):
+    """What the review page says when a reconciliation is refused."""
+    if isinstance(error, reconciliation.AmountTooBigError):
+        return (
+            f"A figure in that reconciliation, {format_money(error.amount, account.currency)}, is more "
+            f"than Stashy can store ({format_money(MAX_AMOUNT, account.currency)}). It is the "
+            "difference to your statement, or the balance this account already has reconciled: "
+            "check the statement balance for a typo."
+        )
+    return (
+        f"That leaves a difference of {format_money(error.difference, account.currency)} — "
+        "check the box to accept it and create an adjustment, or fix your selections."
+    )
+
+
 def account_reconcile(request, pk):
     """The account page's Reconcile button: a Quicken-style two-step
     flow - state the statement's ending balance and date, then check off
@@ -178,12 +194,8 @@ def account_reconcile(request, pk):
                 checked,
                 accept_difference=finish_form.cleaned_data["accept_difference"],
             )
-        except reconciliation.UnacceptedDifferenceError as error:
-            messages.error(
-                request,
-                f"That leaves a difference of {format_money(error.difference, account.currency)} — "
-                "check the box to accept it and create an adjustment, or fix your selections.",
-            )
+        except (reconciliation.UnacceptedDifferenceError, reconciliation.AmountTooBigError) as error:
+            messages.error(request, _reconcile_refusal(error, account))
             checked_ids = {str(t.pk) for t in checked}
             return render(
                 request,

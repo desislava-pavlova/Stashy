@@ -1321,7 +1321,192 @@ Filed (all about the admin, so they could also wait for plan 05, like S112):
   mixin doesn't cover it. **Proposal (Claude):** catch `OperationalError` in
   the same place, or restrict the lookups an admin accepts. Phase 2, 2.21.
 
-<!-- Next number: S116 -->
+**Done 19/11/2026 (part D).** Reproduced first, with a probe: all three were
+500 pages, and so was one the filing missed: **a POST of the Add form with a
+bad `account`** (the autocomplete widget looks the value up again to draw
+the form with its error). That is why S113 is fixed in the widget and not in
+`get_changeform_initial_data()` as proposed: the proposal covered the address
+and left the POST. S114 checks the ids before Django uses them. S115 refuses
+the lookup (the filing's second proposal), because `OperationalError` is
+also what "database is locked" raises. One thing worth keeping from the
+probe: the regex 500 only shows when the table has a row (SQLite calls the
+pattern per row), so a test on an empty table passes on the broken code.
+
+### O. Found by the reviews of Phase 2, part D (19/11/2026)
+
+Three reviewers (code, security, QA) read part D. Nothing was Critical, and
+none found a way round the new checks. Done the same day, from their
+findings: the log line writes each parameter name through `ascii()` and cuts
+the whole at 200 characters (the audit log's JSON column is the one place a
+name can be free text, so a crafted address could have put a line break or
+a terminal escape into `stashy.log`; it was S112's line, not part D's);
+`range` joined `regex` and `iregex` in the refused lookups (`?id__range=1`
+was an `IndexError` on every list); `key_fits()` and the log helper have
+their own tests; three copies of the huge number in the tests are one; a
+test that only checked "not a 500" says what it is. The QA tester also
+left six expected-failure tests for the open gaps in S117; they are not in
+the suite (every run would read "OK (expected failures=6)"), the queries
+are in S117 instead, as S114's test was.
+
+- **S116 — Three copies of "can this be a database id?"** (code reviewer;
+  Phase 3, 3.21). `_as_id()` in `views/_helpers.py` (ASCII digits, at most
+  2**63 - 1), `SafeModelMultipleChoiceField._check_values()` in `forms.py`
+  (`int()` and the BigInteger range) and `key_fits()` in
+  `stashy/admin_mixins.py` (the key field's own `to_python()` and the
+  database's range). They differ a little on purpose: the admin's one asks
+  the real key field and database, the views' one is stricter about the
+  digits. The reviewer judged `key_fits()` no worse than the others. **Fix
+  to decide in Phase 3:** one function in the project package that the
+  three call (the project package can't import from `finance`, and `audit`
+  can't either, so that is the one place all three can reach).
+- **S117 — More hand-typed requests that are still 500 pages** (security
+  reviewer and QA tester, each measured by them; Phase 2, 2.22). The same
+  family as S112 to S115, but each needs a small decision, so none was fixed
+  in part D. Each needs a row in the table to show.
+  - `?values__contains=1`, `?values__contained_by=1` and
+    `?values__foo__contains=1` on the audit log list: `NotSupportedError`
+    (SQLite can't compare JSON documents); `?values__has_keys=` and
+    `?values__has_any_keys=` with nothing after the `=`: `OperationalError`.
+    **Proposal (Claude):** refuse any lookup whose first part is `values` on
+    that list; no page sends one.
+  - `?q=` of over about 50,000 characters on any list that has a search
+    (`LIKE or GLOB pattern too complex`; Waitress lets a 60 KB address
+    through), `?q=` of about 3,000 words (`Expression tree is too large`),
+    and the autocomplete address's `?term=` the same way (Django's own
+    view). **Proposal:** override `get_search_results()` in the mixin, which
+    runs for both: a search word over about 200 characters, or more than
+    about 50 words, finds nothing.
+  - `?id__in=` with more than about 32,000 different values: `too many SQL
+    variables`. **Proposal:** `lookup_allowed()` refuses a value over about
+    1,000 characters.
+  - An empty `?_to_field=` on any change or delete page: `FieldDoesNotExist`,
+    a Django 6.1.3 bug (`get_object()` tests `from_field is None` and its
+    callers read "" as not given). **Proposal:** `get_object()` in the
+    mixin passes `from_field or None`.
+  - Don't catch `DatabaseError` for these: it would also hide "database is
+    locked".
+  - The tests to start from (the QA tester's, each asserting a status under
+    500 with a row present): `{"values__contains": "1"}`,
+    `{"values__contained_by": "1"}`, `{"values__foo__contains": "1"}`,
+    `{"values__has_keys": ""}`, `{"values__has_any_keys": ""}` on
+    `admin:audit_auditlogentry_changelist`; `{"q": "a" * 60_000}` on that
+    list and on `admin:finance_transaction_changelist`; `admin:autocomplete`
+    with `app_label=finance`, `model_name=transaction`, `field_name=payee`
+    and `term="a" * 60_000`; `{"_to_field": ""}` on the change and the
+    delete page of a transaction.
+- **S118 — A transaction number of 9223372036854775807 breaks every later
+  new transaction of that year** (security reviewer, measured; joins S108,
+  your call). The number's form field accepts it, in the admin and in the
+  Transactions page's `TransactionForm` (which has no maximum either), so it
+  isn't an admin problem. `Transaction.next_number()` then returns 2**63,
+  and every new transaction of that year, from a form or an import, is an
+  `OverflowError` until that number is edited. **Proposal (Claude):**
+  `max_value` on the form field and a model validator, and a
+  `next_number()` that copes with a huge maximum. It is the same question as
+  S108 (should stored numbers and dates have limits?), so it waits for your
+  answer there; the security reviewer also found that a reminder due on
+  31/12/9999 is a 500 page through the admin too, which is S108's example.
+- **S119 — The admin's account dropdown pages an unordered list** (QA
+  tester; Phase 2, 2.22). `AccountAdmin.get_queryset()` uses
+  `with_balances()`, whose GROUP BY drops `Account.Meta.ordering`, so the
+  Transaction Add page's account dropdown pages rows in no set order
+  (`UnorderedObjectListWarning`) and could repeat or skip an account from
+  one page to the next. **Proposal (Claude):** `ordering = ("name", "pk")`
+  on `AccountAdmin`. By name, not by `name_key`, because accounts have
+  none yet (S109).
+
+**Done 19/11/2026 (part E):** S117 (all but the audit log's JSON lookups,
+which are not worth it: one column nobody types an address for), S119,
+S108 (dates, the reminder interval), S111 (imported amounts) and S118 (the
+transaction number), see 2.22 and 2.23. S108's example of a reminder due
+on 31/12/9999 is now a form error instead of a 500 page, and so is a
+yearly interval of 32767.
+
+### P. Found by the reviews of Phase 2, part E (19/11/2026)
+
+Four reviewers (code, database, security, QA) read part E. The database
+reviewer rehearsed the migration on a scratch copy with deliberately bad
+rows, forwards, backwards and forwards again: nothing changed in any
+table. Done the same day from their findings: a Num of `1e1000000` took
+20 seconds to import, holding the stash's write lock (`int()` ran before
+the limit was looked at; it is compared first now); `next_number()` can't
+go past the limit (it gave 1,000,000,000, which the Add page then refused
+itself); `parse_amount()` no longer rounds with `abs()` (a number of a
+million digits was an uncaught `decimal.Overflow`, a hand-made Excel file
+could cause it); the exchange-rate fetch refuses a date outside the limits
+and leaves out a rate that is NaN, too big for its column or zero once
+rounded (a rate of 1e11 would have broken every page that converts
+money, including the Settings page that fetches rates); a one-time
+reminder ignores the interval and end date the page hides for it (an
+error in a hidden row made Save look like it did nothing); the importer's
+summary says that a date outside 1900 to 2100 is skipped; `limits.py` has a
+test that it imports nothing from the app (a cycle would stop Django
+starting) and a note that migrations refer to its validator by name; and
+tests: boundaries on both sides, every date box (a test fails for a new
+one without the limit), every entry page says why, and a stored row outside
+the limits can still be opened and fixed.
+
+- **S120 — A Reconcile can store an adjustment too big for an amount**
+  (QA tester, Critical; the security reviewer found it too; **fixed
+  19/11/2026** on your answer; Phase 2, 2.24). The adjustment is the gap between the
+  statement and the account, `statement_balance - (opening + checked)`,
+  and the same goes for a `Reconciliation`'s opening balance. No form
+  checks a sum, so two amounts inside the limit can make one outside it.
+  SQLite doesn't enforce `max_digits=12` when it writes, but Django does
+  when it reads the row back, so the account's register, the Transactions
+  page, the Transactions export and the transaction's own delete page all
+  end in `decimal.InvalidOperation` until the row is fixed by hand in the
+  database file. Reproduced through the real view: an account with one
+  reconciled transaction of -500, a statement balance of 9999999999.00 and
+  "accept difference" give a gap of 10000000499.00 (13 digits); or one
+  transaction of 9,999,999,999.99 and a statement balance of
+  -9,999,999,999.99 give 14. Not caused by part E (the amounts are old
+  limits), but it is the same family. It needs sums near ten billion,
+  so a typo in the statement balance is the realistic way in.
+  **Proposal (Claude):** in `reconcile()`, before anything is written,
+  refuse a gap or an opening balance over `MAX_AMOUNT` with a message the
+  review page shows (like `UnacceptedDifferenceError`). The QA tester's
+  test, to start from: a reconciled transaction of -500, then POST to
+  `finance:account_reconcile` with `stage=finish`,
+  `statement_date=2026-02-01`, `statement_balance=9999999999.00` and
+  `accept_difference=on`; assert no transaction's amount is over
+  `MAX_AMOUNT` and the account's page answers 200. Also an option, with
+  more cost: a `CheckConstraint` (see "Noticed").
+- **S121 — The importer's robustness against a hostile file** (security
+  reviewer; not caused by part E; Phase 3 or later, your call). A
+  Category cell of 40,000 spaces takes 6 seconds, because
+  `_CATEGORY_SEPARATOR_RE` (`\s*[:>]\s*`) is quadratic on a run of spaces
+  with no separator; splitting on `[:>]` and stripping the parts, as the
+  code already does afterwards, would fix it. An Excel sheet that claims
+  a very wide or tall `<dimension>` makes the reader build every row at
+  that width (`list(iter_rows())`); ofxparse is quadratic on one long
+  field (100,000 digits take 8 seconds); a memo or payee of any length
+  is stored, since SQLite ignores `max_length`, and then fails the edit
+  form until shortened. **Proposal:** an upload size cap of a few MB, a
+  cap on the rows read, `max_col` of the header's width, and a length
+  limit on imported text. All of it needs a file made on purpose.
+- **S122 — `parse_amount()` misreads some odd input without saying**
+  (security reviewer and QA tester; not caused by part E). The first
+  thing it does is strip every character that isn't a digit, comma,
+  point or sign, so `1e5` reads as 15.00 and an Arabic decimal mark
+  (`٣٫٥`) as 35.00. A bank file doesn't write amounts like that, so it
+  is unlikely; the fix would refuse a cell with a letter in it as
+  unreadable, which changes what imports (`€ -5` has one).
+- **S123 — Enter and Skip can move a recurring reminder past the limit,
+  and old data can still overflow `_advance()`** (QA tester and security
+  reviewer; Phase 3, 3.19 with S101). `advance_due_date()` saves with
+  `update_fields`, which skips validators, so a monthly reminder due in
+  December 2100 becomes January 2101, and its edit form then asks for a
+  new date. The form says so and typing one fixes it. Separately, a
+  yearly reminder stored before the limits with a due date in 9998 gives
+  a 500 page on every Skip (`OverflowError`); the real stash holds none.
+  **Claude's call:** left as it is, because a reminder 74 years away is
+  not a real case. **Proposal if wanted:** catch the overflow in
+  `_advance()` and answer with a message, and stop a series at 2100.
+- **S124 — The amount's size is written in about eight places** (code
+  reviewer; Phase 3, 3.21). See 3.21.
+
+<!-- Next number: S125 -->
 
 ---
 
@@ -1452,10 +1637,11 @@ Built in four parts (Claude's proposal, 14/11/2026), each one a commit:
 green, and the render check of the changed pages shows no leaked template
 syntax.
 
-## Phase 2 — Leftovers and documentation  (S11, S12, S13, S21, S44, S43's comments, S25, S34, S56–S62, S68, S70, S72–S74, S85, S90, S104, S110, S112)
+## Phase 2 — Leftovers and documentation  (S11, S12, S13, S21, S44, S43's comments, S25, S34, S56–S62, S68, S70, S72–S74, S85, S90, S104, S108, S110–S115, S117–S119)
 
-Built in three parts (Claude's call, 16/11/2026: one phase of 18 items is
-too much for one review, and Phase 1 went the same way), each one a commit:
+Built in four parts (Claude's call, 16/11/2026: one phase of 18 items is
+too much for one review, and Phase 1 went the same way; the admin items
+became a fourth part on 19/11/2026), each one a commit:
 - **A, small and standalone:** 2.10–2.14, 2.17, 2.18 (S68, S70, S72, S73,
   S74, S110, S112). **Done 16/11/2026.** Each touches one or two files and
   none depends on the others. S110 also changed `scripts/bootstrap.py`,
@@ -1472,6 +1658,21 @@ too much for one review, and Phase 1 went the same way), each one a commit:
   reminder tip), and one test was replaced by another (see 2.2). 957 comment
   and docstring edits were made by a script that proved the code unchanged,
   the rest by hand.
+- **D, the admin's 500 pages:** 2.19–2.21 (S113–S115). **Done
+  19/11/2026**, in `stashy/admin_mixins.py` (the mixin is now
+  `HandMadeRequestMixin`, since it does more than handle huge numbers),
+  `finance/admin.py` and `audit/admin.py` (the rename) and
+  `finance/tests/test_admin.py`. Each was reproduced with a probe first: all
+  three were 500 pages, and so was one the filing missed (see S113). The
+  suite went from 1,119 to 1,154 tests. The reviews' own findings are
+  S116–S119 (section O).
+- **E, the rest of the admin's 500 pages and limits on stored values:**
+  2.22 and 2.23 (S117, S119, S108, S111, S118). **Done 19/11/2026**, on
+  your word ("2.22 and A"): the new `finance/limits.py`, validators on
+  seven columns (a new migration, which changes no data), the forms, the
+  importer, `parse_amount()`, the exchange-rate fetch and the admin mixin.
+  The suite went from 1,154 to 1,211 tests. The reviews' findings are
+  S120–S124 (section P); S120 was Critical and is fixed (2.24).
 
 - [x] **2.1** S11: delete the 21 history-only tests, trim three, rename the
   kept classes; plus the seven more from G's note. *Done 16/11/2026: the 21
@@ -1653,22 +1854,75 @@ too much for one review, and Phase 1 went the same way), each one a commit:
   too), and `finance/admin.py` has one `StashyModelAdmin` base for the
   nine admins. A test checks that every registered admin has it, ahead of
   `ModelAdmin` in its bases.
-- [ ] **2.19** S113: the Add page drops a prefilled value `_as_id()`
-  rejects, so `?account=<huge>` and `?account=zz` aren't a 500 page; a test
-  (or move it to plan 05, with S112).
-- [ ] **2.20** S114: the bulk-action form turns a huge or non-numeric id
-  into the plain-list redirect, through `response_action()`; a test.
-- [ ] **2.21** S115: a bad regular expression in an admin list's address
-  isn't a 500 page; a test.
+- [x] **2.19** S113: the Add page's autocomplete dropdown skips a value that
+  can't be a key, so `?account=<huge>` and `?account=zz` aren't a 500 page,
+  and neither is a form posted with one. **Claude's call, different from the
+  proposal:** the check is in the widget (`SafeAutocompleteSelect`, put in
+  by `formfield_for_foreignkey()`), not in `get_changeform_initial_data()`,
+  because the probe found that a POST of the Add form with a bad `account`
+  was a 500 page too, through the same widget; the address-only proposal
+  would have left it. Tests for both paths, for a real id still selected,
+  and that every autocomplete field is a foreign key (the widget is made
+  for those).
+- [x] **2.20** S114: `response_action()` checks every selected id before
+  Django uses it, and answers a bad one with a warning and no change (what
+  Django says for "nothing selected", so the list redirects to itself).
+  **Claude's call:** checked up front, not a `try` round the whole action,
+  which could hide a real bug inside an action. Tests, with a real row
+  selected next to the bad id to prove nothing is deleted.
+- [x] **2.21** S115: `lookup_allowed()` refuses `regex`, `iregex` and (the
+  QA tester's find, one word more) `range` in an address: a 400, like any
+  lookup the admin doesn't allow. **Claude's call:** the second of the
+  filing's two proposals, because catching `OperationalError` would also
+  hide "database is locked". Tests with a row in each list, since SQLite
+  only runs a pattern once there is a row to look at.
+- [x] **2.22** S117 and S119, trimmed on your word ("2.22") as proposed:
+  a search word of over 200 characters or a search of over 50 words finds
+  nothing (`get_search_results()`, which the list's `q` and the
+  autocomplete's `term` both use); a filter value of over 1,000
+  characters is refused like a regex lookup; an empty `_to_field` is read
+  as not given (`get_object()`, a Django 6.1.3 bug); the account
+  dropdown pages in name order (`ordering = ("name", "pk")`). **Not
+  done, Claude's call:** the audit log's JSON-column lookups
+  (`values__contains` and the like): only that one column, and nobody
+  types those addresses. Tests with a row present, and boundary tests at
+  200 and 201 characters, 50 and 51 words, 1,000 and 1,001.
+- [x] **2.23** Limits on stored values (option A, your word "A"):
+  S108 (dates), S111 (amounts) and S118 (a transaction number), in one
+  place, `finance/limits.py`. A date from 1900 to 2100, a reminder
+  interval of at most 120, a transaction number of at most 999,999,999
+  and an amount of at most 9,999,999,999.99, on seven model columns (so
+  every ModelForm and the admin have them) and on the four plain forms'
+  date boxes (`PlausibleDateField`). An imported row outside them is
+  "unreadable" (CSV, Excel and OFX); a Num over the limit comes in as no
+  number, as before with a lower maximum; `parse_amount()` returns None
+  for a too-big amount. `next_number()` leaves out a stored number above
+  the limit and never goes past it. The migration is validators only, all
+  "(no-op)" in `sqlmigrate`, so no table is rebuilt and no data changes;
+  the real stash holds nothing outside the limits (a read-only check
+  before building). **Claude's calls:** a Num over the limit keeps its
+  old meaning (no number, the row still comes in) instead of making the
+  row unreadable, because only the Num is wrong; a one-time reminder
+  ignores the interval and end date the page hides for it; a rate or a
+  date fetched from the network that breaks a limit is left out. A
+  database `CheckConstraint` was left out, see "Noticed".
+- [x] **2.24** S120, a Reconcile whose gap is too big for an amount
+  (Critical, section P). **Done 19/11/2026** on your answer ("Fix: refuse
+  with a message"): `reconcile()` raises `AmountTooBigError` when the gap
+  to the statement, or the account's reconciled balance (the opening
+  balance, a sum), is over `MAX_AMOUNT`, even when "accept difference" is
+  set; the review page says so and nothing is saved. Tests: the gap, the
+  opening balance, the largest gap that fits and one cent over, and the
+  page. No `CheckConstraint`, as you chose.
 
 **Done when:** the suite is green (fewer tests than 723 was the aim when this
-was written; today's count is 1,119, down from 1,134 before part B, since
-history-only tests and duplicates went and a few new ones came), and a grep for the
+was written; today's count is 1,211, down from 1,134 before part B, since
+history-only tests and duplicates went and some new ones came), and a grep for the
 history patterns finds nothing in the application code outside `plans/` and
-`DEVLOG.md` (tests keep their plan references, see 2.3). *Parts A to C are
-done; what is left of the phase is the three admin items, 2.19 to 2.21.*
+`DEVLOG.md` (tests keep their plan references, see 2.3). *Parts A to E are
+done (19/11/2026), and with them all of Phase 2.*
 
-## Phase 3 — Python structure  (S40, S43, S15, S16, S17, S18, S20, S42, S45, S47, S48, S63–S66, S49, S71, S82, S89, S101, S109)
+## Phase 3 — Python structure  (S40, S43, S15, S16, S17, S18, S20, S42, S45, S47, S48, S63–S66, S49, S71, S82, S89, S101, S109, S116)
 
 - [ ] **3.0** First, the two tool settings, each as its own commit:
   S40, Django gets its own import group and `lines-after-imports = 2` in
@@ -1731,6 +1985,12 @@ done; what is left of the phase is the three admin items, 2.19 to 2.21.*
   old Paid row, atomic outside a request).
 - [ ] **3.20** S109: the Python-side name sorts use `name_key`, like the
   database (your call for the accounts).
+- [ ] **3.21** S116: one "can this be a database id?" function in the
+  project package, called by `_as_id()`, `SafeModelMultipleChoiceField` and
+  `key_fits()`; the existing tests of the three pass unchanged. With it
+  S124: `max_digits=12, decimal_places=2` is written in about eight
+  places, and `MAX_AMOUNT` is a ninth copy of the same fact; constants in
+  `limits.py` that the columns and `MAX_AMOUNT` both read.
 
 **Done when:** the suite is green with no test edited except for moved
 imports, and every page renders the same as before.
@@ -1883,3 +2143,37 @@ item 3.6 was closed as saved for later.
     public repository) can only be run with git, so it is yours to do:
     `git log --all --name-only --pretty=format: | Sort-Object -Unique`, and
     `git log --all -S"<the real stash's name>" --oneline`.
+- From Phase 2 part D's reviews (19/11/2026), judged not worth planning:
+  - Django's own security log records every refused lookup (the regex and
+    range ones too) at ERROR level with a traceback and the name as typed.
+    Repeating one would fill the 2 MB rotating log and push older real
+    errors out. That is Django's normal answer to any lookup an admin
+    doesn't allow; turning that logger down to one line is the choice if
+    it ever matters.
+  - `get_changelist_instance()` turns every `ValueError` into the redirect
+    and one warning line with no traceback (S112's design), so a real bug
+    of that kind in an admin's own `get_queryset()` would be hidden the
+    same way. The line names the exception's type, which is the clue.
+  - The mixin is written for `ModelAdmin`: an inline admin (none today)
+    would need its own copy of the dropdown and lookup guards, and
+    `key_fits()` doesn't follow a key that is itself a relation (no model
+    has one). Both are said in the mixin's docstrings.
+- From Phase 2 part E's reviews (19/11/2026), left alone:
+  - SQLite doesn't enforce `max_digits`, so any way of writing a row that
+    skips the validators (a `save()` or `bulk_create()` in code, a backup
+    restore) can store a number too big to read back, and the pages that
+    read it fail. A `CheckConstraint` on the amount, balance and rate
+    columns would turn that into an error at the write. It is left out:
+    on SQLite it rebuilds the table, and it makes the migration fail,
+    and Stashy not start, if any stored row already breaks it. The
+    validators and the code that writes sums (S120) are the answer for
+    now.
+  - A weekly reminder due on 01/01/1900 passes the date limit and then
+    generates the most it ever does, 500 previews (0.23 seconds), on each
+    full save. It is capped, and it needs an absurd date.
+  - `parse_amount()` checks `is_finite()` after a regular expression that
+    has already removed every letter, so `inf` and `nan` never reach it.
+    Harmless.
+  - A reminder's interval has a minimum in the database (a check
+    constraint) and now a maximum only in the validators. Same reason as
+    the first point.

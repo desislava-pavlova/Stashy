@@ -18,6 +18,11 @@ from django.utils import timezone
 from audit.context import system_action
 
 from . import regional
+from .limits import (
+    EARLIEST_YEAR,
+    LATEST_YEAR,
+    validate_plausible_date,
+)
 from .models import (
     Account,
     Category,
@@ -41,6 +46,14 @@ class DateInput(forms.DateInput):
         prefs = regional.current()
         defaults = {"data-datepicker": "", "placeholder": prefs.date_placeholder, "autocomplete": "off"}
         super().__init__(attrs={**defaults, **(attrs or {})}, format=prefs.date_pattern)
+
+
+class PlausibleDateField(forms.DateField):
+    """A date box that holds the stored dates' limits (see limits.py).
+    Use it for every date a person types that is stored; a form built
+    from a model gets the same limits from the column."""
+
+    default_validators = [validate_plausible_date]
 
 
 def _use_regional_dates(form):
@@ -141,7 +154,7 @@ class AccountCreateForm(AccountForm):
     starting transaction to reconcile from."""
 
     opening_balance = forms.DecimalField(max_digits=12, decimal_places=2, required=False, initial=0)
-    opening_balance_date = forms.DateField(required=False, widget=DateInput(), initial=timezone.localdate)
+    opening_balance_date = PlausibleDateField(required=False, widget=DateInput(), initial=timezone.localdate)
 
     field_order = [
         "name",
@@ -191,7 +204,7 @@ class TransferForm(forms.Form):
 
     to_account = forms.ModelChoiceField(queryset=Account.objects.none(), label="Transfer to")
     amount = forms.DecimalField(max_digits=12, decimal_places=2, min_value=CENT, help_text="Enter a positive amount.")
-    date = forms.DateField(widget=DateInput(), initial=timezone.localdate)
+    date = PlausibleDateField(widget=DateInput(), initial=timezone.localdate)
 
     def __init__(self, *args, from_account=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -240,7 +253,7 @@ class ReconcileStartForm(forms.Form):
     """Step 1 of the account page's Reconcile button: what your
     statement says."""
 
-    statement_date = forms.DateField(widget=DateInput(), initial=timezone.localdate)
+    statement_date = PlausibleDateField(widget=DateInput(), initial=timezone.localdate)
     statement_balance = forms.DecimalField(
         max_digits=12,
         decimal_places=2,
@@ -259,7 +272,7 @@ class ReconcileFinishForm(forms.Form):
     Validated like any other form, so a tampered or half-sent submission
     gets a message instead of a server error."""
 
-    statement_date = forms.DateField(input_formats=["%Y-%m-%d"])
+    statement_date = PlausibleDateField(input_formats=["%Y-%m-%d"])
     statement_balance = forms.DecimalField(max_digits=12, decimal_places=2)
     transaction = SafeModelMultipleChoiceField(queryset=Transaction.objects.none(), required=False)
     accept_difference = forms.BooleanField(required=False)
@@ -438,6 +451,13 @@ class ReminderForm(BootstrapFormMixin, forms.ModelForm):
         cleaned = super().clean()
         if cleaned.get("no_end_date"):
             cleaned["end_date"] = None
+        if cleaned.get("frequency") == Reminder.Frequency.ONE_TIME:
+            # The page hides these two for a one-time reminder, and the
+            # model says they mean nothing there: a value typed before
+            # switching to One-time must not be an error in a row nobody
+            # can see.
+            cleaned["interval"] = 1
+            cleaned["end_date"] = None
         if not cleaned.get("interval"):
             cleaned["interval"] = 1
         # An auto-generated occurrence (series is set) can't become its
@@ -509,11 +529,9 @@ class DateRangeFilterForm(forms.Form):
         ("year", "Year"),
     ]
 
-    # A custom range outside these limits would overflow the report
-    # maths (year 1 or 9999) or make Net worth walk every day of a
-    # century.
-    EARLIEST_YEAR = 1900
-    LATEST_YEAR = 2100
+    # A custom range outside the stored dates' limits would overflow
+    # the report maths (year 1 or 9999), and one over a century would
+    # make Net worth walk every day of it.
     MAX_RANGE_YEARS = 100
 
     # Reports default to This month and Last 3 periods: a fresh, unbound
@@ -544,8 +562,8 @@ class DateRangeFilterForm(forms.Form):
                 raise ValidationError("A custom range needs both a start and an end date.")
             if start > end:
                 raise ValidationError("The start date must be on or before the end date.")
-            if start.year < self.EARLIEST_YEAR or end.year > self.LATEST_YEAR:
-                raise ValidationError(f"Dates must fall between {self.EARLIEST_YEAR} and {self.LATEST_YEAR}.")
+            if start.year < EARLIEST_YEAR or end.year > LATEST_YEAR:
+                raise ValidationError(f"Dates must fall between {EARLIEST_YEAR} and {LATEST_YEAR}.")
             if end > start + relativedelta(years=self.MAX_RANGE_YEARS):
                 raise ValidationError(f"A custom range can cover at most {self.MAX_RANGE_YEARS} years.")
         return cleaned

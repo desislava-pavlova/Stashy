@@ -46,7 +46,7 @@ terms.
 ## Commands
 
 ```
-.venv\Scripts\python.exe manage.py test                          # full suite, ~70 s (1,119 tests on 17/11/2026)
+.venv\Scripts\python.exe manage.py test                          # full suite, ~70 s (1,211 tests on 19/11/2026)
 .venv\Scripts\python.exe manage.py test finance.tests.test_reminders  # one module (audit: `test audit`)
 .venv\Scripts\python.exe manage.py migrate --database <stash>    # one stash (Stashy.bat does all, with backups)
 .venv\Scripts\python.exe manage.py reset_pin <owner name>        # real, visible action - ask first
@@ -112,7 +112,8 @@ check.bat                                                        # ruff check + 
     `apply_to_series()`.
   - `services/`: `importing.py` (`import_file()` → `ImportResult`, raises
     `ImportFileError`) and `reconciliation.py` (`reconcile()`, raises
-    `UnacceptedDifferenceError`). Plain functions, no HTTP. Each runs in its
+    `UnacceptedDifferenceError`, or `AmountTooBigError` for a gap or an
+    opening balance over the limit). Plain functions, no HTTP. Each runs in its
     own `atomic(using=<stash>)`. An import's Reconciled cell means
     reconciled unless it is blank, `n`, `no`, `false`, `0`, `u`,
     `unreconciled`, `uncleared`, or a "cleared" mark (`c`, `cleared`, `*`):
@@ -167,8 +168,8 @@ check.bat                                                        # ruff check + 
     instead of Reports' "Earliest to date".
     A custom range on Reports (and its exports) must lie between the years
     1900 and 2100 and cover at most 100 years (`DateRangeFilterForm.clean()`,
-    S93); a bad one shows the warning banner and the default filters. Other
-    dates are not limited yet (plan 03, S108).
+    S93); a bad one shows the warning banner and the default filters. Stored
+    dates have the same limits (`finance/limits.py`, see Domain rules).
   - Report exports: one view, `exports.export_report`, at
     `reports/export/<slug>/`. A new one is one entry in `REPORT_EXPORTS`
     (named arguments, one per line). The Income & expense vs average
@@ -190,6 +191,8 @@ check.bat                                                        # ruff check + 
     edit the Profile save only their own columns (`ProfileColumnsOnlyMixin`).
   - `reporting.py`: all report maths. `currency.py`: RateTable,
     Frankfurter. `money.py`: Decimal helpers, `parse_amount`.
+    `limits.py`: the limits on stored dates, numbers and amounts (see
+    Domain rules).
     `regional.py`: date and number formats per user.
   - `stashes/` package: `registry.py` (stash folders, aliases,
     `create_stash()`, `restore_stash()` = restore + migrate, keeping
@@ -256,10 +259,14 @@ check.bat                                                        # ruff check + 
   one odd memo was a 500 page; S107).
 - `/admin/login/` redirects to the stash PIN login (`admin_login`), so the
   lockout covers every login, and `/admin/password_change/` to Change PIN.
-- Every `ModelAdmin` carries `stashy.admin_mixins.HugeNumberInAddressMixin`
-  (a value in a list's address that SQLite or the calendar can't hold
-  redirects to the plain list and is logged, not a 500 page; S112; the Add
-  page and the bulk-action form are not covered yet, S113 to S115). The
+- Every `ModelAdmin` carries `stashy.admin_mixins.HandMadeRequestMixin`,
+  so a request no admin page sends isn't a 500 page: a value in a list's
+  address that SQLite or the calendar can't hold redirects to the plain
+  list and is logged (S112); `regex`, `iregex` and `range` lookups in an
+  address are refused with a 400 (S115); an autocomplete dropdown skips a
+  selected value that can't be a key, whether it came from the Add
+  page's address or a form posted again with errors (S113); a bulk
+  action with such an id warns and changes nothing (S114). The
   finance admins get it through `StashyModelAdmin` in `finance/admin.py`,
   which also has the History redirect; a test checks that every registered
   admin has it ahead of `ModelAdmin`, so a new admin class inherits
@@ -319,6 +326,24 @@ check.bat                                                        # ruff check + 
   sign.
 - Transaction numbers are one sequence shared by every account and restart
   each year (D9). They are editable, and duplicates are allowed.
+- **Stored values have limits** (`finance/limits.py`, 19/11/2026): a date
+  from 1900 to 2100, a reminder interval of at most 120, a transaction
+  number of at most 999,999,999, an amount of at most 9,999,999,999.99,
+  an exchange rate that fits its column. A model column carries them as
+  validators, so every ModelForm and the admin get them; a plain form's
+  date box is a `PlausibleDateField` (a test fails for a date column or
+  a plain-form date box without the limit). The importer counts a row
+  outside them as unreadable (a Num over the limit is "no number"),
+  `parse_amount()` returns None for a too-big amount, and a rate or a
+  date fetched from the network is checked before it is stored. They
+  apply on save and import only: a stored row outside a limit still
+  lists and reports, and asks for a value inside it when someone saves
+  it. `Transaction.next_number()` leaves out a stored number above the
+  limit and never goes past it. A new limit is a constant and a
+  validator there, not a copy elsewhere. SQLite doesn't enforce
+  `max_digits`, so a number too big for its column that gets stored
+  breaks every page that reads it: a sum of two amounts is checked too
+  (`reconcile()` refuses a gap or an opening balance over the limit).
 - Payees and categories that differ only in upper/lower case are the same
   one. The spelling already saved wins (decided 27/09/2026). The database
   enforces it through a hidden `name_key` column (`models.name_key()`, a

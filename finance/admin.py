@@ -2,15 +2,16 @@
 rows by hand. The pages people use all day are the views.
 
 Every ModelAdmin here derives from `StashyModelAdmin`, which opens the
-audit log from History and turns a bad value in a list's address into a
-polite redirect (a test checks each registered admin has it).
+audit log from History and answers a request no admin page sends (a bad
+value in an address, a bad id in a bulk action) politely instead of with
+a 500 page (a test checks each registered admin has it).
 """
 
 from django.contrib import admin
 from django.contrib.auth.models import Group, User
 
 from audit.admin import AuditHistoryAdminMixin
-from stashy.admin_mixins import HugeNumberInAddressMixin
+from stashy.admin_mixins import HandMadeRequestMixin
 
 from .models import Account, Category, ExchangeRate, ImportBatch, Payee, Profile, Reconciliation, Reminder, Transaction
 
@@ -21,10 +22,10 @@ admin.site.unregister(User)
 admin.site.unregister(Group)
 
 
-class StashyModelAdmin(AuditHistoryAdminMixin, HugeNumberInAddressMixin, admin.ModelAdmin):
+class StashyModelAdmin(AuditHistoryAdminMixin, HandMadeRequestMixin, admin.ModelAdmin):
     """What every admin page of Stashy's data shares: History opens the
-    audit log, and a huge number typed into a list's address is turned
-    away politely."""
+    audit log, and a request no admin page sends (a bad value in an
+    address, a bad id in a bulk action) is answered politely."""
 
 
 @admin.register(Profile)
@@ -61,6 +62,10 @@ class AccountAdmin(StashyModelAdmin):
     list_display = ("name", "account_type", "currency", "institution", "balance", "is_active")
     list_filter = ("account_type", "currency", "is_active")
     search_fields = ("name", "institution")
+    # Said here, not left to Account's own ordering: the balances in
+    # get_queryset() group the rows, which drops that default, and
+    # the account dropdown on the Transaction page pages this list.
+    ordering = ("name", "pk")
 
     def get_queryset(self, request):
         # Every balance in the list comes from the same query, not one

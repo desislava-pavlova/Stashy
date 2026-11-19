@@ -288,6 +288,73 @@ class ReconcileFinishFormTests(LoggedInWithAccountTestCase):
         self.assertTrue(self.txn.reconciled)
 
 
+class ReconcileSizeTests(LoggedInWithAccountTestCase):
+    """A gap is the difference of two figures that are each inside
+    the limit for an amount, and so is an opening balance (a sum):
+    either can be too big. SQLite stores such a number, but Django
+    can't read it back, so the account's register, the Transactions
+    page and the delete pages all failed until the row was mended
+    by hand."""
+
+    def finish(self, statement_balance):
+        return self.client.post(
+            reverse("finance:account_reconcile", args=[self.account.pk]),
+            {
+                "stage": "finish",
+                "statement_date": "2026-02-01",
+                "statement_balance": statement_balance,
+                "accept_difference": "on",
+            },
+        )
+
+    def reconciled(self, amount):
+        return Transaction.objects.create(
+            account=self.account, date=date(2026, 1, 1), amount=Decimal(amount), reconciled=True
+        )
+
+    def test_a_gap_too_big_for_an_amount_is_refused_even_when_accepted(self):
+        self.reconciled("-500")
+        with self.assertRaises(reconciliation.AmountTooBigError) as caught:
+            reconciliation.reconcile(
+                self.account, date(2026, 2, 1), Decimal("9999999999.00"), [], accept_difference=True
+            )
+        self.assertEqual(caught.exception.amount, Decimal("10000000499.00"))
+        self.assertFalse(Reconciliation.objects.exists())
+        self.assertEqual(Transaction.objects.count(), 1)
+
+    def test_an_opening_balance_too_big_for_an_amount_is_refused(self):
+        for _ in range(2):
+            self.reconciled("9999999999.99")
+        with self.assertRaises(reconciliation.AmountTooBigError) as caught:
+            reconciliation.reconcile(self.account, date(2026, 2, 1), Decimal("19999999999.98"), [])
+        self.assertEqual(caught.exception.amount, Decimal("19999999999.98"))
+        self.assertFalse(Reconciliation.objects.exists())
+
+    def test_the_biggest_gap_that_fits_is_still_accepted_and_one_cent_more_is_not(self):
+        done = reconciliation.reconcile(
+            self.account, date(2026, 2, 1), Decimal("9999999999.99"), [], accept_difference=True
+        )
+        self.assertEqual(done.adjustment_transaction.amount, Decimal("9999999999.99"))
+        Reconciliation.objects.all().delete()
+        Transaction.objects.all().delete()
+        self.reconciled("-0.01")
+        with self.assertRaises(reconciliation.AmountTooBigError):
+            reconciliation.reconcile(
+                self.account, date(2026, 2, 1), Decimal("9999999999.99"), [], accept_difference=True
+            )
+
+    def test_the_page_says_so_and_saves_nothing_and_the_account_still_opens(self):
+        self.reconciled("-500")
+        response = self.finish("9999999999.00")
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "finance/account_reconcile_review.html")
+        self.assertContains(response, "more than Stashy can store")
+        self.assertFalse(Reconciliation.objects.exists())
+        self.assertEqual(Transaction.objects.count(), 1)
+        register = self.client.get(reverse("finance:account_detail", args=[self.account.pk]))
+        self.assertEqual(register.status_code, 200)
+
+
 class ReconcileTests(StashTestCase):
     @classmethod
     def setUpTestData(cls):

@@ -190,6 +190,13 @@ every stash automatically).
   at the bottom. The Payee and Category columns, and every category and
   payee dropdown, sort alphabetically in any alphabet with upper and lower
   case together ("lidl" next to "Lidl", "бензин" among the capitals).
+- **Limits on what you enter** — to catch a typo like `01/09/0026`, every date
+  you type or import must lie between 1900 and 2100, a transaction number can
+  be at most 999,999,999, an amount can have at most 10 digits before the
+  point, and a reminder repeats at most every 120 periods. A form says which
+  limit it hit; an imported row that breaks one is counted as skipped.
+  Whatever you saved before these limits stays as it is, until you edit it:
+  then the form asks for a value inside them.
 - **Reminders** — recurring or one-time bills and income. A recurring
   reminder creates its upcoming dates ahead of time. **Enter** opens a
   pre-filled transaction; **Skip** moves on without creating one; either way
@@ -266,8 +273,10 @@ point) in either style — `1 234.56`, `1,234.56`, `1.234,56`, `12,50`, or
 `(12.00)` for a negative. Duplicate rows (same account, date, amount, and
 payee) are automatically skipped on re-import. CSV files can be UTF-8 or
 Windows-1251 (Cyrillic); the summary says which was used, and how many rows
-were skipped because their date or amount couldn't be read. A file Stashy
-can't read at all gets a message and imports nothing.
+were skipped because their date or amount couldn't be read, or lay outside
+the limits (a date from 1900 to 2100, an amount of at most 10 digits before
+the point). A file Stashy can't read at all gets a message and imports
+nothing.
 
 Exports (CSV or Excel) can be opened straight in Excel: Excel files keep
 amounts as numbers and dates as dates, and CSV files show Cyrillic
@@ -302,6 +311,7 @@ Stashy/
 │   ├── starter_categories.xlsx  # Basic/Extended starting category lists (welcome wizard)
 │   ├── services/         # importing a file, reconciling an account
 │   ├── forms.py
+│   ├── limits.py         # the limits on stored dates, numbers and amounts
 │   ├── reporting.py      # report calculations
 │   ├── stashes/          # registry.py: creating and finding stashes, owner names;
 │   │                     #   security.py: PINs, lockout, recovery codes;

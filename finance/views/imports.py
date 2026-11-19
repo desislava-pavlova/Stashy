@@ -9,6 +9,7 @@ from django.shortcuts import redirect, render
 from .. import regional
 from ..content import IMPORT_TIPS
 from ..forms import ImportUploadForm
+from ..limits import EARLIEST_YEAR, LATEST_YEAR
 from ..models import ImportBatch
 from ..services import importing
 from ._helpers import _plural
@@ -41,7 +42,10 @@ def _import_summary(result):
     if result.unknown_account:
         summary += f" {_plural(result.unknown_account, 'row')} skipped - named an account that doesn't exist yet."
     if result.unreadable:
-        summary += f" {_plural(result.unreadable, 'row')} skipped - unreadable date or amount."
+        summary += (
+            f" {_plural(result.unreadable, 'row')} skipped - unreadable date or amount, "
+            f"or a date outside {EARLIEST_YEAR} to {LATEST_YEAR}."
+        )
     if result.date_format:
         label = dict(regional.DATE_FORMAT_CHOICES).get(result.date_format, result.date_format)
         summary += f" Read dates as {label}."

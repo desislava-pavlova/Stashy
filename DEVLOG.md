@@ -6318,3 +6318,195 @@ them too. That is the real cost of "save it", and the reason to ask first.
 **Files touched:** new `scripts/dev/apply_edits.py`, `find_history_notes.py`,
 `find_retelling_comments.py` and `rewrap_comments.py`; `CLAUDE.md`, `README.md`,
 `plans/03_structure_review.md`, this log. No migration.
+
+## 19/11/2026 — Plan 03, Phase 2, part D: the admin's 500 pages (S113, S114, S115)
+
+**What changed:** three requests that no page of the Django admin ever sends
+used to end in a 500 page and a traceback in the log. They answer politely
+now. Nothing in the data changed, so no migration and no backup of the real
+stash. 1,154 tests (1,119 before), ruff clean.
+- **S113:** an autocomplete dropdown on the Add page (`?account=zz`, or thirty
+  digits) skips a value that can't be a key, and so does a form that is posted
+  with one and drawn again with its errors. The dropdown just has nothing
+  selected, as for an id that doesn't exist.
+- **S114:** a bulk action posted with a selected id that is huge or not a number
+  (`_selected_action=abc`) changes nothing and shows "Some of the selected items
+  could not be found. No items have been changed."
+- **S115:** a `regex` or `iregex` lookup in a list's address (`?memo__regex=(`)
+  is refused with a 400 page, like any lookup the admin doesn't allow. The QA
+  tester found that `range` (`?id__range=1`) was a 500 page on every list too,
+  and it joined the same refusal.
+- **From the reviews:** the line the admin logs when it refuses a list's address
+  now writes each parameter name through `ascii()` and cuts it at 200
+  characters, so a crafted name can't put a line break into the log. The mixin
+  `HugeNumberInAddressMixin` is now `HandMadeRequestMixin`, because "huge number
+  in the address" stopped being all it does.
+
+**Why the code looks like this:**
+- **I reproduced each one first.** A scratch test posted every case and printed
+  the status. That found a fourth 500 the filing hadn't named: posting the Add
+  form with a bad `account` failed the same way as the address did. My plan was
+  to clean the prefilled value in `get_changeform_initial_data()`, which would
+  have fixed the address and left the POST. Both go through the same widget, so
+  the fix is in the widget (`SafeAutocompleteSelect`), which is where the lookup
+  happens. A fix belongs at the place that fails, not at one of the ways in.
+- **The bulk action checks first and doesn't catch.** The other way was a `try`
+  round the whole action. That would also swallow a real `ValueError` from inside
+  an action, and report it as "not found". Checking the ids before Django uses
+  them can only refuse ids, so that is what it does. It answers the way Django
+  answers an action with nothing selected: a message, and the list again.
+- **The regex lookup is refused, not caught.** SQLite reports a bad pattern as an
+  `OperationalError`, which is also what "database is locked" is. Catching it
+  would turn a real fault into a polite redirect. Nothing in the admin sends a
+  regex, so refusing it costs nothing.
+- **`key_fits()` asks the real key field and the real database** (`to_python()`
+  and the database's own integer range), not a hard-coded 2**63 - 1. There are
+  now three places that decide "can this be a database id?": `_as_id()`, the
+  multiple-choice field from part E, and this. They differ on purpose a little,
+  and the code reviewer judged this one no worse; one shared function is filed as
+  S116 for Phase 3.
+- **The six expected-failure tests aren't in the suite.** The QA tester wrote
+  tests for the gaps below, marked as expected failures, so a fix would show up
+  as an unexpected success. I took them out: every run would then read "OK
+  (expected failures=6)" and you would have to remember why. The queries are in
+  the plan (S117), the way S114's test was.
+
+**What the reviews found that I did not fix (filed in plan 03, section O):**
+S117, more of the same family: the audit log's JSON column (`?values__contains=`),
+a very long `?q=` or autocomplete `?term=`, an `id__in` with 30,000 values, and
+an empty `?_to_field=` (a Django bug); S118, a transaction number of
+9223372036854775807 saved through any form breaks every later new transaction of
+that year (the same "no limits on stored numbers" question as S108, so it waits
+for you); S119, the account dropdown in the admin pages an unordered list.
+
+**Teaching note — a test on an empty table can pass on broken code.** SQLite
+doesn't check a regular expression when it is given the query. It runs the
+pattern once for each row it looks at. With no rows, `?memo__regex=(` answers
+"200 OK", so my first probe said the bug didn't exist. Only after I added a
+transaction did it fail. Any test about what the database does with a value needs
+a row to do it to, and it is worth proving the test red against the old code
+before trusting it. Here each fix was taken out in memory, one at a time, and
+exactly its own tests went red.
+
+**Files touched:** `stashy/admin_mixins.py`, `finance/admin.py`, `audit/admin.py`,
+`finance/tests/test_admin.py`, `CLAUDE.md`, `plans/03_structure_review.md`,
+`plans/README.md`, this log. No new files, no migration.
+
+## 19/11/2026 — Plan 03, Phase 2, part E: the admin's other 500 pages, and limits on what is stored (S117, S119, S108, S111, S118)
+
+**What changed:** you said "2.22 and A", so this part has two halves. The suite went
+from 1,154 to 1,207 tests, ruff is clean. One new migration, which changes no
+data (see below); Stashy.bat backs up and migrates each stash at the next start.
+- **2.22, trimmed as I proposed:** in the admin, a search with a word of over 200
+  characters or over 50 words finds nothing instead of ending in a 500 page (it
+  covers the list's search box and the autocomplete dropdown), a filter value of
+  over 1,000 characters is refused like a regex lookup, an empty `_to_field` is
+  read as "not given" (a Django bug), and the account dropdown pages in name
+  order. I left out the audit log's JSON-column lookups: one column, and nobody
+  types those addresses.
+- **A, limits on stored values**, all in the new `finance/limits.py`: a date
+  from 1900 to 2100, a reminder interval of at most 120, a transaction number of
+  at most 999,999,999, an amount of at most 9,999,999,999.99. A form says which
+  limit it hit ("Enter a date between 1900 and 2100."), and the import summary says
+  that rows outside them were skipped. `01/09/0026`, which used to save as the
+  year 26, is refused; so is a reminder due on 31/12/9999, which was a 500 page.
+- **Also, from the reviews:** a Num of `1e1000000` no longer freezes an import for
+  20 seconds, the next transaction number never goes past the limit, a rate or a
+  date fetched from the internet is checked before it is stored, and a one-time
+  reminder ignores the two fields the page hides for it.
+
+**Why the code looks like this:**
+- **One home for each rule.** The constants and the validator live in `limits.py`;
+  the model columns, the forms, the importer and the Reports date range all read
+  them. The module imports nothing from the app, because the models import it and
+  a loop would stop Django starting; a test reads its imports to keep it so.
+- **Validators on the columns, not database constraints.** A model column's
+  validators reach every ModelForm and the admin for free. A `CheckConstraint`
+  would make SQLite rebuild the table, and would stop Stashy starting if any row
+  already broke it, which would break the promise that what is stored isn't
+  touched. The migration is seven `AlterField`s, all "(no-op)" in `sqlmigrate`:
+  validators don't exist in the database. The database reviewer ran it forwards,
+  backwards and forwards on a scratch copy with deliberately bad rows and every
+  table came out identical. Your real stash holds nothing outside the limits (I
+  checked read-only before building), so nothing there can become uneditable.
+- **`PlausibleDateField` for the plain forms.** Four forms declare a date box
+  that isn't a model column; each had `validators=[...]` repeated. One small field
+  class means a new box can't forget it, and a test fails for a date column or a
+  box without the limit anyway.
+- **An imported row outside the limits is "unreadable", but a Num over the limit
+  isn't.** The Num was already treated as "no number" when it can't be stored, and
+  the rest of that row is fine, so I kept that and only lowered the maximum.
+- **`parse_amount()` checks the size itself**, so every caller gets it, and uses
+  `copy_abs()`: `abs()` rounds to 28 digits and raises `Overflow` for a number of a
+  million digits, which a hand-made Excel file could hold.
+- **`next_number()` leaves out a stored number over the limit and never goes past
+  it.** A stored 9223372036854775807 used to make every new transaction of that year
+  fail; at exactly the limit it gave 1,000,000,000, which the Add page then refused
+  as "too big" about a number nobody typed. Duplicates are allowed, so the limit is
+  given again.
+- **The admin's search limit uses `split()`, not Django's own quoting rules.** It is
+  stricter on a quoted phrase of 51 words, and a search like that is not something
+  anyone types.
+
+**What I did not fix:** a Reconcile can store an adjustment too big to read back
+(S120, plan 03 section P). The adjustment is a gap between two amounts that are
+each inside the limit, so no form checks it, and the account's pages then fail
+until the row is fixed by hand. QA rated it Critical and the security reviewer found
+it too; your rule says never to fix a Critical item without asking, so it is written
+up with a test to start from and a proposed fix, and waits for your answer. Also
+filed (S121 to S124): the importer's robustness against a hostile file, odd input
+`parse_amount()` misreads, Enter and Skip moving a reminder past 2100, and the
+amount's size written in eight places.
+
+**Teaching note — a column's declared size is not a promise in SQLite.** The model
+says `max_digits=12`, but SQLite will store a 14-digit number without complaint.
+Django only enforces the size when it reads the row back, and then every page that
+reads it fails. So a limit has to hold at every way of writing a value, and a
+value that is the sum of two others (a Reconcile's gap) is one more way in. One
+more lesson from checking my own work: two of my first "prove the test fails"
+patches were wrong. I defined the old code outside the module whose namespace the
+test patches, so the test never saw it and passed. A test is only proven when the
+old behaviour is put back where the test looks for it.
+
+**Files touched:** new `finance/limits.py` and `finance/tests/test_limits.py`;
+`finance/models.py`, `forms.py`, `money.py`, `currency.py`, `admin.py`,
+`services/importing.py`, `views/imports.py`, `stashy/admin_mixins.py`; tests in
+`test_admin.py`, `test_currency.py` and `test_imports.py`; `README.md`,
+`CLAUDE.md`, `plans/03_structure_review.md`, `plans/README.md`, this log. The
+migration `0020_phase2e_limits_on_dates_and_numbers.py` is kept out of git.
+
+## 19/11/2026 — Plan 03, Phase 2, part E, afterwards: a Reconcile can't store a figure too big for an amount (S120)
+
+**What changed:** you answered "Fix: refuse with a message", so a reconciliation
+that would store a figure too big for an amount is now refused. The review page
+says "A figure in that reconciliation, …, is more than Stashy can store (…)", names
+the likely cause (the difference to the statement, or the balance the account
+already has reconciled) and asks you to check the statement balance for a typo.
+Nothing is saved, and "accept difference" can't override it. 1,211 tests (1,207
+before), ruff clean, no migration, no data touched.
+
+**Why the code looks like this:**
+- **The check is in the service, not the form.** `reconcile()` computes the gap
+  (`statement_balance - (opening + checked)`) and the opening balance is a sum of
+  reconciled transactions. Neither number is typed anywhere, so no form could have
+  checked them; only the function that computes them can. A new
+  `AmountTooBigError` carries the figure, and the view turns it into the message.
+- **A different error from the existing "difference not accepted".** That one says
+  "check the box to accept it", which would be wrong here: accepting is exactly what
+  can't be done. The view keeps one `except` for both and a small
+  `_reconcile_refusal()` that words each.
+- **No `CheckConstraint`.** You chose the first option. The refusal covers the one
+  place the app builds an amount by adding others; the validators cover everything
+  typed or imported.
+- **The boundary is tested both ways.** A gap of exactly 9,999,999,999.99 is still
+  accepted and one cent more is refused, because a `>` that should be `>=` hides
+  at the edge. Each test fails with the limit set absurdly high in memory.
+
+**Teaching note — a rule about one number isn't a rule about the sums made from it.**
+Every amount a person types is limited, but a gap is built from two of them, and a
+balance from thousands. When you limit a value, ask which other values are computed
+from it, and whether they can leave the limit even though every input stayed inside.
+
+**Files touched:** `finance/services/reconciliation.py`, `finance/views/accounts.py`,
+`finance/tests/test_reconciliation.py`, `CLAUDE.md`, `plans/03_structure_review.md`,
+`plans/README.md`, this log. No new files, no migration.

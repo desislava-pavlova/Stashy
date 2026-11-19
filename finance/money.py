@@ -9,6 +9,8 @@ chart/JSON edge.
 import re
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
+from .limits import MAX_AMOUNT
+
 CENT = Decimal("0.01")
 ZERO = Decimal("0.00")
 
@@ -34,7 +36,9 @@ def parse_amount(raw):
     rounded to cents.
 
     Handles "1 234.56", "1.234,56", "1,234.56", "12,50", "(12.00)",
-    "€ -5" etc. Returns None if the value can't be read as a number.
+    "€ -5" etc. Returns None if the value can't be read as a number, or
+    is too big for an amount (a money column holds 12 digits, so one
+    with thirty would otherwise be an error deep inside the save).
     """
     if raw is None:
         return None
@@ -65,6 +69,13 @@ def parse_amount(raw):
         return None
     if not value.is_finite():
         return None
+    # copy_abs() and copy_negate() never round. abs() and - do, to 28
+    # digits, and raise Overflow for a number of a million digits.
     if negative:
-        value = -abs(value)
+        value = value.copy_abs().copy_negate()
+    # Checked before rounding, because quantizing a very long number is
+    # itself an InvalidOperation. Half a cent past the largest amount
+    # would round up out of range; anything below it rounds into it.
+    if value.copy_abs() >= MAX_AMOUNT + CENT / 2:
+        return None
     return value.quantize(CENT, rounding=ROUND_HALF_UP)

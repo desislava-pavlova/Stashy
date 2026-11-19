@@ -24,6 +24,7 @@ from openpyxl.utils.exceptions import InvalidFileException
 from audit.context import system_action
 
 from .. import regional
+from ..limits import MAX_TRANSACTION_NUMBER, is_plausible_date
 from ..models import Account, Category, ImportBatch, Payee, Transaction, name_key
 from ..money import parse_amount
 
@@ -223,7 +224,7 @@ def _import_rows(fieldnames, rows, account, batch, date_format="auto"):
 
         txn_date = _parse_date(raw_date, date_formats) if raw_date else None
         amount = parse_amount(raw_amount) if raw_amount else None
-        if txn_date is None or amount is None:
+        if txn_date is None or amount is None or not is_plausible_date(txn_date):
             result.unreadable += 1
             continue
 
@@ -265,7 +266,7 @@ def _import_ofx_rows(ofx_rows, account, batch):
     known = _known_fingerprints()
     for txn_date, raw_amount, payee_name, memo in ofx_rows:
         amount = parse_amount(raw_amount)
-        if amount is None:
+        if amount is None or not is_plausible_date(txn_date):
             result.unreadable += 1
             continue
         fp = _fingerprint(account.id, txn_date, amount, payee_name)
@@ -387,11 +388,6 @@ def _parse_date(raw, formats):
     return None
 
 
-# The largest value Django guarantees a PositiveIntegerField can hold on
-# every database.
-_MAX_TRANSACTION_NUMBER = 2_147_483_647
-
-
 def _parse_transaction_number(raw):
     """A Num cell as a transaction number, or None ("no number") when it
     isn't a whole number Stashy can store - blank, negative, huge,
@@ -402,5 +398,6 @@ def _parse_transaction_number(raw):
         return None
     if not number.is_finite() or number != number.to_integral_value():
         return None
-    number = int(number)
-    return number if 0 <= number <= _MAX_TRANSACTION_NUMBER else None
+    # Compared before it becomes an int: int() of a Decimal like
+    # 1e1000000 takes many seconds, with the stash's write lock held.
+    return int(number) if 0 <= number <= MAX_TRANSACTION_NUMBER else None
