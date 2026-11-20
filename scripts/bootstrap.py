@@ -109,12 +109,17 @@ def install_requirements():
     digest = hashlib.sha256(requirements.read_bytes()).hexdigest()
     if marker.exists() and marker.read_text().strip() == digest:
         return
-    step("Installing Stashy's components (first run or after an update - this can take a minute)...")
-    result = run_python("-m", "pip", "install", "--disable-pip-version-check", "-r", str(requirements))
+    step(
+        "Installing Stashy's components (first run or after an update - this can take a minute)..."
+    )
+    result = run_python(
+        "-m", "pip", "install", "--disable-pip-version-check", "-r", str(requirements)
+    )
     if result.returncode != 0:
         raise SetupError(
             "Installing components failed - see the messages above.\n"
-            "   The first run needs an internet connection; if you're offline, connect and try again."
+            "   The first run needs an internet connection; if you're offline, connect and "
+            "try again."
         )
     marker.write_text(digest)
 
@@ -124,7 +129,9 @@ def env_text_from_example(example_text, secret_key):
     stays as it is, so .env.example is the one template for .env, and
     the two can't drift apart."""
     lines = example_text.splitlines(keepends=True)
-    return "".join(f"SECRET_KEY={secret_key}\n" if line.startswith("SECRET_KEY=") else line for line in lines)
+    return "".join(
+        f"SECRET_KEY={secret_key}\n" if line.startswith("SECRET_KEY=") else line for line in lines
+    )
 
 
 def ensure_env_file():
@@ -136,8 +143,13 @@ def ensure_env_file():
     step("Creating your private settings file (.env)...")
     example = ROOT / ".env.example"
     if not example.exists():
-        raise SetupError(".env.example is missing, so Stashy can't create its settings file. Download Stashy again.")
-    env_text = env_text_from_example(example.read_text(encoding="utf-8"), secrets.token_urlsafe(50))
+        raise SetupError(
+            ".env.example is missing, so Stashy can't create its settings file. "
+            "Download Stashy again."
+        )
+    env_text = env_text_from_example(
+        example.read_text(encoding="utf-8"), secrets.token_urlsafe(50)
+    )
     env_file.write_text(env_text, encoding="utf-8")
 
 
@@ -162,20 +174,26 @@ def migrate_database():
     for stash_dir in _stash_dirs():
         name = stash_dir.name
         db_file = stash_dir / "db.sqlite3"
-        pending = run_python("manage.py", "migrate", "--database", name, "--check", capture_output=True)
+        pending = run_python(
+            "manage.py", "migrate", "--database", name, "--check", capture_output=True
+        )
         if pending.returncode == 0:
             continue
         backup = backup_now(db_file, stash_dir, tag="before_update")
         print(f"   '{name}' was backed up first to {backup.relative_to(ROOT)}")
         step(f"Preparing the '{name}' stash's database...")
         if run_python("manage.py", "migrate", "--database", name, "--noinput").returncode != 0:
-            raise SetupError(f"Preparing the '{name}' stash's database failed - see the messages above.")
+            raise SetupError(
+                f"Preparing the '{name}' stash's database failed - see the messages above."
+            )
 
 
 def collect_static_files():
     result = run_python("manage.py", "collectstatic", "--noinput", "--verbosity", "0")
     if result.returncode != 0:
-        raise SetupError("Preparing Stashy's style and script files failed - see the messages above.")
+        raise SetupError(
+            "Preparing Stashy's style and script files failed - see the messages above."
+        )
 
 
 def run_quarterly_backup():
@@ -194,7 +212,9 @@ def run_quarterly_backup():
     for stash_dir in stash_dirs:
         backup = quarterly_backup_if_due(stash_dir / "db.sqlite3", stash_dir)
         if backup:
-            print(f"   Quarterly backup for '{stash_dir.name}' saved to {backup.relative_to(ROOT)}")
+            print(
+                f"   Quarterly backup for '{stash_dir.name}' saved to {backup.relative_to(ROOT)}"
+            )
 
 
 def open_browser_when_ready():

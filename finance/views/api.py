@@ -35,6 +35,8 @@ def api_payee_list(request):
     # aren't something you'd type by hand, so they're left out of the
     # everyday autocomplete noise.
     names = list(
-        Payee.objects.filter(is_active=True).exclude(name_key__in=Payee.SYSTEM_KEYS).values_list("name", flat=True)
+        Payee.objects.filter(is_active=True)
+        .exclude(name_key__in=Payee.SYSTEM_KEYS)
+        .values_list("name", flat=True)
     )
     return JsonResponse({"payees": names})

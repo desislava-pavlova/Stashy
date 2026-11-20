@@ -139,7 +139,9 @@ class HandMadeRequestMixin:
 
     def get_search_results(self, request, queryset, search_term):
         words = search_term.split()
-        if len(words) > MAX_SEARCH_WORDS or any(len(word) > MAX_SEARCH_WORD_LENGTH for word in words):
+        if len(words) > MAX_SEARCH_WORDS or any(
+            len(word) > MAX_SEARCH_WORD_LENGTH for word in words
+        ):
             return queryset.none(), False
         return super().get_search_results(request, queryset, search_term)
 
@@ -150,7 +152,9 @@ class HandMadeRequestMixin:
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         if "widget" not in kwargs and db_field.name in self.get_autocomplete_fields(request):
-            kwargs["widget"] = SafeAutocompleteSelect(db_field, self.admin_site, using=kwargs.get("using"))
+            kwargs["widget"] = SafeAutocompleteSelect(
+                db_field, self.admin_site, using=kwargs.get("using")
+            )
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
     def response_action(self, request, queryset, **kwargs):

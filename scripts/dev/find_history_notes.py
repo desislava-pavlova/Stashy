@@ -73,7 +73,9 @@ def other_texts(path):
     for number, line in enumerate(text.splitlines(), 1):
         if (
             (suffix == ".js" and ("//" in line or "/*" in line or line.strip().startswith("*")))
-            or (suffix == ".css" and ("/*" in line or line.strip().startswith("*") or "*/" in line))
+            or (
+                suffix == ".css" and ("/*" in line or line.strip().startswith("*") or "*/" in line)
+            )
             or (suffix == ".html" and ("{#" in line or "<!--" in line))
         ):
             yield number, line

@@ -28,4 +28,6 @@ from django.core.exceptions import ImproperlyConfigured
 # (an editor set up that way, say) before any test can get near your
 # real stashes.
 if not hasattr(settings, "TEST_STASH"):
-    raise ImproperlyConfigured("Run the tests with stashy.settings.test (`manage.py test` picks it by itself).")
+    raise ImproperlyConfigured(
+        "Run the tests with stashy.settings.test (`manage.py test` picks it by itself)."
+    )

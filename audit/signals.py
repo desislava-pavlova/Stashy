@@ -154,7 +154,13 @@ def log_save(sender, instance, created, raw=False, update_fields=None, **kwargs)
     row_id = str(instance.pk)
     row_label = describe(instance)
     if created:
-        write_row(Action.INSERT, table=table, row_id=row_id, row_label=row_label, values=_snapshot(sender, instance))
+        write_row(
+            Action.INSERT,
+            table=table,
+            row_id=row_id,
+            row_label=row_label,
+            values=_snapshot(sender, instance),
+        )
         return
     old = instance.__dict__.pop("_audit_old", None)
     if old is None:
@@ -162,7 +168,11 @@ def log_save(sender, instance, created, raw=False, update_fields=None, **kwargs)
     now = timezone.now()
     context = _resolved_context()
     for field in _logged_fields(sender):
-        if update_fields is not None and field.name not in update_fields and field.attname not in update_fields:
+        if (
+            update_fields is not None
+            and field.name not in update_fields
+            and field.attname not in update_fields
+        ):
             continue
         before, after = old[field.attname], field.value_from_object(instance)
         if _same(field, before, after):
@@ -195,7 +205,11 @@ def log_delete(sender, instance, **kwargs):
         return
     row_label, snapshot = instance.__dict__.pop("_audit_deleted")
     write_row(
-        Action.DELETE, table=sender._meta.db_table, row_id=str(instance.pk), row_label=row_label, values=snapshot
+        Action.DELETE,
+        table=sender._meta.db_table,
+        row_id=str(instance.pk),
+        row_label=row_label,
+        values=snapshot,
     )
 
 
@@ -213,17 +227,36 @@ def _log_cleared_references_after_commit(instance):
     # placeholder), which is what it uses without `using=`.
     using = router.db_for_write(type(instance), instance=instance)
     old_value = f"{instance.pk} ({describe(instance)})"
-    reason = f"Cleared because {instance._meta.verbose_name} '{describe(instance)}' (#{instance.pk}) was deleted"
+    reason = (
+        f"Cleared because {instance._meta.verbose_name} '{describe(instance)}' "
+        f"(#{instance.pk}) was deleted"
+    )
     for relation in instance._meta.get_fields(include_hidden=True):
-        if not (relation.auto_created and not relation.concrete and (relation.one_to_many or relation.one_to_one)):
+        if not (
+            relation.auto_created
+            and not relation.concrete
+            and (relation.one_to_many or relation.one_to_one)
+        ):
             continue
         if relation.on_delete is not models.SET_NULL or not is_tracked(relation.related_model):
             continue
         field = relation.field
-        pks = list(relation.related_model._base_manager.filter(**{field.name: instance}).values_list("pk", flat=True))
+        pks = list(
+            relation.related_model._base_manager.filter(**{field.name: instance}).values_list(
+                "pk", flat=True
+            )
+        )
         if pks:
             transaction.on_commit(
-                partial(_log_cleared_references, relation.related_model, field, pks, old_value, reason, context),
+                partial(
+                    _log_cleared_references,
+                    relation.related_model,
+                    field,
+                    pks,
+                    old_value,
+                    reason,
+                    context,
+                ),
                 using=using,
             )
 

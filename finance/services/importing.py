@@ -31,7 +31,9 @@ from ..money import parse_amount
 
 
 SUPPORTED_EXTENSIONS = ("csv", "xlsx", "ofx", "qfx")
-UNSUPPORTED_FILE_MESSAGE = "Unsupported file type. Please upload a .csv, .xlsx, .ofx, or .qfx file."
+UNSUPPORTED_FILE_MESSAGE = (
+    "Unsupported file type. Please upload a .csv, .xlsx, .ofx, or .qfx file."
+)
 
 
 class ImportFileError(Exception):
@@ -71,7 +73,10 @@ def import_file(upload, account: Account, date_format: str = "auto") -> ImportRe
     else:
         raise ImportFileError(UNSUPPORTED_FILE_MESSAGE)
 
-    with transaction.atomic(using=router.db_for_write(Transaction)), system_action(f"Imported from {upload.name}"):
+    with (
+        transaction.atomic(using=router.db_for_write(Transaction)),
+        system_action(f"Imported from {upload.name}"),
+    ):
         batch = ImportBatch.objects.create(account=account, source_filename=upload.name)
         if extension in ("csv", "xlsx"):
             result = _import_rows(fieldnames, rows, account, batch, date_format or "auto")
@@ -108,14 +113,16 @@ def _read_csv(upload):
                 "Stashy couldn't read this file's text. Save it as \"CSV UTF-8\" and try again."
             ) from None
         note = (
-            "The file wasn't UTF-8, so it was read as Windows-1251 (Cyrillic) - if names look wrong, "
-            'delete what was imported, save the file as "CSV UTF-8" and import it again.'
+            "The file wasn't UTF-8, so it was read as Windows-1251 (Cyrillic) - if names look "
+            'wrong, delete what was imported, save the file as "CSV UTF-8" and import it again.'
         )
     try:
         reader = csv.DictReader(io.StringIO(text, newline=""))
         rows = list(reader)
     except csv.Error as error:
-        raise ImportFileError(f"This doesn't look like a CSV file Stashy can read ({error}).") from None
+        raise ImportFileError(
+            f"This doesn't look like a CSV file Stashy can read ({error})."
+        ) from None
     return reader.fieldnames or [], rows, note
 
 
@@ -158,7 +165,12 @@ def _read_ofx(upload):
     try:
         ofx = OfxParser.parse(upload)
         return [
-            (txn.date.date(), txn.amount, (txn.payee or "").strip(), getattr(txn, "memo", "") or "")
+            (
+                txn.date.date(),
+                txn.amount,
+                (txn.payee or "").strip(),
+                getattr(txn, "memo", "") or "",
+            )
             for ofx_account in ofx.accounts
             for txn in ofx_account.statement.transactions
         ]
@@ -181,7 +193,19 @@ def _read_ofx(upload):
 # means that). Imported as reconciled, it would never show up in the
 # next Reconcile checklist. The value decides, not the column's heading:
 # a Yes in a column headed "Cleared" still counts.
-_RECONCILED_FALSE_VALUES = {"", "n", "no", "false", "0", "unreconciled", "uncleared", "u", "c", "cleared", "*"}
+_RECONCILED_FALSE_VALUES = {
+    "",
+    "n",
+    "no",
+    "false",
+    "0",
+    "unreconciled",
+    "uncleared",
+    "u",
+    "c",
+    "cleared",
+    "*",
+}
 
 
 def _import_rows(fieldnames, rows, account, batch, date_format="auto"):
@@ -244,7 +268,9 @@ def _import_rows(fieldnames, rows, account, batch, date_format="auto"):
         known.add(fp)
 
         payee = Payee.objects.resolve(payee_name, reason=None) if payee_name else None
-        category = _resolve_category(raw_category, amount) if raw_category else _guessed_category(payee)
+        category = (
+            _resolve_category(raw_category, amount) if raw_category else _guessed_category(payee)
+        )
 
         Transaction.objects.create(
             account=row_account,
@@ -297,7 +323,11 @@ def _known_fingerprints():
     """Every fingerprint already stored, read in one query. Each row the
     import creates adds its own, so a row repeated within the same file
     counts as a duplicate too."""
-    return set(Transaction.objects.exclude(import_fingerprint="").values_list("import_fingerprint", flat=True))
+    return set(
+        Transaction.objects.exclude(import_fingerprint="").values_list(
+            "import_fingerprint", flat=True
+        )
+    )
 
 
 def _fingerprint(account_id, txn_date, amount, payee):
@@ -344,7 +374,9 @@ def _resolve_category(raw, amount):
     category_type = Category.CategoryType.INCOME if amount > 0 else Category.CategoryType.EXPENSE
     parent = Category.objects.main_categories().filter(name_key=name_key(parent_name)).first()
     if parent is None:
-        parent = Category.objects.create(name=parent_name, category_type=category_type, is_auto_generated=True)
+        parent = Category.objects.create(
+            name=parent_name, category_type=category_type, is_auto_generated=True
+        )
 
     if not child_name:
         return parent

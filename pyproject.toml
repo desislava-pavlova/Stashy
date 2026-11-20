@@ -4,7 +4,7 @@
 #   .venv\Scripts\ruff.exe format .
 
 [tool.ruff]
-line-length = 119
+line-length = 99
 target-version = "py312"
 extend-exclude = ["migrations", "staticfiles", "stashes", "backups", "logs"]
 

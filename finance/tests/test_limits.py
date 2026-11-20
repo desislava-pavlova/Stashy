@@ -44,7 +44,15 @@ from ..limits import (
     is_plausible_rate,
     validate_plausible_date,
 )
-from ..models import Account, Category, ExchangeRate, Profile, Reconciliation, Reminder, Transaction
+from ..models import (
+    Account,
+    Category,
+    ExchangeRate,
+    Profile,
+    Reconciliation,
+    Reminder,
+    Transaction,
+)
 from ..money import parse_amount
 from ..services import importing
 from ..services.importing import _parse_transaction_number, import_file
@@ -102,7 +110,17 @@ class LimitsModuleTests(SimpleTestCase):
         for text in ("1.16", "0.0000000001", "0.00000000006", "9999999999.9999999999"):
             with self.subTest(rate=text):
                 self.assertTrue(is_plausible_rate(Decimal(text)))
-        for text in ("0", "-1", "NaN", "Infinity", "10000000000", "1e11", "1e30", "1e-30", "0.00000000005"):
+        for text in (
+            "0",
+            "-1",
+            "NaN",
+            "Infinity",
+            "10000000000",
+            "1e11",
+            "1e30",
+            "1e-30",
+            "0.00000000005",
+        ):
             with self.subTest(rate=text):
                 self.assertFalse(is_plausible_rate(Decimal(text)))
 
@@ -153,7 +171,9 @@ class AmountLimitTests(SimpleTestCase):
             column = model._meta.get_field(name)
             with self.subTest(column=f"{model.__name__}.{name}"):
                 self.assertEqual(column.decimal_places, 2)
-                self.assertEqual(MAX_AMOUNT, Decimal(10 ** (column.max_digits - 2)) - Decimal("0.01"))
+                self.assertEqual(
+                    MAX_AMOUNT, Decimal(10 ** (column.max_digits - 2)) - Decimal("0.01")
+                )
 
     def test_an_amount_too_big_to_store_isnt_read(self):
         for raw in (
@@ -183,7 +203,9 @@ class AmountLimitTests(SimpleTestCase):
     def test_a_long_amount_just_under_half_a_cent_past_the_limit_still_rounds_down(self):
         """abs() rounds to 28 digits before comparing, which took this
         up to exactly half a cent past the limit and refused it."""
-        self.assertEqual(parse_amount("9999999999.9949999999999999999999"), Decimal("9999999999.99"))
+        self.assertEqual(
+            parse_amount("9999999999.9949999999999999999999"), Decimal("9999999999.99")
+        )
 
     def test_a_number_of_a_million_digits_is_refused_at_once(self):
         """abs() of it was a decimal.Overflow: a 500 page for one cell
@@ -227,7 +249,9 @@ class TransactionFormLimitTests(StashTestCase):
                         self.assertTrue(self.form(date=text).is_valid())
                 for text in outside:
                     with self.subTest(date_format=date_format, date=text):
-                        self.assertEqual(self.form(date=text).errors["date"], [DATE_OUT_OF_RANGE_MESSAGE])
+                        self.assertEqual(
+                            self.form(date=text).errors["date"], [DATE_OUT_OF_RANGE_MESSAGE]
+                        )
 
     def test_a_number_over_the_limit_is_refused_and_the_limit_itself_is_not(self):
         for number in ("1000000000", "2147483648", "9223372036854775807"):
@@ -283,7 +307,10 @@ class ReminderFormLimitTests(StashTestCase):
         """Due on the last day of year 9999, or yearly every 32767
         years, ended in a ValueError (a 500 page) while the next date
         was worked out."""
-        for overrides in ({"next_due_date": "31/12/9999"}, {"frequency": "yearly", "interval": "32767"}):
+        for overrides in (
+            {"next_due_date": "31/12/9999"},
+            {"frequency": "yearly", "interval": "32767"},
+        ):
             with self.subTest(overrides=overrides):
                 self.assertFalse(self.form(**overrides).is_valid())
 
@@ -291,7 +318,10 @@ class ReminderFormLimitTests(StashTestCase):
         """Typed before switching to One-time, an interval of 200 or an
         end date in 2101 would be an error in a row nobody can see."""
         form = self.form(
-            frequency=Reminder.Frequency.ONE_TIME, interval="200", no_end_date=False, end_date="01/01/2101"
+            frequency=Reminder.Frequency.ONE_TIME,
+            interval="200",
+            no_end_date=False,
+            end_date="01/01/2101",
         )
         self.assertTrue(form.is_valid(), form.errors)
         self.assertEqual((form.cleaned_data["interval"], form.cleaned_data["end_date"]), (1, None))
@@ -323,19 +353,23 @@ class OtherFormLimitTests(StashTestCase):
         for text, valid in (("01/09/0026", False), ("31/12/2100", True)):
             with self.subTest(date=text):
                 form = TransferForm(
-                    data={"to_account": self.savings.pk, "amount": "10", "date": text}, from_account=self.checking
+                    data={"to_account": self.savings.pk, "amount": "10", "date": text},
+                    from_account=self.checking,
                 )
                 self.assertEqual(form.is_valid(), valid, form.errors)
 
     def test_the_statement_date_has_them_on_both_steps_of_reconciling(self):
         for text, valid in (("31/12/9999", False), ("01/01/2101", False), ("30/09/2026", True)):
             with self.subTest(start=text):
-                form = ReconcileStartForm(data={"statement_date": text, "statement_balance": "1.00"})
+                form = ReconcileStartForm(
+                    data={"statement_date": text, "statement_balance": "1.00"}
+                )
                 self.assertEqual(form.is_valid(), valid, form.errors)
         for text, valid in (("9999-12-31", False), ("2101-01-01", False), ("2026-09-30", True)):
             with self.subTest(finish=text):
                 form = ReconcileFinishForm(
-                    account=self.checking, data={"statement_date": text, "statement_balance": "1.00"}
+                    account=self.checking,
+                    data={"statement_date": text, "statement_balance": "1.00"},
                 )
                 self.assertEqual(form.is_valid(), valid, form.errors)
 
@@ -378,7 +412,9 @@ class EveryPageSaysWhyTests(LoggedInWithAccountTestCase):
             "no_end_date": "on",
         }
         old_reminder = Reminder.objects.create(
-            account=self.account, frequency=Reminder.Frequency.ONE_TIME, next_due_date=date(2026, 10, 1)
+            account=self.account,
+            frequency=Reminder.Frequency.ONE_TIME,
+            next_due_date=date(2026, 10, 1),
         )
         return [
             (
@@ -411,7 +447,9 @@ class EveryPageSaysWhyTests(LoggedInWithAccountTestCase):
         ]
 
     def stored_rows(self):
-        return [model.objects.count() for model in (Account, Transaction, Reminder, Reconciliation)]
+        return [
+            model.objects.count() for model in (Account, Transaction, Reminder, Reconciliation)
+        ]
 
     def test_a_date_outside_the_limits_is_explained_where_it_was_typed_and_nothing_is_saved(self):
         for label, url_name, args, data in self.pages():
@@ -443,7 +481,9 @@ class EveryPageSaysWhyTests(LoggedInWithAccountTestCase):
 class WelcomeAccountStepLimitTests(StashTestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.user = get_user_model().objects.create_user("tester", password="not-a-real-password-123")
+        cls.user = get_user_model().objects.create_user(
+            "tester", password="not-a-real-password-123"
+        )
         profile = Profile.for_user(cls.user)
         profile.welcome_step = 3
         profile.save(update_fields=["welcome_step"])
@@ -452,14 +492,22 @@ class WelcomeAccountStepLimitTests(StashTestCase):
         self.client.force_login(self.user)
 
     def test_the_first_accounts_opening_date_has_the_limits(self):
-        data = {"name": "Wallet", "account_type": "cash", "currency": "EUR", "opening_balance": "5", "is_active": "on"}
+        data = {
+            "name": "Wallet",
+            "account_type": "cash",
+            "currency": "EUR",
+            "opening_balance": "5",
+            "is_active": "on",
+        }
         response = self.client.post(
-            reverse("finance:welcome_step", args=[4]), {**data, "opening_balance_date": "01/01/2101"}
+            reverse("finance:welcome_step", args=[4]),
+            {**data, "opening_balance_date": "01/01/2101"},
         )
         self.assertContains(response, DATE_OUT_OF_RANGE_MESSAGE)
         self.assertFalse(Account.objects.exists())
         response = self.client.post(
-            reverse("finance:welcome_step", args=[4]), {**data, "opening_balance_date": "31/12/2100"}
+            reverse("finance:welcome_step", args=[4]),
+            {**data, "opening_balance_date": "31/12/2100"},
         )
         self.assertRedirects(response, reverse("finance:dashboard"))
         self.assertEqual(Transaction.objects.get().date, date(2100, 12, 31))
@@ -474,7 +522,10 @@ class StoredRowsOutsideTheLimitsTests(LoggedInWithAccountTestCase):
     def old_transaction(self):
         # Made the way a row from before the limits was: no validation.
         return Transaction.objects.create(
-            account=self.account, date=date(2101, 1, 1), amount=Decimal("5.00"), transaction_number=2**40
+            account=self.account,
+            date=date(2101, 1, 1),
+            amount=Decimal("5.00"),
+            transaction_number=2**40,
         )
 
     def posted(self, **overrides):
@@ -498,7 +549,9 @@ class StoredRowsOutsideTheLimitsTests(LoggedInWithAccountTestCase):
         self.assertContains(response, DATE_OUT_OF_RANGE_MESSAGE)
         self.assertContains(response, f"less than or equal to {MAX_TRANSACTION_NUMBER}")
         old.refresh_from_db()
-        self.assertEqual((old.memo, old.date, old.transaction_number), ("", date(2101, 1, 1), 2**40))
+        self.assertEqual(
+            (old.memo, old.date, old.transaction_number), ("", date(2101, 1, 1), 2**40)
+        )
 
     def test_changing_its_date_and_number_saves_it(self):
         old = self.old_transaction()
@@ -547,10 +600,16 @@ class StoredRowsOutsideTheLimitsTests(LoggedInWithAccountTestCase):
 
         self.assertContains(refused, DATE_OUT_OF_RANGE_MESSAGE)
         reminder.refresh_from_db()
-        self.assertEqual((reminder.amount, reminder.next_due_date), (Decimal("5.00"), date(2101, 1, 31)))
-        self.assertEqual(self.client.post(url, {**data, "next_due_date": "31/01/2027"}).status_code, 302)
+        self.assertEqual(
+            (reminder.amount, reminder.next_due_date), (Decimal("5.00"), date(2101, 1, 31))
+        )
+        self.assertEqual(
+            self.client.post(url, {**data, "next_due_date": "31/01/2027"}).status_code, 302
+        )
         reminder.refresh_from_db()
-        self.assertEqual((reminder.amount, reminder.next_due_date), (Decimal("6.00"), date(2027, 1, 31)))
+        self.assertEqual(
+            (reminder.amount, reminder.next_due_date), (Decimal("6.00"), date(2027, 1, 31))
+        )
 
 
 class NextNumberLimitTests(LoggedInWithAccountTestCase):
@@ -559,7 +618,9 @@ class NextNumberLimitTests(LoggedInWithAccountTestCase):
         which the database can't store: every new transaction of that
         year was an error. The huge one is left out when counting on."""
         on = date(2026, 9, 1)
-        Transaction.objects.create(account=self.account, date=on, amount=Decimal("1"), transaction_number=2**63 - 1)
+        Transaction.objects.create(
+            account=self.account, date=on, amount=Decimal("1"), transaction_number=2**63 - 1
+        )
         self.assertEqual(Transaction.next_number(on), 1)
         added = Transaction.objects.create(account=self.account, date=on, amount=Decimal("1"))
         self.assertEqual(added.transaction_number, 1)
@@ -567,7 +628,9 @@ class NextNumberLimitTests(LoggedInWithAccountTestCase):
     def test_the_biggest_number_that_counts_still_counts(self):
         on = date(2026, 9, 1)
         for number in (5, 2**40, MAX_TRANSACTION_NUMBER - 1):
-            Transaction.objects.create(account=self.account, date=on, amount=Decimal("1"), transaction_number=number)
+            Transaction.objects.create(
+                account=self.account, date=on, amount=Decimal("1"), transaction_number=number
+            )
         self.assertEqual(Transaction.next_number(on), MAX_TRANSACTION_NUMBER)
 
     def test_the_next_number_never_goes_past_the_limit(self):
@@ -578,7 +641,10 @@ class NextNumberLimitTests(LoggedInWithAccountTestCase):
         again."""
         on = date(2026, 9, 1)
         Transaction.objects.create(
-            account=self.account, date=on, amount=Decimal("1"), transaction_number=MAX_TRANSACTION_NUMBER
+            account=self.account,
+            date=on,
+            amount=Decimal("1"),
+            transaction_number=MAX_TRANSACTION_NUMBER,
         )
         self.assertLessEqual(Transaction.next_number(on), MAX_TRANSACTION_NUMBER)
         page = self.client.get(reverse("finance:transaction_add"), {"date": on.isoformat()})
@@ -614,7 +680,10 @@ class ImportLimitTests(LoggedInWithAccountTestCase):
             ]
         )
         self.assertEqual((result.created, result.unreadable), (3, 3))
-        self.assertEqual(set(Transaction.objects.values_list("payee__name", flat=True)), {"Good", "First", "Last"})
+        self.assertEqual(
+            set(Transaction.objects.values_list("payee__name", flat=True)),
+            {"Good", "First", "Last"},
+        )
 
     def test_an_amount_too_big_to_store_is_unreadable_not_an_error_page(self):
         """Thirty digits ended the whole import in an error page."""
@@ -636,7 +705,9 @@ class ImportLimitTests(LoggedInWithAccountTestCase):
             ["05/01/2026,1000000000,Shop,10.00", f"06/01/2026,{MAX_TRANSACTION_NUMBER},Cafe,5.00"]
         )
         self.assertEqual(result.created, 2)
-        self.assertEqual(Transaction.objects.get(payee__name="Cafe").transaction_number, MAX_TRANSACTION_NUMBER)
+        self.assertEqual(
+            Transaction.objects.get(payee__name="Cafe").transaction_number, MAX_TRANSACTION_NUMBER
+        )
         self.assertEqual(Transaction.objects.get(payee__name="Shop").transaction_number, 1)
 
     def test_a_huge_number_in_the_num_column_is_dropped_without_being_built(self):
@@ -648,7 +719,9 @@ class ImportLimitTests(LoggedInWithAccountTestCase):
         number at once, and the test needn't wait for the slow one."""
 
         def refusing_a_huge_number(value):
-            self.assertLess(value.adjusted(), 100, "int() was asked to build a number of over 100 digits")
+            self.assertLess(
+                value.adjusted(), 100, "int() was asked to build a number of over 100 digits"
+            )
             return int(value)
 
         with mock.patch.object(importing, "int", refusing_a_huge_number, create=True):
@@ -661,7 +734,10 @@ class ImportLimitTests(LoggedInWithAccountTestCase):
         ):
             with self.subTest(date_format=date_format):
                 Transaction.objects.all().delete()
-                rows = [f"{inside},,Last,1.00", *(f"{text},,Outside {text},1.00" for text in outside)]
+                rows = [
+                    f"{inside},,Last,1.00",
+                    *(f"{text},,Outside {text},1.00" for text in outside),
+                ]
                 text = "Date,Num,Payee,Amount\n" + "\n".join(rows) + "\n"
                 result = import_file(csv_upload(text), self.account, date_format=date_format)
                 self.assertEqual((result.created, result.unreadable), (1, len(outside)))
@@ -672,7 +748,11 @@ class ImportLimitTests(LoggedInWithAccountTestCase):
         workbook.active.append(["Date", "Payee", "Amount"])
         # Excel can't hold a date before 1900, so the old one is a text
         # cell, which is how a file made by another program has it.
-        for on, payee in ((date(2026, 1, 5), "Good"), ("1850-01-01", "Old"), (date(2101, 1, 1), "Future")):
+        for on, payee in (
+            (date(2026, 1, 5), "Good"),
+            ("1850-01-01", "Old"),
+            (date(2101, 1, 1), "Future"),
+        ):
             workbook.active.append([on, payee, 10])
         workbook.active.append([date(2026, 1, 6), "Huge", int(HUGE_AMOUNT)])
         buffer = io.BytesIO()
@@ -688,9 +768,11 @@ class ImportLimitTests(LoggedInWithAccountTestCase):
                 "OFXHEADER:100\nDATA:OFXSGML\nVERSION:102\nSECURITY:NONE\nENCODING:USASCII\n"
                 "CHARSET:1252\nCOMPRESSION:NONE\nOLDFILEUID:NONE\nNEWFILEUID:NONE\n\n"
                 "<OFX><BANKMSGSRSV1><STMTTRNRS><TRNUID>1<STATUS><CODE>0<SEVERITY>INFO</STATUS>"
-                "<STMTRS><CURDEF>EUR<BANKACCTFROM><BANKID>1<ACCTID>2<ACCTTYPE>CHECKING</BANKACCTFROM>"
+                "<STMTRS><CURDEF>EUR<BANKACCTFROM><BANKID>1"
+                "<ACCTID>2<ACCTTYPE>CHECKING</BANKACCTFROM>"
                 "<BANKTRANLIST><DTSTART>20260101<DTEND>20260131"
-                f"<STMTTRN><TRNTYPE>DEBIT<DTPOSTED>{posted}<TRNAMT>{amount}<FITID>1<NAME>Lidl</STMTTRN>"
+                f"<STMTTRN><TRNTYPE>DEBIT<DTPOSTED>{posted}<TRNAMT>{amount}"
+                "<FITID>1<NAME>Lidl</STMTTRN>"
                 "</BANKTRANLIST></STMTRS></STMTTRNRS></BANKMSGSRSV1></OFX>\n"
             ).encode()
 
@@ -702,7 +784,9 @@ class ImportLimitTests(LoggedInWithAccountTestCase):
         ):
             with self.subTest(posted=posted, amount=amount[:10]):
                 Transaction.objects.all().delete()
-                result = import_file(SimpleUploadedFile("bank.ofx", ofx(posted, amount)), self.account)
+                result = import_file(
+                    SimpleUploadedFile("bank.ofx", ofx(posted, amount)), self.account
+                )
                 self.assertEqual((result.created, result.unreadable), (created, unreadable))
 
 

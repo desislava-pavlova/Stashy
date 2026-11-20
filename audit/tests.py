@@ -95,7 +95,9 @@ class ModelChangeLoggingTests(AuditTestCase):
     def test_dates_decimals_and_relations_are_raw(self):
         account = Account.objects.create(name="Checking")
         category = Category.objects.create(name="Groceries")
-        Transaction.objects.create(account=account, category=category, date=date(2026, 4, 3), amount=Decimal("-5"))
+        Transaction.objects.create(
+            account=account, category=category, date=date(2026, 4, 3), amount=Decimal("-5")
+        )
         values = self.entries(Transaction).get().values
         self.assertEqual(values["date"], "2026-04-03")
         self.assertEqual(values["amount"], "-5")
@@ -176,7 +178,10 @@ class DeleteLoggingTests(AuditTestCase):
         batch = ImportBatch.objects.create(account=account, source_filename="bank.csv")
         for day in range(1, 4):
             Transaction.objects.create(
-                account=account, date=date(2026, 1, day), amount=Decimal("-1.00"), import_batch=batch
+                account=account,
+                date=date(2026, 1, day),
+                amount=Decimal("-1.00"),
+                import_batch=batch,
             )
         AuditLogEntry.objects.all().delete()
 
@@ -225,17 +230,27 @@ class AuditAdminTests(AuditTestCase):
     def test_log_is_viewable_but_read_only(self):
         Account.objects.create(name="Cash")
         entry = self.entries(Account).get()
-        self.assertContains(self.client.get(reverse("admin:audit_auditlogentry_changelist")), "Cash")
-        self.assertContains(self.client.get(reverse("admin:audit_auditlogentry_change", args=[entry.pk])), "Cash")
-        self.assertEqual(self.client.get(reverse("admin:audit_auditlogentry_add")).status_code, 403)
+        self.assertContains(
+            self.client.get(reverse("admin:audit_auditlogentry_changelist")), "Cash"
+        )
+        self.assertContains(
+            self.client.get(reverse("admin:audit_auditlogentry_change", args=[entry.pk])), "Cash"
+        )
         self.assertEqual(
-            self.client.post(reverse("admin:audit_auditlogentry_delete", args=[entry.pk])).status_code, 403
+            self.client.get(reverse("admin:audit_auditlogentry_add")).status_code, 403
+        )
+        self.assertEqual(
+            self.client.post(
+                reverse("admin:audit_auditlogentry_delete", args=[entry.pk])
+            ).status_code,
+            403,
         )
 
     def test_history_button_opens_that_objects_audit_trail(self):
         account = Account.objects.create(name="Cash")
         response = self.client.get(reverse("admin:finance_account_history", args=[account.pk]))
-        expected = f"{reverse('admin:audit_auditlogentry_changelist')}?table=finance_account&row_id={account.pk}"
+        changelist = reverse("admin:audit_auditlogentry_changelist")
+        expected = f"{changelist}?table=finance_account&row_id={account.pk}"
         self.assertRedirects(response, expected, fetch_redirect_response=False)
 
     def test_users_and_groups_are_hidden_and_profile_is_view_only(self):
@@ -257,9 +272,13 @@ class OnCommitUsesTheStashTests(LoggedInWithAccountTestCase):
 
     def test_cleared_references_wait_for_the_routed_database(self):
         payee = Payee.objects.create(name="Corner shop")
-        Transaction.objects.create(account=self.account, date=date(2026, 9, 1), payee=payee, amount=Decimal("-5"))
+        Transaction.objects.create(
+            account=self.account, date=date(2026, 9, 1), payee=payee, amount=Decimal("-5")
+        )
         with (
-            mock.patch.object(audit_signals.router, "db_for_write", return_value=settings.TEST_STASH) as db_for_write,
+            mock.patch.object(
+                audit_signals.router, "db_for_write", return_value=settings.TEST_STASH
+            ) as db_for_write,
             mock.patch.object(audit_signals.transaction, "on_commit") as on_commit,
         ):
             payee.delete()
@@ -276,7 +295,9 @@ class AuditSkipsNameKeyTests(StashTestCase):
         payee.save()
         rows = AuditLogEntry.objects.filter(table="finance_payee", row_id=str(payee.pk))
         self.assertNotIn("name_key", rows.get(action="insert").values)
-        self.assertEqual(list(rows.filter(action="update").values_list("column", flat=True)), ["name"])
+        self.assertEqual(
+            list(rows.filter(action="update").values_list("column", flat=True)), ["name"]
+        )
 
 
 class AuditSuspendedTests(StashTestCase):
@@ -308,7 +329,9 @@ class AuditSuspendedTests(StashTestCase):
         seen = {}
         with audit_suspended():
             self.assertFalse(audit_signals._logging(Account))
-            thread = threading.Thread(target=lambda: seen.update(other=audit_signals._logging(Account)))
+            thread = threading.Thread(
+                target=lambda: seen.update(other=audit_signals._logging(Account))
+            )
             thread.start()
             thread.join()
         self.assertTrue(seen["other"])

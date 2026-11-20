@@ -36,19 +36,27 @@ class OptionalAmountTests(LoggedInWithAccountTestCase):
 @mock.patch("django.utils.timezone.localdate", return_value=TODAY_13_SEPT)
 class StatusTests(LoggedInWithAccountTestCase):
     def test_overdue(self, _):
-        r = Reminder.objects.create(account=self.account, amount=Decimal("1"), next_due_date=date(2026, 9, 1))
+        r = Reminder.objects.create(
+            account=self.account, amount=Decimal("1"), next_due_date=date(2026, 9, 1)
+        )
         self.assertEqual(r.status(), "overdue")
 
     def test_due_soon(self, _):
-        r = Reminder.objects.create(account=self.account, amount=Decimal("1"), next_due_date=date(2026, 9, 18))
+        r = Reminder.objects.create(
+            account=self.account, amount=Decimal("1"), next_due_date=date(2026, 9, 18)
+        )
         self.assertEqual(r.status(), "due_soon")
 
     def test_pending_when_far_out_and_never_entered(self, _):
-        r = Reminder.objects.create(account=self.account, amount=Decimal("1"), next_due_date=date(2026, 12, 1))
+        r = Reminder.objects.create(
+            account=self.account, amount=Decimal("1"), next_due_date=date(2026, 12, 1)
+        )
         self.assertEqual(r.status(), "")
 
     def test_paid_when_far_out_and_linked_to_a_transaction(self, _):
-        txn = Transaction.objects.create(account=self.account, date=date(2026, 9, 1), amount=Decimal("-1.00"))
+        txn = Transaction.objects.create(
+            account=self.account, date=date(2026, 9, 1), amount=Decimal("-1.00")
+        )
         r = Reminder.objects.create(
             account=self.account,
             amount=Decimal("1"),
@@ -58,7 +66,9 @@ class StatusTests(LoggedInWithAccountTestCase):
         self.assertEqual(r.status(), "paid")
 
     def test_deleting_the_linked_transaction_reverts_the_status(self, _):
-        txn = Transaction.objects.create(account=self.account, date=date(2026, 9, 1), amount=Decimal("-1.00"))
+        txn = Transaction.objects.create(
+            account=self.account, date=date(2026, 9, 1), amount=Decimal("-1.00")
+        )
         r = Reminder.objects.create(
             account=self.account,
             amount=Decimal("1"),
@@ -74,7 +84,9 @@ class StatusTests(LoggedInWithAccountTestCase):
         # If nobody touches the reminder again, its due date eventually
         # becomes urgent again - the old "paid" link from a prior cycle
         # shouldn't keep masking that.
-        txn = Transaction.objects.create(account=self.account, date=date(2026, 1, 1), amount=Decimal("-1.00"))
+        txn = Transaction.objects.create(
+            account=self.account, date=date(2026, 1, 1), amount=Decimal("-1.00")
+        )
         r = Reminder.objects.create(
             account=self.account,
             amount=Decimal("1"),
@@ -85,7 +97,9 @@ class StatusTests(LoggedInWithAccountTestCase):
         self.assertEqual(r.status(), "due_soon")
 
     def test_deleting_the_reminder_does_not_touch_the_transaction(self, _):
-        txn = Transaction.objects.create(account=self.account, date=date(2026, 9, 1), amount=Decimal("-1.00"))
+        txn = Transaction.objects.create(
+            account=self.account, date=date(2026, 9, 1), amount=Decimal("-1.00")
+        )
         r = Reminder.objects.create(
             account=self.account,
             amount=Decimal("1"),
@@ -187,7 +201,9 @@ class NoEndDateTests(LoggedInWithAccountTestCase):
         self.assertTrue(ReminderForm().fields["no_end_date"].initial)
 
     def test_editing_a_reminder_with_no_end_date_keeps_the_box_checked(self):
-        reminder = Reminder.objects.create(account=self.account, amount=Decimal("1"), next_due_date=date(2026, 10, 1))
+        reminder = Reminder.objects.create(
+            account=self.account, amount=Decimal("1"), next_due_date=date(2026, 10, 1)
+        )
         self.assertTrue(ReminderForm(instance=reminder).fields["no_end_date"].initial)
 
     def test_editing_a_reminder_with_an_end_date_unchecks_the_box(self):
@@ -207,7 +223,9 @@ class GenerationHorizonTests(StashTestCase):
 
     @mock.patch("django.utils.timezone.localdate", return_value=date(2026, 11, 15))
     def test_late_in_the_year_90_days_spills_into_next_year(self, _):
-        self.assertEqual(Reminder.default_generation_horizon(), date(2026, 11, 15) + timedelta(days=90))
+        self.assertEqual(
+            Reminder.default_generation_horizon(), date(2026, 11, 15) + timedelta(days=90)
+        )
 
 
 @mock.patch("django.utils.timezone.localdate", return_value=TODAY_14_SEPT)
@@ -221,7 +239,9 @@ class AutoGenerateOccurrencesTests(LoggedInWithAccountTestCase):
             end_date=date(2026, 12, 20),
         )
         occurrence_dates = sorted(o.next_due_date for o in root.occurrences.all())
-        self.assertEqual(occurrence_dates, [date(2026, 10, 20), date(2026, 11, 20), date(2026, 12, 20)])
+        self.assertEqual(
+            occurrence_dates, [date(2026, 10, 20), date(2026, 11, 20), date(2026, 12, 20)]
+        )
         for occ in root.occurrences.all():
             self.assertEqual(occ.frequency, "one_time")
             self.assertEqual(occ.series_id, root.pk)
@@ -265,7 +285,9 @@ class AutoGenerateOccurrencesTests(LoggedInWithAccountTestCase):
         self.assertTrue(edit_form.is_valid(), edit_form.errors)
         edit_form.save()
         root.refresh_from_db()
-        self.assertEqual(list(root.occurrences.values_list("next_due_date", flat=True)), [date(2026, 10, 20)])
+        self.assertEqual(
+            list(root.occurrences.values_list("next_due_date", flat=True)), [date(2026, 10, 20)]
+        )
 
     def test_extending_the_end_date_adds_more_occurrences(self, _):
         root = Reminder.objects.create(
@@ -291,7 +313,9 @@ class AutoGenerateOccurrencesTests(LoggedInWithAccountTestCase):
         root.refresh_from_db()
         self.assertEqual(root.occurrences.count(), 3)
 
-    def test_entering_the_current_occurrence_absorbs_the_matching_preview_and_tops_up_the_tail(self, _):
+    def test_entering_the_current_occurrence_absorbs_the_matching_preview_and_tops_up_the_tail(
+        self, _
+    ):
         root = Reminder.objects.create(
             account=self.account,
             amount=Decimal("10.00"),
@@ -334,7 +358,9 @@ class AutoGenerateOccurrencesTests(LoggedInWithAccountTestCase):
             end_date=date(2026, 12, 20),
         )
         october = root.occurrences.get(next_due_date=date(2026, 10, 20))
-        txn = Transaction.objects.create(account=self.account, date=date(2026, 10, 20), amount=Decimal("-10.00"))
+        txn = Transaction.objects.create(
+            account=self.account, date=date(2026, 10, 20), amount=Decimal("-10.00")
+        )
         october.last_entered_transaction = txn
         october.save(update_fields=["last_entered_transaction"])
 
@@ -363,7 +389,9 @@ class AutoGenerateOccurrencesTests(LoggedInWithAccountTestCase):
             frequency="monthly",
             end_date=date(2026, 12, 20),
         )
-        payment = Transaction.objects.create(account=self.account, date=date(2026, 9, 20), amount=Decimal("-10.00"))
+        payment = Transaction.objects.create(
+            account=self.account, date=date(2026, 9, 20), amount=Decimal("-10.00")
+        )
         root.mark_entered(payment)
         payment.delete()
         september = root.occurrences.get(next_due_date=date(2026, 9, 20))
@@ -412,7 +440,9 @@ class AutoGenerateOccurrencesTests(LoggedInWithAccountTestCase):
         )
         self.assertEqual(root.occurrences.count(), 3)  # Oct, Nov, Dec
         self._move_due_date(root, "20/11/2026")
-        self.assertEqual(list(root.occurrences.values_list("next_due_date", flat=True)), [date(2026, 12, 20)])
+        self.assertEqual(
+            list(root.occurrences.values_list("next_due_date", flat=True)), [date(2026, 12, 20)]
+        )
 
     def test_moving_the_due_date_later_keeps_an_unpaid_earlier_period(self, _):
         # S51 still holds: the unpaid September is dated before where
@@ -445,7 +475,9 @@ class AutoGenerateOccurrencesTests(LoggedInWithAccountTestCase):
 
         return [(o.next_due_date, state(o)) for o in root.occurrences.order_by("next_due_date")]
 
-    def test_moving_the_due_date_earlier_keeps_an_unpaid_earlier_period_and_redates_the_previews(self, _):
+    def test_moving_the_due_date_earlier_keeps_an_unpaid_earlier_period_and_redates_the_previews(
+        self, _
+    ):
         # Broken if the earlier-moving case dropped every open
         # occurrence that is not on the new schedule (the pre-S51 rule):
         # September would go. The previews must follow the new day
@@ -456,7 +488,11 @@ class AutoGenerateOccurrencesTests(LoggedInWithAccountTestCase):
         self._move_due_date(root, "05/10/2026")
         self.assertEqual(
             self._occurrences(root),
-            [(date(2026, 9, 20), "open"), (date(2026, 11, 5), "open"), (date(2026, 12, 5), "open")],
+            [
+                (date(2026, 9, 20), "open"),
+                (date(2026, 11, 5), "open"),
+                (date(2026, 12, 5), "open"),
+            ],
         )
 
     def test_moving_the_due_date_back_before_an_unpaid_period_takes_it_in_as_a_preview(self, _):
@@ -470,7 +506,11 @@ class AutoGenerateOccurrencesTests(LoggedInWithAccountTestCase):
         self._move_due_date(root, "05/09/2026")
         self.assertEqual(
             self._occurrences(root),
-            [(date(2026, 10, 5), "open"), (date(2026, 11, 5), "open"), (date(2026, 12, 5), "open")],
+            [
+                (date(2026, 10, 5), "open"),
+                (date(2026, 11, 5), "open"),
+                (date(2026, 12, 5), "open"),
+            ],
         )
 
     def test_occurrences_already_paid_or_skipped_survive_the_due_date_moving_past_them(self, _):
@@ -493,24 +533,37 @@ class AutoGenerateOccurrencesTests(LoggedInWithAccountTestCase):
         # October (paid) and November (skipped) lie between the old and
         # the new due date but are records now; only the open December
         # preview goes, because the series itself stands for it.
-        self.assertEqual(self._occurrences(root), [(date(2026, 10, 20), "paid"), (date(2026, 11, 20), "skipped")])
+        self.assertEqual(
+            self._occurrences(root),
+            [(date(2026, 10, 20), "paid"), (date(2026, 11, 20), "skipped")],
+        )
 
-    def test_regenerating_with_no_previous_due_date_only_drops_previews_from_the_due_date_on(self, _):
+    def test_regenerating_with_no_previous_due_date_only_drops_previews_from_the_due_date_on(
+        self, _
+    ):
         # The default argument: nothing is known about an earlier due
         # date, so only the current one counts.
         root, _september = self._series_with_a_september_whose_payment_was_deleted()
         root.refresh_from_db()
-        self._open_occurrence(root, root.next_due_date)  # on the series' own date: the series stands for it
+        self._open_occurrence(
+            root, root.next_due_date
+        )  # on the series' own date: the series stands for it
         root.regenerate_occurrences()
         self.assertEqual(
             self._occurrences(root),
-            [(date(2026, 9, 20), "open"), (date(2026, 11, 20), "open"), (date(2026, 12, 20), "open")],
+            [
+                (date(2026, 9, 20), "open"),
+                (date(2026, 11, 20), "open"),
+                (date(2026, 12, 20), "open"),
+            ],
         )
 
     def test_entering_the_series_keeps_an_unpaid_earlier_period_and_creates_no_duplicates(self, _):
         root, _september = self._series_with_a_september_whose_payment_was_deleted()
         root.refresh_from_db()
-        payment = Transaction.objects.create(account=self.account, date=date(2026, 10, 20), amount=Decimal("-10.00"))
+        payment = Transaction.objects.create(
+            account=self.account, date=date(2026, 10, 20), amount=Decimal("-10.00")
+        )
         root.mark_entered(payment)
         root.refresh_from_db()
         self.assertEqual(root.next_due_date, date(2026, 11, 20))
@@ -518,7 +571,11 @@ class AutoGenerateOccurrencesTests(LoggedInWithAccountTestCase):
         # absorbed by the series itself.
         self.assertEqual(
             self._occurrences(root),
-            [(date(2026, 9, 20), "open"), (date(2026, 10, 20), "paid"), (date(2026, 12, 20), "open")],
+            [
+                (date(2026, 9, 20), "open"),
+                (date(2026, 10, 20), "paid"),
+                (date(2026, 12, 20), "open"),
+            ],
         )
 
     def test_skipping_the_series_keeps_an_unpaid_earlier_period_and_creates_no_duplicates(self, _):
@@ -529,7 +586,11 @@ class AutoGenerateOccurrencesTests(LoggedInWithAccountTestCase):
         self.assertEqual(root.next_due_date, date(2026, 11, 20))
         self.assertEqual(
             self._occurrences(root),
-            [(date(2026, 9, 20), "open"), (date(2026, 10, 20), "skipped"), (date(2026, 12, 20), "open")],
+            [
+                (date(2026, 9, 20), "open"),
+                (date(2026, 10, 20), "skipped"),
+                (date(2026, 12, 20), "open"),
+            ],
         )
 
     def test_an_end_of_period_series_moves_on_and_keeps_an_unpaid_earlier_period(self, _):
@@ -548,7 +609,9 @@ class AutoGenerateOccurrencesTests(LoggedInWithAccountTestCase):
             [date(2026, 10, 31), date(2026, 11, 30), date(2026, 12, 31)],
         )
         self._open_occurrence(root, date(2026, 8, 31))
-        payment = Transaction.objects.create(account=self.account, date=date(2026, 9, 30), amount=Decimal("-10.00"))
+        payment = Transaction.objects.create(
+            account=self.account, date=date(2026, 9, 30), amount=Decimal("-10.00")
+        )
         root.mark_entered(payment)
         root.refresh_from_db()
         self.assertEqual(root.next_due_date, date(2026, 10, 31))
@@ -567,8 +630,22 @@ class AutoGenerateOccurrencesTests(LoggedInWithAccountTestCase):
         cases = [
             # frequency, interval, first due, end date, new due date,
             # what is still open afterwards
-            ("weekly", 1, date(2026, 9, 21), date(2026, 10, 19), date(2026, 10, 12), [date(2026, 10, 19)]),
-            ("weekly", 2, date(2026, 9, 21), date(2026, 11, 2), date(2026, 10, 19), [date(2026, 11, 2)]),
+            (
+                "weekly",
+                1,
+                date(2026, 9, 21),
+                date(2026, 10, 19),
+                date(2026, 10, 12),
+                [date(2026, 10, 19)],
+            ),
+            (
+                "weekly",
+                2,
+                date(2026, 9, 21),
+                date(2026, 11, 2),
+                date(2026, 10, 19),
+                [date(2026, 11, 2)],
+            ),
             (
                 "quarterly",
                 1,
@@ -596,11 +673,16 @@ class AutoGenerateOccurrencesTests(LoggedInWithAccountTestCase):
                     interval=interval,
                     end_date=end_date,
                 )
-                self.assertGreater(root.occurrences.count(), len(still_open))  # there is something to remove
+                self.assertGreater(
+                    root.occurrences.count(), len(still_open)
+                )  # there is something to remove
                 self._open_occurrence(root, earlier)
                 root.next_due_date = new_due
                 root.save()
-                self.assertEqual(self._occurrences(root), [(earlier, "open"), *((d, "open") for d in still_open)])
+                self.assertEqual(
+                    self._occurrences(root),
+                    [(earlier, "open"), *((d, "open") for d in still_open)],
+                )
 
     def test_each_occurrence_can_be_entered_independently(self, _):
         root = Reminder.objects.create(
@@ -708,7 +790,9 @@ class ReminderLabelTests(StashTestCase):
 
     def test_str_falls_back_to_category_then_a_generic_label(self):
         account = Account.objects.create(name="Checking")
-        category = Category.objects.create(name="Rent", category_type=Category.CategoryType.EXPENSE)
+        category = Category.objects.create(
+            name="Rent", category_type=Category.CategoryType.EXPENSE
+        )
         with_category = Reminder.objects.create(
             account=account,
             category=category,
@@ -717,7 +801,9 @@ class ReminderLabelTests(StashTestCase):
         )
         self.assertIn("Rent", str(with_category))
 
-        bare = Reminder.objects.create(account=account, amount=Decimal("10.00"), next_due_date=date(2026, 10, 1))
+        bare = Reminder.objects.create(
+            account=account, amount=Decimal("10.00"), next_due_date=date(2026, 10, 1)
+        )
         self.assertIn("Reminder", str(bare))
 
 
@@ -726,7 +812,9 @@ class ReminderEnterAndSkipTests(StashTestCase):
     def setUpTestData(cls):
         cls.account = Account.objects.create(name="Wallet")
         cls.due = timezone.localdate() + timedelta(days=3)
-        cls.txn = Transaction.objects.create(account=cls.account, date=cls.due, amount=Decimal("-5"))
+        cls.txn = Transaction.objects.create(
+            account=cls.account, date=cls.due, amount=Decimal("-5")
+        )
 
     def reminder(self, frequency=Reminder.Frequency.ONE_TIME):
         return Reminder.objects.create(
@@ -832,7 +920,9 @@ class ReminderSaveTests(StashTestCase):
         regenerate.assert_called_once_with(previous_due_date=date(2026, 10, 15))
 
     def test_a_new_recurring_reminder_has_no_previous_due_date(self):
-        new = Reminder(account=self.reminder.account, frequency="monthly", next_due_date=date(2027, 1, 1))
+        new = Reminder(
+            account=self.reminder.account, frequency="monthly", next_due_date=date(2027, 1, 1)
+        )
         with mock.patch.object(Reminder, "regenerate_occurrences") as regenerate:
             new.save()
         regenerate.assert_called_once_with(previous_due_date=None)

@@ -121,7 +121,9 @@ class CreateAndResetStashTests(TemporaryStashesMixin, SimpleTestCase):
         self.assertEqual(registry._folder_name_from_owner("Default"), "default-2")
         self.assertEqual(registry._folder_name_from_owner("Con"), "con-3")
 
-    def test_the_check_is_on_the_tidied_folder_name_so_spaces_and_punctuation_do_not_dodge_it(self):
+    def test_the_check_is_on_the_tidied_folder_name_so_spaces_and_punctuation_do_not_dodge_it(
+        self,
+    ):
         self.make_stashes()
         for owner_name, expected in [
             ("  Default  ", "default-2"),
@@ -148,12 +150,33 @@ class ReservedFolderNameTests(SimpleTestCase):
     """S105 and S110: the names no stash may take."""
 
     def test_device_names_are_reserved_in_any_case(self):
-        for name in ["con", "CON", "Prn", "aux", "NUL", "com1", "COM9", "lpt1", "Lpt9", "default", "Default"]:
+        for name in [
+            "con",
+            "CON",
+            "Prn",
+            "aux",
+            "NUL",
+            "com1",
+            "COM9",
+            "lpt1",
+            "Lpt9",
+            "default",
+            "Default",
+        ]:
             with self.subTest(name=name):
                 self.assertTrue(folder_names.is_reserved_folder_name(name))
 
     def test_names_that_only_look_reserved_are_not(self):
-        for name in ["default-2", "default-dan", "console", "com10", "com0", "lpt", "nully", "alex"]:
+        for name in [
+            "default-2",
+            "default-dan",
+            "console",
+            "com10",
+            "com0",
+            "lpt",
+            "nully",
+            "alex",
+        ]:
             with self.subTest(name=name):
                 self.assertFalse(folder_names.is_reserved_folder_name(name))
 
@@ -219,7 +242,10 @@ class ResetPinCommandTests(TemporaryStashesMixin, SimpleTestCase):
     def copy_database(source, target):
         """With SQLite's own backup, like finance/backup.py: a plain
         file copy could miss what is still in the journal."""
-        with closing(sqlite3.connect(source)) as from_database, closing(sqlite3.connect(target)) as to_database:
+        with (
+            closing(sqlite3.connect(source)) as from_database,
+            closing(sqlite3.connect(target)) as to_database,
+        ):
             from_database.backup(to_database)
 
     def setUp(self):
@@ -249,7 +275,10 @@ class ResetPinCommandTests(TemporaryStashesMixin, SimpleTestCase):
         self.assertTrue(self.user.check_password("1234"))
 
     def test_an_unknown_name_or_a_bad_pin_ends_with_a_message_and_changes_nothing(self):
-        cases = [("Sam", "5678", 'No stash named "Sam".'), ("Alex", "56", "PIN must be exactly 4 digits.")]
+        cases = [
+            ("Sam", "5678", 'No stash named "Sam".'),
+            ("Alex", "56", "PIN must be exactly 4 digits."),
+        ]
         for name, pin, message in cases:
             with self.subTest(name=name, pin=pin), self.assertRaisesMessage(CommandError, message):
                 call_command("reset_pin", name, pin=pin, stdout=StringIO())
@@ -287,7 +316,10 @@ class ResetPinCommandTests(TemporaryStashesMixin, SimpleTestCase):
             call_command("reset_pin", "Alex", stdout=StringIO())
         self.assertEqual(
             ask.call_args_list,
-            [mock.call("New 4-digit PIN: ", echo_char="*"), mock.call("Type it again: ", echo_char="*")],
+            [
+                mock.call("New 4-digit PIN: ", echo_char="*"),
+                mock.call("Type it again: ", echo_char="*"),
+            ],
         )
         self.user.refresh_from_db()
         self.assertTrue(self.user.check_password("5678"))
@@ -300,7 +332,9 @@ class ResetPinCommandTests(TemporaryStashesMixin, SimpleTestCase):
             mock.patch("getpass.getpass", return_value="5678") as ask,
         ):
             call_command("reset_pin", "Alex", stdout=StringIO())
-        self.assertEqual(ask.call_args_list, [mock.call("New 4-digit PIN: "), mock.call("Type it again: ")])
+        self.assertEqual(
+            ask.call_args_list, [mock.call("New 4-digit PIN: "), mock.call("Type it again: ")]
+        )
         self.user.refresh_from_db()
         self.assertTrue(self.user.check_password("5678"))
 
@@ -315,7 +349,9 @@ class ResetPinCommandTests(TemporaryStashesMixin, SimpleTestCase):
     def test_two_different_pins_change_nothing(self):
         with (
             mock.patch("getpass.getpass", side_effect=["5678", "5687"]),
-            self.assertRaisesMessage(CommandError, "PINs don't match. Nothing was changed.") as caught,
+            self.assertRaisesMessage(
+                CommandError, "PINs don't match. Nothing was changed."
+            ) as caught,
         ):
             call_command("reset_pin", "Alex", stdout=StringIO())
         # What went wrong, never the PINs themselves: this message is
@@ -362,7 +398,9 @@ class ResetPinCommandTests(TemporaryStashesMixin, SimpleTestCase):
         self.user.refresh_from_db()
         self.assertTrue(self.user.check_password("5678"))
         self.assertTrue(get_user_model().objects.db_manager(sam).get().check_password("4321"))
-        self.assertTrue(AuditLogEntry.objects.using(self.folder).filter(table="finance_profile").exists())
+        self.assertTrue(
+            AuditLogEntry.objects.using(self.folder).filter(table="finance_profile").exists()
+        )
         self.assertFalse(AuditLogEntry.objects.using(sam).exists())
 
     def test_clearing_the_lockout_is_in_the_stashs_audit_log(self):
@@ -420,7 +458,9 @@ class RestoreKeepsTodaysLoginTests(TemporaryStashesMixin, SimpleTestCase):
         return folder
 
     def back_up(self, folder, tag):
-        return finance_backup.backup_now(registry.stash_db_path(folder), registry.stash_path(folder), tag=tag)
+        return finance_backup.backup_now(
+            registry.stash_db_path(folder), registry.stash_path(folder), tag=tag
+        )
 
     def test_a_lockout_today_stays_and_a_lockout_in_the_backup_does_not_come_back(self):
         """A restore must neither undo a lockout nor start one."""
@@ -455,9 +495,14 @@ class RestoreKeepsTodaysLoginTests(TemporaryStashesMixin, SimpleTestCase):
 
         with db_router.use_stash(folder):
             entries = AuditLogEntry.objects.filter(column="recovery_code_hash")
-            self.assertEqual({(entry.old_value, entry.new_value) for entry in entries}, {("(hidden)", "(hidden)")})
+            self.assertEqual(
+                {(entry.old_value, entry.new_value) for entry in entries},
+                {("(hidden)", "(hidden)")},
+            )
             for entry in AuditLogEntry.objects.all():
-                self.assertNotIn(todays_hash, f"{entry.old_value} {entry.new_value} {entry.values}")
+                self.assertNotIn(
+                    todays_hash, f"{entry.old_value} {entry.new_value} {entry.values}"
+                )
 
     def assert_refused_and_nothing_changed(self, folder, backup_path, message):
         """Plan 03, S88: a backup that would leave the stash unusable is
@@ -472,7 +517,9 @@ class RestoreKeepsTodaysLoginTests(TemporaryStashesMixin, SimpleTestCase):
 
         self.assertEqual(str(raised.exception), message)
         self.assertEqual(backup_path.read_bytes(), before)
-        self.assertEqual(list(registry.stash_backups_dir(folder).glob("*before_restore*")), safety_copies)
+        self.assertEqual(
+            list(registry.stash_backups_dir(folder).glob("*before_restore*")), safety_copies
+        )
         with db_router.use_stash(folder):
             self.assertTrue(Payee.objects.filter(name="Lidl").exists())
             self.assertTrue(get_user_model().objects.get(username=folder).check_password("1234"))
@@ -485,7 +532,9 @@ class RestoreKeepsTodaysLoginTests(TemporaryStashesMixin, SimpleTestCase):
 
     def test_a_file_that_is_not_a_database_is_refused(self):
         folder = self.make_alex_with_a_payee()
-        damaged = registry.stash_backups_dir(folder) / "alex_backup_damaged_2026-01-01_00-00-00.sqlite3"
+        damaged = (
+            registry.stash_backups_dir(folder) / "alex_backup_damaged_2026-01-01_00-00-00.sqlite3"
+        )
         damaged.write_text("this is not a database")
 
         self.assert_refused_and_nothing_changed(folder, damaged, registry.BACKUP_DAMAGED)
@@ -494,7 +543,10 @@ class RestoreKeepsTodaysLoginTests(TemporaryStashesMixin, SimpleTestCase):
         """A crash while a backup was being written can leave a file
         with no tables at all."""
         folder = self.make_alex_with_a_payee()
-        empty = registry.stash_backups_dir(folder) / "alex_backup_cut_short_2026-01-01_00-00-00.sqlite3"
+        empty = (
+            registry.stash_backups_dir(folder)
+            / "alex_backup_cut_short_2026-01-01_00-00-00.sqlite3"
+        )
         empty.touch()
 
         self.assert_refused_and_nothing_changed(folder, empty, registry.BACKUP_EMPTY)
@@ -507,7 +559,9 @@ class RestoreKeepsTodaysLoginTests(TemporaryStashesMixin, SimpleTestCase):
 
         self.assert_refused_and_nothing_changed(folder, cut, registry.BACKUP_DAMAGED)
 
-    def test_a_backup_from_before_there_was_a_profile_table_is_refused_while_the_stash_has_one(self):
+    def test_a_backup_from_before_there_was_a_profile_table_is_refused_while_the_stash_has_one(
+        self,
+    ):
         folder = self.make_alex_with_a_payee()
         old = self.back_up(folder, "ancient")
         with closing(sqlite3.connect(old)) as connection, connection:
@@ -605,7 +659,9 @@ class RestoreKeepsTodaysLoginTests(TemporaryStashesMixin, SimpleTestCase):
 
         self.assert_todays_login_is_kept(folder, todays_code)
         with db_router.use_stash(folder):
-            self.assertEqual(Profile.objects.get().owner_name, folder)  # a new column, filled in by migrating
+            self.assertEqual(
+                Profile.objects.get().owner_name, folder
+            )  # a new column, filled in by migrating
 
     def test_todays_pin_is_back_before_the_migration_starts(self):
         """The backup's PIN is live from the moment its file replaces
@@ -631,7 +687,9 @@ class RestoreKeepsTodaysLoginTests(TemporaryStashesMixin, SimpleTestCase):
         todays_code = self.change_todays_login(folder)
 
         with (
-            mock.patch.object(registry, "call_command", side_effect=CommandError("the migration failed")),
+            mock.patch.object(
+                registry, "call_command", side_effect=CommandError("the migration failed")
+            ),
             self.assertRaisesMessage(CommandError, "the migration failed"),
         ):
             registry.restore_stash(folder, backup_path)

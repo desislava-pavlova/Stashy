@@ -53,7 +53,9 @@ class Profile(models.Model):
     (D2), the regional formats (D10), the welcome wizard's progress, the
     PIN lockout and recovery code, and the Watched expenses setup."""
 
-    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="stashy_profile")
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="stashy_profile"
+    )
 
     # Who this stash belongs to - a person, a business or a family -
     # shown everywhere instead of the stash's internal folder name. Set
@@ -72,9 +74,15 @@ class Profile(models.Model):
         help_text="Net worth is shown in this currency; new accounts start with it.",
     )
     time_zone = models.CharField(max_length=64, default=settings.TIME_ZONE)
-    date_format = models.CharField(max_length=3, choices=regional.DATE_FORMAT_CHOICES, default="dmy")
-    number_format = models.CharField(max_length=12, choices=regional.NUMBER_FORMAT_CHOICES, default="space_dot")
-    first_day_of_week = models.PositiveSmallIntegerField(choices=regional.FIRST_DAY_CHOICES, default=1)
+    date_format = models.CharField(
+        max_length=3, choices=regional.DATE_FORMAT_CHOICES, default="dmy"
+    )
+    number_format = models.CharField(
+        max_length=12, choices=regional.NUMBER_FORMAT_CHOICES, default="space_dot"
+    )
+    first_day_of_week = models.PositiveSmallIntegerField(
+        choices=regional.FIRST_DAY_CHOICES, default=1
+    )
 
     # A stash's one-time recovery code, hashed the same way a password
     # is - shown to the user once, at stash creation, never stored in
@@ -178,8 +186,12 @@ ACCOUNT_GROUPS = [
 ]
 # Inactive accounts always come last, whatever their type.
 INACTIVE_GROUP = ("inactive", "Inactive", "No longer used")
-ACCOUNT_TYPE_CHOICES = [(name, [(kind.value, kind.label) for kind in kinds]) for _, name, _, kinds in ACCOUNT_GROUPS]
-_GROUP_INDEX = {kind.value: index for index, group in enumerate(ACCOUNT_GROUPS) for kind in group[3]}
+ACCOUNT_TYPE_CHOICES = [
+    (name, [(kind.value, kind.label) for kind in kinds]) for _, name, _, kinds in ACCOUNT_GROUPS
+]
+_GROUP_INDEX = {
+    kind.value: index for index, group in enumerate(ACCOUNT_GROUPS) for kind in group[3]
+}
 
 
 class AccountQuerySet(models.QuerySet):
@@ -199,7 +211,9 @@ class Account(models.Model):
     AccountType = AccountType
 
     name = models.CharField(max_length=120)
-    account_type = models.CharField(max_length=20, choices=ACCOUNT_TYPE_CHOICES, default=AccountType.CASH)
+    account_type = models.CharField(
+        max_length=20, choices=ACCOUNT_TYPE_CHOICES, default=AccountType.CASH
+    )
     currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, default=DEFAULT_CURRENCY)
     institution = models.CharField(
         max_length=120,
@@ -221,7 +235,9 @@ class Account(models.Model):
     def save(self, *args, **kwargs):
         update_fields = kwargs.get("update_fields")
         name_saved = update_fields is None or "name" in update_fields
-        sync = self._state.adding or (name_saved and self.name != getattr(self, "_saved_name", None))
+        sync = self._state.adding or (
+            name_saved and self.name != getattr(self, "_saved_name", None)
+        )
         super().save(*args, **kwargs)
         if name_saved:
             self._saved_name = self.name
@@ -246,12 +262,20 @@ class Account(models.Model):
         super().clean()
         if self.pk is None:
             return
-        saved_currency = Account.objects.filter(pk=self.pk).values_list("currency", flat=True).first()
+        saved_currency = (
+            Account.objects.filter(pk=self.pk).values_list("currency", flat=True).first()
+        )
         if saved_currency not in (None, self.currency) and self.transactions.exists():
             # Conversion only ever uses the latest known rate, not
             # per-transaction history, so a new currency would misstate
             # every transaction already in the account.
-            raise ValidationError({"currency": "This account already has transactions, so its currency can't change."})
+            raise ValidationError(
+                {
+                    "currency": (
+                        "This account already has transactions, so its currency can't change."
+                    )
+                }
+            )
 
     @property
     def balance(self):
@@ -283,7 +307,9 @@ class Account(models.Model):
     @property
     def group_order(self):
         return (
-            len(ACCOUNT_GROUPS) if not self.is_active else _GROUP_INDEX.get(self.account_type, len(ACCOUNT_GROUPS) - 1)
+            len(ACCOUNT_GROUPS)
+            if not self.is_active
+            else _GROUP_INDEX.get(self.account_type, len(ACCOUNT_GROUPS) - 1)
         )
 
     def ensure_transfer_category(self):
@@ -334,8 +360,12 @@ class Category(models.Model):
     name_key = models.CharField(max_length=120, editable=False)
     # One level of subcategories only: a subcategory can't itself have
     # children (see clean()).
-    parent = models.ForeignKey("self", null=True, blank=True, related_name="subcategories", on_delete=models.CASCADE)
-    category_type = models.CharField(max_length=10, choices=CategoryType.choices, default=CategoryType.EXPENSE)
+    parent = models.ForeignKey(
+        "self", null=True, blank=True, related_name="subcategories", on_delete=models.CASCADE
+    )
+    category_type = models.CharField(
+        max_length=10, choices=CategoryType.choices, default=CategoryType.EXPENSE
+    )
     account = models.OneToOneField(
         Account,
         null=True,
@@ -343,7 +373,10 @@ class Category(models.Model):
         editable=False,
         on_delete=models.CASCADE,
         related_name="transfer_category",
-        help_text="Set only on an account's own transfer category, which Stashy creates and deletes with the account.",
+        help_text=(
+            "Set only on an account's own transfer category, which Stashy creates and deletes "
+            "with the account."
+        ),
     )
     # Set when an import created this category itself because the file
     # named one Stashy didn't already have - flagged for
@@ -361,7 +394,9 @@ class Category(models.Model):
         # parent.
         ordering = ["name_key"]
         constraints = [
-            models.UniqueConstraint(fields=["parent", "name_key"], name="unique_subcategory_name_ci"),
+            models.UniqueConstraint(
+                fields=["parent", "name_key"], name="unique_subcategory_name_ci"
+            ),
             # NULL parents never clash in SQL, so top-level names need
             # their own rule. An account's transfer category is left
             # out: it's named after its account, and two accounts may
@@ -396,7 +431,9 @@ class Category(models.Model):
         """A new subcategory under this one. It always takes this
         category's type: an "Income" category with an "Expense" child
         would only confuse the reports."""
-        return Category.objects.create(name=name, category_type=self.category_type, parent=self, **fields)
+        return Category.objects.create(
+            name=name, category_type=self.category_type, parent=self, **fields
+        )
 
     def clean(self):
         super().clean()
@@ -406,19 +443,25 @@ class Category(models.Model):
             if parent.pk == self.pk:
                 errors["parent"] = "A category can't be placed under itself."
             elif parent.parent_id:
-                errors["parent"] = "A subcategory can't have its own subcategories - pick a main category."
+                errors["parent"] = (
+                    "A subcategory can't have its own subcategories - pick a main category."
+                )
             elif parent.account_id:
                 errors["parent"] = "An account's transfer category can't have subcategories."
             elif self.pk and self.subcategories.exists():
                 errors["parent"] = (
-                    "This category already has its own subcategories, so it can't become one itself "
-                    "— move or remove them first."
+                    "This category already has its own subcategories, so it can't become one "
+                    "itself — move or remove them first."
                 )
         is_transfer = self.category_type == self.CategoryType.TRANSFER
         if is_transfer and not self.account_id:
-            errors["category_type"] = "Transfer categories belong to an account and are created with it."
+            errors["category_type"] = (
+                "Transfer categories belong to an account and are created with it."
+            )
         elif self.account_id and not is_transfer:
-            errors["category_type"] = "This category belongs to an account, so its type stays Transfer."
+            errors["category_type"] = (
+                "This category belongs to an account, so its type stays Transfer."
+            )
         if "parent" not in errors and not self.account_id:
             same_name = Category.objects.filter(name_key=name_key(self.name)).exclude(pk=self.pk)
             if parent is not None and same_name.filter(parent=parent).exists():
@@ -504,7 +547,9 @@ def grouped_categories(categories):
     for category in sorted(categories, key=sort_key):
         key = category.category_type
         if not groups or groups[-1]["key"] != key:
-            groups.append({"key": key, "name": category.get_category_type_display(), "categories": []})
+            groups.append(
+                {"key": key, "name": category.get_category_type_display(), "categories": []}
+            )
         groups[-1]["categories"].append(category)
     return groups
 
@@ -578,7 +623,9 @@ class Payee(models.Model):
 
     @classmethod
     def system(cls, name):
-        return cls.objects.resolve(name, reason=f"Payee '{name}' created for transactions Stashy makes")
+        return cls.objects.resolve(
+            name, reason=f"Payee '{name}' created for transactions Stashy makes"
+        )
 
     def category_history(self):
         """One entry per category ever used with this payee (most
@@ -586,9 +633,9 @@ class Payee(models.Model):
         category/memo/amount are what a new transaction against this
         payee would offer to autofill from."""
         seen, history = set(), []
-        for transaction in self.transactions.select_related("category__parent", "account").order_by(
-            "-date", "-transaction_number", "-created_at"
-        ):
+        for transaction in self.transactions.select_related(
+            "category__parent", "account"
+        ).order_by("-date", "-transaction_number", "-created_at"):
             if transaction.category_id not in seen:
                 seen.add(transaction.category_id)
                 history.append(transaction)
@@ -635,9 +682,14 @@ class Transaction(models.Model):
         null=True,
         blank=True,
         validators=[MaxValueValidator(MAX_TRANSACTION_NUMBER)],
-        help_text="Shared across all accounts, starting again at 1 every calendar year. You can change it.",
+        help_text=(
+            "Shared across all accounts, starting again at 1 every calendar year. "
+            "You can change it."
+        ),
     )
-    payee = models.ForeignKey(Payee, null=True, blank=True, on_delete=models.SET_NULL, related_name="transactions")
+    payee = models.ForeignKey(
+        Payee, null=True, blank=True, on_delete=models.SET_NULL, related_name="transactions"
+    )
     category = models.ForeignKey(
         Category, null=True, blank=True, on_delete=models.SET_NULL, related_name="transactions"
     )
@@ -645,7 +697,11 @@ class Transaction(models.Model):
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     reconciled = models.BooleanField(default=False)
     import_batch = models.ForeignKey(
-        "ImportBatch", null=True, blank=True, on_delete=models.SET_NULL, related_name="transactions"
+        "ImportBatch",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="transactions",
     )
     import_fingerprint = models.CharField(
         max_length=64, blank=True, db_index=True, help_text="Hash used to detect duplicate imports"
@@ -689,7 +745,9 @@ class Transaction(models.Model):
         # would fail. And the answer never passes the limit itself, or
         # the form would refuse a number nobody typed; duplicates are
         # allowed, so the limit is given again.
-        countable = Transaction.objects.filter(date__year=on.year, transaction_number__lte=MAX_TRANSACTION_NUMBER)
+        countable = Transaction.objects.filter(
+            date__year=on.year, transaction_number__lte=MAX_TRANSACTION_NUMBER
+        )
         highest = countable.aggregate(highest=Max("transaction_number"))["highest"]
         return min((highest or 0) + 1, MAX_TRANSACTION_NUMBER)
 
@@ -713,7 +771,8 @@ class ImportBatch(models.Model):
 
 
 AMOUNT_NOT_NEGATIVE = (
-    "Enter the amount as a positive number - the type already says whether it's income or an expense."
+    "Enter the amount as a positive number - the type already says whether it's income "
+    "or an expense."
 )
 
 
@@ -749,17 +808,25 @@ class Reminder(models.Model):
     SERIES_FIELDS = ["account", "payee", "category", "amount", "reminder_type", "notes"]
     # What decides a recurring reminder's future dates: saving any of
     # them regenerates its occurrences (see save()).
-    SCHEDULE_FIELDS = frozenset({"frequency", "interval", "next_due_date", "end_date", "end_of_period"})
+    SCHEDULE_FIELDS = frozenset(
+        {"frequency", "interval", "next_due_date", "end_date", "end_of_period"}
+    )
 
     # "Due soon" is treated as urgent enough to need action; anything
     # further out than this many days (and not already overdue) is
     # either "paid" (see status()) or plain pending.
     DUE_SOON_DAYS = 7
 
-    reminder_type = models.CharField(max_length=10, choices=TYPE_CHOICES, default=Category.CategoryType.EXPENSE)
+    reminder_type = models.CharField(
+        max_length=10, choices=TYPE_CHOICES, default=Category.CategoryType.EXPENSE
+    )
     account = models.ForeignKey(Account, on_delete=models.CASCADE, related_name="reminders")
-    payee = models.ForeignKey(Payee, null=True, blank=True, on_delete=models.SET_NULL, related_name="reminders")
-    category = models.ForeignKey(Category, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    payee = models.ForeignKey(
+        Payee, null=True, blank=True, on_delete=models.SET_NULL, related_name="reminders"
+    )
+    category = models.ForeignKey(
+        Category, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
     amount = models.DecimalField(
         max_digits=12,
         decimal_places=2,
@@ -768,7 +835,9 @@ class Reminder(models.Model):
         validators=[MinValueValidator(0, message=AMOUNT_NOT_NEGATIVE)],
         help_text="Enter as a positive number, or leave blank for a variable-amount bill",
     )
-    frequency = models.CharField(max_length=10, choices=Frequency.choices, default=Frequency.ONE_TIME)
+    frequency = models.CharField(
+        max_length=10, choices=Frequency.choices, default=Frequency.ONE_TIME
+    )
     # How many periods between occurrences - "weekly" + interval=2 is
     # "every 2 weeks". Meaningless for ONE_TIME; always 1 there.
     interval = models.PositiveSmallIntegerField(
@@ -793,7 +862,9 @@ class Reminder(models.Model):
     # reminder (below), pointing back at the recurring "series head"
     # that generated it. Null on every reminder you create by hand,
     # recurring or not.
-    series = models.ForeignKey("self", null=True, blank=True, on_delete=models.CASCADE, related_name="occurrences")
+    series = models.ForeignKey(
+        "self", null=True, blank=True, on_delete=models.CASCADE, related_name="occurrences"
+    )
     notes = models.CharField(max_length=255, blank=True)
 
     class Meta:
@@ -805,16 +876,23 @@ class Reminder(models.Model):
                 condition=Q(amount__isnull=True) | Q(amount__gte=0),
                 name="reminder_amount_not_negative",
             ),
-            models.CheckConstraint(condition=Q(interval__gte=1), name="reminder_interval_at_least_one"),
+            models.CheckConstraint(
+                condition=Q(interval__gte=1), name="reminder_interval_at_least_one"
+            ),
         ]
 
     def __str__(self):
         # A reminder has no name of its own: it is identified like a
         # pending transaction, by who it's for and how much, the same
         # way Transaction.__str__ identifies a real one.
-        who = self.payee.name if self.payee_id else (self.category.full_name if self.category_id else "Reminder")
+        who = (
+            self.payee.name
+            if self.payee_id
+            else (self.category.full_name if self.category_id else "Reminder")
+        )
         amount = self.signed_amount()
-        return f"{regional.format_date(self.next_due_date)} | {who} | {amount if amount is not None else 'varies'}"
+        due_date = regional.format_date(self.next_due_date)
+        return f"{due_date} | {who} | {amount if amount is not None else 'varies'}"
 
     def save(self, *args, **kwargs):
         # A recurring reminder keeps its future occurrences in sync in
@@ -825,7 +903,9 @@ class Reminder(models.Model):
         # fields regenerates only if one of them is part of the
         # schedule - marking a period paid doesn't move any date.
         update_fields = kwargs.get("update_fields")
-        schedule_saved = update_fields is None or not self.SCHEDULE_FIELDS.isdisjoint(update_fields)
+        schedule_saved = update_fields is None or not self.SCHEDULE_FIELDS.isdisjoint(
+            update_fields
+        )
         regenerate = self.frequency != self.Frequency.ONE_TIME and schedule_saved
         # Read before the save overwrites it: regenerate_occurrences()
         # must know if the due date moved.
@@ -848,7 +928,9 @@ class Reminder(models.Model):
         # just a preview, so it's detached (series -> null) and kept
         # standing on its own instead of disappearing with the series.
         if self.frequency != self.Frequency.ONE_TIME:
-            resolved = self.occurrences.filter(Q(last_entered_transaction__isnull=False) | Q(skipped=True))
+            resolved = self.occurrences.filter(
+                Q(last_entered_transaction__isnull=False) | Q(skipped=True)
+            )
             with system_action(f"Occurrence detached from deleted recurring reminder ({self})"):
                 for occurrence in resolved:
                     occurrence.series = None
@@ -938,7 +1020,9 @@ class Reminder(models.Model):
         frequency/interval/ end-of-period settings - pure (no save), so
         `regenerate_occurrences` can walk it forward repeatedly."""
         unit = self._FREQUENCY_UNITS[self.frequency]
-        count = self.interval * (self._QUARTERLY_MONTH_MULTIPLIER if self.frequency == self.Frequency.QUARTERLY else 1)
+        count = self.interval * (
+            self._QUARTERLY_MONTH_MULTIPLIER if self.frequency == self.Frequency.QUARTERLY else 1
+        )
         advanced = from_date + relativedelta(**{unit: count})
         return self._period_end(advanced) if self.end_of_period else advanced
 
@@ -964,7 +1048,11 @@ class Reminder(models.Model):
 
     def advance_due_date(self):
         self.next_due_date = self._advance(self.next_due_date)
-        who = self.payee.name if self.payee_id else (self.category.full_name if self.category_id else "Reminder")
+        who = (
+            self.payee.name
+            if self.payee_id
+            else (self.category.full_name if self.category_id else "Reminder")
+        )
         with system_action(f"Next due date moved forward one period for reminder ({who})"):
             self.save(update_fields=["next_due_date"])  # save() -> regenerate_occurrences()
 
@@ -997,7 +1085,9 @@ class Reminder(models.Model):
             for field in self.SERIES_FIELDS:
                 setattr(root, field, getattr(self, field))
             root.save(update_fields=self.SERIES_FIELDS)
-        targets = root.occurrences.filter(last_entered_transaction__isnull=True, skipped=False).exclude(pk=self.pk)
+        targets = root.occurrences.filter(
+            last_entered_transaction__isnull=True, skipped=False
+        ).exclude(pk=self.pk)
         with system_action(f"Series-wide edit applied from reminder ({self})"):
             for occurrence in targets:
                 for field in self.SERIES_FIELDS:
@@ -1081,7 +1171,9 @@ class ExchangeRate(models.Model):
     base_currency = models.CharField("from", max_length=3, choices=CURRENCY_CHOICES)
     quote_currency = models.CharField("to", max_length=3, choices=CURRENCY_CHOICES)
     rate = models.DecimalField(
-        max_digits=20, decimal_places=10, help_text="How much 1 unit of the first currency is worth in the second."
+        max_digits=20,
+        decimal_places=10,
+        help_text="How much 1 unit of the first currency is worth in the second.",
     )
     date = models.DateField(validators=[validate_plausible_date])
     source = models.CharField(max_length=12, choices=Source.choices, default=Source.MANUAL)
@@ -1090,14 +1182,16 @@ class ExchangeRate(models.Model):
         ordering = ["-date", "base_currency", "quote_currency"]
         constraints = [
             models.UniqueConstraint(
-                fields=["base_currency", "quote_currency", "date", "source"], name="unique_rate_per_day_and_source"
+                fields=["base_currency", "quote_currency", "date", "source"],
+                name="unique_rate_per_day_and_source",
             ),
             models.CheckConstraint(condition=Q(rate__gt=0), name="exchange_rate_positive"),
         ]
 
     def __str__(self):
         rate = f"{self.rate.normalize():f}"
-        return f"1 {self.base_currency} = {rate} {self.quote_currency} ({regional.format_date(self.date)})"
+        rate_date = regional.format_date(self.date)
+        return f"1 {self.base_currency} = {rate} {self.quote_currency} ({rate_date})"
 
 
 class Reconciliation(models.Model):

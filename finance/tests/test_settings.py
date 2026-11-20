@@ -35,10 +35,17 @@ class ExchangeRateTableTests(LoggedInWithAccountTestCase):
     def setUpTestData(cls):
         super().setUpTestData()
         cls.profile = Profile.for_user(cls.user)
-        for code, source in (("USD", ExchangeRate.Source.MANUAL), ("GBP", ExchangeRate.Source.FRANKFURTER)):
+        for code, source in (
+            ("USD", ExchangeRate.Source.MANUAL),
+            ("GBP", ExchangeRate.Source.FRANKFURTER),
+        ):
             Account.objects.create(name=f"{code} account", currency=code)
             ExchangeRate.objects.create(
-                base_currency=code, quote_currency="EUR", rate=Decimal("0.5"), date=date(2026, 4, 3), source=source
+                base_currency=code,
+                quote_currency="EUR",
+                rate=Decimal("0.5"),
+                date=date(2026, 4, 3),
+                source=source,
             )
 
     def page(self, date_format):
@@ -88,7 +95,9 @@ class ExchangeRateTableRowsTests(LoggedInWithAccountTestCase):
     def test_with_every_account_in_the_main_currency_there_is_nothing_to_convert(self):
         response = self.page()  # the one account is in the main currency
         self.assertEqual(response.context["known_rates"], [])
-        self.assertContains(response, f"Every account already uses {response.context['profile'].main_currency}")
+        self.assertContains(
+            response, f"Every account already uses {response.context['profile'].main_currency}"
+        )
         self.assertNotContains(response, "No rate known yet")
 
     def test_two_accounts_in_one_currency_make_one_row(self):
@@ -135,18 +144,26 @@ class SettingsEndpointsTests(LoggedInWithAccountTestCase):
     def test_checking_rates_and_backing_up_run_outside_the_request_transaction(self):
         for name in ("check_rates", "create_backup", "backup_restore"):
             with self.subTest(name=name):
-                self.assertTrue(getattr(resolve(reverse(f"finance:{name}")).func, "_non_atomic_requests", None))
-        self.assertFalse(getattr(resolve(reverse("finance:settings")).func, "_non_atomic_requests", None))
+                self.assertTrue(
+                    getattr(resolve(reverse(f"finance:{name}")).func, "_non_atomic_requests", None)
+                )
+        self.assertFalse(
+            getattr(resolve(reverse("finance:settings")).func, "_non_atomic_requests", None)
+        )
 
     def test_check_rates_reports_what_it_stored_and_returns_to_settings(self):
-        with mock.patch("finance.views.settings.fetch_latest_rates", return_value=(["USD"], ["XYZ"])):
+        with mock.patch(
+            "finance.views.settings.fetch_latest_rates", return_value=(["USD"], ["XYZ"])
+        ):
             response = self.client.post(reverse("finance:check_rates"), follow=True)
         self.assertRedirects(response, reverse("finance:settings"))
         self.assertContains(response, "Updated 1 exchange rate.")
         self.assertContains(response, "No rate available for: XYZ")
 
     def test_check_rates_offline_shows_the_error(self):
-        with mock.patch("finance.views.settings.fetch_latest_rates", side_effect=RateFetchError("No internet")):
+        with mock.patch(
+            "finance.views.settings.fetch_latest_rates", side_effect=RateFetchError("No internet")
+        ):
             response = self.client.post(reverse("finance:check_rates"), follow=True)
         self.assertContains(response, "No internet")
 
@@ -203,7 +220,9 @@ class SettingsEndpointsTests(LoggedInWithAccountTestCase):
         self.profile.time_zone = "Europe/Kiev"
         self.profile.save(update_fields=["time_zone"])
         page = self.client.get(reverse("finance:settings"))
-        self.assertContains(page, '<option value="Europe/Kiev" selected>Europe/Kiev</option>', html=True)
+        self.assertContains(
+            page, '<option value="Europe/Kiev" selected>Europe/Kiev</option>', html=True
+        )
         self.assertRedirects(self.save_preferences("Europe/Kiev"), reverse("finance:settings"))
         self.profile.refresh_from_db()
         self.assertEqual(self.profile.time_zone, "Europe/Kiev")
@@ -214,7 +233,9 @@ class SettingsEndpointsTests(LoggedInWithAccountTestCase):
                 self.profile.time_zone = zone
                 self.profile.save(update_fields=["time_zone"])
                 page = self.client.get(reverse("finance:settings"))
-                self.assertContains(page, f'<option value="{zone}" selected>{zone}</option>', html=True)
+                self.assertContains(
+                    page, f'<option value="{zone}" selected>{zone}</option>', html=True
+                )
                 self.assertRedirects(self.save_preferences(zone), reverse("finance:settings"))
                 self.profile.refresh_from_db()
                 self.assertEqual(self.profile.time_zone, zone)
@@ -265,7 +286,9 @@ class SettingsEndpointsTests(LoggedInWithAccountTestCase):
                 self.profile.refresh_from_db()
                 self.assertTrue(security.is_locked_out(self.profile))
                 self.assertEqual(self.profile.recovery_code_hash, "today's hash")
-        self.assertEqual((self.profile.main_currency, self.profile.watched_expenses_title), ("USD", "Bills"))
+        self.assertEqual(
+            (self.profile.main_currency, self.profile.watched_expenses_title), ("USD", "Bills")
+        )
 
     def test_the_settings_page_does_not_undo_a_lockout_or_a_new_code_it_has_not_seen(self):
         """Plan 03, S75, through the real pages: the page's own copy of
@@ -285,7 +308,9 @@ class SettingsEndpointsTests(LoggedInWithAccountTestCase):
                 old_copy = Profile.objects.get(pk=self.profile.pk)
                 locked_until = timezone.now() + timedelta(minutes=security.LOCKOUT_MINUTES)
                 Profile.objects.filter(pk=self.profile.pk).update(
-                    failed_pin_attempts=3, locked_until=locked_until, recovery_code_hash="today's hash"
+                    failed_pin_attempts=3,
+                    locked_until=locked_until,
+                    recovery_code_hash="today's hash",
                 )
                 with mock.patch.object(Profile, "for_user", return_value=old_copy):
                     self.assertEqual(post().status_code, 302)
@@ -310,19 +335,25 @@ class SettingsEndpointsTests(LoggedInWithAccountTestCase):
         form = ProfileForm(data=preferences, instance=old_copy)
         self.assertTrue(form.is_valid(), form.errors)
         form.save()
-        changes = AuditLogEntry.objects.filter(table="finance_profile", action=AuditLogEntry.Action.UPDATE)
+        changes = AuditLogEntry.objects.filter(
+            table="finance_profile", action=AuditLogEntry.Action.UPDATE
+        )
         self.assertEqual(set(changes.values_list("column", flat=True)), {"main_currency"})
         self.assertEqual(Profile.objects.get(pk=self.profile.pk).welcome_step, 2)
 
     def test_a_form_saved_without_committing_writes_nothing_until_the_caller_does(self):
-        category = Category.objects.create(name="Water", category_type=Category.CategoryType.EXPENSE)
+        category = Category.objects.create(
+            name="Water", category_type=Category.CategoryType.EXPENSE
+        )
         form = WatchedExpensesForm(
             data={"watched_expenses_title": "Water", "watched_expenses_categories": [category.pk]},
             instance=Profile.objects.get(pk=self.profile.pk),
         )
         self.assertTrue(form.is_valid(), form.errors)
         profile = form.save(commit=False)
-        self.assertEqual(Profile.objects.get(pk=self.profile.pk).watched_expenses_title, "Watched expenses")
+        self.assertEqual(
+            Profile.objects.get(pk=self.profile.pk).watched_expenses_title, "Watched expenses"
+        )
         profile.save()
         form.save_m2m()
         self.assertEqual(list(profile.watched_expenses_categories.all()), [category])
@@ -366,7 +397,10 @@ class SettingsEndpointsTests(LoggedInWithAccountTestCase):
             with self.subTest(too_big=too_big):
                 response = self.client.post(
                     reverse("finance:save_watched_expenses"),
-                    {"watched_expenses_title": "Bills", "watched_expenses_categories": [water.pk, too_big]},
+                    {
+                        "watched_expenses_title": "Bills",
+                        "watched_expenses_categories": [water.pk, too_big],
+                    },
                 )
                 self.assertEqual(response.status_code, 200)
                 self.assertTemplateUsed(response, "finance/settings.html")
@@ -384,7 +418,9 @@ class SafeModelMultipleChoiceFieldTests(StashTestCase):
 
     @classmethod
     def setUpTestData(cls):
-        cls.water = Category.objects.create(name="Water", category_type=Category.CategoryType.EXPENSE)
+        cls.water = Category.objects.create(
+            name="Water", category_type=Category.CategoryType.EXPENSE
+        )
 
     @staticmethod
     def field(required=False):
@@ -399,7 +435,8 @@ class SafeModelMultipleChoiceFieldTests(StashTestCase):
         error = self.refusal([self.TOO_BIG])
         self.assertEqual(error.code, "invalid_choice")
         self.assertEqual(
-            error.messages, [f"Select a valid choice. {self.TOO_BIG} is not one of the available choices."]
+            error.messages,
+            [f"Select a valid choice. {self.TOO_BIG} is not one of the available choices."],
         )
 
     def test_the_real_id_beside_it_is_not_blamed_whichever_comes_first(self):
@@ -532,7 +569,9 @@ class ChangePinPageTests(PinPageTestCase):
     def test_after_the_lockout_the_pin_screen_refuses_even_the_right_pin(self):
         """Otherwise logging straight back in would undo the lockout."""
         self.assert_the_last_wrong_pin_locks_out(reverse("finance:change_pin"), self.WRONG)
-        response = self.client.post(reverse("login"), {"username": settings.TEST_STASH, "password": self.PIN})
+        response = self.client.post(
+            reverse("login"), {"username": settings.TEST_STASH, "password": self.PIN}
+        )
         self.assertContains(response, "Too many wrong PINs")
         self.assertNotIn("_auth_user_id", self.client.session)
 
@@ -555,7 +594,9 @@ class ChangePinPageTests(PinPageTestCase):
     def test_a_current_pin_that_is_not_four_digits_gets_the_pin_rule_and_is_not_counted(self):
         """It can't be the right PIN, and it's never checked against it,
         so it isn't a guess."""
-        response = self.client.post(reverse("finance:change_pin"), {**self.WRONG, "current_pin": "12a4"})
+        response = self.client.post(
+            reverse("finance:change_pin"), {**self.WRONG, "current_pin": "12a4"}
+        )
         self.assertContains(response, "PIN must be exactly 4 digits.")
         self.profile.refresh_from_db()
         self.assertEqual(self.profile.failed_pin_attempts, 0)
@@ -568,7 +609,9 @@ class RecoveryCodePageTests(PinPageTestCase):
 
     def test_the_page_is_never_cached(self):
         # S80: so the browser's Back button can't show a code again.
-        self.assertIn("no-store", self.client.get(reverse("finance:recovery_code"))["Cache-Control"])
+        self.assertIn(
+            "no-store", self.client.get(reverse("finance:recovery_code"))["Cache-Control"]
+        )
         self.generate()
         shown = self.client.get(reverse("finance:recovery_code"))
         self.assertIn("no-store", shown["Cache-Control"])
@@ -635,7 +678,9 @@ class RecoveryCodePageTests(PinPageTestCase):
 
     def test_the_last_wrong_pin_logs_out_to_the_locked_pin_screen(self):
         old_hash = self.profile.recovery_code_hash
-        self.assert_the_last_wrong_pin_locks_out(reverse("finance:recovery_code"), {"current_pin": "0000"})
+        self.assert_the_last_wrong_pin_locks_out(
+            reverse("finance:recovery_code"), {"current_pin": "0000"}
+        )
         self.profile.refresh_from_db()
         self.assertEqual(self.profile.recovery_code_hash, old_hash)
 
@@ -655,7 +700,11 @@ class RecoveryCodePageTests(PinPageTestCase):
 
     def test_the_pin_box_has_its_label_and_the_form_its_csrf_token(self):
         response = self.client.get(reverse("finance:recovery_code"))
-        self.assertContains(response, '<label class="form-label" for="id_current_pin">Current PIN</label>', html=True)
+        self.assertContains(
+            response,
+            '<label class="form-label" for="id_current_pin">Current PIN</label>',
+            html=True,
+        )
         self.assertContains(response, 'id="id_current_pin"')
         self.assertContains(response, 'name="csrfmiddlewaretoken"')
 
@@ -690,7 +739,9 @@ class SharedLockoutTests(PinPageTestCase):
     def test_wrong_pins_on_both_pages_add_up_to_one_lockout(self):
         pages = [reverse("finance:change_pin"), reverse("finance:recovery_code")]
         for attempt in range(security.LOCKOUT_THRESHOLD - 1):
-            self.assertEqual(self.client.post(pages[attempt % 2], ChangePinPageTests.WRONG).status_code, 200)
+            self.assertEqual(
+                self.client.post(pages[attempt % 2], ChangePinPageTests.WRONG).status_code, 200
+            )
         self.assert_locked_out_and_logged_out(self.client.post(pages[1], ChangePinPageTests.WRONG))
 
     def test_a_request_with_an_old_copy_of_the_profile_still_counts_toward_the_lockout(self):
@@ -705,9 +756,13 @@ class SharedLockoutTests(PinPageTestCase):
         for name, (url, data) in pages.items():
             with self.subTest(page=name):
                 self.client.force_login(self.user)
-                Profile.objects.filter(pk=self.profile.pk).update(failed_pin_attempts=0, locked_until=None)
+                Profile.objects.filter(pk=self.profile.pk).update(
+                    failed_pin_attempts=0, locked_until=None
+                )
                 old_copy = Profile.objects.get(pk=self.profile.pk)
-                Profile.objects.filter(pk=self.profile.pk).update(failed_pin_attempts=security.LOCKOUT_THRESHOLD - 1)
+                Profile.objects.filter(pk=self.profile.pk).update(
+                    failed_pin_attempts=security.LOCKOUT_THRESHOLD - 1
+                )
                 with mock.patch.object(Profile, "for_user", return_value=old_copy):
                     response = self.client.post(url, data)
                 self.assert_locked_out_and_logged_out(response)
@@ -718,7 +773,9 @@ class RecoveryCodeNotInCookieTests(PinPageTestCase):
     cookie."""
 
     def test_the_code_is_shown_once_and_never_stored_in_the_session(self):
-        with mock.patch.object(security, "regenerate_recovery_code", return_value="ABCD-EFGH-JKLM"):
+        with mock.patch.object(
+            security, "regenerate_recovery_code", return_value="ABCD-EFGH-JKLM"
+        ):
             self.client.post(reverse("finance:recovery_code"), {"current_pin": self.PIN})
         self.assertNotIn("ABCD-EFGH-JKLM", str(dict(self.client.session)))
 

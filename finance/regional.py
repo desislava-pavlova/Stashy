@@ -103,7 +103,9 @@ def activate(preferences):
     the block."""
     token = _current.set(preferences)
     try:
-        with timezone.override(_zone(preferences.time_zone)):  # None (unknown zone) means settings.TIME_ZONE
+        with timezone.override(
+            _zone(preferences.time_zone)
+        ):  # None (unknown zone) means settings.TIME_ZONE
             yield preferences
     finally:
         _current.reset(token)
@@ -122,7 +124,9 @@ def _zone(name):
 def format_number(value, decimals=2, preferences=None):
     """10000.5 -> '10 000.50' (or 10,000.50 / 10.000,50 / 10 000,50, per
     the preferences)."""
-    thousands, mark = _NUMBER_STYLES.get((preferences or current()).number_format, _NUMBER_STYLES["space_dot"])
+    thousands, mark = _NUMBER_STYLES.get(
+        (preferences or current()).number_format, _NUMBER_STYLES["space_dot"]
+    )
     amount = Decimal(str(value)).quantize(Decimal(1).scaleb(-decimals), rounding=ROUND_HALF_UP)
     whole, _, fraction = f"{abs(amount):.{decimals}f}".partition(".")
     groups = []
@@ -205,7 +209,9 @@ def _read_windows_settings():
 def date_format_from_pattern(pattern):
     """Windows' short date pattern ('d.M.yyyy', 'M/d/yyyy',
     'yyyy-MM-dd') -> 'dmy' / 'mdy' / 'ymd'."""
-    letters = re.sub(r"'[^']*'", "", pattern or "").lower()  # quoted text such as 'г.' isn't part of the date
+    letters = re.sub(
+        r"'[^']*'", "", pattern or ""
+    ).lower()  # quoted text such as 'г.' isn't part of the date
     positions = {part: letters.find(part) for part in "dmy"}
     if min(positions.values()) < 0:
         return None
@@ -214,7 +220,11 @@ def date_format_from_pattern(pattern):
 
 
 def number_format_from_separators(thousands, decimal_mark):
-    group = "space" if not thousands or thousands.isspace() else {",": "comma", ".": "dot"}.get(thousands)
+    group = (
+        "space"
+        if not thousands or thousands.isspace()
+        else {",": "comma", ".": "dot"}.get(thousands)
+    )
     mark = {".": "dot", ",": "comma"}.get(decimal_mark)
     key = f"{group}_{mark}"
     return key if key in _NUMBER_STYLES else None

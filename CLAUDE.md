@@ -396,6 +396,11 @@ check.bat                                                        # ruff check + 
   docstring has to fit in 72 with its quotes, because `ruff format` keeps
   the closing quotes on the text line. A dash used as punctuation (" - ")
   must not start a line, where it would read as a bullet.
+- Code lines wrap at 99 (`line-length`: PEP 8 lets a team agree on up to
+  99, no more; S43, 20/11/2026). `ruff format` does the wrapping. A line it
+  can't split (E501) gets one of two fixes, never `noqa: E501`: a long message
+  or help text becomes adjacent string literals split at a space, and a
+  long f-string gets its calculation in a named variable above it.
 
 ## UI conventions
 

@@ -23,7 +23,13 @@ from ..forms import TransactionForm
 from ..models import Account, Category, Payee, Profile, Transaction
 from ..views._helpers import _as_id, _as_ids, _safe_next
 from ..views.transactions import _longer_than_a_year
-from .base import LEAKED_TEMPLATE_SYNTAX, TODAY_13_SEPT, LoggedInTestCase, LoggedInWithAccountTestCase, StashTestCase
+from .base import (
+    LEAKED_TEMPLATE_SYNTAX,
+    TODAY_13_SEPT,
+    LoggedInTestCase,
+    LoggedInWithAccountTestCase,
+    StashTestCase,
+)
 
 
 class TransactionNumberingTests(StashTestCase):
@@ -32,13 +38,21 @@ class TransactionNumberingTests(StashTestCase):
         cls.account = Account.objects.create(name="Checking")
 
     def test_numbers_start_at_one_and_increase(self):
-        first = Transaction.objects.create(account=self.account, date=date(2026, 1, 1), amount=Decimal("-1.00"))
-        second = Transaction.objects.create(account=self.account, date=date(2026, 1, 2), amount=Decimal("-1.00"))
+        first = Transaction.objects.create(
+            account=self.account, date=date(2026, 1, 1), amount=Decimal("-1.00")
+        )
+        second = Transaction.objects.create(
+            account=self.account, date=date(2026, 1, 2), amount=Decimal("-1.00")
+        )
         self.assertEqual((first.transaction_number, second.transaction_number), (1, 2))
 
     def test_numbering_resets_each_calendar_year(self):
-        Transaction.objects.create(account=self.account, date=date(2026, 12, 31), amount=Decimal("-1.00"))
-        next_year = Transaction.objects.create(account=self.account, date=date(2027, 1, 1), amount=Decimal("-1.00"))
+        Transaction.objects.create(
+            account=self.account, date=date(2026, 12, 31), amount=Decimal("-1.00")
+        )
+        next_year = Transaction.objects.create(
+            account=self.account, date=date(2027, 1, 1), amount=Decimal("-1.00")
+        )
         self.assertEqual(next_year.transaction_number, 1)
 
     def test_numbering_is_shared_across_accounts_not_independent(self):
@@ -46,18 +60,27 @@ class TransactionNumberingTests(StashTestCase):
         # sequence per account. A second account's first transaction
         # continues the same count.
         other = Account.objects.create(name="Savings")
-        Transaction.objects.create(account=self.account, date=date(2026, 1, 1), amount=Decimal("-1.00"))
-        first_on_other = Transaction.objects.create(account=other, date=date(2026, 1, 1), amount=Decimal("-1.00"))
+        Transaction.objects.create(
+            account=self.account, date=date(2026, 1, 1), amount=Decimal("-1.00")
+        )
+        first_on_other = Transaction.objects.create(
+            account=other, date=date(2026, 1, 1), amount=Decimal("-1.00")
+        )
         self.assertEqual(first_on_other.transaction_number, 2)
 
     def test_a_chosen_number_is_kept_as_is(self):
         txn = Transaction.objects.create(
-            account=self.account, date=date(2026, 1, 1), amount=Decimal("-1.00"), transaction_number=9999
+            account=self.account,
+            date=date(2026, 1, 1),
+            amount=Decimal("-1.00"),
+            transaction_number=9999,
         )
         self.assertEqual(txn.transaction_number, 9999)
         # Numbering isn't strictly unique/enforced (D9) — the next
         # auto-assigned number just continues past it.
-        following = Transaction.objects.create(account=self.account, date=date(2026, 1, 2), amount=Decimal("-1.00"))
+        following = Transaction.objects.create(
+            account=self.account, date=date(2026, 1, 2), amount=Decimal("-1.00")
+        )
         self.assertEqual(following.transaction_number, 10000)
 
 
@@ -69,8 +92,12 @@ class DefaultViewTests(LoggedInWithAccountTestCase):
     @classmethod
     def setUpTestData(cls):
         super().setUpTestData()
-        Transaction.objects.create(account=cls.account, date=date(2026, 3, 1), amount=Decimal("-1.00"))
-        Transaction.objects.create(account=cls.account, date=date(2025, 12, 31), amount=Decimal("-1.00"))
+        Transaction.objects.create(
+            account=cls.account, date=date(2026, 3, 1), amount=Decimal("-1.00")
+        )
+        Transaction.objects.create(
+            account=cls.account, date=date(2025, 12, 31), amount=Decimal("-1.00")
+        )
 
     def shown(self, mock_today, **params):
         response = self.client.get(reverse("finance:transaction_list"), params)
@@ -105,9 +132,15 @@ class TransactionRangeTests(LoggedInWithAccountTestCase):
     @classmethod
     def setUpTestData(cls):
         super().setUpTestData()
-        cls.last_year = Transaction.objects.create(account=cls.account, date=date(2025, 12, 31), amount=-1)
-        cls.march = Transaction.objects.create(account=cls.account, date=date(2026, 3, 1), amount=-1)
-        cls.future = Transaction.objects.create(account=cls.account, date=date(2027, 1, 5), amount=-1)
+        cls.last_year = Transaction.objects.create(
+            account=cls.account, date=date(2025, 12, 31), amount=-1
+        )
+        cls.march = Transaction.objects.create(
+            account=cls.account, date=date(2026, 3, 1), amount=-1
+        )
+        cls.future = Transaction.objects.create(
+            account=cls.account, date=date(2027, 1, 5), amount=-1
+        )
 
     def shown(self, **params):
         response = self.client.get(reverse("finance:transaction_list"), params)
@@ -141,7 +174,10 @@ class TransactionRangeTests(LoggedInWithAccountTestCase):
     def test_a_custom_range_reads_dates_in_the_stashs_own_format(self, _today):
         shown, response = self.shown(range="custom", start="01/02/2026", end="31/03/2026")
         self.assertEqual(shown, {self.march.pk})
-        self.assertEqual((response.context["start"], response.context["end"]), (date(2026, 2, 1), date(2026, 3, 31)))
+        self.assertEqual(
+            (response.context["start"], response.context["end"]),
+            (date(2026, 2, 1), date(2026, 3, 31)),
+        )
 
     def test_a_custom_range_follows_the_stashs_date_format(self, _today):
         profile = Profile.for_user(self.user)
@@ -159,10 +195,12 @@ class TransactionRangeTests(LoggedInWithAccountTestCase):
     def test_the_date_boxes_switch_the_range_to_custom(self, _today):
         _shown, response = self.shown()
         self.assertContains(
-            response, 'name="start" class="form-control form-control-sm" data-datepicker data-range-date'
+            response,
+            'name="start" class="form-control form-control-sm" data-datepicker data-range-date',
         )
         self.assertContains(
-            response, 'name="end" class="form-control form-control-sm" data-datepicker data-range-date'
+            response,
+            'name="end" class="form-control form-control-sm" data-datepicker data-range-date',
         )
 
 
@@ -203,11 +241,17 @@ class SortingTests(LoggedInWithAccountTestCase):
     def setUpTestData(cls):
         super().setUpTestData()
         cls.other = Account.objects.create(name="Savings")
-        cls.big = Transaction.objects.create(account=cls.account, date=date(2026, 1, 1), amount=Decimal("-50.00"))
-        cls.small = Transaction.objects.create(account=cls.other, date=date(2026, 1, 2), amount=Decimal("-5.00"))
+        cls.big = Transaction.objects.create(
+            account=cls.account, date=date(2026, 1, 1), amount=Decimal("-50.00")
+        )
+        cls.small = Transaction.objects.create(
+            account=cls.other, date=date(2026, 1, 2), amount=Decimal("-5.00")
+        )
 
     def ordered(self, sort):
-        response = self.client.get(reverse("finance:transaction_list"), {"range": "", "sort": sort})
+        response = self.client.get(
+            reverse("finance:transaction_list"), {"range": "", "sort": sort}
+        )
         return [t.pk for t in response.context["transactions"]]
 
     def test_sort_by_account_name(self):
@@ -215,7 +259,9 @@ class SortingTests(LoggedInWithAccountTestCase):
         self.assertEqual(self.ordered("account"), [self.big.pk, self.small.pk])
 
     def test_an_unknown_sort_column_is_ignored_not_a_crash(self):
-        response = self.client.get(reverse("finance:transaction_list"), {"range": "", "sort": "nonsense"})
+        response = self.client.get(
+            reverse("finance:transaction_list"), {"range": "", "sort": "nonsense"}
+        )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["sort"], "")
 
@@ -239,13 +285,19 @@ class SortingTests(LoggedInWithAccountTestCase):
     def test_the_old_amount_sort_is_ignored_not_a_crash(self):
         # S39: "amount" was the one sort both headers shared; a saved
         # link to it just shows the default order.
-        response = self.client.get(reverse("finance:transaction_list"), {"range": "", "sort": "amount"})
+        response = self.client.get(
+            reverse("finance:transaction_list"), {"range": "", "sort": "amount"}
+        )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["sort"], "")
 
     def test_account_register_sorts_within_one_account_too(self):
-        older = Transaction.objects.create(account=self.account, date=date(2025, 1, 1), amount=Decimal("-1.00"))
-        response = self.client.get(reverse("finance:account_detail", args=[self.account.pk]), {"sort": "date"})
+        older = Transaction.objects.create(
+            account=self.account, date=date(2025, 1, 1), amount=Decimal("-1.00")
+        )
+        response = self.client.get(
+            reverse("finance:account_detail", args=[self.account.pk]), {"sort": "date"}
+        )
         pks = [t.pk for t in response.context["transactions"]]
         self.assertEqual(pks, [older.pk, self.big.pk])
 
@@ -270,7 +322,9 @@ class PaymentAndDepositSortingTests(LoggedInWithAccountTestCase):
         super().setUpTestData()
 
         def make(amount):
-            return Transaction.objects.create(account=cls.account, date=date(2026, 1, 1), amount=Decimal(amount)).pk
+            return Transaction.objects.create(
+                account=cls.account, date=date(2026, 1, 1), amount=Decimal(amount)
+            ).pk
 
         cls.big_payment, cls.small_payment = make("-50.00"), make("-5.00")
         cls.big_deposit, cls.small_deposit = make("200.00"), make("30.00")
@@ -328,13 +382,17 @@ class PaymentAndDepositSortingTests(LoggedInWithAccountTestCase):
         # at.
         for sort in ("payment", "-payment", "deposit", "-deposit"):
             with self.subTest(sort=sort):
-                page = self.client.get(reverse("finance:transaction_list"), {"range": "", "sort": sort})
+                page = self.client.get(
+                    reverse("finance:transaction_list"), {"range": "", "sort": sort}
+                )
                 response = self.client.get(
-                    reverse("finance:export_transactions"), {"format": "csv", "range": "", "sort": sort}
+                    reverse("finance:export_transactions"),
+                    {"format": "csv", "range": "", "sort": sort},
                 )
                 rows = list(csv.DictReader(response.content.decode().splitlines()))
                 self.assertEqual(
-                    [Decimal(row["Amount"]) for row in rows], [t.amount for t in page.context["transactions"]]
+                    [Decimal(row["Amount"]) for row in rows],
+                    [t.amount for t in page.context["transactions"]],
                 )
 
 
@@ -347,7 +405,9 @@ class AmountSortEdgeCaseTests(LoggedInWithAccountTestCase):
         super().setUpTestData()
 
         def make(amount):
-            return Transaction.objects.create(account=cls.account, date=date(2026, 1, 1), amount=Decimal(amount)).pk
+            return Transaction.objects.create(
+                account=cls.account, date=date(2026, 1, 1), amount=Decimal(amount)
+            ).pk
 
         # Made in an order that is neither smallest-first nor
         # biggest-first, so a tie between them (which a whole-unit
@@ -368,10 +428,18 @@ class AmountSortEdgeCaseTests(LoggedInWithAccountTestCase):
         # to whole units: every row on that side would tie.
         newest_deposits_first = [self.dep_1c, self.dep_3c, self.dep_2c]
         newest_payments_first = [self.pay_1c, self.pay_3c, self.pay_2c]
-        self.assert_order_on_both_pages("payment", [self.pay_3c, self.pay_2c, self.pay_1c, *newest_deposits_first])
-        self.assert_order_on_both_pages("-payment", [self.pay_1c, self.pay_2c, self.pay_3c, *newest_deposits_first])
-        self.assert_order_on_both_pages("deposit", [self.dep_3c, self.dep_2c, self.dep_1c, *newest_payments_first])
-        self.assert_order_on_both_pages("-deposit", [self.dep_1c, self.dep_2c, self.dep_3c, *newest_payments_first])
+        self.assert_order_on_both_pages(
+            "payment", [self.pay_3c, self.pay_2c, self.pay_1c, *newest_deposits_first]
+        )
+        self.assert_order_on_both_pages(
+            "-payment", [self.pay_1c, self.pay_2c, self.pay_3c, *newest_deposits_first]
+        )
+        self.assert_order_on_both_pages(
+            "deposit", [self.dep_3c, self.dep_2c, self.dep_1c, *newest_payments_first]
+        )
+        self.assert_order_on_both_pages(
+            "-deposit", [self.dep_1c, self.dep_2c, self.dep_3c, *newest_payments_first]
+        )
 
     def test_a_third_click_goes_back_to_the_first_order(self):
         for name, (url, params) in _pages_with_amount_headers(self.account).items():
@@ -404,7 +472,11 @@ class AmountSortWithFiltersTests(LoggedInWithAccountTestCase):
 
         def make(amount, memo="Rent", account=cls.account, reconciled=False):
             return Transaction.objects.create(
-                account=account, date=date(2026, 1, 1), amount=Decimal(amount), memo=memo, reconciled=reconciled
+                account=account,
+                date=date(2026, 1, 1),
+                amount=Decimal(amount),
+                memo=memo,
+                reconciled=reconciled,
             ).pk
 
         cls.pay_30, cls.pay_10, cls.dep_5 = make("-30.00"), make("-10.00"), make("5.00")
@@ -415,7 +487,13 @@ class AmountSortWithFiltersTests(LoggedInWithAccountTestCase):
     def get(self, sort):
         return self.client.get(
             reverse("finance:transaction_list"),
-            {"range": "", "account": self.account.pk, "q": "rent", "status": "unreconciled", "sort": sort},
+            {
+                "range": "",
+                "account": self.account.pk,
+                "q": "rent",
+                "status": "unreconciled",
+                "sort": sort,
+            },
         )
 
     def test_the_filters_and_the_sort_apply_together(self):
@@ -458,7 +536,9 @@ class AmountSortAcrossPagesTests(LoggedInWithAccountTestCase):
         # other in the table.
         amounts = ["-5", "5", "0", "-5", "-2", "5", "-5", "0", "2", "-2", "-0.01", "0.02", "-7"]
         for amount in amounts:
-            Transaction.objects.create(account=cls.account, date=date(2026, 1, 1), amount=Decimal(amount))
+            Transaction.objects.create(
+                account=cls.account, date=date(2026, 1, 1), amount=Decimal(amount)
+            )
 
     def expected_pks(self, sort):
         """What the order should be, worked out in plain Python: the
@@ -475,7 +555,9 @@ class AmountSortAcrossPagesTests(LoggedInWithAccountTestCase):
 
     def pks_across_pages(self, url, params):
         first = self.client.get(url, params)
-        self.assertEqual(first.context["page_obj"].paginator.num_pages, self.PAGES)  # the page size patch is in effect
+        self.assertEqual(
+            first.context["page_obj"].paginator.num_pages, self.PAGES
+        )  # the page size patch is in effect
         pks = []
         for number in range(1, self.PAGES + 1):
             response = self.client.get(url, {**params, "page": number})
@@ -486,18 +568,23 @@ class AmountSortAcrossPagesTests(LoggedInWithAccountTestCase):
         for name, (url, params) in _pages_with_amount_headers(self.account).items():
             for sort in ("payment", "-payment", "deposit", "-deposit"):
                 with self.subTest(page=name, sort=sort):
-                    self.assertEqual(self.pks_across_pages(url, {**params, "sort": sort}), self.expected_pks(sort))
+                    self.assertEqual(
+                        self.pks_across_pages(url, {**params, "sort": sort}),
+                        self.expected_pks(sort),
+                    )
 
     def test_the_export_is_every_page_put_together(self):
         amounts = dict(Transaction.objects.values_list("pk", "amount"))
         for sort in ("payment", "-payment", "deposit", "-deposit"):
             with self.subTest(sort=sort):
                 response = self.client.get(
-                    reverse("finance:export_transactions"), {"format": "csv", "range": "", "sort": sort}
+                    reverse("finance:export_transactions"),
+                    {"format": "csv", "range": "", "sort": sort},
                 )
                 rows = list(csv.DictReader(response.content.decode().splitlines()))
                 self.assertEqual(
-                    [Decimal(row["Amount"]) for row in rows], [amounts[pk] for pk in self.expected_pks(sort)]
+                    [Decimal(row["Amount"]) for row in rows],
+                    [amounts[pk] for pk in self.expected_pks(sort)],
                 )
 
 
@@ -510,10 +597,14 @@ class DefaultOrderTiesTests(LoggedInWithAccountTestCase):
     def setUpTestData(cls):
         super().setUpTestData()
         for day, memo in ((2, "first"), (1, "second"), (2, "third")):
-            Transaction.objects.create(account=cls.account, date=date(2026, 3, day), amount=Decimal("-1"), memo=memo)
+            Transaction.objects.create(
+                account=cls.account, date=date(2026, 3, day), amount=Decimal("-1"), memo=memo
+            )
         # Number and creation time are the other things the default
         # order looks at: make them tie too.
-        Transaction.objects.update(transaction_number=1, created_at=datetime(2026, 3, 1, tzinfo=UTC))
+        Transaction.objects.update(
+            transaction_number=1, created_at=datetime(2026, 3, 1, tzinfo=UTC)
+        )
 
     # The two 2 March rows tie on everything, so the later one ("third")
     # leads; 1 March is last.
@@ -525,10 +616,14 @@ class DefaultOrderTiesTests(LoggedInWithAccountTestCase):
         for name, (url, params) in _pages_with_amount_headers(self.account).items():
             with self.subTest(page=name):
                 response = self.client.get(url, params)
-                self.assertEqual([t.memo for t in response.context["transactions"]], self.EXPECTED_MEMOS)
+                self.assertEqual(
+                    [t.memo for t in response.context["transactions"]], self.EXPECTED_MEMOS
+                )
 
     def test_the_export_follows_the_same_order(self):
-        response = self.client.get(reverse("finance:export_transactions"), {"format": "csv", "range": ""})
+        response = self.client.get(
+            reverse("finance:export_transactions"), {"format": "csv", "range": ""}
+        )
         rows = list(csv.DictReader(response.content.decode().splitlines()))
         self.assertEqual([row["Memo"] for row in rows], self.EXPECTED_MEMOS)
 
@@ -550,7 +645,9 @@ class NameColumnSortingTests(LoggedInWithAccountTestCase):
                 account=cls.account,
                 date=date(2026, 1, 1),
                 payee=Payee.objects.create(name=name),
-                category=Category.objects.create(name=name, category_type=Category.CategoryType.EXPENSE),
+                category=Category.objects.create(
+                    name=name, category_type=Category.CategoryType.EXPENSE
+                ),
                 amount=Decimal("-1.00"),
             )
 
@@ -630,11 +727,19 @@ class HandEditedIdTests(LoggedInWithAccountTestCase):
     BAD_IDS = ("abc", "²", "٣", "1.5", "-1", "0x10", "9" * 30, "9" * 4301)
 
     def test_a_reminder_that_is_not_a_number_is_a_404_like_one_that_does_not_exist(self):
-        self.assertEqual(self.client.get(reverse("finance:transaction_add"), {"reminder": "999999"}).status_code, 404)
+        self.assertEqual(
+            self.client.get(
+                reverse("finance:transaction_add"), {"reminder": "999999"}
+            ).status_code,
+            404,
+        )
         for bad in self.BAD_IDS:
             with self.subTest(reminder=bad):
                 self.assertEqual(
-                    self.client.get(reverse("finance:transaction_add"), {"reminder": bad}).status_code, 404
+                    self.client.get(
+                        reverse("finance:transaction_add"), {"reminder": bad}
+                    ).status_code,
+                    404,
                 )
 
     def test_a_posted_reminder_that_is_not_a_number_is_a_404_too(self):
@@ -642,14 +747,19 @@ class HandEditedIdTests(LoggedInWithAccountTestCase):
         self.assertEqual(response.status_code, 404)
 
     def test_an_account_or_category_filter_that_is_not_a_number_is_ignored(self):
-        txn = Transaction.objects.create(account=self.account, date=date(2026, 1, 1), amount=Decimal("-1.00"))
+        txn = Transaction.objects.create(
+            account=self.account, date=date(2026, 1, 1), amount=Decimal("-1.00")
+        )
         for bad in self.BAD_IDS:
             for param in ("account", "category"):
                 with self.subTest(filter=param, value=bad[:12]):
-                    page = self.client.get(reverse("finance:transaction_list"), {"range": "", param: bad})
+                    page = self.client.get(
+                        reverse("finance:transaction_list"), {"range": "", param: bad}
+                    )
                     self.assertEqual([t.pk for t in page.context["transactions"]], [txn.pk])
                     export = self.client.get(
-                        reverse("finance:export_transactions"), {"range": "", param: bad, "format": "csv"}
+                        reverse("finance:export_transactions"),
+                        {"range": "", param: bad, "format": "csv"},
                     )
                     self.assertEqual(export.status_code, 200)
 
@@ -675,7 +785,9 @@ class MixedIdFilterTests(LoggedInWithAccountTestCase):
         cls.other_account = Account.objects.create(name="Savings")
         expense = Category.CategoryType.EXPENSE
         cls.food = Category.objects.create(name="Food", category_type=expense)
-        cls.groceries = Category.objects.create(name="Groceries", parent=cls.food, category_type=expense)
+        cls.groceries = Category.objects.create(
+            name="Groceries", parent=cls.food, category_type=expense
+        )
         cls.rent = Category.objects.create(name="Rent", category_type=expense)
 
         def add(account, category):
@@ -698,8 +810,12 @@ class MixedIdFilterTests(LoggedInWithAccountTestCase):
     def test_a_good_category_keeps_working_next_to_bad_ones(self):
         params = {"category": [self.rent.pk, "abc", "²", "9" * 30, "9" * 4301, "-1"]}
         self.assertEqual(self.shown(**params), {self.in_rent.pk, self.in_savings.pk})
-        export = self.client.get(reverse("finance:export_transactions"), {"range": "", "format": "csv", **params})
-        self.assertEqual(export.content.decode().count("\n"), 3)  # the header and the two rent rows
+        export = self.client.get(
+            reverse("finance:export_transactions"), {"range": "", "format": "csv", **params}
+        )
+        self.assertEqual(
+            export.content.decode().count("\n"), 3
+        )  # the header and the two rent rows
 
     def test_the_filter_label_counts_only_the_good_ids(self):
         page = self.page(category=[self.rent.pk, "abc", "²"])
@@ -709,7 +825,9 @@ class MixedIdFilterTests(LoggedInWithAccountTestCase):
 
     def test_a_good_category_with_its_subcategories_next_to_a_bad_id(self):
         page = self.page(category=[self.food.pk, "abc"], with_subcategories="1")
-        self.assertEqual({t.pk for t in page.context["transactions"]}, {self.in_food.pk, self.in_groceries.pk})
+        self.assertEqual(
+            {t.pk for t in page.context["transactions"]}, {self.in_food.pk, self.in_groceries.pk}
+        )
         self.assertEqual(page.context["selected_category_obj"], self.food)
 
     def test_uncategorized_next_to_a_bad_id_is_still_only_the_uncategorized(self):
@@ -720,8 +838,12 @@ class MixedIdFilterTests(LoggedInWithAccountTestCase):
         )
 
     def test_a_good_account_and_a_bad_category_still_filter_by_the_account(self):
-        self.assertEqual(self.shown(account=self.other_account.pk, category="abc"), {self.in_savings.pk})
-        self.assertEqual(self.shown(account="abc", category=self.rent.pk), {self.in_rent.pk, self.in_savings.pk})
+        self.assertEqual(
+            self.shown(account=self.other_account.pk, category="abc"), {self.in_savings.pk}
+        )
+        self.assertEqual(
+            self.shown(account="abc", category=self.rent.pk), {self.in_rent.pk, self.in_savings.pk}
+        )
 
     def test_a_deleted_account_or_category_in_an_old_link(self):
         # Characterization, not a claim that it is right. Possible bug:
@@ -745,17 +867,25 @@ class HandEditedDateTests(LoggedInWithAccountTestCase):
         self.assertTrue(_longer_than_a_year(date(1, 1, 1), date(9999, 12, 31)))
 
     def test_extreme_dates_give_the_page_and_the_export_not_an_error(self):
-        txn = Transaction.objects.create(account=self.account, date=date(2026, 1, 1), amount=Decimal("-1.00"))
+        txn = Transaction.objects.create(
+            account=self.account, date=date(2026, 1, 1), amount=Decimal("-1.00")
+        )
         for params in (
             {"start": "9999-06-01", "end": "9999-12-31"},
             {"start": "0001-01-01", "end": "9999-12-31"},
             {"range": "custom", "start": "0001-01-01", "end": "0001-06-01"},
         ):
             with self.subTest(params=params):
-                self.assertEqual(self.client.get(reverse("finance:transaction_list"), params).status_code, 200)
-                export = self.client.get(reverse("finance:export_transactions"), {**params, "format": "csv"})
+                self.assertEqual(
+                    self.client.get(reverse("finance:transaction_list"), params).status_code, 200
+                )
+                export = self.client.get(
+                    reverse("finance:export_transactions"), {**params, "format": "csv"}
+                )
                 self.assertEqual(export.status_code, 200)
-        wide = self.client.get(reverse("finance:transaction_list"), {"start": "0001-01-01", "end": "9999-12-31"})
+        wide = self.client.get(
+            reverse("finance:transaction_list"), {"start": "0001-01-01", "end": "9999-12-31"}
+        )
         self.assertEqual([t.pk for t in wide.context["transactions"]], [txn.pk])
 
     def test_the_new_transaction_form_takes_any_hand_edited_date(self):
@@ -787,12 +917,16 @@ class TransactionNumberFormTests(StashTestCase):
         # sentence.
         help_text = TransactionForm().fields["transaction_number"].help_text
         self.assertNotIn("D9", help_text)
-        self.assertEqual(help_text, models.Transaction._meta.get_field("transaction_number").help_text)
+        self.assertEqual(
+            help_text, models.Transaction._meta.get_field("transaction_number").help_text
+        )
 
     def test_clearing_the_number_on_edit_reassigns_the_next_one(self):
         account = Account.objects.create(name="Checking")
         Transaction.objects.create(account=account, date=date(2026, 1, 1), amount=Decimal("-1.00"))
-        txn = Transaction.objects.create(account=account, date=date(2026, 1, 2), amount=Decimal("-1.00"))
+        txn = Transaction.objects.create(
+            account=account, date=date(2026, 1, 2), amount=Decimal("-1.00")
+        )
         self.assertEqual(txn.transaction_number, 2)
 
         form = TransactionForm(
@@ -816,7 +950,9 @@ class TransactionNumberFormTests(StashTestCase):
 
     def test_a_chosen_number_is_kept(self):
         account = Account.objects.create(name="Checking")
-        txn = Transaction.objects.create(account=account, date=date(2026, 1, 1), amount=Decimal("-1.00"))
+        txn = Transaction.objects.create(
+            account=account, date=date(2026, 1, 1), amount=Decimal("-1.00")
+        )
         form = TransactionForm(
             {
                 "account": account.pk,
@@ -841,7 +977,9 @@ class TransactionListFilterTests(LoggedInWithAccountTestCase):
         cls.groceries = Category.objects.create(name="Groceries", parent=cls.food)
 
         def add(on, category):
-            return Transaction.objects.create(account=cls.account, date=on, category=category, amount=Decimal("-1.00"))
+            return Transaction.objects.create(
+                account=cls.account, date=on, category=category, amount=Decimal("-1.00")
+            )
 
         cls.september_groceries = add(date(2026, 9, 5), cls.groceries)
         cls.september_food = add(date(2026, 9, 6), cls.food)
@@ -854,7 +992,11 @@ class TransactionListFilterTests(LoggedInWithAccountTestCase):
         return {t.pk for t in response.context["transactions"]}
 
     def test_date_range(self):
-        expected = {self.september_groceries.pk, self.september_food.pk, self.september_uncategorized.pk}
+        expected = {
+            self.september_groceries.pk,
+            self.september_food.pk,
+            self.september_uncategorized.pk,
+        }
         self.assertEqual(self.shown(start="2026-09-01", end="2026-09-30"), expected)
 
     def test_uncategorized_only(self):
@@ -894,7 +1036,9 @@ class TransactionListTests(LoggedInWithAccountTestCase):
 
 class TransactionListTotalPositionTests(LoggedInWithAccountTestCase):
     def test_total_sits_in_a_flex_row_with_the_transaction_count(self):
-        Transaction.objects.create(account=self.account, date=timezone.localdate(), amount=Decimal("-5.00"))
+        Transaction.objects.create(
+            account=self.account, date=timezone.localdate(), amount=Decimal("-5.00")
+        )
         content = self.client.get(reverse("finance:transaction_list")).content.decode()
         row = content.split("d-flex justify-content-between align-items-baseline", 1)[1].split(
             '<div class="card">', 1
@@ -905,8 +1049,12 @@ class TransactionListTotalPositionTests(LoggedInWithAccountTestCase):
 
 class TransactionListTotalTests(LoggedInWithAccountTestCase):
     def test_total_amount_is_the_sum_of_the_filtered_transactions(self):
-        Transaction.objects.create(account=self.account, date=timezone.localdate(), amount=Decimal("100.00"))
-        Transaction.objects.create(account=self.account, date=timezone.localdate(), amount=Decimal("-40.00"))
+        Transaction.objects.create(
+            account=self.account, date=timezone.localdate(), amount=Decimal("100.00")
+        )
+        Transaction.objects.create(
+            account=self.account, date=timezone.localdate(), amount=Decimal("-40.00")
+        )
         response = self.client.get(reverse("finance:transaction_list"))
         self.assertEqual(response.context["total_amount"], Decimal("60.00"))
         self.assertContains(response, "Total:")
@@ -935,7 +1083,9 @@ class TransactionPagingTests(LoggedInWithAccountTestCase):
     @classmethod
     def setUpTestData(cls):
         super().setUpTestData()
-        cls.groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
+        cls.groceries = Category.objects.create(
+            name="Groceries", category_type=Category.CategoryType.EXPENSE
+        )
         lidl = Payee.objects.create(name="Lidl")
         # 1,001 rows inside 2026, all with the same payee, so a sort by
         # payee ties on every row.
@@ -972,7 +1122,9 @@ class TransactionPagingTests(LoggedInWithAccountTestCase):
         self.assertNotContains(response, 'class="pagination')
 
     def test_one_day_more_than_a_year_does(self):
-        self.assertEqual(len(self.get(start="2026-01-01", end="2027-01-01").context["transactions"]), 1000)
+        self.assertEqual(
+            len(self.get(start="2026-01-01", end="2027-01-01").context["transactions"]), 1000
+        )
 
     def test_page_links_keep_every_filter_and_sort(self):
         filters = {
@@ -986,17 +1138,23 @@ class TransactionPagingTests(LoggedInWithAccountTestCase):
         links = re.findall(r'href="([^"]*)" aria-label="Page 2"', response.content.decode())
         self.assertEqual(len(links), 2)  # the page links above and below the table
         query = parse_qs(urlsplit(html.unescape(links[0])).query, keep_blank_values=True)
-        self.assertEqual(query, {**{key: [value] for key, value in filters.items()}, "page": ["2"]})
+        self.assertEqual(
+            query, {**{key: [value] for key, value in filters.items()}, "page": ["2"]}
+        )
 
     def test_a_new_sort_starts_again_at_page_one(self):
-        sort_links = re.findall(r'href="([^"]*)" class="sort-link"', self.get(range="", page=2).content.decode())
+        sort_links = re.findall(
+            r'href="([^"]*)" class="sort-link"', self.get(range="", page=2).content.decode()
+        )
         self.assertEqual(len(sort_links), 8)
         for link in sort_links:
             self.assertNotIn("page=", link)
 
     def test_rows_that_tie_on_the_sort_column_appear_exactly_once(self):
         first, second = self.get(range="", sort="payee"), self.get(range="", sort="payee", page=2)
-        shown = [t.pk for t in first.context["transactions"]] + [t.pk for t in second.context["transactions"]]
+        shown = [t.pk for t in first.context["transactions"]] + [
+            t.pk for t in second.context["transactions"]
+        ]
         self.assertEqual(sorted(shown), sorted(Transaction.objects.values_list("pk", flat=True)))
 
     def test_a_page_number_that_doesnt_exist_shows_the_nearest_page(self):
@@ -1071,7 +1229,9 @@ class InactiveAccountTransactionConfirmTests(LoggedInTestCase):
 class TransactionListTotalCurrencySymbolTests(LoggedInTestCase):
     def test_total_shows_a_currency_symbol(self):
         account = Account.objects.create(name="Checking", currency="USD")
-        Transaction.objects.create(account=account, date=timezone.localdate(), amount=Decimal("100.00"))
+        Transaction.objects.create(
+            account=account, date=timezone.localdate(), amount=Decimal("100.00")
+        )
         response = self.client.get(reverse("finance:transaction_list"))
         self.assertContains(response, "$100.00")
 
@@ -1081,7 +1241,9 @@ class EditRedirectTests(LoggedInWithAccountTestCase):
     def setUpTestData(cls):
         super().setUpTestData()
         cls.other = Account.objects.create(name="Savings")
-        cls.txn = Transaction.objects.create(account=cls.account, date=date(2026, 1, 1), amount=Decimal("-1.00"))
+        cls.txn = Transaction.objects.create(
+            account=cls.account, date=date(2026, 1, 1), amount=Decimal("-1.00")
+        )
 
     def edit(self, **extra):
         data = {
@@ -1129,17 +1291,26 @@ class EditRedirectTests(LoggedInWithAccountTestCase):
 class NewTransactionNumberPreviewTests(LoggedInWithAccountTestCase):
     def test_add_form_prefills_the_next_available_number(self):
         Transaction.objects.create(
-            account=self.account, date=timezone.localdate(), transaction_number=41, amount=Decimal("-1.00")
+            account=self.account,
+            date=timezone.localdate(),
+            transaction_number=41,
+            amount=Decimal("-1.00"),
         )
         response = self.client.get(reverse("finance:transaction_add"))
         self.assertEqual(response.context["form"].initial.get("transaction_number"), 42)
 
     def test_edit_form_shows_the_transactions_own_number_not_a_fresh_preview(self):
         txn = Transaction.objects.create(
-            account=self.account, date=timezone.localdate(), transaction_number=7, amount=Decimal("-1.00")
+            account=self.account,
+            date=timezone.localdate(),
+            transaction_number=7,
+            amount=Decimal("-1.00"),
         )
         Transaction.objects.create(
-            account=self.account, date=timezone.localdate(), transaction_number=8, amount=Decimal("-1.00")
+            account=self.account,
+            date=timezone.localdate(),
+            transaction_number=8,
+            amount=Decimal("-1.00"),
         )
         response = self.client.get(reverse("finance:transaction_edit", args=[txn.pk]))
         # The highest number right now is 8, so a fresh "next available"
@@ -1150,17 +1321,23 @@ class NewTransactionNumberPreviewTests(LoggedInWithAccountTestCase):
 
 class TransactionListDeleteAndLabelsTests(LoggedInWithAccountTestCase):
     def test_delete_button_present_and_links_back_here(self):
-        txn = Transaction.objects.create(account=self.account, date=timezone.localdate(), amount=Decimal("-1.00"))
+        txn = Transaction.objects.create(
+            account=self.account, date=timezone.localdate(), amount=Decimal("-1.00")
+        )
         response = self.client.get(reverse("finance:transaction_list"))
         self.assertContains(response, reverse("finance:transaction_delete", args=[txn.pk]))
 
     def test_deleting_from_the_list_returns_to_the_list(self):
-        txn = Transaction.objects.create(account=self.account, date=timezone.localdate(), amount=Decimal("-1.00"))
+        txn = Transaction.objects.create(
+            account=self.account, date=timezone.localdate(), amount=Decimal("-1.00")
+        )
         list_url = reverse("finance:transaction_list")
         # Real usage: the confirm-delete GET renders `next` as a hidden
         # field, submitted with the POST - not passed as a query string
         # on the POST itself.
-        response = self.client.post(reverse("finance:transaction_delete", args=[txn.pk]), {"next": list_url})
+        response = self.client.post(
+            reverse("finance:transaction_delete", args=[txn.pk]), {"next": list_url}
+        )
         self.assertRedirects(response, list_url)
 
     def test_status_filter_labels_renamed(self):
@@ -1176,10 +1353,16 @@ class TransactionListDeleteAndLabelsTests(LoggedInWithAccountTestCase):
 class ReconciledRowStylingTests(LoggedInWithAccountTestCase):
     def test_reconciled_rows_get_the_faded_class(self):
         Transaction.objects.create(
-            account=self.account, date=timezone.localdate(), amount=Decimal("-1.00"), reconciled=True
+            account=self.account,
+            date=timezone.localdate(),
+            amount=Decimal("-1.00"),
+            reconciled=True,
         )
         Transaction.objects.create(
-            account=self.account, date=timezone.localdate(), amount=Decimal("-2.00"), reconciled=False
+            account=self.account,
+            date=timezone.localdate(),
+            amount=Decimal("-2.00"),
+            reconciled=False,
         )
         response = self.client.get(reverse("finance:transaction_list"))
         self.assertEqual(response.content.decode().count("row-reconciled"), 1)
@@ -1212,7 +1395,9 @@ class SaveAndAddAnotherTests(LoggedInTestCase):
         self.assertEqual(Transaction.objects.count(), 1)
 
     def test_save_and_add_another_returns_to_blank_form_on_same_account(self):
-        response = self.client.post(reverse("finance:transaction_add"), self._data(save_and_add="1"))
+        response = self.client.post(
+            reverse("finance:transaction_add"), self._data(save_and_add="1")
+        )
         self.assertRedirects(
             response,
             reverse("finance:transaction_add") + f"?account={self.account.pk}&date=2026-03-01",
@@ -1246,7 +1431,9 @@ class SaveAndAddAnotherTests(LoggedInTestCase):
 class TransactionListEditModeRenderTests(LoggedInTestCase):
     def test_list_page_renders_edit_mode_controls_for_a_transaction(self):
         account = Account.objects.create(name="Checking")
-        category = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
+        category = Category.objects.create(
+            name="Groceries", category_type=Category.CategoryType.EXPENSE
+        )
         Transaction.objects.create(
             account=account,
             date=date(2026, 9, 20),
@@ -1277,8 +1464,12 @@ class TransactionListEditModeRenderTests(LoggedInTestCase):
             amount=Decimal("-100"),
         )
         response = self.client.get(reverse("finance:transaction_list"))
-        self.assertContains(response, f'data-category="{transfer_category.pk}" data-category-label="[Savings]"')
-        self.assertNotContains(response, f'<option value="{transfer_category.pk}">[Savings]</option>')
+        self.assertContains(
+            response, f'data-category="{transfer_category.pk}" data-category-label="[Savings]"'
+        )
+        self.assertNotContains(
+            response, f'<option value="{transfer_category.pk}">[Savings]</option>'
+        )
 
     def test_every_filter_sits_in_the_one_fieldset_edit_mode_locks(self):
         # 8.10b: the script disables the fieldset (and the links) while
@@ -1287,7 +1478,9 @@ class TransactionListEditModeRenderTests(LoggedInTestCase):
         content = response.content.decode()
         start = content.index('id="transaction-filters"')
         form = content[start : content.index("</form>", start)]
-        fieldset = form[form.index('<fieldset id="transaction-filter-fields">') : form.index("</fieldset>")]
+        fieldset = form[
+            form.index('<fieldset id="transaction-filter-fields">') : form.index("</fieldset>")
+        ]
         for name in ("range", "start", "end", "status", "account", "category", "q"):
             with self.subTest(field=name):
                 self.assertIn(f'name="{name}"', fieldset)
@@ -1301,7 +1494,9 @@ class TransactionQuickEditTests(LoggedInTestCase):
     def setUpTestData(cls):
         super().setUpTestData()
         cls.account = Account.objects.create(name="Checking")
-        cls.category = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
+        cls.category = Category.objects.create(
+            name="Groceries", category_type=Category.CategoryType.EXPENSE
+        )
         cls.txn = Transaction.objects.create(
             account=cls.account,
             date=date(2026, 9, 20),
@@ -1321,7 +1516,9 @@ class TransactionQuickEditTests(LoggedInTestCase):
             "amount": "-12.50",
         }
         data.update(overrides)
-        return self.client.post(reverse("finance:transaction_quick_edit", args=[self.txn.pk]), data)
+        return self.client.post(
+            reverse("finance:transaction_quick_edit", args=[self.txn.pk]), data
+        )
 
     def test_editing_the_memo_saves_and_returns_the_updated_row(self):
         response = self._post(memo="Lidl - weekly shop")
@@ -1386,14 +1583,23 @@ class TransactionQuickEditTests(LoggedInTestCase):
         # that makes a change to just one of them save.
         content = self.client.get(reverse("finance:transaction_list")).content.decode()
         start = content.index('<template id="quick-edit-controls">')
-        controls = re.findall(r"<(?:input|select)\b[^>]*>", content[start : content.index("</template>", start)])
+        controls = re.findall(
+            r"<(?:input|select)\b[^>]*>", content[start : content.index("</template>", start)]
+        )
         self.assertEqual(len(controls), 9)
         for control in controls:
             with self.subTest(control=control):
                 self.assertIn("quick-edit-cell", control)
 
     def test_the_script_saves_on_any_edit_mode_control_not_only_data_field_ones(self):
-        script = Path(settings.BASE_DIR) / "finance" / "static" / "finance" / "js" / "transaction-quick-edit.js"
+        script = (
+            Path(settings.BASE_DIR)
+            / "finance"
+            / "static"
+            / "finance"
+            / "js"
+            / "transaction-quick-edit.js"
+        )
         handler = script.read_text(encoding="utf-8").split("table.addEventListener('change'")[1]
         self.assertIn("closest('.quick-edit-cell')", handler)
 
@@ -1424,10 +1630,17 @@ class TransactionSearchTests(LoggedInWithAccountTestCase):
     def test_the_search_finds_a_payee_and_a_memo(self):
         today = timezone.localdate()
         Transaction.objects.create(
-            account=self.account, date=today, payee=Payee.objects.create(name="Rewe"), amount=Decimal("-4")
+            account=self.account,
+            date=today,
+            payee=Payee.objects.create(name="Rewe"),
+            amount=Decimal("-4"),
         )
-        Transaction.objects.create(account=self.account, date=today, memo="Birthday cake", amount=Decimal("-5"))
-        Transaction.objects.create(account=self.account, date=today, memo="Unrelated", amount=Decimal("-6"))
+        Transaction.objects.create(
+            account=self.account, date=today, memo="Birthday cake", amount=Decimal("-5")
+        )
+        Transaction.objects.create(
+            account=self.account, date=today, memo="Unrelated", amount=Decimal("-6")
+        )
 
         by_payee = self.client.get(reverse("finance:transaction_list"), {"q": "rewe"})
         by_memo = self.client.get(reverse("finance:transaction_list"), {"q": "BIRTHDAY"})
@@ -1442,7 +1655,15 @@ class SafeNextTests(SimpleTestCase):
 
     def test_off_site_destinations_are_refused(self):
         request = RequestFactory().get("/")
-        for url in ("/\\evil.com", "//evil.com", "http://evil.com/", "https://evil.com", "javascript:alert(1)"):
+        for url in (
+            "/\\evil.com",
+            "//evil.com",
+            "http://evil.com/",
+            "https://evil.com",
+            "javascript:alert(1)",
+        ):
             with self.subTest(url=url):
                 self.assertEqual(_safe_next(request, url), "")
-        self.assertEqual(_safe_next(request, "/transactions/?account=3"), "/transactions/?account=3")
+        self.assertEqual(
+            _safe_next(request, "/transactions/?account=3"), "/transactions/?account=3"
+        )

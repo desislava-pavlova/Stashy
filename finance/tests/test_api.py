@@ -61,7 +61,9 @@ class ApiPayeeAutofillTests(LoggedInWithAccountTestCase):
             amount=Decimal("-12.00"),
         )
         combos = self.fetch("Lidl")["combos"]
-        self.assertEqual([c["category_id"] for c in combos], [self.household.pk, self.groceries.pk])
+        self.assertEqual(
+            [c["category_id"] for c in combos], [self.household.pk, self.groceries.pk]
+        )
 
     def test_lookup_is_case_insensitive(self):
         Transaction.objects.create(

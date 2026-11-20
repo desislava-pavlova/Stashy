@@ -20,4 +20,7 @@ def stash_owner(request):
     profile = getattr(request, "stashy_profile", None)
     if profile is None:
         return {}
-    return {"stash_owner_name": profile.owner_name, "stash_owner_possessive": profile.owner_possessive}
+    return {
+        "stash_owner_name": profile.owner_name,
+        "stash_owner_possessive": profile.owner_possessive,
+    }

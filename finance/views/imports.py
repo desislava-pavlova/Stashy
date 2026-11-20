@@ -33,14 +33,18 @@ def import_transactions(request):
 
     recent_batches = ImportBatch.objects.select_related("account")[:15]
     return render(
-        request, "finance/import_form.html", {"form": form, "recent_batches": recent_batches, "tips": IMPORT_TIPS}
+        request,
+        "finance/import_form.html",
+        {"form": form, "recent_batches": recent_batches, "tips": IMPORT_TIPS},
     )
 
 
 def _import_summary(result):
-    summary = f"Imported {_plural(result.created, 'transaction')} ({result.duplicates} duplicates skipped)."
+    transactions = _plural(result.created, "transaction")
+    summary = f"Imported {transactions} ({result.duplicates} duplicates skipped)."
     if result.unknown_account:
-        summary += f" {_plural(result.unknown_account, 'row')} skipped - named an account that doesn't exist yet."
+        unknown_rows = _plural(result.unknown_account, "row")
+        summary += f" {unknown_rows} skipped - named an account that doesn't exist yet."
     if result.unreadable:
         summary += (
             f" {_plural(result.unreadable, 'row')} skipped - unreadable date or amount, "

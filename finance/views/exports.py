@@ -49,7 +49,17 @@ def export_transactions(request):
     transactions, _filters = _filtered_transactions(request)
     transactions, _sort, _sort_next = _sorted(request, transactions, TRANSACTION_LIST_SORT_FIELDS)
     transactions = _ordered_with_ties_broken(transactions)
-    headers = ["Date", "Number", "Account", "Payee", "Category", "Memo", "Amount", "Currency", "Reconciled"]
+    headers = [
+        "Date",
+        "Number",
+        "Account",
+        "Payee",
+        "Category",
+        "Memo",
+        "Amount",
+        "Currency",
+        "Reconciled",
+    ]
     rows = [
         [
             t.date,
@@ -211,14 +221,23 @@ def _category_layout(table, amount_label):
             name = ("  " if row["is_child"] else "") + row["name"]
             rows.append([name] + list(row["values"]) + ([row["total"]] if periods else []))
     if table["totals"]:
-        rows.append(["Total"] + list(table["totals"]["values"]) + ([table["totals"]["total"]] if periods else []))
+        rows.append(
+            ["Total"]
+            + list(table["totals"]["values"])
+            + ([table["totals"]["total"]] if periods else [])
+        )
     return headers, rows
 
 
 def _vs_average_layout(table, amount_label):
     headers = ["Category", "Current", "Average", "Difference"]
     rows = [
-        [("  " if row["is_child"] else "") + row["name"], row["current"], row["average"], row["difference"]]
+        [
+            ("  " if row["is_child"] else "") + row["name"],
+            row["current"],
+            row["average"],
+            row["difference"],
+        ]
         for group in table["groups"]
         for row in group["rows"]
     ]
@@ -245,7 +264,9 @@ class ReportExport(NamedTuple):
     build: Callable  # (filters, rates, profile) -> table, or None when there's nothing to export
     layout: Callable  # (table, amount_label) -> (headers, rows)
     filename: str  # the file is named stashy-<filename>-<date and time> (see _filename())
-    amount_label: str = ""  # the single amount column's header when a category report has no subtotal
+    amount_label: str = (
+        ""  # the single amount column's header when a category report has no subtotal
+    )
     empty_message: str = ""  # shown with a 404 when build() returns None
 
 

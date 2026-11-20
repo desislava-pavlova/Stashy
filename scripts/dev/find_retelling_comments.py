@@ -17,7 +17,17 @@ from pathlib import Path
 
 ROOT = Path(sys.argv[1])
 INCLUDE_TESTS = "--tests" in sys.argv
-SKIP_TOP = {"staticfiles", "stashes", ".venv", "venv.bak", ".git", ".idea", "logs", "backups", "plans"}
+SKIP_TOP = {
+    "staticfiles",
+    "stashes",
+    ".venv",
+    "venv.bak",
+    ".git",
+    ".idea",
+    "logs",
+    "backups",
+    "plans",
+}
 STOP = {
     "a",
     "an",
@@ -71,7 +81,11 @@ def main():
     flagged = 0
     for path in sorted(ROOT.rglob("*.py")):
         parts = path.relative_to(ROOT).parts
-        if parts[0] in SKIP_TOP or "migrations" in parts or ("tests" in parts and not INCLUDE_TESTS):
+        if (
+            parts[0] in SKIP_TOP
+            or "migrations" in parts
+            or ("tests" in parts and not INCLUDE_TESTS)
+        ):
             continue
         if path.name.startswith("test") and not INCLUDE_TESTS:
             continue
@@ -79,7 +93,9 @@ def main():
         lines = source.split("\n")
         blocks, current = [], []
         for token in tokenize.generate_tokens(io.StringIO(source).readline):
-            if token.type == tokenize.COMMENT and lines[token.start[0] - 1].lstrip().startswith("#"):
+            if token.type == tokenize.COMMENT and lines[token.start[0] - 1].lstrip().startswith(
+                "#"
+            ):
                 row = token.start[0] - 1
                 if current and row == current[-1] + 1:
                     current.append(row)

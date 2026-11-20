@@ -79,7 +79,9 @@ def _filtered_transactions(request):
     search = request.GET.get("q", "").strip()
     with_subcategories = request.GET.get("with_subcategories") == "1"
     include_uncategorized = "none" in category_values
-    selected_categories = list(Category.objects.filter(pk__in=_as_ids(category_values)).select_related("parent"))
+    selected_categories = list(
+        Category.objects.filter(pk__in=_as_ids(category_values)).select_related("parent")
+    )
 
     range_key = request.GET.get("range", "")
     if range_key == EARLIEST_RANGE_KEY:
@@ -122,7 +124,9 @@ def _filtered_transactions(request):
     elif status == "unreconciled":
         transactions = transactions.filter(reconciled=False)
     if search:
-        transactions = transactions.filter(Q(payee__name__icontains=search) | Q(memo__icontains=search))
+        transactions = transactions.filter(
+            Q(payee__name__icontains=search) | Q(memo__icontains=search)
+        )
 
     return transactions, {
         "account_id": account_id,
@@ -146,7 +150,9 @@ def transaction_list(request):
     # without converting currencies, so it is only exact for a
     # single-currency stash.
     total_amount = transactions.aggregate(total=Sum("amount"))["total"] or ZERO
-    rows, page_obj = _paged(request, transactions, split=_longer_than_a_year(filters["start"], filters["end"]))
+    rows, page_obj = _paged(
+        request, transactions, split=_longer_than_a_year(filters["start"], filters["end"])
+    )
 
     category_groups = grouped_categories(Category.objects.select_related("parent"))
 
@@ -157,7 +163,9 @@ def transaction_list(request):
         category_filter_label = "All categories"
     elif picked_count == 1:
         category_filter_label = (
-            "Uncategorized" if include_uncategorized and not selected_categories else selected_categories[0].full_name
+            "Uncategorized"
+            if include_uncategorized and not selected_categories
+            else selected_categories[0].full_name
         )
     else:
         category_filter_label = f"{picked_count} categories selected"
@@ -183,7 +191,10 @@ def transaction_list(request):
         # form - aren't picked by hand); built from the groups already
         # fetched above rather than a second query.
         "edit_categories": [
-            category for group in category_groups for category in group["categories"] if category.account_id is None
+            category
+            for group in category_groups
+            for category in group["categories"]
+            if category.account_id is None
         ],
         "selected_account": filters["account_id"],
         "selected_category_values": set(filters["category_values"]),
@@ -195,7 +206,9 @@ def transaction_list(request):
         # time.
         "selected_category_obj": (
             selected_categories[0]
-            if filters["with_subcategories"] and len(selected_categories) == 1 and not filters["include_uncategorized"]
+            if filters["with_subcategories"]
+            and len(selected_categories) == 1
+            and not filters["include_uncategorized"]
             else None
         ),
         "with_subcategories": filters["with_subcategories"],
@@ -239,7 +252,12 @@ def transaction_form_view(request, pk=None):
             remembered_memo = None
             if reminder.payee_id and reminder.category_id:
                 match = next(
-                    (t for t in reminder.payee.category_history() if t.category_id == reminder.category_id), None
+                    (
+                        t
+                        for t in reminder.payee.category_history()
+                        if t.category_id == reminder.category_id
+                    ),
+                    None,
                 )
                 remembered_memo = match.memo if match else None
             initial["memo"] = remembered_memo or reminder.notes
@@ -281,7 +299,9 @@ def transaction_form_view(request, pk=None):
                     },
                 )
             if not account.is_active:
-                with system_action(f"Account '{account.name}' made active again by entering a transaction on it"):
+                with system_action(
+                    f"Account '{account.name}' made active again by entering a transaction on it"
+                ):
                     account.is_active = True
                     account.save(update_fields=["is_active"])
             txn = form.save()
@@ -310,7 +330,9 @@ def transaction_form_view(request, pk=None):
             # Editing: back to wherever you opened this from (the
             # account register or the all-accounts list) if we know it;
             # otherwise the transaction's own account.
-            return redirect(next_url or reverse("finance:account_detail", kwargs={"pk": txn.account_id}))
+            return redirect(
+                next_url or reverse("finance:account_detail", kwargs={"pk": txn.account_id})
+            )
     else:
         form = TransactionForm(instance=instance, initial=initial)
 
@@ -334,7 +356,9 @@ def _quick_edit_row(txn):
     exactly what a full page reload would."""
     return {
         "date": regional.format_date(txn.date),
-        "transaction_number": txn.transaction_number if txn.transaction_number is not None else "—",
+        "transaction_number": txn.transaction_number
+        if txn.transaction_number is not None
+        else "—",
         "account_name": txn.account.name,
         "payee": txn.display_payee,
         "category_name": txn.category.full_name if txn.category_id else "—",
@@ -365,7 +389,11 @@ def transaction_quick_edit(request, pk):
         return JsonResponse(
             {
                 "ok": False,
-                "errors": {"account": ["This account is inactive - use the full edit page to reactivate it."]},
+                "errors": {
+                    "account": [
+                        "This account is inactive - use the full edit page to reactivate it."
+                    ]
+                },
             },
             status=400,
         )

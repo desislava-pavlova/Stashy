@@ -42,7 +42,9 @@ class StashSelectionMiddlewareTests(SimpleTestCase):
 
     def test_no_stash_in_session_leaves_the_alias_unset(self):
         seen = {}
-        middleware = StashSelectionMiddleware(lambda r: seen.setdefault("alias", db_router.current_stash_alias()))
+        middleware = StashSelectionMiddleware(
+            lambda r: seen.setdefault("alias", db_router.current_stash_alias())
+        )
         request = self.factory.get("/")
         request.session = {}
         middleware(request)
@@ -50,7 +52,9 @@ class StashSelectionMiddlewareTests(SimpleTestCase):
 
     def test_a_session_naming_a_stash_that_no_longer_exists_is_treated_as_none_chosen(self):
         seen = {}
-        middleware = StashSelectionMiddleware(lambda r: seen.setdefault("alias", db_router.current_stash_alias()))
+        middleware = StashSelectionMiddleware(
+            lambda r: seen.setdefault("alias", db_router.current_stash_alias())
+        )
         request = self.factory.get("/")
         request.session = {"stash": "does-not-exist-on-disk"}
         middleware(request)
@@ -60,7 +64,9 @@ class StashSelectionMiddlewareTests(SimpleTestCase):
     @staticmethod
     def alias_seen_by_the_view(request):
         seen = {}
-        StashSelectionMiddleware(lambda r: seen.setdefault("alias", db_router.current_stash_alias()))(request)
+        StashSelectionMiddleware(
+            lambda r: seen.setdefault("alias", db_router.current_stash_alias())
+        )(request)
         return seen["alias"]
 
     def test_only_the_exact_name_of_a_stash_counts_in_the_session_too(self):
@@ -203,7 +209,10 @@ class RememberedStashCookieTests(SimpleTestCase):
             {"PATH_INFO": "/\\evil.example/"},
         ]
         for extra in cases:
-            with self.subTest(**extra), mock.patch.object(registry, "list_stashes", return_value=["alex"]):
+            with (
+                self.subTest(**extra),
+                mock.patch.object(registry, "list_stashes", return_value=["alex"]),
+            ):
                 middleware = RequireStashMiddleware(get_response=lambda r: "should not be reached")
                 request = self.factory.get("/", **extra)
                 request.session = {}
@@ -266,7 +275,9 @@ class AHandMadeDefaultFolderIsNeverChosenTests(TemporaryStashesMixin, SimpleTest
         seen = {}
         request = self.factory.get("/")
         request.session = {"stash": "default"}
-        StashSelectionMiddleware(lambda r: seen.setdefault("alias", db_router.current_stash_alias()))(request)
+        StashSelectionMiddleware(
+            lambda r: seen.setdefault("alias", db_router.current_stash_alias())
+        )(request)
         self.assertIsNone(seen["alias"])
         self.assertNotIn("stash", request.session)
 
@@ -350,7 +361,9 @@ class StashAtomicRequestTests(TemporaryStashesMixin, SimpleTestCase):
         response = self.middleware.process_view(self.request, view, (), {})
 
         self.assertEqual(response.content, b"ok")
-        self.assertEqual(seen, {"alpha_atomic": True, "beta_connected": False, "beta_atomic": False})
+        self.assertEqual(
+            seen, {"alpha_atomic": True, "beta_connected": False, "beta_atomic": False}
+        )
         self.assertFalse(connections["alpha"].in_atomic_block)
 
     def test_an_error_in_the_view_rolls_back_its_changes(self):
@@ -375,13 +388,19 @@ class StashAtomicRequestTests(TemporaryStashesMixin, SimpleTestCase):
             return HttpResponse(str(connections["alpha"].in_atomic_block))
 
         db_router.set_current_stash_alias("alpha")
-        self.assertEqual(self.middleware.process_view(self.request, view, (), {}).content, b"False")
+        self.assertEqual(
+            self.middleware.process_view(self.request, view, (), {}).content, b"False"
+        )
 
     def test_without_a_stash_django_handles_the_request_as_usual(self):
-        self.assertIsNone(self.middleware.process_view(self.request, lambda request: HttpResponse(), (), {}))
+        self.assertIsNone(
+            self.middleware.process_view(self.request, lambda request: HttpResponse(), (), {})
+        )
 
     def test_it_runs_after_every_other_view_middleware(self):
-        self.assertEqual(settings.MIDDLEWARE[-1], "finance.middleware.StashAtomicRequestMiddleware")
+        self.assertEqual(
+            settings.MIDDLEWARE[-1], "finance.middleware.StashAtomicRequestMiddleware"
+        )
 
 
 class MiddlewareExemptPrefixesTests(SimpleTestCase):
@@ -389,11 +408,14 @@ class MiddlewareExemptPrefixesTests(SimpleTestCase):
     the old strings."""
 
     def test_require_stash_exempts_the_picker_static_files_and_the_admin(self):
-        self.assertEqual(RequireStashMiddleware.exempt_prefixes(), ("/stashes/", "/static/", "/admin/"))
+        self.assertEqual(
+            RequireStashMiddleware.exempt_prefixes(), ("/stashes/", "/static/", "/admin/")
+        )
 
     def test_require_setup_exempts_the_wizard_static_files_the_admin_and_logout(self):
         self.assertEqual(
-            RequireSetupMiddleware.exempt_prefixes(), ("/welcome/", "/static/", "/admin/", "/accounts/logout/")
+            RequireSetupMiddleware.exempt_prefixes(),
+            ("/welcome/", "/static/", "/admin/", "/accounts/logout/"),
         )
 
 
@@ -403,7 +425,9 @@ class RouterContextVarTests(SimpleTestCase):
     def test_another_thread_does_not_see_this_threads_stash(self):
         seen = {}
         with db_router.use_stash("alpha"):
-            thread = threading.Thread(target=lambda: seen.update(other=db_router.current_stash_alias()))
+            thread = threading.Thread(
+                target=lambda: seen.update(other=db_router.current_stash_alias())
+            )
             thread.start()
             thread.join()
             self.assertEqual(db_router.current_stash_alias(), "alpha")
@@ -431,7 +455,9 @@ class MiddlewareChainTests(StashTestCase):
         for name in ("finance:dashboard", "finance:transaction_list", "finance:settings", "login"):
             with self.subTest(page=name):
                 response = Client().get(reverse(name))
-                self.assertRedirects(response, reverse("stash_picker"), fetch_redirect_response=False)
+                self.assertRedirects(
+                    response, reverse("stash_picker"), fetch_redirect_response=False
+                )
 
     def test_a_session_naming_a_stash_that_does_not_exist_ends_up_at_the_picker(self):
         """S81, through every middleware: the dead name is dropped from
@@ -481,7 +507,9 @@ class MiddlewareChainTests(StashTestCase):
             self.assertNotIn(value, connections.databases)
 
     def test_the_picker_lists_each_stash_by_its_owner_name(self):
-        Profile.objects.create(user=get_user_model().objects.create_user(settings.TEST_STASH), owner_name="Alex")
+        Profile.objects.create(
+            user=get_user_model().objects.create_user(settings.TEST_STASH), owner_name="Alex"
+        )
         response = Client().get(reverse("stash_picker"))
         self.assertEqual(response.context["choices"], [(settings.TEST_STASH, "Alex")])
 
@@ -498,9 +526,13 @@ class MiddlewareChainTests(StashTestCase):
     def test_picking_a_stash_and_typing_its_pin_opens_the_dashboard(self):
         get_user_model().objects.create_user(settings.TEST_STASH, password="1234")
         browser = Client()
-        response = browser.post(reverse("stash_picker"), {"select_stash": "", "name": settings.TEST_STASH})
+        response = browser.post(
+            reverse("stash_picker"), {"select_stash": "", "name": settings.TEST_STASH}
+        )
         self.assertRedirects(response, reverse("login"), fetch_redirect_response=False)
-        response = browser.post(reverse("login"), {"username": settings.TEST_STASH, "password": "1234"}, follow=True)
+        response = browser.post(
+            reverse("login"), {"username": settings.TEST_STASH, "password": "1234"}, follow=True
+        )
         self.assertEqual(response.redirect_chain, [(reverse("finance:dashboard"), 302)])
         self.assertTemplateUsed(response, "finance/dashboard.html")
         cookie = browser.cookies[registry.LAST_STASH_COOKIE]
@@ -516,7 +548,9 @@ class MiddlewareChainTests(StashTestCase):
             with self.subTest(page=name):
                 response = self.client.get(reverse(name))
                 self.assertRedirects(
-                    response, reverse("finance:welcome_step", args=[2]), fetch_redirect_response=False
+                    response,
+                    reverse("finance:welcome_step", args=[2]),
+                    fetch_redirect_response=False,
                 )
 
     def test_a_page_in_a_chosen_stash_never_touches_the_placeholder(self):
@@ -538,5 +572,7 @@ class ProfileFetchedOnceTests(AlexsStashTestCase):
             with self.subTest(page=name):
                 with CaptureQueriesContext(connections[settings.TEST_STASH]) as queries:
                     self.assertEqual(self.client.get(reverse(name)).status_code, 200)
-                profile_reads = [q for q in queries.captured_queries if 'FROM "finance_profile" ' in q["sql"]]
+                profile_reads = [
+                    q for q in queries.captured_queries if 'FROM "finance_profile" ' in q["sql"]
+                ]
                 self.assertEqual(len(profile_reads), 1)

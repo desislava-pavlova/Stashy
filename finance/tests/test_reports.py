@@ -58,8 +58,12 @@ class ReportsViewTests(LoggedInWithAccountTestCase):
         salary = Category.objects.create(name="Salary", category_type=Category.CategoryType.INCOME)
         rent = Category.objects.create(name="Rent", category_type=Category.CategoryType.EXPENSE)
         today = timezone.localdate()
-        Transaction.objects.create(account=self.account, date=today, category=salary, amount=Decimal("1000.00"))
-        Transaction.objects.create(account=self.account, date=today, category=rent, amount=Decimal("-250.00"))
+        Transaction.objects.create(
+            account=self.account, date=today, category=salary, amount=Decimal("1000.00")
+        )
+        Transaction.objects.create(
+            account=self.account, date=today, category=rent, amount=Decimal("-250.00")
+        )
         response = self.client.get(reverse("finance:reports"), {"range": "this_month"})
         self.assertEqual(response.context["savings_rate"], Decimal("75.0"))
         self.assertContains(response, "75.0%")
@@ -70,11 +74,19 @@ class ReportsViewTests(LoggedInWithAccountTestCase):
 
     def test_account_filter_applies_to_the_by_category_reports(self):
         other_account = Account.objects.create(name="Savings")
-        groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
+        groceries = Category.objects.create(
+            name="Groceries", category_type=Category.CategoryType.EXPENSE
+        )
         today = timezone.localdate()
-        Transaction.objects.create(account=self.account, date=today, category=groceries, amount=Decimal("-30.00"))
-        Transaction.objects.create(account=other_account, date=today, category=groceries, amount=Decimal("-999.00"))
-        response = self.client.get(reverse("finance:reports"), {"range": "this_month", "account": self.account.pk})
+        Transaction.objects.create(
+            account=self.account, date=today, category=groceries, amount=Decimal("-30.00")
+        )
+        Transaction.objects.create(
+            account=other_account, date=today, category=groceries, amount=Decimal("-999.00")
+        )
+        response = self.client.get(
+            reverse("finance:reports"), {"range": "this_month", "account": self.account.pk}
+        )
         self.assertEqual(
             response.context["spending_by_category"],
             [{"category_id": groceries.pk, "name": "Groceries", "total": Decimal("30.00")}],
@@ -83,22 +95,31 @@ class ReportsViewTests(LoggedInWithAccountTestCase):
 
 class ReportsCustomRangeErrorTests(LoggedInWithAccountTestCase):
     def test_incomplete_custom_range_shows_an_error(self):
-        response = self.client.get(reverse("finance:reports"), {"range": "custom", "start": "01/01/2026"})
+        response = self.client.get(
+            reverse("finance:reports"), {"range": "custom", "start": "01/01/2026"}
+        )
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "custom range needs both a start and an end date")
 
     def test_a_range_outside_1900_to_2100_shows_the_warning_not_an_error_page(self):
         # S93: year 1 overflowed `start - timedelta(days=1)`, and year
         # 9999 overflowed the period columns.
-        for start, end in (("01/01/0001", "01/01/0002"), ("01/01/2026", "31/12/9999"), ("01/01/1899", "01/01/1900")):
+        for start, end in (
+            ("01/01/0001", "01/01/0002"),
+            ("01/01/2026", "31/12/9999"),
+            ("01/01/1899", "01/01/1900"),
+        ):
             with self.subTest(start=start, end=end):
-                response = self.client.get(reverse("finance:reports"), {"range": "custom", "start": start, "end": end})
+                response = self.client.get(
+                    reverse("finance:reports"), {"range": "custom", "start": start, "end": end}
+                )
                 self.assertEqual(response.status_code, 200)
                 self.assertContains(response, "Dates must fall between 1900 and 2100.")
 
     def test_a_range_longer_than_100_years_shows_the_warning(self):
         response = self.client.get(
-            reverse("finance:reports"), {"range": "custom", "start": "01/01/1950", "end": "02/01/2050"}
+            reverse("finance:reports"),
+            {"range": "custom", "start": "01/01/1950", "end": "02/01/2050"},
         )
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "A custom range can cover at most 100 years.")
@@ -111,23 +132,37 @@ class ReportsCustomRangeErrorTests(LoggedInWithAccountTestCase):
                 url = reverse("finance:export_report", args=[report])
                 expected = self.client.get(url, {"format": "csv"})
                 response = self.client.get(
-                    url, {"range": "custom", "start": "01/01/0001", "end": "31/12/9999", "format": "csv"}
+                    url,
+                    {
+                        "range": "custom",
+                        "start": "01/01/0001",
+                        "end": "31/12/9999",
+                        "format": "csv",
+                    },
                 )
                 self.assertEqual(response.status_code, expected.status_code)
                 self.assertEqual(response.content, expected.content)
 
     def test_a_range_of_exactly_100_years_is_still_accepted(self):
         response = self.client.get(
-            reverse("finance:reports"), {"range": "custom", "start": "01/01/1990", "end": "01/01/2090"}
+            reverse("finance:reports"),
+            {"range": "custom", "start": "01/01/1990", "end": "01/01/2090"},
         )
         self.assertEqual(response.status_code, 200)
-        self.assertEqual((response.context["start"], response.context["end"]), (date(1990, 1, 1), date(2090, 1, 1)))
+        self.assertEqual(
+            (response.context["start"], response.context["end"]),
+            (date(1990, 1, 1), date(2090, 1, 1)),
+        )
 
     def test_a_custom_range_is_applied(self):
         response = self.client.get(
-            reverse("finance:reports"), {"range": "custom", "start": "01/02/2026", "end": "31/03/2026"}
+            reverse("finance:reports"),
+            {"range": "custom", "start": "01/02/2026", "end": "31/03/2026"},
         )
-        self.assertEqual((response.context["start"], response.context["end"]), (date(2026, 2, 1), date(2026, 3, 31)))
+        self.assertEqual(
+            (response.context["start"], response.context["end"]),
+            (date(2026, 2, 1), date(2026, 3, 31)),
+        )
 
     def test_the_date_boxes_switch_the_range_to_custom_and_earliest_to_date_stays(self):
         # 8.14: stashy.js switches Range to "Custom range" when a date
@@ -135,7 +170,9 @@ class ReportsCustomRangeErrorTests(LoggedInWithAccountTestCase):
         # Transactions page only.
         response = self.client.get(reverse("finance:reports"))
         self.assertEqual(response.content.decode().count("data-range-date"), 2)
-        self.assertContains(response, '<option value="earliest">Earliest to date</option>', html=True)
+        self.assertContains(
+            response, '<option value="earliest">Earliest to date</option>', html=True
+        )
 
 
 class DateRangeFilterFormTests(SimpleTestCase):
@@ -157,20 +194,32 @@ class DateRangeFilterFormTests(SimpleTestCase):
         self.assertTrue(DateRangeFilterForm({"range": "this_month"}).is_valid())
 
     def test_the_edges_of_the_sane_window_are_accepted(self):
-        for start, end in (("01/01/1900", "31/12/1999"), ("01/01/2001", "31/12/2100"), ("01/01/1990", "01/01/2090")):
+        for start, end in (
+            ("01/01/1900", "31/12/1999"),
+            ("01/01/2001", "31/12/2100"),
+            ("01/01/1990", "01/01/2090"),
+        ):
             with self.subTest(start=start, end=end):
                 form = DateRangeFilterForm({"range": "custom", "start": start, "end": end})
                 self.assertTrue(form.is_valid(), form.errors)
 
     def test_one_day_past_the_window_or_the_length_limit_is_refused(self):
-        for start, end in (("31/12/1899", "01/01/1900"), ("01/01/2100", "01/01/2101"), ("01/01/1990", "02/01/2090")):
+        for start, end in (
+            ("31/12/1899", "01/01/1900"),
+            ("01/01/2100", "01/01/2101"),
+            ("01/01/1990", "02/01/2090"),
+        ):
             with self.subTest(start=start, end=end):
-                self.assertFalse(DateRangeFilterForm({"range": "custom", "start": start, "end": end}).is_valid())
+                self.assertFalse(
+                    DateRangeFilterForm({"range": "custom", "start": start, "end": end}).is_valid()
+                )
 
     def test_a_preset_range_ignores_dates_outside_the_window(self):
         # Only a custom range reads the date boxes; a preset must not be
         # refused for what they hold.
-        form = DateRangeFilterForm({"range": "this_month", "start": "01/01/0001", "end": "31/12/9999"})
+        form = DateRangeFilterForm(
+            {"range": "this_month", "start": "01/01/0001", "end": "31/12/9999"}
+        )
         self.assertTrue(form.is_valid(), form.errors)
 
 
@@ -178,14 +227,24 @@ class ReportsPageMarkupTests(LoggedInWithAccountTestCase):
     @classmethod
     def setUpTestData(cls):
         super().setUpTestData()
-        groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
-        Category.objects.create(name="Supermarket", parent=groceries, category_type=Category.CategoryType.EXPENSE)
+        groceries = Category.objects.create(
+            name="Groceries", category_type=Category.CategoryType.EXPENSE
+        )
+        Category.objects.create(
+            name="Supermarket", parent=groceries, category_type=Category.CategoryType.EXPENSE
+        )
         Transaction.objects.create(
-            account=cls.account, date=timezone.localdate(), category=groceries, amount=Decimal("-10.00")
+            account=cls.account,
+            date=timezone.localdate(),
+            category=groceries,
+            amount=Decimal("-10.00"),
         )
         subcat = Category.objects.get(name="Supermarket")
         Transaction.objects.create(
-            account=cls.account, date=timezone.localdate(), category=subcat, amount=Decimal("-15.00")
+            account=cls.account,
+            date=timezone.localdate(),
+            category=subcat,
+            amount=Decimal("-15.00"),
         )
 
     def test_collapsible_toggle_and_parent_child_classes_are_present(self):
@@ -258,20 +317,26 @@ class ReportsCollapseButtonLabelTests(SimpleTestCase):
         # The relabel happens client-side (reports.js), not in the
         # server-rendered HTML, which always starts on "Expand" - check
         # the script itself rather than a page fetch.
-        js = (Path(settings.BASE_DIR) / "finance" / "static" / "finance" / "js" / "reports.js").read_text(
-            encoding="utf-8"
-        )
+        js = (
+            Path(settings.BASE_DIR) / "finance" / "static" / "finance" / "js" / "reports.js"
+        ).read_text(encoding="utf-8")
         self.assertIn("'Collapse'", js)
 
 
 class UncategorizedNoticeTests(LoggedInWithAccountTestCase):
     def test_counts_uncategorized_transactions_in_range(self):
-        Transaction.objects.create(account=self.account, date=date(2026, 1, 5), amount=Decimal("-10.00"))
-        Transaction.objects.create(account=self.account, date=date(2026, 1, 6), amount=Decimal("-10.00"))
+        Transaction.objects.create(
+            account=self.account, date=date(2026, 1, 5), amount=Decimal("-10.00")
+        )
+        Transaction.objects.create(
+            account=self.account, date=date(2026, 1, 6), amount=Decimal("-10.00")
+        )
         self.assertEqual(reporting.uncategorized_count(date(2026, 1, 1), date(2026, 1, 31)), 2)
 
     def test_reports_page_shows_a_notice_when_any_exist(self):
-        Transaction.objects.create(account=self.account, date=timezone.localdate(), amount=Decimal("-10.00"))
+        Transaction.objects.create(
+            account=self.account, date=timezone.localdate(), amount=Decimal("-10.00")
+        )
         response = self.client.get(reverse("finance:reports"), {"range": "this_month"})
         self.assertContains(response, "uncategorized transaction")
 
@@ -286,7 +351,9 @@ class ReportFixesAfterFirstLookTests(LoggedInWithAccountTestCase):
     @classmethod
     def setUpTestData(cls):
         super().setUpTestData()
-        cls.bills = Category.objects.create(name="Bills", category_type=Category.CategoryType.EXPENSE)
+        cls.bills = Category.objects.create(
+            name="Bills", category_type=Category.CategoryType.EXPENSE
+        )
         cls.water = Category.objects.create(
             name="Water", parent=cls.bills, category_type=Category.CategoryType.EXPENSE
         )
@@ -299,12 +366,16 @@ class ReportFixesAfterFirstLookTests(LoggedInWithAccountTestCase):
         response = self.client.get(reverse("finance:reports"))
         body = response.content.decode()
         self.assertIn('class="report-showhide" hidden', body)
-        self.assertEqual(body.count("report-showhide-btn"), body.count('class="report-showhide" hidden'))
+        self.assertEqual(
+            body.count("report-showhide-btn"), body.count('class="report-showhide" hidden')
+        )
 
     def test_subtotal_reaches_the_category_charts(self):
         # Without it every chart got data-subtotal="" and never switched
         # to columns.
-        response = self.client.get(reverse("finance:reports"), {"range": "this_year", "subtotal": "month"})
+        response = self.client.get(
+            reverse("finance:reports"), {"range": "this_year", "subtotal": "month"}
+        )
         self.assertContains(response, 'id="spendingByCategoryChart" data-subtotal="month"')
         self.assertContains(response, 'id="incomeByCategoryChart" data-subtotal="month"')
 
@@ -317,27 +388,45 @@ class ReportFixesAfterFirstLookTests(LoggedInWithAccountTestCase):
 
     def test_vs_average_chart_rolls_subcategories_into_their_main_category(self):
         start, end = date(2026, 3, 1), date(2026, 3, 31)
-        Transaction.objects.create(account=self.account, date=start, category=self.bills, amount=Decimal("-10.00"))
-        Transaction.objects.create(account=self.account, date=start, category=self.water, amount=Decimal("-30.00"))
-        rows = reporting.category_totals_vs_average(start, end, [], expense_only=True, top_level=True)
+        Transaction.objects.create(
+            account=self.account, date=start, category=self.bills, amount=Decimal("-10.00")
+        )
+        Transaction.objects.create(
+            account=self.account, date=start, category=self.water, amount=Decimal("-30.00")
+        )
+        rows = reporting.category_totals_vs_average(
+            start, end, [], expense_only=True, top_level=True
+        )
         self.assertEqual([(r["name"], r["current"]) for r in rows], [("Bills", Decimal("40.00"))])
 
     def test_watched_lines_follow_the_subtotal_granularity(self):
         Transaction.objects.create(
-            account=self.account, date=date(2026, 1, 5), category=self.water, amount=Decimal("-20.00")
+            account=self.account,
+            date=date(2026, 1, 5),
+            category=self.water,
+            amount=Decimal("-20.00"),
         )
         Transaction.objects.create(
-            account=self.account, date=date(2026, 4, 5), category=self.water, amount=Decimal("-25.00")
+            account=self.account,
+            date=date(2026, 4, 5),
+            category=self.water,
+            amount=Decimal("-25.00"),
         )
         series = reporting.watched_expenses_series(
             date(2026, 1, 1), date(2026, 6, 30), [self.water.pk], granularity="quarter"
         )
         self.assertEqual([p["period"] for p in series[0]["points"]], ["Q1 2026", "Q2 2026"])
-        self.assertEqual([p["total"] for p in series[0]["points"]], [Decimal("20.00"), Decimal("25.00")])
+        self.assertEqual(
+            [p["total"] for p in series[0]["points"]], [Decimal("20.00"), Decimal("25.00")]
+        )
 
     def test_net_worth_chart_follows_the_subtotal(self):
-        Transaction.objects.create(account=self.account, date=timezone.localdate(), amount=Decimal("100.00"))
-        response = self.client.get(reverse("finance:reports"), {"range": "this_year", "subtotal": "quarter"})
+        Transaction.objects.create(
+            account=self.account, date=timezone.localdate(), amount=Decimal("100.00")
+        )
+        response = self.client.get(
+            reverse("finance:reports"), {"range": "this_year", "subtotal": "quarter"}
+        )
         labels = [point["label"] for point in response.context["net_worth_chart"]]
         self.assertEqual(labels, response.context["net_worth_table"]["periods"])
         self.assertTrue(all(label.startswith("Q") for label in labels))
@@ -353,11 +442,16 @@ class RefundsOnTheReportsPageTests(LoggedInWithAccountTestCase):
 
     def add(self, amount):
         Transaction.objects.create(
-            account=self.account, date=timezone.localdate(), category=self.groceries, amount=Decimal(amount)
+            account=self.account,
+            date=timezone.localdate(),
+            category=self.groceries,
+            amount=Decimal(amount),
         )
 
     def get_page(self):
-        return self.client.get(reverse("finance:reports"), {"range": "this_month", "subtotal": "month"})
+        return self.client.get(
+            reverse("finance:reports"), {"range": "this_month", "subtotal": "month"}
+        )
 
     def test_a_refund_shrinks_the_category_in_the_table_and_in_every_chart(self):
         self.add("-100.00")
@@ -365,9 +459,14 @@ class RefundsOnTheReportsPageTests(LoggedInWithAccountTestCase):
 
         context = self.get_page().context
 
-        self.assertEqual(context["spending_table"]["groups"][0]["rows"][0]["total"], Decimal("70.00"))
+        self.assertEqual(
+            context["spending_table"]["groups"][0]["rows"][0]["total"], Decimal("70.00")
+        )
         self.assertEqual([r["total"] for r in context["spending_chart"]], [70.0])
-        self.assertEqual(context["spending_stacked_chart"][0]["categories"], [{"name": "Groceries", "value": 70.0}])
+        self.assertEqual(
+            context["spending_stacked_chart"][0]["categories"],
+            [{"name": "Groceries", "value": 70.0}],
+        )
         expense_series = context["income_expense_chart"]["expense"]
         self.assertEqual(expense_series[0]["categories"], [{"name": "Groceries", "value": 70.0}])
 
@@ -377,9 +476,14 @@ class RefundsOnTheReportsPageTests(LoggedInWithAccountTestCase):
 
         context = self.get_page().context
 
-        self.assertEqual(context["spending_table"]["groups"][0]["rows"][0]["total"], Decimal("-60.00"))
+        self.assertEqual(
+            context["spending_table"]["groups"][0]["rows"][0]["total"], Decimal("-60.00")
+        )
         self.assertEqual([r["total"] for r in context["spending_chart"]], [-60.0])
-        self.assertEqual(context["spending_stacked_chart"][0]["categories"], [{"name": "Groceries", "value": -60.0}])
+        self.assertEqual(
+            context["spending_stacked_chart"][0]["categories"],
+            [{"name": "Groceries", "value": -60.0}],
+        )
         expense_series = context["income_expense_chart"]["expense"]
         self.assertEqual(expense_series[0]["categories"], [{"name": "Groceries", "value": -60.0}])
 
@@ -405,7 +509,9 @@ class RefundEdgeCasesOnTheReportsPageTests(LoggedInWithAccountTestCase):
     def setUpTestData(cls):
         super().setUpTestData()
         cls.groceries = Category.objects.create(name="Groceries", category_type=EXPENSE)
-        cls.organic = Category.objects.create(name="Organic", parent=cls.groceries, category_type=EXPENSE)
+        cls.organic = Category.objects.create(
+            name="Organic", parent=cls.groceries, category_type=EXPENSE
+        )
         cls.salary = Category.objects.create(name="Salary", category_type=INCOME)
         cls.savings = Account.objects.create(name="Savings")
         cls.month_start = timezone.localdate().replace(day=1)
@@ -442,9 +548,15 @@ class RefundEdgeCasesOnTheReportsPageTests(LoggedInWithAccountTestCase):
 
         response = self.get_page()
 
-        self.assertEqual([r["total"] for r in response.context["watched_totals"]], [Decimal("70.00")])
-        self.assertEqual([p["total"] for p in response.context["watched_chart"][0]["points"]], [70.0])
-        row = _row_html(response.content.decode(), f'<tr data-cat-id="watched-{self.groceries.pk}">')
+        self.assertEqual(
+            [r["total"] for r in response.context["watched_totals"]], [Decimal("70.00")]
+        )
+        self.assertEqual(
+            [p["total"] for p in response.context["watched_chart"][0]["points"]], [70.0]
+        )
+        row = _row_html(
+            response.content.decode(), f'<tr data-cat-id="watched-{self.groceries.pk}">'
+        )
         self.assertEqual(_amount_cells(row), ["70.00"])
 
     def test_the_watched_expenses_card_reads_negative_when_the_refunds_beat_the_spending(self):
@@ -454,11 +566,22 @@ class RefundEdgeCasesOnTheReportsPageTests(LoggedInWithAccountTestCase):
 
         response = self.get_page(subtotal="month")
 
-        self.assertEqual([r["total"] for r in response.context["watched_totals"]], [Decimal("-60.00")])
-        self.assertEqual(response.context["watched_table"]["groups"][0]["rows"][0]["values"], [Decimal("-60.00")])
-        self.assertEqual([p["total"] for p in response.context["watched_chart"][0]["points"]], [-60.0])
-        row = _row_html(response.content.decode(), f'<tr data-cat-id="watched-{self.groceries.pk}">')
-        self.assertEqual(_amount_cells(row), ["-60.00", "-60.00"])  # the month, then the row's total
+        self.assertEqual(
+            [r["total"] for r in response.context["watched_totals"]], [Decimal("-60.00")]
+        )
+        self.assertEqual(
+            response.context["watched_table"]["groups"][0]["rows"][0]["values"],
+            [Decimal("-60.00")],
+        )
+        self.assertEqual(
+            [p["total"] for p in response.context["watched_chart"][0]["points"]], [-60.0]
+        )
+        row = _row_html(
+            response.content.decode(), f'<tr data-cat-id="watched-{self.groceries.pk}">'
+        )
+        self.assertEqual(
+            _amount_cells(row), ["-60.00", "-60.00"]
+        )  # the month, then the row's total
 
     def test_the_account_filter_applies_to_the_refund_totals_on_the_page(self):
         self.add("-100.00")
@@ -466,12 +589,18 @@ class RefundEdgeCasesOnTheReportsPageTests(LoggedInWithAccountTestCase):
         self.add("-50.00", account=self.savings)
         self.add("80.00", account=self.savings)
 
-        for account, expected in [(self.account, "70.00"), (self.savings, "-30.00"), (None, "40.00")]:
+        for account, expected in [
+            (self.account, "70.00"),
+            (self.savings, "-30.00"),
+            (None, "40.00"),
+        ]:
             with self.subTest(account=account):
                 context = self.get_page(**({"account": account.pk} if account else {})).context
                 self.assertEqual(context["expense_total"], Decimal(expected))
                 self.assertEqual(context["spending_table"]["totals"]["total"], Decimal(expected))
-                self.assertEqual([r["total"] for r in context["spending_by_category"]], [Decimal(expected)])
+                self.assertEqual(
+                    [r["total"] for r in context["spending_by_category"]], [Decimal(expected)]
+                )
 
     def test_a_month_with_only_a_refund_has_negative_expense_and_a_net_above_the_income(self):
         self.add("1000.00", self.salary)
@@ -485,7 +614,9 @@ class RefundEdgeCasesOnTheReportsPageTests(LoggedInWithAccountTestCase):
         self.assertContains(response, '<div class="stat-value amount-negative">-50.00')
         self.assertContains(response, "105.0%")
 
-    def test_the_spending_vs_average_table_nets_refunds_in_the_current_and_the_average_columns(self):
+    def test_the_spending_vs_average_table_nets_refunds_in_the_current_and_the_average_columns(
+        self,
+    ):
         for months_back in (1, 2, 3):
             self.add("-30.00", months_back=months_back)
         self.add("-40.00")
@@ -494,7 +625,9 @@ class RefundEdgeCasesOnTheReportsPageTests(LoggedInWithAccountTestCase):
         response = self.client.get(reverse("finance:reports"))
 
         self.assertTrue(response.context["has_average"])
-        row = _row_html(response.content.decode(), f'<tr data-cat-id="spendavg-{self.groceries.pk}">')
+        row = _row_html(
+            response.content.decode(), f'<tr data-cat-id="spendavg-{self.groceries.pk}">'
+        )
         self.assertEqual(_amount_cells(row), ["-60.00", "30.00", "-90.00"])
         self.assertIn("diff-good", row)  # spending fell by more than the average: a good change
 
@@ -535,7 +668,9 @@ class SavingsRateNumberFormatTests(LoggedInWithAccountTestCase):
             (last_month, salary, "1000.00"),
             (last_month, rent, "-250.00"),
         ]:
-            Transaction.objects.create(account=self.account, date=on, category=category, amount=Decimal(amount))
+            Transaction.objects.create(
+                account=self.account, date=on, category=category, amount=Decimal(amount)
+            )
 
     def test_the_savings_rate_card_uses_the_stashs_decimal_mark(self):
         response = self.client.get(reverse("finance:reports"), {"range": "this_month"})
@@ -546,7 +681,9 @@ class SavingsRateNumberFormatTests(LoggedInWithAccountTestCase):
     def test_the_income_and_expense_vs_average_stats_use_it_too(self):
         response = self.client.get(reverse("finance:reports"), {"range": "this_month"})
 
-        stat = next(s for s in response.context["vs_average_stats"] if s["label"] == "Savings rate")
+        stat = next(
+            s for s in response.context["vs_average_stats"] if s["label"] == "Savings rate"
+        )
 
         self.assertEqual(stat["current"], "71,2%")
         self.assertEqual(stat["average"], "75,0%")
@@ -575,7 +712,9 @@ class SavingsRateExtremesInEveryNumberFormatTests(LoggedInWithAccountTestCase):
 
     def add(self, amount, category, months_back=0):
         when = timezone.localdate().replace(day=1) - relativedelta(months=months_back)
-        Transaction.objects.create(account=self.account, date=when, category=category, amount=Decimal(amount))
+        Transaction.objects.create(
+            account=self.account, date=when, category=category, amount=Decimal(amount)
+        )
 
     def use_number_format(self, number_format):
         profile = Profile.for_user(self.user)
@@ -583,8 +722,12 @@ class SavingsRateExtremesInEveryNumberFormatTests(LoggedInWithAccountTestCase):
         profile.save()
 
     def savings_rate_card(self):
-        page = self.client.get(reverse("finance:reports"), {"range": "this_month"}).content.decode()
-        return re.search(r'Savings rate</div>\s*<div class="stat-value">([^<]*)</div>', page).group(1)
+        page = self.client.get(
+            reverse("finance:reports"), {"range": "this_month"}
+        ).content.decode()
+        return re.search(
+            r'Savings rate</div>\s*<div class="stat-value">([^<]*)</div>', page
+        ).group(1)
 
     def check_every_format(self, which):
         for number_format, shown in self.EXPECTED.items():
@@ -622,7 +765,9 @@ class SavingsRateExtremesInEveryNumberFormatTests(LoggedInWithAccountTestCase):
                 self.use_number_format(number_format)
 
                 response = self.client.get(reverse("finance:reports"), {"range": "this_month"})
-                stat = next(s for s in response.context["vs_average_stats"] if s["label"] == "Savings rate")
+                stat = next(
+                    s for s in response.context["vs_average_stats"] if s["label"] == "Savings rate"
+                )
 
                 self.assertEqual(stat["current"], f"-25{mark}0%")
                 self.assertEqual(stat["average"], f"75{mark}0%")
@@ -636,7 +781,9 @@ class SavingsRateExtremesInEveryNumberFormatTests(LoggedInWithAccountTestCase):
         self.add("-100.00", self.rent, months_back=1)
 
         response = self.client.get(reverse("finance:reports"), {"range": "this_month"})
-        stat = next(s for s in response.context["vs_average_stats"] if s["label"] == "Savings rate")
+        stat = next(
+            s for s in response.context["vs_average_stats"] if s["label"] == "Savings rate"
+        )
 
         self.assertEqual((stat["current"], stat["average"], stat["diff_text"]), ("75,0%", "—", ""))
         self.assertIsNone(stat["good"])
@@ -644,9 +791,14 @@ class SavingsRateExtremesInEveryNumberFormatTests(LoggedInWithAccountTestCase):
 
 class AverageDisplayTests(LoggedInWithAccountTestCase):
     def test_nothing_earlier_shows_the_message_instead_of_the_report(self):
-        groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
+        groceries = Category.objects.create(
+            name="Groceries", category_type=Category.CategoryType.EXPENSE
+        )
         Transaction.objects.create(
-            account=self.account, date=timezone.localdate(), category=groceries, amount=Decimal("-10.00")
+            account=self.account,
+            date=timezone.localdate(),
+            category=groceries,
+            amount=Decimal("-10.00"),
         )
         response = self.client.get(reverse("finance:reports"), {"range": "earliest"})
         self.assertFalse(response.context["has_average"])
@@ -654,7 +806,9 @@ class AverageDisplayTests(LoggedInWithAccountTestCase):
         self.assertNotContains(response, 'id="spendingVsAverageChart"')
 
     def test_one_earlier_period_is_not_an_average_either(self):
-        groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
+        groceries = Category.objects.create(
+            name="Groceries", category_type=Category.CategoryType.EXPENSE
+        )
         # Data starting inside last month leaves exactly one whole
         # earlier month to compare with.
         last_month_end = timezone.localdate().replace(day=1) - timedelta(days=1)
@@ -662,7 +816,10 @@ class AverageDisplayTests(LoggedInWithAccountTestCase):
             account=self.account, date=last_month_end, category=groceries, amount=Decimal("-40.00")
         )
         Transaction.objects.create(
-            account=self.account, date=timezone.localdate(), category=groceries, amount=Decimal("-10.00")
+            account=self.account,
+            date=timezone.localdate(),
+            category=groceries,
+            amount=Decimal("-10.00"),
         )
         response = self.client.get(reverse("finance:reports"))
         self.assertEqual(response.context["average_periods"], 1)
@@ -670,13 +827,23 @@ class AverageDisplayTests(LoggedInWithAccountTestCase):
         self.assertContains(response, "No earlier data to compare with.")
 
     def test_two_earlier_periods_do_make_an_average(self):
-        groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
-        two_months_back = (timezone.localdate().replace(day=1) - timedelta(days=1)).replace(day=1) - timedelta(days=1)
+        groceries = Category.objects.create(
+            name="Groceries", category_type=Category.CategoryType.EXPENSE
+        )
+        two_months_back = (timezone.localdate().replace(day=1) - timedelta(days=1)).replace(
+            day=1
+        ) - timedelta(days=1)
         Transaction.objects.create(
-            account=self.account, date=two_months_back, category=groceries, amount=Decimal("-40.00")
+            account=self.account,
+            date=two_months_back,
+            category=groceries,
+            amount=Decimal("-40.00"),
         )
         Transaction.objects.create(
-            account=self.account, date=timezone.localdate(), category=groceries, amount=Decimal("-10.00")
+            account=self.account,
+            date=timezone.localdate(),
+            category=groceries,
+            amount=Decimal("-10.00"),
         )
         response = self.client.get(reverse("finance:reports"))
         self.assertTrue(response.context["has_average"])
@@ -686,16 +853,32 @@ class AverageDisplayTests(LoggedInWithAccountTestCase):
         # Plan 04 R6: once earlier periods exist, a category that had
         # nothing in them averages 0, where it used to have no average.
         start, end = date(2026, 3, 1), date(2026, 3, 31)
-        seen_before = Category.objects.create(name="Rent", category_type=Category.CategoryType.EXPENSE)
-        brand_new = Category.objects.create(name="Gifts", category_type=Category.CategoryType.EXPENSE)
-        Transaction.objects.create(
-            account=self.account, date=date(2026, 2, 10), category=seen_before, amount=Decimal("-60.00")
+        seen_before = Category.objects.create(
+            name="Rent", category_type=Category.CategoryType.EXPENSE
         )
-        Transaction.objects.create(account=self.account, date=start, category=seen_before, amount=Decimal("-50.00"))
-        Transaction.objects.create(account=self.account, date=start, category=brand_new, amount=Decimal("-15.00"))
+        brand_new = Category.objects.create(
+            name="Gifts", category_type=Category.CategoryType.EXPENSE
+        )
+        Transaction.objects.create(
+            account=self.account,
+            date=date(2026, 2, 10),
+            category=seen_before,
+            amount=Decimal("-60.00"),
+        )
+        Transaction.objects.create(
+            account=self.account, date=start, category=seen_before, amount=Decimal("-50.00")
+        )
+        Transaction.objects.create(
+            account=self.account, date=start, category=brand_new, amount=Decimal("-15.00")
+        )
         periods = reporting.vs_average_periods(start, end, 2, range_key="this_month")
-        rows = {r["name"]: r for r in reporting.category_totals_vs_average(start, end, periods, expense_only=True)}
-        self.assertEqual(rows["Rent"]["average"], Decimal("30.00"))  # 60.00 over the 2 earlier months
+        rows = {
+            r["name"]: r
+            for r in reporting.category_totals_vs_average(start, end, periods, expense_only=True)
+        }
+        self.assertEqual(
+            rows["Rent"]["average"], Decimal("30.00")
+        )  # 60.00 over the 2 earlier months
         self.assertEqual(rows["Gifts"]["average"], Decimal("0.00"))
         self.assertTrue(rows["Gifts"]["no_earlier_activity"])
         self.assertFalse(rows["Rent"]["no_earlier_activity"])
@@ -716,20 +899,26 @@ class WatchedExpensesSettingsTests(LoggedInWithAccountTestCase):
     def setUpTestData(cls):
         super().setUpTestData()
         cls.profile = Profile.for_user(cls.user)
-        cls.electricity = Category.objects.create(name="Electricity", category_type=Category.CategoryType.EXPENSE)
+        cls.electricity = Category.objects.create(
+            name="Electricity", category_type=Category.CategoryType.EXPENSE
+        )
 
     def test_default_title_is_watched_expenses(self):
         # S46: it was "Bills & Utilities", a leftover from before the
         # report was configurable.
         self.assertEqual(self.profile.watched_expenses_title, "Watched expenses")
-        self.assertContains(self.client.get(reverse("finance:settings")), 'value="Watched expenses"')
+        self.assertContains(
+            self.client.get(reverse("finance:settings")), 'value="Watched expenses"'
+        )
 
     def test_a_title_a_stash_already_saved_is_kept(self):
         # S46 changes only what a new profile starts with; nothing is
         # rewritten.
         self.profile.watched_expenses_title = "Bills & Utilities"
         self.profile.save(update_fields=["watched_expenses_title"])
-        self.assertEqual(Profile.objects.get(pk=self.profile.pk).watched_expenses_title, "Bills & Utilities")
+        self.assertEqual(
+            Profile.objects.get(pk=self.profile.pk).watched_expenses_title, "Bills & Utilities"
+        )
 
     def test_form_only_offers_expense_categories(self):
         income = Category.objects.create(name="Salary", category_type=Category.CategoryType.INCOME)
@@ -752,7 +941,10 @@ class WatchedExpensesSettingsTests(LoggedInWithAccountTestCase):
         self.assertEqual(list(self.profile.watched_expenses_categories.all()), [self.electricity])
 
         Transaction.objects.create(
-            account=self.account, date=timezone.localdate(), category=self.electricity, amount=Decimal("-40.00")
+            account=self.account,
+            date=timezone.localdate(),
+            category=self.electricity,
+            amount=Decimal("-40.00"),
         )
         response = self.client.get(reverse("finance:reports"), {"range": "this_month"})
         self.assertContains(response, "My bills")
@@ -762,7 +954,9 @@ class WatchedExpensesSettingsTests(LoggedInWithAccountTestCase):
         self.assertContains(response, "No categories chosen")
 
     def test_watched_expenses_totals_none_when_nothing_chosen(self):
-        self.assertIsNone(reporting.watched_expenses_totals(date(2026, 1, 1), date(2026, 1, 31), []))
+        self.assertIsNone(
+            reporting.watched_expenses_totals(date(2026, 1, 1), date(2026, 1, 31), [])
+        )
 
 
 class DiffTintFilterTests(SimpleTestCase):
@@ -823,7 +1017,9 @@ class TableRenderTests(SimpleTestCase):
         self.assertNotIn("diff-bad", html)
 
     def test_a_row_can_flip_the_table_default(self):
-        html = self._html([self._row("Expense total", Decimal("5"), lower_is_good=True)], None, signed=True)
+        html = self._html(
+            [self._row("Expense total", Decimal("5"), lower_is_good=True)], None, signed=True
+        )
         self.assertIn("diff-bad", html)
 
 
@@ -832,17 +1028,23 @@ class WatchedExpensesPickerTests(StashTestCase):
     def setUpTestData(cls):
         cls.profile = Profile.for_user(get_user_model().objects.create_user("alex"))
         cls.food = Category.objects.create(name="Food", category_type=EXPENSE)
-        cls.groceries = Category.objects.create(name="Groceries", category_type=EXPENSE, parent=cls.food)
+        cls.groceries = Category.objects.create(
+            name="Groceries", category_type=EXPENSE, parent=cls.food
+        )
 
     def test_the_button_label_follows_what_is_chosen(self):
-        self.assertEqual(watched_expenses_picker_context(self.profile)["watched_button_label"], "No categories chosen")
+        self.assertEqual(
+            watched_expenses_picker_context(self.profile)["watched_button_label"],
+            "No categories chosen",
+        )
         self.profile.watched_expenses_categories.set([self.groceries])
         context = watched_expenses_picker_context(self.profile)
         self.assertEqual(context["watched_button_label"], self.groceries.full_name)
         self.assertEqual(context["watched_selected_values"], {str(self.groceries.pk)})
         self.profile.watched_expenses_categories.add(self.food)
         self.assertEqual(
-            watched_expenses_picker_context(self.profile)["watched_button_label"], "2 categories selected"
+            watched_expenses_picker_context(self.profile)["watched_button_label"],
+            "2 categories selected",
         )
 
 
@@ -860,27 +1062,37 @@ class NoEarlierActivityAveragesZeroTests(LoggedInWithAccountTestCase):
 
     @classmethod
     def _category(cls, name, parent=None):
-        return Category.objects.create(name=name, category_type=Category.CategoryType.EXPENSE, parent=parent)
+        return Category.objects.create(
+            name=name, category_type=Category.CategoryType.EXPENSE, parent=parent
+        )
 
     def _spend(self, category, amount, months_back=0):
         when = self.month_start - relativedelta(months=months_back)
-        Transaction.objects.create(account=self.account, date=when, category=category, amount=Decimal(amount))
+        Transaction.objects.create(
+            account=self.account, date=when, category=category, amount=Decimal(amount)
+        )
 
     def _three_earlier_months(self):
         for months_back in (1, 2, 3):
             self._spend(self.groceries, "-30.00", months_back)
 
     def _csv(self, slug):
-        response = self.client.get(reverse("finance:export_report", args=[slug]), {"format": "csv"})
+        response = self.client.get(
+            reverse("finance:export_report", args=[slug]), {"format": "csv"}
+        )
         return {row[0]: row[1:] for row in csv_rows(response)}
 
     def test_the_export_has_a_zero_average_and_the_real_difference(self):
         self._three_earlier_months()
         self._spend(self.accommodation, "-583.50")
-        self.assertEqual(self._csv("spending-vs-average")["Accommodation"], ["583.50", "0.00", "583.50"])
+        self.assertEqual(
+            self._csv("spending-vs-average")["Accommodation"], ["583.50", "0.00", "583.50"]
+        )
         # Expenses are negative in the combined report, so the same gap
         # is negative there.
-        self.assertEqual(self._csv("income-expense-vs-average")["Accommodation"], ["-583.50", "0.00", "-583.50"])
+        self.assertEqual(
+            self._csv("income-expense-vs-average")["Accommodation"], ["-583.50", "0.00", "-583.50"]
+        )
 
     def test_the_page_shows_a_dash_for_the_average_but_the_difference_and_a_dot(self):
         self._three_earlier_months()
@@ -893,8 +1105,13 @@ class NoEarlierActivityAveragesZeroTests(LoggedInWithAccountTestCase):
         # The Spending vs average table's own row, read from the page's
         # real HTML.
         page = response.content.decode()
-        row_html = re.search(rf'<tr data-cat-id="spendavg-{self.accommodation.pk}">(.*?)</tr>', page, re.S).group(1)
-        cells = [cell.strip() for cell in re.findall(r'<td class="text-end[^"]*">([^<]*)</td>', row_html)]
+        row_html = re.search(
+            rf'<tr data-cat-id="spendavg-{self.accommodation.pk}">(.*?)</tr>', page, re.S
+        ).group(1)
+        cells = [
+            cell.strip()
+            for cell in re.findall(r'<td class="text-end[^"]*">([^<]*)</td>', row_html)
+        ]
         self.assertIn("583.50", cells[0])  # current
         self.assertEqual(cells[1], "—")  # average
         self.assertIn("583.50", cells[2])  # difference
@@ -903,7 +1120,9 @@ class NoEarlierActivityAveragesZeroTests(LoggedInWithAccountTestCase):
         self._three_earlier_months()
         self._spend(self.accommodation, "-600.00", months_back=2)
         self._spend(self.accommodation, "-100.00")
-        self.assertEqual(self._csv("spending-vs-average")["Accommodation"], ["100.00", "200.00", "-100.00"])
+        self.assertEqual(
+            self._csv("spending-vs-average")["Accommodation"], ["100.00", "200.00", "-100.00"]
+        )
 
     def test_a_main_category_whose_subcategory_is_brand_new_gets_a_dash_too(self):
         # The parent and its new subcategory both average 0 and show
@@ -912,7 +1131,9 @@ class NoEarlierActivityAveragesZeroTests(LoggedInWithAccountTestCase):
         bakery = self._category("Bakery", parent=food)
         self._three_earlier_months()
         self._spend(bakery, "-12.00")
-        periods = reporting.vs_average_periods(self.month_start, timezone.localdate(), 3, range_key="this_month")
+        periods = reporting.vs_average_periods(
+            self.month_start, timezone.localdate(), 3, range_key="this_month"
+        )
         table = reporting.category_vs_average_report_rows(
             self.month_start, timezone.localdate(), periods, expense_only=True
         )
@@ -929,7 +1150,9 @@ class NoEarlierActivityAveragesZeroTests(LoggedInWithAccountTestCase):
         self._spend(bakery, "-30.00", months_back=1)
         self._spend(self.groceries, "-30.00", months_back=3)
         self._spend(bakery, "-12.00")
-        periods = reporting.vs_average_periods(self.month_start, timezone.localdate(), 3, range_key="this_month")
+        periods = reporting.vs_average_periods(
+            self.month_start, timezone.localdate(), 3, range_key="this_month"
+        )
         table = reporting.category_vs_average_report_rows(
             self.month_start, timezone.localdate(), periods, expense_only=True
         )

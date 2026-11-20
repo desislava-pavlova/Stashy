@@ -33,19 +33,30 @@ class AuditLogEntry(models.Model):
     source = models.CharField(max_length=10, choices=Source.choices)
     table = models.CharField(max_length=100, db_index=True, help_text="Raw database table name.")
     row_id = models.CharField(max_length=64, db_index=True)
-    row_label = models.CharField(max_length=255, blank=True, help_text="The row's own name at the time of the event.")
+    row_label = models.CharField(
+        max_length=255, blank=True, help_text="The row's own name at the time of the event."
+    )
     column = models.CharField(
-        max_length=100, blank=True, db_index=True, help_text="Raw column name; blank for INSERT/DELETE."
+        max_length=100,
+        blank=True,
+        db_index=True,
+        help_text="Raw column name; blank for INSERT/DELETE.",
     )
     # NULL ("no value": the row didn't exist yet, or no longer does) is
     # a different fact from "".
     old_value = models.TextField(null=True, blank=True)  # noqa: DJ001
     new_value = models.TextField(null=True, blank=True)  # noqa: DJ001
-    values = models.JSONField(default=dict, blank=True, help_text="Full raw column values (INSERT/DELETE only, A4).")
+    values = models.JSONField(
+        default=dict, blank=True, help_text="Full raw column values (INSERT/DELETE only, A4)."
+    )
     reason = models.CharField(max_length=255, blank=True)
     request = models.CharField(max_length=255, blank=True)
     user = models.ForeignKey(
-        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
     )
 
     class Meta:

@@ -92,7 +92,9 @@ class BackupHelperTests(SimpleTestCase):
 
     def test_a_failed_copy_leaves_no_empty_file_that_passes_for_a_backup(self):
         with (
-            mock.patch.object(finance_backup, "_sqlite_copy", side_effect=sqlite3.OperationalError("disk full")),
+            mock.patch.object(
+                finance_backup, "_sqlite_copy", side_effect=sqlite3.OperationalError("disk full")
+            ),
             self.assertRaises(sqlite3.OperationalError),
         ):
             finance_backup.backup_now(self.db, self.root, tag="manual")
@@ -108,7 +110,9 @@ class BackupHelperTests(SimpleTestCase):
         finance_backup.quarterly_backup_if_due(self.db, self.root)
         second = finance_backup.quarterly_backup_if_due(self.db, self.root)
         self.assertIsNone(second)
-        self.assertEqual(len(list((self.root / "backups").glob("*_backup_quarterly_*.sqlite3"))), 1)
+        self.assertEqual(
+            len(list((self.root / "backups").glob("*_backup_quarterly_*.sqlite3"))), 1
+        )
 
     def test_quarterly_backup_runs_again_once_the_last_one_is_old_enough(self):
         backups_dir = self.root / "backups"
@@ -149,11 +153,16 @@ class BackupHelperTests(SimpleTestCase):
         write_db(self.db, "changed after the backup")
         open_connection = sqlite3.connect(self.db)
         self.addCleanup(open_connection.close)
-        self.assertEqual(open_connection.execute("SELECT content FROM note").fetchone()[0], "changed after the backup")
+        self.assertEqual(
+            open_connection.execute("SELECT content FROM note").fetchone()[0],
+            "changed after the backup",
+        )
 
         finance_backup.restore_from(target, self.db, self.root)
 
-        self.assertEqual(open_connection.execute("SELECT content FROM note").fetchone()[0], "current content")
+        self.assertEqual(
+            open_connection.execute("SELECT content FROM note").fetchone()[0], "current content"
+        )
 
     def test_tags_with_underscores_sort_by_the_time_in_their_name(self):
         backups_dir = self.root / "backups"
@@ -173,7 +182,9 @@ class ManualBackupButtonTests(LoggedInWithAccountTestCase):
     # finance.backup.backup_now itself - the file-copying logic is
     # covered directly by BackupHelperTests above.
     def test_back_up_now_creates_a_file_and_shows_a_message(self):
-        fake_backup = registry.stash_backups_dir(settings.TEST_STASH) / "db_manual_20260101_000000.sqlite3"
+        fake_backup = (
+            registry.stash_backups_dir(settings.TEST_STASH) / "db_manual_20260101_000000.sqlite3"
+        )
         with mock.patch("finance.backup.backup_now", return_value=fake_backup):
             response = self.client.post(reverse("finance:create_backup"), follow=True)
         self.assertContains(response, "Backed up to")
@@ -211,7 +222,9 @@ class RestoreBackupTests(LoggedInWithAccountTestCase):
         self.assertContains(response, "your PIN and recovery code stay as they are now")
 
     def test_unknown_filename_is_not_found(self):
-        response = self.client.get(reverse("finance:backup_restore"), {"name": "does-not-exist.sqlite3"})
+        response = self.client.get(
+            reverse("finance:backup_restore"), {"name": "does-not-exist.sqlite3"}
+        )
         self.assertEqual(response.status_code, 404)
 
     def test_path_traversal_in_the_filename_is_rejected(self):
@@ -233,7 +246,9 @@ class RestoreBackupTests(LoggedInWithAccountTestCase):
         """
         backup = self.existing_backup()
         data = {"name": backup.name, "current_pin": self.PIN}
-        with mock.patch("finance.stashes.registry.restore_stash", side_effect=StashError("It is damaged.")):
+        with mock.patch(
+            "finance.stashes.registry.restore_stash", side_effect=StashError("It is damaged.")
+        ):
             response = self.client.post(reverse("finance:backup_restore"), data, follow=True)
         self.assertContains(response, "It is damaged.")
         self.assertNotContains(response, "Restored from")
@@ -274,7 +289,11 @@ class RestoreBackupTests(LoggedInWithAccountTestCase):
 
     def test_the_pin_box_has_a_label_a_token_and_no_leaked_template_syntax(self):
         response = self.client.get(self.restore_url(self.existing_backup()))
-        self.assertContains(response, '<label class="form-label" for="id_current_pin">Current PIN</label>', html=True)
+        self.assertContains(
+            response,
+            '<label class="form-label" for="id_current_pin">Current PIN</label>',
+            html=True,
+        )
         self.assertContains(response, 'id="id_current_pin"')
         self.assertContains(response, "csrfmiddlewaretoken")
         for leaked in LEAKED_TEMPLATE_SYNTAX:
@@ -317,7 +336,9 @@ class RestoreBackupTests(LoggedInWithAccountTestCase):
 
     def test_the_right_pin_forgets_earlier_wrong_tries(self):
         backup = self.existing_backup()
-        Profile.objects.filter(user=self.user).update(failed_pin_attempts=security.LOCKOUT_THRESHOLD - 1)
+        Profile.objects.filter(user=self.user).update(
+            failed_pin_attempts=security.LOCKOUT_THRESHOLD - 1
+        )
         with mock.patch("finance.stashes.registry.restore_stash"):
             self.client.post(self.restore_url(backup), {"current_pin": self.PIN})
         self.assertEqual(Profile.for_user(self.user).failed_pin_attempts, 0)
@@ -325,12 +346,19 @@ class RestoreBackupTests(LoggedInWithAccountTestCase):
     def test_no_filename_at_all_is_not_found(self):
         for method in (self.client.get, self.client.post):
             with self.subTest(method=method.__name__):
-                self.assertEqual(method(reverse("finance:backup_restore"), {"current_pin": self.PIN}).status_code, 404)
+                self.assertEqual(
+                    method(
+                        reverse("finance:backup_restore"), {"current_pin": self.PIN}
+                    ).status_code,
+                    404,
+                )
 
     def test_an_unknown_filename_is_not_found_before_the_pin_is_looked_at(self):
         """So this page can't be used to try PINs: nothing is counted
         for a backup that isn't there."""
-        response = self.client.post(self.restore_url(Path("no-such-backup.sqlite3")), {"current_pin": "0000"})
+        response = self.client.post(
+            self.restore_url(Path("no-such-backup.sqlite3")), {"current_pin": "0000"}
+        )
         self.assertEqual(response.status_code, 404)
         self.assertEqual(Profile.for_user(self.user).failed_pin_attempts, 0)
 
@@ -340,7 +368,9 @@ class RestoreBackupTests(LoggedInWithAccountTestCase):
         short of the lockout, the request's copy is not."""
         backup = self.existing_backup()
         old_copy = Profile.objects.get(user=self.user)
-        Profile.objects.filter(user=self.user).update(failed_pin_attempts=security.LOCKOUT_THRESHOLD - 1)
+        Profile.objects.filter(user=self.user).update(
+            failed_pin_attempts=security.LOCKOUT_THRESHOLD - 1
+        )
         with (
             mock.patch.object(Profile, "for_user", return_value=old_copy),
             mock.patch("finance.stashes.registry.restore_stash"),
@@ -359,7 +389,9 @@ class RestoreBackupTests(LoggedInWithAccountTestCase):
             override_settings(PASSWORD_HASHERS=REHASHING_PASSWORD_HASHERS),
             mock.patch("finance.stashes.registry.restore_stash"),
         ):
-            response = self.client.post(self.restore_url(backup), {"current_pin": self.PIN}, follow=True)
+            response = self.client.post(
+                self.restore_url(backup), {"current_pin": self.PIN}, follow=True
+            )
         self.assertContains(response, "Restored from")
         self.assertTemplateUsed(response, "finance/settings.html")
 
@@ -380,7 +412,9 @@ class BackupNamesCarryTheStashTests(SimpleTestCase):
     def test_the_name_starts_with_the_stash(self):
         alex = self._stash("alex")
         result = finance_backup.backup_now(alex / "db.sqlite3", alex, tag="manual")
-        self.assertRegex(result.name, r"^alex_backup_manual_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.sqlite3$")
+        self.assertRegex(
+            result.name, r"^alex_backup_manual_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.sqlite3$"
+        )
 
     def test_two_stashes_backed_up_together_get_different_names(self):
         alex, sam = self._stash("alex"), self._stash("sam-2")
@@ -428,13 +462,18 @@ class BackupNamesCarryTheStashTests(SimpleTestCase):
         # "backup_" counts.
         quarterly = self._stash("quarterly")
         finance_backup.backup_now(quarterly / "db.sqlite3", quarterly, tag="manual")
-        self.assertIsNotNone(finance_backup.quarterly_backup_if_due(quarterly / "db.sqlite3", quarterly))
+        self.assertIsNotNone(
+            finance_backup.quarterly_backup_if_due(quarterly / "db.sqlite3", quarterly)
+        )
 
     def test_restoring_leaves_a_safety_backup_named_after_the_stash(self):
         alex = self._stash("alex")
         source = finance_backup.backup_now(alex / "db.sqlite3", alex, tag="manual")
         finance_backup.restore_from(source, alex / "db.sqlite3", alex)
-        tags = sorted(p.name.split("_backup_")[1].rsplit("_", 2)[0] for p in finance_backup.list_backups(alex))
+        tags = sorted(
+            p.name.split("_backup_")[1].rsplit("_", 2)[0]
+            for p in finance_backup.list_backups(alex)
+        )
         self.assertEqual(tags, ["before_restore", "manual"])
 
 
@@ -444,7 +483,9 @@ class RestoreBringsBackTodaysSchemaTests(TemporaryStashesMixin, SimpleTestCase):
 
     def test_restoring_a_pre_update_backup_migrates_it(self):
         self.make_stashes()
-        folder, _ = self.create_stash("Alex", "1234")  # a stash with its user and Profile, as a backup needs
+        folder, _ = self.create_stash(
+            "Alex", "1234"
+        )  # a stash with its user and Profile, as a backup needs
         call_command("migrate", "finance", "0016", database=folder, verbosity=0)
         old_backup = finance_backup.backup_now(
             registry.stash_db_path(folder), registry.stash_path(folder), tag="before_update"
@@ -455,7 +496,10 @@ class RestoreBringsBackTodaysSchemaTests(TemporaryStashesMixin, SimpleTestCase):
 
         with connections[folder].cursor() as cursor:
             columns = [
-                c.name for c in connections[folder].introspection.get_table_description(cursor, "finance_profile")
+                c.name
+                for c in connections[folder].introspection.get_table_description(
+                    cursor, "finance_profile"
+                )
             ]
         self.assertIn("owner_name", columns)  # added by migration 0017, after the backup
 

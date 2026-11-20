@@ -54,7 +54,11 @@ def is_plausible_rate(rate):
     """Whether an exchange rate fits its column and is more than zero
     once rounded to the column's 10 places. A rate read from the
     network can be anything, NaN included."""
-    return rate.is_finite() and 0 < rate <= MAX_EXCHANGE_RATE and rate.quantize(_EXCHANGE_RATE_STEP) > 0
+    return (
+        rate.is_finite()
+        and 0 < rate <= MAX_EXCHANGE_RATE
+        and rate.quantize(_EXCHANGE_RATE_STEP) > 0
+    )
 
 
 def validate_plausible_date(value):

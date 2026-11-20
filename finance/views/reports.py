@@ -179,20 +179,30 @@ def reports_view(request):
     # missing rate would otherwise repeat itself on every card that
     # happens to touch that currency.
     missing_currencies = sorted(
-        {a.currency for a in Account.objects.exclude(currency=main_currency) if rates.known(a.currency) is None}
+        {
+            a.currency
+            for a in Account.objects.exclude(currency=main_currency)
+            if rates.known(a.currency) is None
+        }
     )
 
     uncategorized = uncategorized_count(start, end, account=account)
 
     # --- 1. Spending by category (chart: main categories only) ---
-    spending_by_category = category_totals_top_level(start, end, expense_only=True, account=account, rates=rates)
+    spending_by_category = category_totals_top_level(
+        start, end, expense_only=True, account=account, rates=rates
+    )
     spending_table = category_report_rows(
         start, end, subtotal=subtotal, expense_only=True, account=account, rates=rates
     )
 
     # --- 2. Income by category (mirrors Spending) ---
-    income_by_category = category_totals_top_level(start, end, income_only=True, account=account, rates=rates)
-    income_table = category_report_rows(start, end, subtotal=subtotal, income_only=True, account=account, rates=rates)
+    income_by_category = category_totals_top_level(
+        start, end, income_only=True, account=account, rates=rates
+    )
+    income_table = category_report_rows(
+        start, end, subtotal=subtotal, income_only=True, account=account, rates=rates
+    )
 
     # --- 3. Spending vs. average / 4. Income vs. average ---
     # The charts show main categories only; the tables keep
@@ -213,7 +223,9 @@ def reports_view(request):
     # --- 5. Income & expense by category ---
     # One combined signed table; the chart is a stacked column per
     # Subtotal period, split by category.
-    income_expense_table = category_report_rows(start, end, subtotal=subtotal, account=account, rates=rates)
+    income_expense_table = category_report_rows(
+        start, end, subtotal=subtotal, account=account, rates=rates
+    )
     totals = income_and_spending(start, end, account=account, rates=rates)
     savings_rate_value = savings_rate(totals["income"], totals["spending"])
     net_total = totals["income"] - totals["spending"]
@@ -229,7 +241,9 @@ def reports_view(request):
     # --- 6. Income & expense vs. average ---
     # Income and Expense (split by category, current period only) + Net,
     # each with an average marker.
-    vs_average_totals = income_and_spending_vs_average(start, end, periods, account=account, rates=rates)
+    vs_average_totals = income_and_spending_vs_average(
+        start, end, periods, account=account, rates=rates
+    )
 
     def money_fmt(value):
         return format_money(value, main_currency)
@@ -239,14 +253,32 @@ def reports_view(request):
 
     vs_average_stats = [
         _vs_average_stat(
-            "Income", vs_average_totals["current_income"], vs_average_totals["average_income"], True, money_fmt
+            "Income",
+            vs_average_totals["current_income"],
+            vs_average_totals["average_income"],
+            True,
+            money_fmt,
         ),
         _vs_average_stat(
-            "Expense", vs_average_totals["current_spending"], vs_average_totals["average_spending"], False, money_fmt
+            "Expense",
+            vs_average_totals["current_spending"],
+            vs_average_totals["average_spending"],
+            False,
+            money_fmt,
         ),
-        _vs_average_stat("Net", vs_average_totals["current_net"], vs_average_totals["average_net"], True, money_fmt),
         _vs_average_stat(
-            "Savings rate", vs_average_totals["current_rate"], vs_average_totals["average_rate"], True, percent_fmt
+            "Net",
+            vs_average_totals["current_net"],
+            vs_average_totals["average_net"],
+            True,
+            money_fmt,
+        ),
+        _vs_average_stat(
+            "Savings rate",
+            vs_average_totals["current_rate"],
+            vs_average_totals["average_rate"],
+            True,
+            percent_fmt,
         ),
     ]
     # The table keeps the same per-category breakdown as report 5's,
@@ -264,7 +296,9 @@ def reports_view(request):
 
     # --- 8. Watched expenses (chosen in Settings) ---
     watched_category_ids = watched_expenses_category_ids(profile)
-    watched_totals = watched_expenses_totals(start, end, watched_category_ids, account=account, rates=rates)
+    watched_totals = watched_expenses_totals(
+        start, end, watched_category_ids, account=account, rates=rates
+    )
     watched_table = None
     watched_series = []
     watched_chart_overflow = None
@@ -349,7 +383,9 @@ def reports_view(request):
         },
         "net_worth_chart": [
             {"label": label, "total": float(total)}
-            for label, total in zip(net_worth_table["periods"], net_worth_table["totals"], strict=True)
+            for label, total in zip(
+                net_worth_table["periods"], net_worth_table["totals"], strict=True
+            )
         ],
         "net_worth_table": net_worth_table,
         "watched_expenses_title": profile.watched_expenses_title,
@@ -364,7 +400,9 @@ def reports_view(request):
             {
                 "category_id": series["category_id"],
                 "name": series["name"],
-                "points": [{"period": p["period"], "total": float(p["total"])} for p in series["points"]],
+                "points": [
+                    {"period": p["period"], "total": float(p["total"])} for p in series["points"]
+                ],
             }
             for series in watched_series
         ],

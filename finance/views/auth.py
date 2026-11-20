@@ -152,7 +152,11 @@ class StashLoginView(LoginView):
         response = super().form_valid(form)
         # httponly: no page script needs it, so none can read it.
         response.set_cookie(
-            LAST_STASH_COOKIE, self.stash_name, max_age=LAST_STASH_COOKIE_AGE, samesite="Lax", httponly=True
+            LAST_STASH_COOKIE,
+            self.stash_name,
+            max_age=LAST_STASH_COOKIE_AGE,
+            samesite="Lax",
+            httponly=True,
         )
         return response
 
@@ -204,6 +208,8 @@ def forgot_pin(request):
             "owner_possessive": profile.owner_possessive,
             "form": form,
             "locked_out": locked_out,
-            "lockout_minutes": (security.lockout_seconds_remaining(profile) // 60 + 1) if locked_out else 0,
+            "lockout_minutes": (security.lockout_seconds_remaining(profile) // 60 + 1)
+            if locked_out
+            else 0,
         },
     )

@@ -17,9 +17,22 @@ from openpyxl import load_workbook
 
 from .. import starter_categories
 from ..forms import CategoryForm, TransactionForm
-from ..models import Account, Category, Payee, Transaction, categories_alphabetical, grouped_categories, name_key
+from ..models import (
+    Account,
+    Category,
+    Payee,
+    Transaction,
+    categories_alphabetical,
+    grouped_categories,
+    name_key,
+)
 from ..services.importing import _resolve_category
-from .base import LoggedInTestCase, LoggedInWithAccountTestCase, StarterCategoriesFileMixin, StashTestCase
+from .base import (
+    LoggedInTestCase,
+    LoggedInWithAccountTestCase,
+    StarterCategoriesFileMixin,
+    StashTestCase,
+)
 
 
 Type = Category.CategoryType
@@ -30,7 +43,9 @@ EXPENSE = Category.CategoryType.EXPENSE
 class DisplayNameTests(StashTestCase):
     def test_full_name_shows_parent_then_child_with_an_arrow(self):
         food = Category.objects.create(name="Food", category_type=Type.EXPENSE)
-        groceries = Category.objects.create(name="Groceries", parent=food, category_type=Type.EXPENSE)
+        groceries = Category.objects.create(
+            name="Groceries", parent=food, category_type=Type.EXPENSE
+        )
         self.assertEqual(groceries.full_name, "Food > Groceries")
         self.assertEqual(food.full_name, "Food")
 
@@ -46,13 +61,17 @@ class DisplayNameTests(StashTestCase):
 class OneLevelOfSubcategoriesTests(StashTestCase):
     def test_a_subcategory_is_not_offered_as_a_parent(self):
         food = Category.objects.create(name="Food", category_type=Type.EXPENSE)
-        groceries = Category.objects.create(name="Groceries", parent=food, category_type=Type.EXPENSE)
+        groceries = Category.objects.create(
+            name="Groceries", parent=food, category_type=Type.EXPENSE
+        )
         self.assertNotIn(groceries, CategoryForm().fields["parent"].queryset)
         self.assertIn(food, CategoryForm().fields["parent"].queryset)
 
     def test_a_category_cannot_become_a_subcategory_of_itself(self):
         food = Category.objects.create(name="Food", category_type=Type.EXPENSE)
-        form = CategoryForm({"name": "Food", "parent": food.pk, "category_type": "expense"}, instance=food)
+        form = CategoryForm(
+            {"name": "Food", "parent": food.pk, "category_type": "expense"}, instance=food
+        )
         self.assertFalse(form.is_valid())
         self.assertIn("parent", form.errors)
 
@@ -60,14 +79,18 @@ class OneLevelOfSubcategoriesTests(StashTestCase):
         food = Category.objects.create(name="Food", category_type=Type.EXPENSE)
         Category.objects.create(name="Groceries", parent=food, category_type=Type.EXPENSE)
         rent = Category.objects.create(name="Rent", category_type=Type.EXPENSE)
-        form = CategoryForm({"name": "Food", "parent": rent.pk, "category_type": "expense"}, instance=food)
+        form = CategoryForm(
+            {"name": "Food", "parent": rent.pk, "category_type": "expense"}, instance=food
+        )
         self.assertFalse(form.is_valid())
         self.assertIn("parent", form.errors)
 
     def test_a_childless_category_can_become_a_subcategory(self):
         rent = Category.objects.create(name="Rent", category_type=Type.EXPENSE)
         bills = Category.objects.create(name="Bills", category_type=Type.EXPENSE)
-        form = CategoryForm({"name": "Rent", "parent": bills.pk, "category_type": "expense"}, instance=rent)
+        form = CategoryForm(
+            {"name": "Rent", "parent": bills.pk, "category_type": "expense"}, instance=rent
+        )
         self.assertTrue(form.is_valid(), form.errors)
 
 
@@ -85,14 +108,19 @@ class GroupedCategoriesTests(StashTestCase):
         self.assertEqual([g["key"] for g in groups], ["income", "expense", "transfer"])
         self.assertEqual([c.name for c in groups[0]["categories"]], ["Bonus", "Salary"])
         self.assertEqual([c.name for c in groups[1]["categories"]], ["Food", "Groceries", "Rent"])
-        self.assertEqual([c.name for c in groups[2]["categories"]], [account.transfer_category.name])
+        self.assertEqual(
+            [c.name for c in groups[2]["categories"]], [account.transfer_category.name]
+        )
 
     def test_a_category_type_that_differs_from_data_still_groups_by_its_own_type(self):
         # Grouping reads each row's own category_type - it doesn't try
         # to inherit a parent's.
         parent = Category.objects.create(name="Parent", category_type=Type.INCOME)
         child = Category.objects.create(name="Child", parent=parent, category_type=Type.EXPENSE)
-        groups = {g["key"]: [c.name for c in g["categories"]] for g in grouped_categories([parent, child])}
+        groups = {
+            g["key"]: [c.name for c in g["categories"]]
+            for g in grouped_categories([parent, child])
+        }
         self.assertEqual(groups, {"income": ["Parent"], "expense": ["Child"]})
 
 
@@ -108,7 +136,9 @@ class CategoryParentTypeFilterTests(StashTestCase):
     def test_a_transfer_category_is_not_offered_as_a_parent(self):
         account = Account.objects.create(name="Checking")
         form = CategoryForm()
-        self.assertNotIn(account.transfer_category.pk, form.fields["parent"].widget.categories_by_id)
+        self.assertNotIn(
+            account.transfer_category.pk, form.fields["parent"].widget.categories_by_id
+        )
         self.assertNotIn(account.transfer_category, form.fields["parent"].queryset)
 
 
@@ -139,20 +169,31 @@ class CategoryUsageAndRecategorizeTests(LoggedInTestCase):
         cls.household = Category.objects.create(name="Household", category_type=Type.EXPENSE)
         cls.txns = [
             Transaction.objects.create(
-                account=cls.account, date=date(2026, 1, d), category=cls.groceries, amount=Decimal("-10.00")
+                account=cls.account,
+                date=date(2026, 1, d),
+                category=cls.groceries,
+                amount=Decimal("-10.00"),
             )
             for d in (1, 2, 3)
         ]
 
     def test_usage_count_shown_on_the_category_list(self):
         response = self.client.get(reverse("finance:category_list"))
-        categories = {c.pk: c.usage_count for group in response.context["groups"] for c in group["categories"]}
+        categories = {
+            c.pk: c.usage_count
+            for group in response.context["groups"]
+            for c in group["categories"]
+        }
         self.assertEqual(categories[self.groceries.pk], 3)
         self.assertEqual(categories[self.household.pk], 0)
 
     def test_usage_view_lists_only_that_categorys_own_transactions(self):
-        sub = Category.objects.create(name="Organic", parent=self.groceries, category_type=Type.EXPENSE)
-        Transaction.objects.create(account=self.account, date=date(2026, 1, 4), category=sub, amount=Decimal("-5.00"))
+        sub = Category.objects.create(
+            name="Organic", parent=self.groceries, category_type=Type.EXPENSE
+        )
+        Transaction.objects.create(
+            account=self.account, date=date(2026, 1, 4), category=sub, amount=Decimal("-5.00")
+        )
         response = self.client.get(reverse("finance:category_usage", args=[self.groceries.pk]))
         self.assertEqual(len(response.context["transactions"]), 3)
 
@@ -184,12 +225,17 @@ class CategoryUsageAndRecategorizeTests(LoggedInTestCase):
         self.assertEqual(self.txns[0].category, self.groceries)
 
     def test_selecting_nothing_shows_an_error_and_moves_nothing(self):
-        self.client.post(reverse("finance:category_usage", args=[self.groceries.pk]), {"move_to": self.household.pk})
+        self.client.post(
+            reverse("finance:category_usage", args=[self.groceries.pk]),
+            {"move_to": self.household.pk},
+        )
         self.txns[0].refresh_from_db()
         self.assertEqual(self.txns[0].category, self.groceries)
 
     def _move(self, **data):
-        response = self.client.post(reverse("finance:category_usage", args=[self.groceries.pk]), data, follow=True)
+        response = self.client.post(
+            reverse("finance:category_usage", args=[self.groceries.pk]), data, follow=True
+        )
         self.assertEqual(response.status_code, 200)
         return [str(message) for message in response.context["messages"]]
 
@@ -198,14 +244,18 @@ class CategoryUsageAndRecategorizeTests(LoggedInTestCase):
         for bad in ("abc", "²", "9" * 30, ""):
             with self.subTest(move_to=bad):
                 messages = self._move(transaction_id=[self.txns[0].pk], move_to=bad)
-                self.assertEqual(messages, ["Choose a category to move the selected transactions to."])
+                self.assertEqual(
+                    messages, ["Choose a category to move the selected transactions to."]
+                )
                 self.txns[0].refresh_from_db()
                 self.assertEqual(self.txns[0].category, self.groceries)
 
     def test_selected_ids_that_are_not_numbers_are_dropped(self):
         messages = self._move(transaction_id=["abc", "²"], move_to=self.household.pk)
         self.assertEqual(messages, ["Select at least one transaction to move."])
-        messages = self._move(transaction_id=["abc", self.txns[1].pk, "²"], move_to=self.household.pk)
+        messages = self._move(
+            transaction_id=["abc", self.txns[1].pk, "²"], move_to=self.household.pk
+        )
         self.assertEqual(messages, ["Moved 1 transaction to Household."])
         self.txns[1].refresh_from_db()
         self.assertEqual(self.txns[1].category, self.household)
@@ -220,7 +270,8 @@ class CategoryUsageAndRecategorizeTests(LoggedInTestCase):
             account=self.account, date=date(2026, 1, 9), category=travel, amount=Decimal("-1.00")
         )
         messages = self._move(
-            transaction_id=[self.txns[0].pk, elsewhere.pk, "9" * 30, "9" * 4301], move_to=self.household.pk
+            transaction_id=[self.txns[0].pk, elsewhere.pk, "9" * 30, "9" * 4301],
+            move_to=self.household.pk,
         )
         self.assertEqual(messages, ["Moved 1 transaction to Household."])
         elsewhere.refresh_from_db()
@@ -251,7 +302,9 @@ class CategoryNameOrderTests(StashTestCase):
         for name in ("яйца", "Вода", "бензин", "Аптека"):
             Category.objects.create(name=name, category_type=Type.EXPENSE)
         Category.objects.create(
-            name="Автомойка", parent=Category.objects.get(name="бензин"), category_type=Type.EXPENSE
+            name="Автомойка",
+            parent=Category.objects.get(name="бензин"),
+            category_type=Type.EXPENSE,
         )
 
     def test_a_dropdown_sorts_in_any_alphabet_with_subcategories_under_their_parent(self):
@@ -260,7 +313,8 @@ class CategoryNameOrderTests(StashTestCase):
 
     def test_the_default_order_is_by_name_key_without_a_join(self):
         self.assertEqual(
-            list(Category.objects.values_list("name", flat=True)), ["Автомойка", "Аптека", "бензин", "Вода", "яйца"]
+            list(Category.objects.values_list("name", flat=True)),
+            ["Автомойка", "Аптека", "бензин", "Вода", "яйца"],
         )
         self.assertNotIn("JOIN", str(Category.objects.all().query))
 
@@ -317,7 +371,8 @@ class CategoriesAlphabeticalOrderTests(StashTestCase):
         self.make("Car insurance")
         self.make("Fuel", parent=car)
         self.assertEqual(
-            [c.name for c in TransactionForm().fields["category"].queryset], ["Car", "Fuel", "Car insurance"]
+            [c.name for c in TransactionForm().fields["category"].queryset],
+            ["Car", "Fuel", "Car insurance"],
         )
 
 
@@ -325,7 +380,9 @@ class SystemManagedCategoryStillGuardedTests(LoggedInTestCase):
     def test_transfer_category_not_offered_in_its_own_usage_views_move_to_list(self):
         account = Account.objects.create(name="Checking")
         other = Account.objects.create(name="Savings")
-        response = self.client.get(reverse("finance:category_usage", args=[account.transfer_category.pk]))
+        response = self.client.get(
+            reverse("finance:category_usage", args=[account.transfer_category.pk])
+        )
         self.assertNotIn(other.transfer_category, response.context["other_categories"])
 
 
@@ -412,7 +469,9 @@ class OneLevelRuleTests(StashTestCase):
 
     def test_the_category_form_shows_the_models_message(self):
         home = Category.objects.create(name="Home", category_type=EXPENSE)
-        form = CategoryForm(data={"name": "Food", "parent": home.pk, "category_type": EXPENSE}, instance=self.food)
+        form = CategoryForm(
+            data={"name": "Food", "parent": home.pk, "category_type": EXPENSE}, instance=self.food
+        )
         self.assertFalse(form.is_valid())
         self.assertIn("already has its own subcategories", form.errors["parent"][0])
 
@@ -489,7 +548,9 @@ class UsageEmptyStylingTests(LoggedInWithAccountTestCase):
 
     def test_a_category_with_transactions_is_not_styled_pale(self):
         used = Category.objects.create(name="Used", category_type=Category.CategoryType.EXPENSE)
-        Transaction.objects.create(account=self.account, date=date(2026, 1, 1), category=used, amount=Decimal("-1.00"))
+        Transaction.objects.create(
+            account=self.account, date=date(2026, 1, 1), category=used, amount=Decimal("-1.00")
+        )
         response = self.client.get(reverse("finance:category_list"))
         # The account's own transfer category always has 0 usage, so
         # some "usage-empty" will exist regardless - check the specific
@@ -508,9 +569,15 @@ class UsageEmptyStylingTests(LoggedInWithAccountTestCase):
 class CategoryDropdownOrderingTests(LoggedInWithAccountTestCase):
     def test_subcategories_sort_next_to_their_own_parent(self):
         food = Category.objects.create(name="Food", category_type=Category.CategoryType.EXPENSE)
-        Category.objects.create(name="Groceries", parent=food, category_type=Category.CategoryType.EXPENSE)
-        personal = Category.objects.create(name="Personal Care", category_type=Category.CategoryType.EXPENSE)
-        Category.objects.create(name="Haircut", parent=personal, category_type=Category.CategoryType.EXPENSE)
+        Category.objects.create(
+            name="Groceries", parent=food, category_type=Category.CategoryType.EXPENSE
+        )
+        personal = Category.objects.create(
+            name="Personal Care", category_type=Category.CategoryType.EXPENSE
+        )
+        Category.objects.create(
+            name="Haircut", parent=personal, category_type=Category.CategoryType.EXPENSE
+        )
         form = TransactionForm()
         names = [str(c) for c in form.fields["category"].queryset]
         # "Personal Care" and its own "Haircut" subcategory land next to
@@ -525,7 +592,9 @@ class IndentedCategoryDropdownTests(LoggedInWithAccountTestCase):
     def setUpTestData(cls):
         super().setUpTestData()
         food = Category.objects.create(name="Food", category_type=Category.CategoryType.EXPENSE)
-        Category.objects.create(name="Groceries", parent=food, category_type=Category.CategoryType.EXPENSE)
+        Category.objects.create(
+            name="Groceries", parent=food, category_type=Category.CategoryType.EXPENSE
+        )
 
     def _assert_indented(self, html):
         self.assertIn(">Food</option>", html)
@@ -590,8 +659,12 @@ class StarterCategoriesXlsxTests(StarterCategoriesFileMixin, StashTestCase):
         self._write({"Basic": [("Expense", "Groceries", None), ("Income", "Work Income", None)]})
         created = starter_categories.add_starter_categories("Basic")
         self.assertEqual(created, ["Groceries", "Work Income"])
-        self.assertEqual(Category.objects.get(name="Groceries").category_type, Category.CategoryType.EXPENSE)
-        self.assertEqual(Category.objects.get(name="Work Income").category_type, Category.CategoryType.INCOME)
+        self.assertEqual(
+            Category.objects.get(name="Groceries").category_type, Category.CategoryType.EXPENSE
+        )
+        self.assertEqual(
+            Category.objects.get(name="Work Income").category_type, Category.CategoryType.INCOME
+        )
         self.assertFalse(Category.objects.filter(parent__isnull=False).exists())
 
     def test_extended_creates_subcategories_under_a_shared_parent(self):
@@ -606,8 +679,12 @@ class StarterCategoriesXlsxTests(StarterCategoriesFileMixin, StashTestCase):
         )
         created = starter_categories.add_starter_categories("Extended")
         auto = Category.objects.get(name="Auto", parent__isnull=True)
-        self.assertEqual(set(auto.subcategories.values_list("name", flat=True)), {"Fuel", "Repairs"})
-        self.assertEqual(created, ["Auto", "Auto: Fuel", "Auto: Repairs", "Other Income", "Other Income: Gifts"])
+        self.assertEqual(
+            set(auto.subcategories.values_list("name", flat=True)), {"Fuel", "Repairs"}
+        )
+        self.assertEqual(
+            created, ["Auto", "Auto: Fuel", "Auto: Repairs", "Other Income", "Other Income: Gifts"]
+        )
 
     def test_running_twice_creates_nothing_the_second_time(self):
         self._write({"Basic": [("Expense", "Groceries", None)]})
@@ -649,10 +726,14 @@ class TheRealStarterCategoriesFileTests(SimpleTestCase):
         what would notice a slip. It checks the rules, not the contents:
         adding or renaming categories is fine."""
         for sheet_name in starter_categories.SHEET_CHOICES:
-            workbook = load_workbook(starter_categories.starter_categories_path(), read_only=True, data_only=True)
+            workbook = load_workbook(
+                starter_categories.starter_categories_path(), read_only=True, data_only=True
+            )
             try:
                 rows = [
-                    row for row in workbook[sheet_name].iter_rows(min_row=2, values_only=True) if row[0] and row[1]
+                    row
+                    for row in workbook[sheet_name].iter_rows(min_row=2, values_only=True)
+                    if row[0] and row[1]
                 ]
             finally:
                 workbook.close()
@@ -665,4 +746,6 @@ class TheRealStarterCategoriesFileTests(SimpleTestCase):
                 )
             with self.subTest(sheet=sheet_name):
                 self.assertTrue(rows)
-                self.assertEqual([key for key, types in types_of_each_category.items() if len(types) > 1], [])
+                self.assertEqual(
+                    [key for key, types in types_of_each_category.items() if len(types) > 1], []
+                )

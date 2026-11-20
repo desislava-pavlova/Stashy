@@ -57,9 +57,15 @@ class StashCreateForm(PinConfirmMixin, forms.Form):
         max_length=60,
         label="Whose stash?",
         widget=forms.TextInput(
-            attrs={"class": "form-control", "autofocus": True, "placeholder": "Alex, Biz Ltd, The Smiths…"}
+            attrs={
+                "class": "form-control",
+                "autofocus": True,
+                "placeholder": "Alex, Biz Ltd, The Smiths…",
+            }
         ),
-        help_text="A person, a business or a family - shown everywhere instead of an internal name.",
+        help_text=(
+            "A person, a business or a family - shown everywhere instead of an internal name."
+        ),
     )
     pin = PinField(label="PIN")
     pin_confirm = PinField(label="Confirm PIN")
@@ -91,7 +97,11 @@ class ForgotPinForm(PinConfirmMixin, forms.Form):
     recovery_code = forms.CharField(
         label="Recovery code",
         widget=forms.TextInput(
-            attrs={"class": "form-control form-control-lg", "autofocus": True, "autocomplete": "off"}
+            attrs={
+                "class": "form-control form-control-lg",
+                "autofocus": True,
+                "autocomplete": "off",
+            }
         ),
     )
     new_pin = PinField(label="New PIN")

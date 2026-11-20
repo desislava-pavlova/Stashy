@@ -43,6 +43,9 @@ first (Settings → Back up now, or copy `stashes/<name>/db.sqlite3`).
 - **C1 — Line length is 119, not 79.** PEP 8 allows teams to agree on up to
   99/119; 119 is Django's own project style and fits this code's long,
   descriptive names. Enforced by ruff, not by hand.
+  *Revised 20/11/2026 (plan 03, S43): the line is 99. PEP 8 lets a team
+  agree on up to 99, not 119, so "99/119" above was a misreading. Comments
+  and docstrings wrap at 72 (plan 03, item 2.5).*
 - **C2 — History leaves code comments.** Dates, phase numbers and "follow-up"
   notes move to DEVLOG.md (where the "why" already lives); code comments keep
   only what explains the code as it is now.

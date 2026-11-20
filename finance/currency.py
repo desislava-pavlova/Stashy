@@ -146,11 +146,13 @@ class RateTable:
         from .models import ExchangeRate
 
         known = {}
-        rows = ExchangeRate.objects.filter(Q(base_currency=self.target) | Q(quote_currency=self.target)).exclude(
-            base_currency=F("quote_currency")
-        )
+        rows = ExchangeRate.objects.filter(
+            Q(base_currency=self.target) | Q(quote_currency=self.target)
+        ).exclude(base_currency=F("quote_currency"))
         manual = ExchangeRate.Source.MANUAL
-        for row in sorted(rows, key=lambda r: (r.date, r.source == manual, r.pk)):  # later rows override earlier ones
+        for row in sorted(
+            rows, key=lambda r: (r.date, r.source == manual, r.pk)
+        ):  # later rows override earlier ones
             if row.quote_currency == self.target:
                 known[row.base_currency] = KnownRate(row.rate, row.date, row.source)
             else:
@@ -170,7 +172,9 @@ class RateTable:
         if currency == self.target:
             return amount
         known = self.known(currency)
-        return None if known is None else (amount * known.rate).quantize(CENT, rounding=ROUND_HALF_UP)
+        return (
+            None if known is None else (amount * known.rate).quantize(CENT, rounding=ROUND_HALF_UP)
+        )
 
 
 def convert_balances(accounts, main_currency, rates=None):
@@ -230,8 +234,8 @@ def fetch_latest_rates(main_currency, currencies):
         rates = {code: Decimal(str(value)) for code, value in payload["rates"].items()}
     except (OSError, ValueError, KeyError, TypeError, AttributeError, InvalidOperation) as error:
         raise RateFetchError(
-            "Couldn't get exchange rates from Frankfurter. Check your internet connection and try again "
-            "— until then Stashy keeps using the rates it already knows."
+            "Couldn't get exchange rates from Frankfurter. Check your internet connection and "
+            "try again — until then Stashy keeps using the rates it already knows."
         ) from error
 
     stored = []

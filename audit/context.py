@@ -55,7 +55,9 @@ def system_action(reason):
     """Log changes made inside this block as automatic, with a
     human-readable reason."""
     parent = _current.get()
-    context = replace(parent, source=SYSTEM, reason=reason, operation=parent.operation or new_operation_id())
+    context = replace(
+        parent, source=SYSTEM, reason=reason, operation=parent.operation or new_operation_id()
+    )
     with _activate(context):
         yield
 

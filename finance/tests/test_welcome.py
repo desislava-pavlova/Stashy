@@ -35,7 +35,9 @@ class SetupFinishedTests(SimpleTestCase):
 class WelcomeWizardTestCase(StashTestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.user = get_user_model().objects.create_user("tester", password="not-a-real-password-123")
+        cls.user = get_user_model().objects.create_user(
+            "tester", password="not-a-real-password-123"
+        )
         cls.profile = Profile.for_user(cls.user)
         cls.profile.owner_name = "Alex"
         cls.profile.welcome_step = 0
@@ -99,23 +101,32 @@ class WelcomeStepOneTests(WelcomeWizardTestCase):
         list applies."""
         before = (self.profile.time_zone, self.profile.main_currency)
         response = self.save_step_one("Mars/Olympus_Mons")
-        self.assertContains(response, "Select a valid choice. Mars/Olympus_Mons is not one of the available choices.")
+        self.assertContains(
+            response,
+            "Select a valid choice. Mars/Olympus_Mons is not one of the available choices.",
+        )
         self.profile.refresh_from_db()
         self.assertEqual((self.profile.time_zone, self.profile.main_currency), before)
         self.assertEqual(self.profile.welcome_step, 0)
 
     def test_the_time_zone_read_from_this_computer_is_the_one_selected(self):
         response = self.show_step_one_with_time_zone("Europe/Lisbon")
-        self.assertContains(response, '<option value="Europe/Lisbon" selected>Europe/Lisbon</option>', html=True)
+        self.assertContains(
+            response, '<option value="Europe/Lisbon" selected>Europe/Lisbon</option>', html=True
+        )
 
-    def test_a_time_zone_read_from_this_computer_but_not_in_the_list_is_still_the_one_selected(self):
+    def test_a_time_zone_read_from_this_computer_but_not_in_the_list_is_still_the_one_selected(
+        self,
+    ):
         """Plan 03, S77: tzlocal gives some Windows zones names that
         zone.tab doesn't list ("FLE Standard Time" is "Europe/Kiev"),
         and stashes made before detection translated them hold that
         name. The dropdown showed Africa/Abidjan instead, and Next saved
         it."""
         response = self.show_step_one_with_time_zone("Europe/Kiev")
-        self.assertContains(response, '<option value="Europe/Kiev" selected>Europe/Kiev</option>', html=True)
+        self.assertContains(
+            response, '<option value="Europe/Kiev" selected>Europe/Kiev</option>', html=True
+        )
 
 
 class WelcomeStepTwoTests(StarterCategoriesFileMixin, WelcomeWizardTestCase):
@@ -139,7 +150,9 @@ class WelcomeStepTwoTests(StarterCategoriesFileMixin, WelcomeWizardTestCase):
 
     def test_an_unavailable_sheet_name_is_rejected(self):
         with mock.patch.object(starter_categories, "available_sheets", return_value=["Basic"]):
-            response = self.client.post(reverse("finance:welcome_step", args=[2]), {"sheet": "Extended"})
+            response = self.client.post(
+                reverse("finance:welcome_step", args=[2]), {"sheet": "Extended"}
+            )
         self.assertEqual(response.status_code, 200)
         self.profile.refresh_from_db()
         self.assertEqual(self.profile.welcome_step, 1)
@@ -148,7 +161,9 @@ class WelcomeStepTwoTests(StarterCategoriesFileMixin, WelcomeWizardTestCase):
         with mock.patch.object(starter_categories, "available_sheets", return_value=[]):
             get_response = self.client.get(reverse("finance:welcome_step", args=[2]))
             self.assertContains(get_response, "wasn't found")
-            post_response = self.client.post(reverse("finance:welcome_step", args=[2]), {"skip": "1"})
+            post_response = self.client.post(
+                reverse("finance:welcome_step", args=[2]), {"skip": "1"}
+            )
         self.assertRedirects(post_response, reverse("finance:welcome_step", args=[3]))
         self.profile.refresh_from_db()
         self.assertEqual(self.profile.welcome_step, 2)
@@ -172,11 +187,17 @@ class WelcomeStepTwoWithTheRealFileTests(WelcomeWizardTestCase):
     def rows_of(sheet_name):
         """(type, category, subcategory or None) for each row of the
         shipped file's sheet."""
-        workbook = load_workbook(starter_categories.starter_categories_path(), read_only=True, data_only=True)
+        workbook = load_workbook(
+            starter_categories.starter_categories_path(), read_only=True, data_only=True
+        )
         try:
             rows = workbook[sheet_name].iter_rows(min_row=2, values_only=True)
             return [
-                (str(type_name).strip().lower(), str(category).strip(), str(sub).strip() if sub else None)
+                (
+                    str(type_name).strip().lower(),
+                    str(category).strip(),
+                    str(sub).strip() if sub else None,
+                )
                 for type_name, category, sub in rows
                 if type_name and category
             ]
@@ -189,15 +210,20 @@ class WelcomeStepTwoWithTheRealFileTests(WelcomeWizardTestCase):
         subcategories = {(name_key(category), name_key(sub)) for _, category, sub in rows if sub}
         self.assertTrue(main_types)
 
-        response = self.client.post(reverse("finance:welcome_step", args=[2]), {"sheet": sheet_name})
+        response = self.client.post(
+            reverse("finance:welcome_step", args=[2]), {"sheet": sheet_name}
+        )
 
         self.assertRedirects(response, reverse("finance:welcome_step", args=[3]))
         self.profile.refresh_from_db()
         self.assertEqual(self.profile.welcome_step, 2)
         created = Category.objects.select_related("parent")
-        self.assertEqual({c.name_key: c.category_type for c in created.filter(parent__isnull=True)}, main_types)
         self.assertEqual(
-            {(c.parent.name_key, c.name_key) for c in created.filter(parent__isnull=False)}, subcategories
+            {c.name_key: c.category_type for c in created.filter(parent__isnull=True)}, main_types
+        )
+        self.assertEqual(
+            {(c.parent.name_key, c.name_key) for c in created.filter(parent__isnull=False)},
+            subcategories,
         )
         total = len(main_types) + len(subcategories)
         self.assertEqual(
@@ -226,7 +252,9 @@ class WelcomeStepThreeTests(WelcomeWizardTestCase):
         super().setUpTestData()
         cls.profile.welcome_step = 2
         cls.profile.save(update_fields=["welcome_step"])
-        cls.category = Category.objects.create(name="Bills", category_type=Category.CategoryType.EXPENSE)
+        cls.category = Category.objects.create(
+            name="Bills", category_type=Category.CategoryType.EXPENSE
+        )
 
     def test_skip_advances_without_saving_anything(self):
         response = self.client.post(reverse("finance:welcome_step", args=[3]), {"skip": "1"})
@@ -253,7 +281,10 @@ class WelcomeStepThreeTests(WelcomeWizardTestCase):
         needs the same care."""
         response = self.client.post(
             reverse("finance:welcome_step", args=[3]),
-            {"watched_expenses_title": "Bills", "watched_expenses_categories": [self.category.pk, "9" * 30]},
+            {
+                "watched_expenses_title": "Bills",
+                "watched_expenses_categories": [self.category.pk, "9" * 30],
+            },
         )
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "finance/welcome_watched_expenses.html")
@@ -269,7 +300,11 @@ class WelcomeStepThreeTests(WelcomeWizardTestCase):
         self.profile.welcome_step = 3
         self.profile.save(update_fields=["welcome_step"])
         self.profile.watched_expenses_categories.set([self.category])
-        steps = [([power.pk], [power]), ([self.category.pk, power.pk], [self.category, power]), ([], [])]
+        steps = [
+            ([power.pk], [power]),
+            ([self.category.pk, power.pk], [self.category, power]),
+            ([], []),
+        ]
         for chosen, expected in steps:
             with self.subTest(chosen=chosen):
                 self.client.post(
@@ -315,21 +350,33 @@ class WelcomeStepsKeepTheLoginStateTests(WelcomeWizardTestCase):
         for step, data in posts.items():
             with self.subTest(step=step):
                 Profile.objects.filter(pk=self.profile.pk).update(
-                    welcome_step=step - 1, failed_pin_attempts=0, locked_until=None, recovery_code_hash="old hash"
+                    welcome_step=step - 1,
+                    failed_pin_attempts=0,
+                    locked_until=None,
+                    recovery_code_hash="old hash",
                 )
                 old_copy = Profile.objects.get(pk=self.profile.pk)
                 locked_until = timezone.now() + timedelta(minutes=5)
                 Profile.objects.filter(pk=self.profile.pk).update(
-                    failed_pin_attempts=3, locked_until=locked_until, recovery_code_hash="today's hash"
+                    failed_pin_attempts=3,
+                    locked_until=locked_until,
+                    recovery_code_hash="today's hash",
                 )
                 with mock.patch.object(Profile, "for_user", return_value=old_copy):
                     response = self.client.post(reverse("finance:welcome_step", args=[step]), data)
                 self.assertRedirects(
-                    response, reverse("finance:welcome_step", args=[step + 1]), fetch_redirect_response=False
+                    response,
+                    reverse("finance:welcome_step", args=[step + 1]),
+                    fetch_redirect_response=False,
                 )
                 saved = Profile.objects.get(pk=self.profile.pk)
                 self.assertEqual(
-                    (saved.welcome_step, saved.failed_pin_attempts, saved.locked_until, saved.recovery_code_hash),
+                    (
+                        saved.welcome_step,
+                        saved.failed_pin_attempts,
+                        saved.locked_until,
+                        saved.recovery_code_hash,
+                    ),
                     (step, 3, locked_until, "today's hash"),
                 )
 

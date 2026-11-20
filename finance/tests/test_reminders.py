@@ -30,7 +30,9 @@ class ReminderSkipTests(LoggedInWithAccountTestCase):
         self.assertEqual(reminder.next_due_date, date(2026, 11, 1))
 
     def test_skip_clears_a_stale_paid_link(self):
-        txn = Transaction.objects.create(account=self.account, date=date(2026, 9, 1), amount=Decimal("-1.00"))
+        txn = Transaction.objects.create(
+            account=self.account, date=date(2026, 9, 1), amount=Decimal("-1.00")
+        )
         reminder = Reminder.objects.create(
             account=self.account,
             amount=Decimal("20.00"),
@@ -47,7 +49,9 @@ class ReminderSkipTests(LoggedInWithAccountTestCase):
             account=self.account, amount=Decimal("20.00"), next_due_date=date(2026, 10, 1)
         )
         response = self.client.get(reverse("finance:reminder_skip", args=[reminder.pk]))
-        self.assertRedirects(response, reverse("finance:reminder_list"))  # a GET only goes back to the list
+        self.assertRedirects(
+            response, reverse("finance:reminder_list")
+        )  # a GET only goes back to the list
         reminder.refresh_from_db()
         self.assertEqual(reminder.next_due_date, date(2026, 10, 1))
 
@@ -57,7 +61,9 @@ class EnterOpensAPrefilledFormTests(LoggedInWithAccountTestCase):
     def setUpTestData(cls):
         super().setUpTestData()
         cls.payee = Payee.objects.create(name="Landlord")
-        cls.category = Category.objects.create(name="Rent", category_type=Category.CategoryType.EXPENSE)
+        cls.category = Category.objects.create(
+            name="Rent", category_type=Category.CategoryType.EXPENSE
+        )
         cls.reminder = Reminder.objects.create(
             account=cls.account,
             payee=cls.payee,
@@ -70,7 +76,9 @@ class EnterOpensAPrefilledFormTests(LoggedInWithAccountTestCase):
         )
 
     def test_get_prefills_from_the_reminder_without_creating_anything(self):
-        response = self.client.get(reverse("finance:transaction_add"), {"reminder": self.reminder.pk})
+        response = self.client.get(
+            reverse("finance:transaction_add"), {"reminder": self.reminder.pk}
+        )
         self.assertEqual(Transaction.objects.count(), 0)
         form = response.context["form"]
         self.assertEqual(form.initial["payee_name"], "Landlord")
@@ -81,7 +89,9 @@ class EnterOpensAPrefilledFormTests(LoggedInWithAccountTestCase):
     def test_a_reminder_with_no_fixed_amount_leaves_amount_blank(self):
         self.reminder.amount = None
         self.reminder.save(update_fields=["amount"])
-        response = self.client.get(reverse("finance:transaction_add"), {"reminder": self.reminder.pk})
+        response = self.client.get(
+            reverse("finance:transaction_add"), {"reminder": self.reminder.pk}
+        )
         self.assertIsNone(response.context["form"].initial.get("amount"))
 
     def test_posting_creates_the_transaction_links_it_and_advances_the_due_date(self):
@@ -143,7 +153,10 @@ class EnterOpensAPrefilledFormTests(LoggedInWithAccountTestCase):
             frequency="one_time",
         )
         response = self._enter(one_time)
-        self.assertEqual([str(m) for m in response.context["messages"]], ["Entered 01/10/2026 | Landlord | -500.00."])
+        self.assertEqual(
+            [str(m) for m in response.context["messages"]],
+            ["Entered 01/10/2026 | Landlord | -500.00."],
+        )
 
     def test_entering_one_occurrence_names_it_and_leaves_the_series_where_it_is(self):
         # An occurrence is a one-time reminder of its own: no "moved it
@@ -160,15 +173,22 @@ class EnterOpensAPrefilledFormTests(LoggedInWithAccountTestCase):
         )
         november = head.occurrences.get(next_due_date=date(2026, 11, 1))
         response = self._enter(november, on="01/11/2026")
-        self.assertEqual([str(m) for m in response.context["messages"]], ["Entered 01/11/2026 | Landlord | -500.00."])
+        self.assertEqual(
+            [str(m) for m in response.context["messages"]],
+            ["Entered 01/11/2026 | Landlord | -500.00."],
+        )
         head.refresh_from_db()
         november.refresh_from_db()
         self.assertEqual(head.next_due_date, date(2026, 10, 1))
         self.assertEqual(november.status(), "paid")
 
     def test_editing_an_existing_transaction_ignores_a_reminder_param(self):
-        txn = Transaction.objects.create(account=self.account, date=date(2026, 1, 1), amount=Decimal("-1.00"))
-        response = self.client.get(reverse("finance:transaction_edit", args=[txn.pk]), {"reminder": self.reminder.pk})
+        txn = Transaction.objects.create(
+            account=self.account, date=date(2026, 1, 1), amount=Decimal("-1.00")
+        )
+        response = self.client.get(
+            reverse("finance:transaction_edit", args=[txn.pk]), {"reminder": self.reminder.pk}
+        )
         self.assertIsNone(response.context["reminder"])
 
 
@@ -185,9 +205,15 @@ class ReminderListFilterTests(LoggedInWithAccountTestCase):
     @classmethod
     def setUpTestData(cls):
         super().setUpTestData()
-        cls.soon = Reminder.objects.create(account=cls.account, amount=Decimal("1"), next_due_date=date(2026, 9, 15))
-        cls.later = Reminder.objects.create(account=cls.account, amount=Decimal("1"), next_due_date=date(2026, 12, 1))
-        txn = Transaction.objects.create(account=cls.account, date=date(2026, 9, 1), amount=Decimal("-1.00"))
+        cls.soon = Reminder.objects.create(
+            account=cls.account, amount=Decimal("1"), next_due_date=date(2026, 9, 15)
+        )
+        cls.later = Reminder.objects.create(
+            account=cls.account, amount=Decimal("1"), next_due_date=date(2026, 12, 1)
+        )
+        txn = Transaction.objects.create(
+            account=cls.account, date=date(2026, 9, 1), amount=Decimal("-1.00")
+        )
         cls.paid = Reminder.objects.create(
             account=cls.account,
             amount=Decimal("1"),
@@ -205,7 +231,9 @@ class ReminderListFilterTests(LoggedInWithAccountTestCase):
 
     @mock.patch("django.utils.timezone.localdate", return_value=TODAY_13_SEPT)
     def test_show_paid_reveals_them(self, _):
-        response = self.client.get(reverse("finance:reminder_list"), {"show_done": "1", "window": "all"})
+        response = self.client.get(
+            reverse("finance:reminder_list"), {"show_done": "1", "window": "all"}
+        )
         ids = {r.pk for r in response.context["reminders"]}
         self.assertIn(self.paid.pk, ids)
 
@@ -242,7 +270,9 @@ class OneTimeFrequencyTests(LoggedInWithAccountTestCase):
         )
         self.assertRedirects(response, reverse("finance:reminder_list"))
         reminder.refresh_from_db()
-        self.assertEqual(reminder.next_due_date, date(2026, 9, 20))  # unchanged - nothing to advance to
+        self.assertEqual(
+            reminder.next_due_date, date(2026, 9, 20)
+        )  # unchanged - nothing to advance to
         self.assertEqual(reminder.status(), "paid")
 
     def test_skipping_a_one_time_reminder_marks_it_skipped_instead_of_advancing(self):
@@ -277,7 +307,8 @@ class ReminderFormFieldOrderTests(LoggedInWithAccountTestCase):
         self.assertContains(
             response,
             '<script id="frequency-unit-words" type="application/json">'
-            '{"weekly": "week(s)", "monthly": "month(s)", "quarterly": "quarter(s)", "yearly": "year(s)"}</script>',
+            '{"weekly": "week(s)", "monthly": "month(s)", "quarterly": "quarter(s)", '
+            '"yearly": "year(s)"}</script>',
             html=False,
         )
 
@@ -324,7 +355,9 @@ class EnterMemoFromHistoryTests(LoggedInWithAccountTestCase):
 
 class SignedReminderAmountDisplayTests(LoggedInWithAccountTestCase):
     def test_expense_shows_negative_in_the_list(self):
-        Reminder.objects.create(account=self.account, amount=Decimal("50.00"), next_due_date=timezone.localdate())
+        Reminder.objects.create(
+            account=self.account, amount=Decimal("50.00"), next_due_date=timezone.localdate()
+        )
         response = self.client.get(reverse("finance:reminder_list"), {"window": "all"})
         self.assertContains(response, 'amount-negative">-50.00')
 
@@ -394,7 +427,9 @@ class ReminderEditScopeTests(LoggedInWithAccountTestCase):
         cls.november = cls.root.occurrences.get(next_due_date=date(2026, 11, 20))
 
     def test_a_standalone_reminder_skips_the_prompt(self):
-        solo = Reminder.objects.create(account=self.account, amount=Decimal("5.00"), next_due_date=date(2026, 9, 25))
+        solo = Reminder.objects.create(
+            account=self.account, amount=Decimal("5.00"), next_due_date=date(2026, 9, 25)
+        )
         response = self.client.get(reverse("finance:reminder_edit", args=[solo.pk]))
         self.assertNotContains(response, "Just this occurrence")
         self.assertContains(response, 'id="id_amount"')
@@ -519,12 +554,16 @@ class ReminderDeleteTitleTests(LoggedInWithAccountTestCase):
         response = self.client.get(reverse("finance:reminder_delete", args=[reminder.pk]))
         self.assertContains(response, "Rent")
 
-        bare = Reminder.objects.create(account=self.account, amount=Decimal("1"), next_due_date=date(2026, 9, 20))
+        bare = Reminder.objects.create(
+            account=self.account, amount=Decimal("1"), next_due_date=date(2026, 9, 20)
+        )
         response = self.client.get(reverse("finance:reminder_delete", args=[bare.pk]))
         self.assertContains(response, "this account")
 
     def test_delete_page_is_centered_not_left_hugging(self):
-        reminder = Reminder.objects.create(account=self.account, amount=Decimal("1"), next_due_date=date(2026, 9, 20))
+        reminder = Reminder.objects.create(
+            account=self.account, amount=Decimal("1"), next_due_date=date(2026, 9, 20)
+        )
         response = self.client.get(reverse("finance:reminder_delete", args=[reminder.pk]))
         self.assertContains(response, "mx-auto")
 
@@ -533,7 +572,10 @@ class ReminderListShowsPayeeTests(LoggedInWithAccountTestCase):
     def test_the_list_shows_the_payee(self):
         payee = Payee.objects.create(name="Landlord")
         Reminder.objects.create(
-            account=self.account, payee=payee, amount=Decimal("500.00"), next_due_date=date(2026, 10, 1)
+            account=self.account,
+            payee=payee,
+            amount=Decimal("500.00"),
+            next_due_date=date(2026, 10, 1),
         )
         response = self.client.get(reverse("finance:reminder_list"), {"window": "all"})
         self.assertContains(response, "Landlord")
@@ -543,10 +585,14 @@ class ReminderListShowsPayeeTests(LoggedInWithAccountTestCase):
 @mock.patch("django.utils.timezone.localdate", return_value=TODAY_19_SEPT)
 class ThisMonthTests(LoggedInWithAccountTestCase):
     def _reminder(self, due, **kw):
-        return Reminder.objects.create(account=self.account, amount=Decimal("5"), next_due_date=due, **kw)
+        return Reminder.objects.create(
+            account=self.account, amount=Decimal("5"), next_due_date=due, **kw
+        )
 
     def test_default_is_this_month_with_paid_and_unpaid_and_nothing_outside(self, _):
-        txn = Transaction.objects.create(account=self.account, date=date(2026, 9, 3), amount=Decimal("-5"))
+        txn = Transaction.objects.create(
+            account=self.account, date=date(2026, 9, 3), amount=Decimal("-5")
+        )
         paid = self._reminder(date(2026, 9, 3), last_entered_transaction=txn)
         unpaid = self._reminder(date(2026, 9, 28))
         before = self._reminder(date(2026, 8, 30))
@@ -567,7 +613,9 @@ class ThisMonthTests(LoggedInWithAccountTestCase):
         self.assertEqual({r.pk for r in response.context["reminders"]}, {inside.pk, outside.pk})
 
     def test_recurring_reminder_with_stale_link_is_never_paid(self, _):
-        txn = Transaction.objects.create(account=self.account, date=date(2026, 9, 1), amount=Decimal("-5"))
+        txn = Transaction.objects.create(
+            account=self.account, date=date(2026, 9, 1), amount=Decimal("-5")
+        )
         r = self._reminder(date(2026, 12, 1), frequency="monthly", last_entered_transaction=txn)
         self.assertEqual(r.status(), "")
 
@@ -608,7 +656,9 @@ class EnteredPeriodStaysVisibleTests(LoggedInWithAccountTestCase):
         root = self._recurring()
         self.client.post(reverse("finance:reminder_skip", args=[root.pk]))
         response = self.client.get(reverse("finance:reminder_list"))
-        self.assertEqual([r.status(TODAY_19_SEPT) for r in response.context["reminders"]], ["skipped"])
+        self.assertEqual(
+            [r.status(TODAY_19_SEPT) for r in response.context["reminders"]], ["skipped"]
+        )
 
     def test_checkbox_is_shown_and_unticking_hides_paid_rows(self, _):
         root = self._recurring()
@@ -616,7 +666,9 @@ class EnteredPeriodStaysVisibleTests(LoggedInWithAccountTestCase):
         response = self.client.get(reverse("finance:reminder_list"))
         self.assertContains(response, "Show paid/skipped")
         self.assertContains(response, 'name="show_done" value="1" checked')
-        response = self.client.get(reverse("finance:reminder_list"), {"window": "month", "show_done": "0"})
+        response = self.client.get(
+            reverse("finance:reminder_list"), {"window": "month", "show_done": "0"}
+        )
         self.assertEqual(list(response.context["reminders"]), [])
 
 
@@ -626,17 +678,26 @@ class ReminderSkipMessageTests(LoggedInWithAccountTestCase):
 
     def _skip(self, **fields):
         reminder = Reminder.objects.create(
-            account=self.account, amount=Decimal("10.00"), next_due_date=date(2026, 10, 1), **fields
+            account=self.account,
+            amount=Decimal("10.00"),
+            next_due_date=date(2026, 10, 1),
+            **fields,
         )
-        response = self.client.post(reverse("finance:reminder_skip", args=[reminder.pk]), follow=True)
+        response = self.client.post(
+            reverse("finance:reminder_skip", args=[reminder.pk]), follow=True
+        )
         return [str(m) for m in response.context["messages"]]
 
     def test_a_recurring_reminder_names_the_date_skipped_and_the_date_it_moved_to(self):
         messages = self._skip(frequency="monthly", end_date=date(2026, 12, 1))
-        self.assertEqual(messages, ["Skipped 01/10/2026 | Reminder | -10.00; moved it to 01/11/2026."])
+        self.assertEqual(
+            messages, ["Skipped 01/10/2026 | Reminder | -10.00; moved it to 01/11/2026."]
+        )
 
     def test_a_one_time_reminder_has_no_move(self):
-        self.assertEqual(self._skip(frequency="one_time"), ["Skipped 01/10/2026 | Reminder | -10.00."])
+        self.assertEqual(
+            self._skip(frequency="one_time"), ["Skipped 01/10/2026 | Reminder | -10.00."]
+        )
 
 
 class ReminderListQueryTests(LoggedInWithAccountTestCase):
@@ -645,7 +706,9 @@ class ReminderListQueryTests(LoggedInWithAccountTestCase):
 
     def queries_with(self, count):
         create_reminders(self.account, count)
-        response, query_count = self.get_and_count_queries(reverse("finance:reminder_list") + "?window=all")
+        response, query_count = self.get_and_count_queries(
+            reverse("finance:reminder_list") + "?window=all"
+        )
         self.assertEqual(len(response.context["reminders"]), Reminder.objects.count())
         return query_count
 

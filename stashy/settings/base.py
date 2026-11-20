@@ -39,7 +39,8 @@ SECRET_KEY = config("SECRET_KEY")
 if SECRET_KEY.strip() in ("", "change-me-to-a-long-random-string"):
     raise ImproperlyConfigured(
         "SECRET_KEY in .env is empty or still the example's placeholder. Set it to a long random "
-        'string, for example what this prints: python -c "import secrets; print(secrets.token_urlsafe(50))"'
+        "string, for example what this prints: "
+        'python -c "import secrets; print(secrets.token_urlsafe(50))"'
     )
 
 # Off unless .env turns it on. With DEBUG on, an error shows the code
@@ -50,7 +51,10 @@ DEBUG = config("DEBUG", default=False, cast=bool)
 # stashy.localhost is the address Stashy.bat opens: browsers send any
 # name ending in .localhost to this computer by themselves. It's always
 # allowed, whatever .env lists.
-ALLOWED_HOSTS = [*config("ALLOWED_HOSTS", default="localhost,127.0.0.1").split(","), "stashy.localhost"]
+ALLOWED_HOSTS = [
+    *config("ALLOWED_HOSTS", default="localhost,127.0.0.1").split(","),
+    "stashy.localhost",
+]
 
 # `manage.py check --deploy` warns about these four HTTPS settings.
 # Stashy runs only on this computer, over plain http://, so none of them

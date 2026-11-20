@@ -74,7 +74,9 @@ instead ("add to 03: …").
 
 | R33 | 16/11/2026 | bug | Reconcile → the review step, "Finish reconciling" | Ticking about a thousand rows or more (for example "Mark all" on an account's first reconciliation, with a long history) and finishing is refused with a plain "Bad Request" page before Stashy's own code runs, so nothing is reconciled and no message explains why. **Cause (Claude, checked 16/11/2026 with Django's own request parser, not in the running app):** every ticked row is its own form field called `transaction`, and Django refuses a form with more than 1,000 fields (`DATA_UPLOAD_MAX_NUMBER_FIELDS`, not set in `settings/base.py`); the page's other fields count too, so the limit is hit at about 997 ticks. **Likely fix (Claude):** raise that one setting, with a comment saying why: this is a local, single-user app, so the limit's protection (a stranger sending huge forms) matters little. The other way is to send the ticked ids as one field filled in by the script, which is more code for the same result. A test with a thousand-odd ticks. Found by the code review of plan 03's part E; the real stash has not been checked for an account that big. | open |
 
-<!-- Next number: R34 -->
+| R34 | 20/11/2026 | change | Import → the result message after an import | The summary says "(1 duplicates skipped)" for a single duplicate: only the transaction and row counts go through `_plural()`, the duplicates count is typed in by hand. **Likely fix (Claude):** "1 duplicate skipped" and "0 duplicates skipped", through the same `_plural()`, in `_import_summary()` (`views/imports.py`). Polish, so Claude's to fix when it is next in that function; held back from plan 03's S43 on purpose, so that commit stays a pure re-wrap whose text provably didn't change. A test for 0, 1 and 2 duplicates (see plan 03's S126). Found by the code review of S43. | open |
+
+<!-- Next number: R35 -->
 
 ## R20 details: names of things (11/11/2026)
 

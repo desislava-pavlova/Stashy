@@ -70,7 +70,9 @@ def payee_list(request):
 
     usage_by_payee = {
         row["payee_id"]: row["count"]
-        for row in Transaction.objects.filter(payee_id__in=payee_ids).values("payee_id").annotate(count=Count("id"))
+        for row in Transaction.objects.filter(payee_id__in=payee_ids)
+        .values("payee_id")
+        .annotate(count=Count("id"))
     }
 
     totals_by_payee = {}
@@ -79,7 +81,9 @@ def payee_list(request):
         .values("payee_id", "account__currency")
         .annotate(total=Sum("amount"))
     ):
-        totals_by_payee.setdefault(row["payee_id"], []).append((row["account__currency"], row["total"]))
+        totals_by_payee.setdefault(row["payee_id"], []).append(
+            (row["account__currency"], row["total"])
+        )
 
     rows = []
     for payee in payees:
@@ -89,7 +93,9 @@ def payee_list(request):
             {
                 "payee": payee,
                 "categories": labels,
-                "categories_label": ", ".join(labels),  # sort key only - the template shows one per row
+                "categories_label": ", ".join(
+                    labels
+                ),  # sort key only - the template shows one per row
                 "category_count": len(labels),
                 "totals": totals,
                 # Currency-blind, for sort order only: never shown as an
@@ -128,7 +134,9 @@ def payee_detail(request, pk):
     """Every category ever used with this payee, and the most recent
     memo/amount in each."""
     payee = get_object_or_404(Payee, pk=pk)
-    return render(request, "finance/payee_detail.html", {"payee": payee, "history": payee.category_history()})
+    return render(
+        request, "finance/payee_detail.html", {"payee": payee, "history": payee.category_history()}
+    )
 
 
 class PayeeCreateView(CreateView):

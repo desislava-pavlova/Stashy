@@ -220,7 +220,9 @@ def _xlsx_response(filename, headers, rows):
                 cell.number_format = "0.00"
             elif isinstance(value, date):
                 cell.number_format = date_format
-    response = HttpResponse(content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    response = HttpResponse(
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
     response["Content-Disposition"] = f'attachment; filename="{filename}.xlsx"'
     workbook.save(response)
     return response

@@ -88,7 +88,9 @@ class StaticFileTests(SimpleTestCase):
         with override_settings(STATIC_ROOT=tmp.name, STORAGES=base.STORAGES):
             call_command("collectstatic", interactive=False, verbosity=0)
             stylesheet = staticfiles_storage.stored_name("finance/css/stashy.css")
-            icons = staticfiles_storage.stored_name("finance/vendor/bootstrap-icons/bootstrap-icons.min.css")
+            icons = staticfiles_storage.stored_name(
+                "finance/vendor/bootstrap-icons/bootstrap-icons.min.css"
+            )
 
         self.assertRegex(stylesheet, r"^finance/css/stashy\.[0-9a-f]{12}\.css$")
         # References inside CSS are rewritten too, so the icon font is
@@ -124,7 +126,9 @@ class StaticFileTests(SimpleTestCase):
         token = r"(--stashy-[a-z0-9-]+)\s*:"
         light = set(re.findall(token, text[light_start:dark_start]))
         dark = set(re.findall(token, text[dark_start:].split("\n}\n")[0]))
-        self.assertIn("--stashy-positive-soft", light)  # so a change to the file's layout can't empty this
+        self.assertIn(
+            "--stashy-positive-soft", light
+        )  # so a change to the file's layout can't empty this
         self.assertEqual(sorted(light - dark), ["--stashy-font-body", "--stashy-font-display"])
         self.assertEqual(sorted(dark - light), [])
 
@@ -145,7 +149,9 @@ class StaticFileTests(SimpleTestCase):
 class TestSettingsTests(SimpleTestCase):
     def test_the_suite_runs_with_its_own_settings(self):
         self.assertEqual(settings.SETTINGS_MODULE, "stashy.settings.test")
-        self.assertEqual(settings.PASSWORD_HASHERS, ["django.contrib.auth.hashers.MD5PasswordHasher"])
+        self.assertEqual(
+            settings.PASSWORD_HASHERS, ["django.contrib.auth.hashers.MD5PasswordHasher"]
+        )
 
     def test_the_suite_only_ever_sees_its_own_test_stash(self):
         self.assertNotEqual(Path(settings.STASHES_DIR), Path(base.STASHES_DIR))
@@ -157,7 +163,11 @@ class TestSettingsTests(SimpleTestCase):
         self.assertFalse(hasattr(base, "TESTING"))
         for folder in ("finance", "audit", "stashy"):
             for path in (Path(settings.BASE_DIR) / folder).rglob("*.py"):
-                if "tests" in path.parts or path.name.startswith("test") or "migrations" in path.parts:
+                if (
+                    "tests" in path.parts
+                    or path.name.startswith("test")
+                    or "migrations" in path.parts
+                ):
                     continue
                 with self.subTest(file=path.name):
                     self.assertNotIn("TESTING", path.read_text(encoding="utf-8"))
@@ -178,7 +188,9 @@ class TestSettingsTests(SimpleTestCase):
             with (
                 self.subTest(value=value),
                 mock.patch.dict(os.environ, {"SECRET_KEY": value}),
-                self.assertRaisesMessage(ImproperlyConfigured, "SECRET_KEY in .env is empty or still the example's"),
+                self.assertRaisesMessage(
+                    ImproperlyConfigured, "SECRET_KEY in .env is empty or still the example's"
+                ),
             ):
                 runpy.run_path(base.__file__)
 
@@ -195,7 +207,9 @@ class DeployCheckTests(StashTestCase):
         """Plan 03, S10: the four HTTPS warnings can't apply to Stashy
         and are silenced by name, so a new warning fails this test."""
         with override_settings(SECRET_KEY=secrets.token_urlsafe(50)):
-            call_command("check", deploy=True, fail_level="WARNING", stdout=StringIO(), stderr=StringIO())
+            call_command(
+                "check", deploy=True, fail_level="WARNING", stdout=StringIO(), stderr=StringIO()
+            )
 
 
 class LoginCookieTests(StashTestCase):
@@ -270,7 +284,10 @@ class EnvFileTests(SimpleTestCase):
         created = (self.root / ".env").read_text(encoding="utf-8").splitlines()
         key_line = example.index("SECRET_KEY=")
         self.assertRegex(created[key_line], r"^SECRET_KEY=[\w-]{60,}$")
-        self.assertEqual(created[:key_line] + created[key_line + 1 :], example[:key_line] + example[key_line + 1 :])
+        self.assertEqual(
+            created[:key_line] + created[key_line + 1 :],
+            example[:key_line] + example[key_line + 1 :],
+        )
 
     def test_without_the_example_the_first_run_stops_with_a_message_and_makes_no_env(self):
         with self.assertRaisesMessage(bootstrap.SetupError, ".env.example is missing"):
@@ -281,7 +298,9 @@ class EnvFileTests(SimpleTestCase):
         shutil.copy(self.EXAMPLE, self.root / ".env.example")
         (self.root / ".env").write_text("SECRET_KEY=mine\nPORT=8001\n", encoding="utf-8")
         bootstrap.ensure_env_file()
-        self.assertEqual((self.root / ".env").read_text(encoding="utf-8"), "SECRET_KEY=mine\nPORT=8001\n")
+        self.assertEqual(
+            (self.root / ".env").read_text(encoding="utf-8"), "SECRET_KEY=mine\nPORT=8001\n"
+        )
 
 
 class LaunchScriptFindsTheSameStashesTests(SimpleTestCase):
@@ -319,7 +338,9 @@ class LaunchScriptFindsTheSameStashesTests(SimpleTestCase):
         self.make_folder("no-database-yet", database=False)
         (self.root / "stashes" / "notes.txt").write_text("not a stash", encoding="utf-8")
 
-        self.assertEqual([folder.name for folder in bootstrap._stash_dirs()], ["alex", "default-dan"])
+        self.assertEqual(
+            [folder.name for folder in bootstrap._stash_dirs()], ["alex", "default-dan"]
+        )
 
     def test_no_stashes_folder_means_no_stashes(self):
         self.assertEqual(bootstrap._stash_dirs(), [])
@@ -356,7 +377,9 @@ class LaunchScriptImportsNeedNoDjangoTests(SimpleTestCase):
             {
                 node.module
                 for node in ast.walk(tree)
-                if isinstance(node, ast.ImportFrom) and node.module and node.module.split(".")[0] == "finance"
+                if isinstance(node, ast.ImportFrom)
+                and node.module
+                and node.module.split(".")[0] == "finance"
             }
         )
 
@@ -383,7 +406,9 @@ class LaunchScriptImportsNeedNoDjangoTests(SimpleTestCase):
             else:
                 continue
             found += [
-                name for name in names if name.startswith(".") or name.split(".")[0] not in sys.stdlib_module_names
+                name
+                for name in names
+                if name.startswith(".") or name.split(".")[0] not in sys.stdlib_module_names
             ]
         return found
 
@@ -403,7 +428,10 @@ class LaunchScriptImportsNeedNoDjangoTests(SimpleTestCase):
         self.addCleanup(folder.cleanup)
         path = Path(folder.name) / "not_standard_library_only.py"
         path.write_text(
-            "import json\nfrom django.conf import settings\n\n\ndef later():\n    from . import registry\n",
+            "import json\n"
+            "from django.conf import settings\n\n\n"
+            "def later():\n"
+            "    from . import registry\n",
             encoding="utf-8",
         )
         self.assertEqual(self.imports_outside_the_standard_library(path), ["django.conf", "."])
@@ -421,7 +449,13 @@ class TestRunFolderIsRemovedAtExitTests(SimpleTestCase):
         scratch = tempfile.TemporaryDirectory()
         self.addCleanup(scratch.cleanup)
         result = subprocess.run(
-            [sys.executable, "-W", "always", "-c", "import stashy.settings.test as s; print(s.STASHES_DIR)"],
+            [
+                sys.executable,
+                "-W",
+                "always",
+                "-c",
+                "import stashy.settings.test as s; print(s.STASHES_DIR)",
+            ],
             cwd=settings.BASE_DIR,
             env={**os.environ, "TMP": scratch.name, "TEMP": scratch.name, "TMPDIR": scratch.name},
             capture_output=True,
@@ -488,12 +522,19 @@ class OneTodayTests(SimpleTestCase):
         root = Path(settings.BASE_DIR)
         for folder in ("finance", "audit", "stashy"):
             for path in (root / folder).rglob("*.py"):
-                if "tests" in path.parts or path.name.startswith("test") or "migrations" in path.parts:
+                if (
+                    "tests" in path.parts
+                    or path.name.startswith("test")
+                    or "migrations" in path.parts
+                ):
                     continue
                 if path.name == "backup.py":
                     continue
                 with self.subTest(file=str(path.relative_to(root))):
-                    self.assertNotRegex(path.read_text(encoding="utf-8"), r"\bdate\.today\(|\bdatetime\.(today|now)\(")
+                    self.assertNotRegex(
+                        path.read_text(encoding="utf-8"),
+                        r"\bdate\.today\(|\bdatetime\.(today|now)\(",
+                    )
 
 
 class NoHiddenImportCyclesTests(SimpleTestCase):
@@ -519,4 +560,6 @@ class NoHiddenImportCyclesTests(SimpleTestCase):
                             comments_above.append(lines[index].strip())
                             index -= 1
                         with self.subTest(file=str(path.relative_to(root)), line=node.lineno):
-                            self.assertTrue(any(c.startswith("# Imported here") for c in comments_above))
+                            self.assertTrue(
+                                any(c.startswith("# Imported here") for c in comments_above)
+                            )

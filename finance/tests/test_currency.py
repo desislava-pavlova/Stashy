@@ -63,15 +63,21 @@ class CurrencyConversionTests(StashTestCase):
 
     def test_the_same_day_rule_holds_when_the_typed_rate_is_stored_the_other_way_round(self):
         self.add_rate(ExchangeRate.Source.FRANKFURTER, "0.90")  # 1 USD = 0.90 EUR
-        self.add_rate(ExchangeRate.Source.MANUAL, "1.25", base="EUR", quote="USD")  # 1 EUR = 1.25 USD
+        self.add_rate(
+            ExchangeRate.Source.MANUAL, "1.25", base="EUR", quote="USD"
+        )  # 1 EUR = 1.25 USD
         known = RateTable("EUR").known("USD")
         self.assertEqual((known.rate, known.source), (Decimal("0.8"), ExchangeRate.Source.MANUAL))
 
     def test_accounts_missing_a_rate_are_reported_but_others_still_total(self):
         eur_account = Account.objects.create(name="Checking", currency="EUR")
-        Transaction.objects.create(account=eur_account, date=date(2026, 1, 1), amount=Decimal("50.00"))
+        Transaction.objects.create(
+            account=eur_account, date=date(2026, 1, 1), amount=Decimal("50.00")
+        )
         yen_account = Account.objects.create(name="Japan trip", currency="JPY")
-        Transaction.objects.create(account=yen_account, date=date(2026, 1, 1), amount=Decimal("1000.00"))
+        Transaction.objects.create(
+            account=yen_account, date=date(2026, 1, 1), amount=Decimal("1000.00")
+        )
 
         total, missing = convert_balances([eur_account, yen_account], "EUR")
         self.assertEqual(total, Decimal("50.00"))
@@ -84,7 +90,9 @@ def frankfurter_replies(payload, raw=None):
     `with` block opens and json.load() reads. Nothing here touches the
     internet."""
     response = mock.MagicMock()
-    response.__enter__.return_value = io.BytesIO(raw if raw is not None else json.dumps(payload).encode())
+    response.__enter__.return_value = io.BytesIO(
+        raw if raw is not None else json.dumps(payload).encode()
+    )
     return mock.patch("finance.currency.urllib.request.urlopen", return_value=response)
 
 
@@ -111,14 +119,18 @@ class FetchLatestRatesTests(StashTestCase):
             fetch_latest_rates("EUR", ["USD", "EUR", "GBP", "USD"])
 
         request = urlopen.call_args.args[0]
-        self.assertEqual(parse_qs(urlsplit(request.full_url).query), {"base": ["EUR"], "symbols": ["GBP,USD"]})
+        self.assertEqual(
+            parse_qs(urlsplit(request.full_url).query), {"base": ["EUR"], "symbols": ["GBP,USD"]}
+        )
 
     def test_the_request_has_a_timeout_and_says_who_is_asking(self):
         with frankfurter_replies(self.REPLY) as urlopen:
             fetch_latest_rates("EUR", ["USD"])
 
         self.assertEqual(urlopen.call_args.kwargs["timeout"], 10)  # Settings waits for this
-        self.assertEqual(urlopen.call_args.args[0].get_header("User-agent"), "Stashy personal finance app")
+        self.assertEqual(
+            urlopen.call_args.args[0].get_header("User-agent"), "Stashy personal finance app"
+        )
 
     def test_fetching_again_the_same_day_updates_the_rate_instead_of_adding_a_second(self):
         with frankfurter_replies(self.REPLY):
@@ -126,7 +138,9 @@ class FetchLatestRatesTests(StashTestCase):
         with frankfurter_replies({**self.REPLY, "rates": {"USD": 1.2}}):
             fetch_latest_rates("EUR", ["USD"])
 
-        self.assertEqual(list(ExchangeRate.objects.values_list("rate", flat=True)), [Decimal("1.2")])
+        self.assertEqual(
+            list(ExchangeRate.objects.values_list("rate", flat=True)), [Decimal("1.2")]
+        )
 
     def test_a_reply_dated_outside_the_limits_is_refused_and_nothing_is_stored(self):
         """A rate dated 9999-12-31 would be the latest one for ever."""
@@ -156,7 +170,10 @@ class FetchLatestRatesTests(StashTestCase):
         entry = AuditLogEntry.objects.filter(table=ExchangeRate._meta.db_table).first()
         self.assertEqual(
             (entry.source, entry.reason),
-            (AuditLogEntry.Source.AUTOMATIC, "Exchange rates fetched from Frankfurter (European Central Bank)"),
+            (
+                AuditLogEntry.Source.AUTOMATIC,
+                "Exchange rates fetched from Frankfurter (European Central Bank)",
+            ),
         )
 
     def test_the_lev_is_never_asked_for_and_is_reported_as_unavailable(self):
@@ -204,8 +221,13 @@ class FetchLatestRatesTests(StashTestCase):
         self.assertFalse(ExchangeRate.objects.exists())
 
     def test_offline_raises_and_stores_nothing(self):
-        offline = mock.patch("finance.currency.urllib.request.urlopen", side_effect=URLError("no internet"))
-        with offline, self.assertRaisesMessage(RateFetchError, "keeps using the rates it already knows"):
+        offline = mock.patch(
+            "finance.currency.urllib.request.urlopen", side_effect=URLError("no internet")
+        )
+        with (
+            offline,
+            self.assertRaisesMessage(RateFetchError, "keeps using the rates it already knows"),
+        ):
             fetch_latest_rates("EUR", ["USD"])
 
         self.assertFalse(ExchangeRate.objects.exists())
@@ -226,7 +248,10 @@ class FetchLatestRatesTests(StashTestCase):
                 self.assertFalse(ExchangeRate.objects.exists())
 
     def test_a_reply_that_isnt_json_at_all_raises_and_stores_nothing(self):
-        with frankfurter_replies(None, raw=b"<html>Bad gateway</html>"), self.assertRaises(RateFetchError):
+        with (
+            frankfurter_replies(None, raw=b"<html>Bad gateway</html>"),
+            self.assertRaises(RateFetchError),
+        ):
             fetch_latest_rates("EUR", ["USD"])
 
         self.assertFalse(ExchangeRate.objects.exists())

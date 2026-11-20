@@ -13,7 +13,13 @@ from audit.models import AuditLogEntry
 
 from ..forms import PayeeForm
 from ..models import Account, Category, Payee, Transaction, name_key
-from .base import LoggedInTestCase, LoggedInWithAccountTestCase, StashTestCase, csv_upload, post_import
+from .base import (
+    LoggedInTestCase,
+    LoggedInWithAccountTestCase,
+    StashTestCase,
+    csv_upload,
+    post_import,
+)
 
 
 class NameKeyTests(StashTestCase):
@@ -63,7 +69,8 @@ class PayeeDefaultOrderTests(StashTestCase):
         for name in ("Zara", "lidl", "бензин", "Аптека", "Вода"):
             Payee.objects.create(name=name)
         self.assertEqual(
-            list(Payee.objects.values_list("name", flat=True)), ["lidl", "Zara", "Аптека", "бензин", "Вода"]
+            list(Payee.objects.values_list("name", flat=True)),
+            ["lidl", "Zara", "Аптека", "бензин", "Вода"],
         )
 
 
@@ -109,7 +116,9 @@ class PayeeResolutionViewTests(StashTestCase):
 
     @classmethod
     def setUpTestData(cls):
-        cls.user = get_user_model().objects.create_user("tester", password="not-a-real-password-123")
+        cls.user = get_user_model().objects.create_user(
+            "tester", password="not-a-real-password-123"
+        )
         cls.account = Account.objects.create(name="Checking")
         cls.lidl = Payee.objects.create(name="Lidl")
 
@@ -149,11 +158,15 @@ class PayeeResolutionViewTests(StashTestCase):
         post_import(self.client, self.account, csv_upload(content))
         self.assertEqual(Transaction.objects.get(amount=Decimal("-5.00")).payee, self.lidl)
         self.assertEqual(Payee.objects.count(), 2)
-        rewe_row = AuditLogEntry.objects.get(table="finance_payee", action="insert", row_label="Rewe")
+        rewe_row = AuditLogEntry.objects.get(
+            table="finance_payee", action="insert", row_label="Rewe"
+        )
         self.assertEqual(rewe_row.reason, "Imported from bank.csv")
 
     def test_autofill_finds_the_payee_in_any_case(self):
-        Transaction.objects.create(account=self.account, date=date(2026, 9, 1), payee=self.lidl, amount=Decimal("-3"))
+        Transaction.objects.create(
+            account=self.account, date=date(2026, 9, 1), payee=self.lidl, amount=Decimal("-3")
+        )
         response = self.client.get(reverse("finance:api_payee_autofill"), {"name": "LIDL"})
         self.assertEqual(len(response.json()["combos"]), 1)
 
@@ -320,7 +333,9 @@ class PayeeListFilterAndSortTests(LoggedInWithAccountTestCase):
             with self.subTest(sort=sort):
                 response = self.client.get(reverse("finance:payee_list"), {"sort": sort})
                 self.assertEqual(response.context["sort"], "name")
-                self.assertEqual([r["payee"].name for r in response.context["rows"]], ["Ikea", "Lidl"])
+                self.assertEqual(
+                    [r["payee"].name for r in response.context["rows"]], ["Ikea", "Lidl"]
+                )
                 self.assertRegex(response.content.decode(), r"Payee\s*<i [^>]*caret-up-fill")
 
     def test_a_category_filter_that_is_not_a_number_is_ignored(self):
@@ -328,7 +343,9 @@ class PayeeListFilterAndSortTests(LoggedInWithAccountTestCase):
         # which used to be a 500 page.
         for bad in ("abc", "²", "-1", "9" * 30):
             with self.subTest(category=bad):
-                self.assertEqual({r["payee"].name for r in self.rows(category=bad)}, {"Ikea", "Lidl"})
+                self.assertEqual(
+                    {r["payee"].name for r in self.rows(category=bad)}, {"Ikea", "Lidl"}
+                )
 
     def test_search_by_name(self):
         names = [r["payee"].name for r in self.rows(q="lid")]
@@ -414,10 +431,18 @@ class PayeeListDistinctCategoriesTests(LoggedInWithAccountTestCase):
         fuel = Category.objects.create(name="Fuel", category_type=Category.CategoryType.EXPENSE)
         payee = Payee.objects.create(name="Shop")
         Transaction.objects.create(
-            account=self.account, date=date(2026, 1, 1), payee=payee, category=food, amount=Decimal("-5.00")
+            account=self.account,
+            date=date(2026, 1, 1),
+            payee=payee,
+            category=food,
+            amount=Decimal("-5.00"),
         )
         Transaction.objects.create(
-            account=self.account, date=date(2026, 1, 2), payee=payee, category=fuel, amount=Decimal("-5.00")
+            account=self.account,
+            date=date(2026, 1, 2),
+            payee=payee,
+            category=fuel,
+            amount=Decimal("-5.00"),
         )
         response = self.client.get(reverse("finance:payee_list"))
         row = next(r for r in response.context["rows"] if r["payee"] == payee)
@@ -426,8 +451,12 @@ class PayeeListDistinctCategoriesTests(LoggedInWithAccountTestCase):
 
 class PayeeListCategoryOrderTests(LoggedInTestCase):
     def test_category_filter_is_ordered_like_other_category_dropdowns(self):
-        groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
-        Category.objects.create(name="Supermarket", parent=groceries, category_type=Category.CategoryType.EXPENSE)
+        groceries = Category.objects.create(
+            name="Groceries", category_type=Category.CategoryType.EXPENSE
+        )
+        Category.objects.create(
+            name="Supermarket", parent=groceries, category_type=Category.CategoryType.EXPENSE
+        )
         Category.objects.create(name="Bakery", category_type=Category.CategoryType.EXPENSE)
         response = self.client.get(reverse("finance:payee_list"))
         # "Bakery" sorts before "Groceries", and "Supermarket"

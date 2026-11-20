@@ -13,7 +13,13 @@ from django.views.generic import CreateView, DeleteView, ListView, UpdateView
 from .. import regional
 from ..content import ACCOUNT_TIPS
 from ..currency import SUFFIX_CURRENCIES, convert_balances, format_money
-from ..forms import AccountCreateForm, AccountForm, ReconcileFinishForm, ReconcileStartForm, TransferForm
+from ..forms import (
+    AccountCreateForm,
+    AccountForm,
+    ReconcileFinishForm,
+    ReconcileStartForm,
+    TransferForm,
+)
 from ..limits import MAX_AMOUNT
 from ..models import Account, grouped_accounts
 from ..money import ZERO
@@ -111,7 +117,9 @@ def account_transfer(request, pk):
         if form.is_valid():
             form.save()
             amount = format_money(form.cleaned_data["amount"], account.currency)
-            messages.success(request, f"Transferred {amount} to {form.cleaned_data['to_account'].name}.")
+            messages.success(
+                request, f"Transferred {amount} to {form.cleaned_data['to_account'].name}."
+            )
             return redirect("finance:account_detail", pk=account.pk)
     else:
         form = TransferForm(from_account=account)
@@ -121,7 +129,9 @@ def account_transfer(request, pk):
 def _reconcile_review_context(account, statement_date, statement_balance, checked_ids=None):
     opening_balance = account.reconciled_balance()
     candidates = list(
-        account.transactions.filter(reconciled=False, date__lte=statement_date).order_by("date", "transaction_number")
+        account.transactions.filter(reconciled=False, date__lte=statement_date).order_by(
+            "date", "transaction_number"
+        )
     )
     if checked_ids is None:
         # First visit to the checklist starts with nothing checked - use
@@ -149,11 +159,12 @@ def _reconcile_review_context(account, statement_date, statement_balance, checke
 def _reconcile_refusal(error, account):
     """What the review page says when a reconciliation is refused."""
     if isinstance(error, reconciliation.AmountTooBigError):
+        figure = format_money(error.amount, account.currency)
+        largest = format_money(MAX_AMOUNT, account.currency)
         return (
-            f"A figure in that reconciliation, {format_money(error.amount, account.currency)}, is more "
-            f"than Stashy can store ({format_money(MAX_AMOUNT, account.currency)}). It is the "
-            "difference to your statement, or the balance this account already has reconciled: "
-            "check the statement balance for a typo."
+            f"A figure in that reconciliation, {figure}, is more than Stashy can store "
+            f"({largest}). It is the difference to your statement, or the balance this "
+            "account already has reconciled: check the statement balance for a typo."
         )
     return (
         f"That leaves a difference of {format_money(error.difference, account.currency)} — "
@@ -173,7 +184,10 @@ def account_reconcile(request, pk):
             # Only a tampered or half-sent page gets here (the fields
             # are hidden), or one whose transactions were reconciled
             # elsewhere meanwhile - start over from step 1.
-            messages.error(request, "Something in that reconciliation didn't come through. Please start it again.")
+            messages.error(
+                request,
+                "Something in that reconciliation didn't come through. Please start it again.",
+            )
             return render(
                 request,
                 "finance/account_reconcile_start.html",
@@ -194,7 +208,10 @@ def account_reconcile(request, pk):
                 checked,
                 accept_difference=finish_form.cleaned_data["accept_difference"],
             )
-        except (reconciliation.UnacceptedDifferenceError, reconciliation.AmountTooBigError) as error:
+        except (
+            reconciliation.UnacceptedDifferenceError,
+            reconciliation.AmountTooBigError,
+        ) as error:
             messages.error(request, _reconcile_refusal(error, account))
             checked_ids = {str(t.pk) for t in checked}
             return render(
@@ -202,7 +219,9 @@ def account_reconcile(request, pk):
                 "finance/account_reconcile_review.html",
                 _reconcile_review_context(account, statement_date, statement_balance, checked_ids),
             )
-        messages.success(request, f"{account.name} reconciled to {regional.format_date(statement_date)}.")
+        messages.success(
+            request, f"{account.name} reconciled to {regional.format_date(statement_date)}."
+        )
         return redirect("finance:account_detail", pk=account.pk)
 
     if request.method == "POST":
@@ -212,7 +231,9 @@ def account_reconcile(request, pk):
                 request,
                 "finance/account_reconcile_review.html",
                 _reconcile_review_context(
-                    account, start_form.cleaned_data["statement_date"], start_form.cleaned_data["statement_balance"]
+                    account,
+                    start_form.cleaned_data["statement_date"],
+                    start_form.cleaned_data["statement_balance"],
                 ),
             )
     else:

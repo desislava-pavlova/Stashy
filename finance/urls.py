@@ -39,8 +39,14 @@ urlpatterns = [
     # Categories
     path("categories/", categories.CategoryListView.as_view(), name="category_list"),
     path("categories/add/", categories.CategoryCreateView.as_view(), name="category_add"),
-    path("categories/<int:pk>/edit/", categories.CategoryUpdateView.as_view(), name="category_edit"),
-    path("categories/<int:pk>/delete/", categories.CategoryDeleteView.as_view(), name="category_delete"),
+    path(
+        "categories/<int:pk>/edit/", categories.CategoryUpdateView.as_view(), name="category_edit"
+    ),
+    path(
+        "categories/<int:pk>/delete/",
+        categories.CategoryDeleteView.as_view(),
+        name="category_delete",
+    ),
     path("categories/<int:pk>/usage/", categories.category_usage, name="category_usage"),
     # Payees
     path("payees/", payees.payee_list, name="payee_list"),
@@ -51,14 +57,28 @@ urlpatterns = [
     # Transactions
     path("transactions/", transactions.transaction_list, name="transaction_list"),
     path("transactions/add/", transactions.transaction_form_view, name="transaction_add"),
-    path("transactions/<int:pk>/edit/", transactions.transaction_form_view, name="transaction_edit"),
-    path("transactions/<int:pk>/quick-edit/", transactions.transaction_quick_edit, name="transaction_quick_edit"),
-    path("transactions/<int:pk>/delete/", transactions.TransactionDeleteView.as_view(), name="transaction_delete"),
+    path(
+        "transactions/<int:pk>/edit/", transactions.transaction_form_view, name="transaction_edit"
+    ),
+    path(
+        "transactions/<int:pk>/quick-edit/",
+        transactions.transaction_quick_edit,
+        name="transaction_quick_edit",
+    ),
+    path(
+        "transactions/<int:pk>/delete/",
+        transactions.TransactionDeleteView.as_view(),
+        name="transaction_delete",
+    ),
     # Reminders
     path("reminders/", reminders.reminder_list, name="reminder_list"),
     path("reminders/add/", reminders.ReminderCreateView.as_view(), name="reminder_add"),
     path("reminders/<int:pk>/edit/", reminders.reminder_edit, name="reminder_edit"),
-    path("reminders/<int:pk>/delete/", reminders.ReminderDeleteView.as_view(), name="reminder_delete"),
+    path(
+        "reminders/<int:pk>/delete/",
+        reminders.ReminderDeleteView.as_view(),
+        name="reminder_delete",
+    ),
     path("reminders/<int:pk>/skip/", reminders.reminder_skip, name="reminder_skip"),
     # Import
     path("import/", imports.import_transactions, name="import_transactions"),
@@ -76,7 +96,11 @@ urlpatterns = [
     path("settings/", settings_views.settings_view, name="settings"),
     path("settings/rates/check/", settings_views.check_rates, name="check_rates"),
     path("settings/backups/create/", settings_views.create_backup, name="create_backup"),
-    path("settings/watched-expenses/", settings_views.save_watched_expenses, name="save_watched_expenses"),
+    path(
+        "settings/watched-expenses/",
+        settings_views.save_watched_expenses,
+        name="save_watched_expenses",
+    ),
     path("settings/backups/restore/", settings_views.backup_restore, name="backup_restore"),
     path("settings/change-pin/", settings_views.change_pin_view, name="change_pin"),
     path("settings/recovery-code/", settings_views.recovery_code_view, name="recovery_code"),

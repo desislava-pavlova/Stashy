@@ -13,7 +13,17 @@ from django.contrib.auth.models import Group, User
 from audit.admin import AuditHistoryAdminMixin
 from stashy.admin_mixins import HandMadeRequestMixin
 
-from .models import Account, Category, ExchangeRate, ImportBatch, Payee, Profile, Reconciliation, Reminder, Transaction
+from .models import (
+    Account,
+    Category,
+    ExchangeRate,
+    ImportBatch,
+    Payee,
+    Profile,
+    Reconciliation,
+    Reminder,
+    Transaction,
+)
 
 
 # The admin is used by regular people, not a developer - Users and
@@ -35,7 +45,14 @@ class ProfileAdmin(StashyModelAdmin):
     here. The recovery-code hash and PIN-lockout fields are left off
     entirely - they're operational secrets/state, not preferences."""
 
-    list_display = ("user", "main_currency", "date_format", "number_format", "time_zone", "first_day_of_week")
+    list_display = (
+        "user",
+        "main_currency",
+        "date_format",
+        "number_format",
+        "time_zone",
+        "first_day_of_week",
+    )
     fields = (
         "user",
         "main_currency",
@@ -103,7 +120,15 @@ class PayeeAdmin(StashyModelAdmin):
 
 @admin.register(Transaction)
 class TransactionAdmin(StashyModelAdmin):
-    list_display = ("date", "transaction_number", "account", "display_payee", "category", "amount", "reconciled")
+    list_display = (
+        "date",
+        "transaction_number",
+        "account",
+        "display_payee",
+        "category",
+        "amount",
+        "reconciled",
+    )
     list_filter = ("account", "category", "reconciled")
     search_fields = ("payee__name", "memo")
     date_hierarchy = "date"
@@ -117,7 +142,15 @@ class ImportBatchAdmin(StashyModelAdmin):
 
 @admin.register(Reminder)
 class ReminderAdmin(StashyModelAdmin):
-    list_display = ("__str__", "account", "reminder_type", "signed_amount", "frequency", "next_due_date", "status")
+    list_display = (
+        "__str__",
+        "account",
+        "reminder_type",
+        "signed_amount",
+        "frequency",
+        "next_due_date",
+        "status",
+    )
     list_filter = ("reminder_type", "frequency")
 
 

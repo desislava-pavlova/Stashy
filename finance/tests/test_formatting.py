@@ -52,7 +52,12 @@ class ToCentTests(SimpleTestCase):
     def test_a_tiny_negative_rounds_to_zero_without_its_sign(self):
         # S95: Decimal("-0.0033") used to come back as Decimal("-0.00"),
         # which the CSV wrote as "-0.00".
-        for value in (Decimal("-0.0033"), Decimal("-0.004"), Decimal("-0.00"), Decimal("-5.55e-17")):
+        for value in (
+            Decimal("-0.0033"),
+            Decimal("-0.004"),
+            Decimal("-0.00"),
+            Decimal("-5.55e-17"),
+        ):
             with self.subTest(value=value):
                 result = to_cent(value)
                 self.assertEqual(str(result), "0.00")
@@ -92,7 +97,9 @@ class DateFormatTests(SimpleTestCase):
 class RegionalPreferencesTests(SimpleTestCase):
     def test_format_number_respects_the_active_style(self):
         comma_style = regional.Preferences(number_format="dot_comma")
-        self.assertEqual(regional.format_number(Decimal("1234.5"), preferences=comma_style), "1.234,50")
+        self.assertEqual(
+            regional.format_number(Decimal("1234.5"), preferences=comma_style), "1.234,50"
+        )
 
     def test_format_date_respects_the_active_style(self):
         ymd = regional.Preferences(date_format="ymd")
@@ -130,7 +137,9 @@ class RegionalPreferencesTests(SimpleTestCase):
             with (
                 self.subTest(country=country),
                 mock.patch.object(regional, "_read_windows_settings", return_value=({}, country)),
-                mock.patch.object(regional.tzlocal, "get_localzone_name", return_value="Europe/Kiev"),
+                mock.patch.object(
+                    regional.tzlocal, "get_localzone_name", return_value="Europe/Kiev"
+                ),
             ):
                 self.assertEqual(regional.detect_from_computer().time_zone, expected)
 
@@ -144,7 +153,15 @@ class RegionalPreferencesTests(SimpleTestCase):
         hold anything: a path, the name of a folder or of another file
         in the time zone database."""
         listed = regional.time_zone_choices()
-        for text in ("../../etc/passwd", "/etc/passwd", "Europe", "zone.tab", "tzdata.zi", "", None):
+        for text in (
+            "../../etc/passwd",
+            "/etc/passwd",
+            "Europe",
+            "zone.tab",
+            "tzdata.zi",
+            "",
+            None,
+        ):
             with self.subTest(text=text):
                 self.assertEqual(regional.time_zone_choices(keep=text), listed)
                 self.assertIsNone(regional.listed_zone(text))
@@ -174,7 +191,9 @@ class RegionalPreferencesTests(SimpleTestCase):
     def test_a_computer_zone_the_list_cannot_name_falls_back_to_the_default_zone(self):
         for name in ("Mars/Olympus_Mons", "", None):
             with self.subTest(name=name):
-                self.assertEqual(self.detect_with(return_value=name).time_zone, regional.DEFAULTS.time_zone)
+                self.assertEqual(
+                    self.detect_with(return_value=name).time_zone, regional.DEFAULTS.time_zone
+                )
 
     def test_a_computer_whose_zone_cannot_be_read_falls_back_to_the_default_zone(self):
         detected = self.detect_with(side_effect=RuntimeError("the zone setting is unreadable"))

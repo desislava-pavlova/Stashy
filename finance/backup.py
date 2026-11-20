@@ -39,7 +39,8 @@ _TIMESTAMP_FORMAT = "%Y-%m-%d_%H-%M-%S"
 # underscores itself (before_restore, before_update), so it's matched
 # lazily and the timestamp anchors the end.
 _NAME_RE = re.compile(
-    r"^(?:[a-z0-9-]+_)?(?:backup|db)_(?P<tag>\w+?)_(?P<stamp>\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}|\d{8}_\d{6})$"
+    r"^(?:[a-z0-9-]+_)?(?:backup|db)_(?P<tag>\w+?)_"
+    r"(?P<stamp>\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}|\d{8}_\d{6})$"
 )
 # How long a restore waits for other connections to finish writing
 # before giving up.
@@ -71,7 +72,10 @@ def _stash_label(project_root):
     """`project_root` is the stash's own folder, so its name is the
     stash's name. Made safe for the filename pattern above, for a folder
     that isn't a stash (the tests' temp folders)."""
-    return re.sub(r"[^a-z0-9-]+", "-", Path(project_root).resolve().name.lower()).strip("-") or "stash"
+    return (
+        re.sub(r"[^a-z0-9-]+", "-", Path(project_root).resolve().name.lower()).strip("-")
+        or "stash"
+    )
 
 
 def backup_now(db_path, project_root, tag="manual"):
@@ -149,7 +153,9 @@ def quarterly_backup_if_due(db_path, project_root):
     than ~90 days old. Returns the new Path, or None if a backup wasn't
     due (or there's no database yet)."""
     existing = [p for p in list_backups(project_root) if _tag(p) == "quarterly"]
-    if existing and date.today() - _parse_stamp(existing[0]).date() < timedelta(days=QUARTERLY_MIN_GAP_DAYS):
+    if existing and date.today() - _parse_stamp(existing[0]).date() < timedelta(
+        days=QUARTERLY_MIN_GAP_DAYS
+    ):
         return None
     return backup_now(db_path, project_root, tag="quarterly")
 

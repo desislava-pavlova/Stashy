@@ -40,15 +40,40 @@ class ExportTransactionsTests(LoggedInWithAccountTestCase):
         self.assertEqual(response["Content-Type"], "text/csv; charset=utf-8")
         rows = csv_rows(response)
         self.assertEqual(
-            rows[0], ["Date", "Number", "Account", "Payee", "Category", "Memo", "Amount", "Currency", "Reconciled"]
+            rows[0],
+            [
+                "Date",
+                "Number",
+                "Account",
+                "Payee",
+                "Category",
+                "Memo",
+                "Amount",
+                "Currency",
+                "Reconciled",
+            ],
         )
         self.assertIn(
-            ["2026-01-01", rows[1][1], "Checking", "Landlord", "Rent", "January rent", "-500.00", "EUR", "Y"], rows
+            [
+                "2026-01-01",
+                rows[1][1],
+                "Checking",
+                "Landlord",
+                "Rent",
+                "January rent",
+                "-500.00",
+                "EUR",
+                "Y",
+            ],
+            rows,
         )
 
     def test_xlsx_export_has_the_right_content_type(self):
         response = self.client.get(reverse("finance:export_transactions"), {"format": "xlsx"})
-        self.assertEqual(response["Content-Type"], "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        self.assertEqual(
+            response["Content-Type"],
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
         self.assertTrue(len(response.content) > 0)
 
     def test_export_respects_the_current_filters(self):
@@ -65,9 +90,12 @@ class ExportTransactionsTests(LoggedInWithAccountTestCase):
         # 8.11: the export link carries the page you're on, and the
         # export ignores it.
         Transaction.objects.bulk_create(
-            Transaction(account=self.account, date=date(2026, 1, 1), amount=Decimal("-1.00")) for _ in range(1001)
+            Transaction(account=self.account, date=date(2026, 1, 1), amount=Decimal("-1.00"))
+            for _ in range(1001)
         )
-        response = self.client.get(reverse("finance:export_transactions"), {"format": "csv", "range": "", "page": 2})
+        response = self.client.get(
+            reverse("finance:export_transactions"), {"format": "csv", "range": "", "page": 2}
+        )
         rows = csv_rows(response)
         self.assertEqual(len(rows), 1 + 1002)  # the header, the rent row and the 1,001 new ones
 
@@ -120,10 +148,12 @@ class ExportOtherListsTests(LoggedInWithAccountTestCase):
         response = self.client.get(reverse("finance:export_payees"), {"format": "csv"})
         marked = {row[0]: row[2] for row in csv_rows(response)[1:]}
         self.assertEqual(
-            {name for name, flag in marked.items() if flag == "Y"}, {n.upper() for n in Payee.SYSTEM_NAMES}
+            {name for name, flag in marked.items() if flag == "Y"},
+            {n.upper() for n in Payee.SYSTEM_NAMES},
         )
         self.assertEqual(
-            {name for name, flag in marked.items() if flag == "N"}, {f"{n} fee" for n in Payee.SYSTEM_NAMES}
+            {name for name, flag in marked.items() if flag == "N"},
+            {f"{n} fee" for n in Payee.SYSTEM_NAMES},
         )
 
 
@@ -213,7 +243,9 @@ class ExcelControlCharacterTests(LoggedInWithAccountTestCase):
         response = self.client.get(reverse("finance:export_categories"), {"format": "xlsx"})
         self.assertEqual(response.status_code, 200)
         sheet = load_workbook(io.BytesIO(response.content)).active
-        self.assertIn("Fuel", [sheet.cell(row=row, column=1).value for row in range(2, sheet.max_row + 1)])
+        self.assertIn(
+            "Fuel", [sheet.cell(row=row, column=1).value for row in range(2, sheet.max_row + 1)]
+        )
 
     def xlsx(self, url_name, *args, **params):
         response = self.client.get(reverse(url_name, args=args), {"format": "xlsx", **params})
@@ -235,12 +267,18 @@ class ExcelControlCharacterTests(LoggedInWithAccountTestCase):
         self.assertIn("Savings", self.column(transactions, 3))
 
     def test_report_exports_clean_the_category_and_account_names_in_their_rows_too(self):
-        fuel = Category.objects.create(name="Fu\x0bel", category_type=Category.CategoryType.EXPENSE)
+        fuel = Category.objects.create(
+            name="Fu\x0bel", category_type=Category.CategoryType.EXPENSE
+        )
         Transaction.objects.create(
             account=self.account, date=timezone.localdate(), category=fuel, amount=Decimal("-5.00")
         )
         Account.objects.create(name="Wal\x1flet")
-        for slug, expected in (("spending", "Fuel"), ("spending-vs-average", "Fuel"), ("net-worth", "  Wallet")):
+        for slug, expected in (
+            ("spending", "Fuel"),
+            ("spending-vs-average", "Fuel"),
+            ("net-worth", "  Wallet"),
+        ):
             with self.subTest(slug=slug):
                 self.assertIn(expected, self.column(self.xlsx("finance:export_report", slug), 1))
 
@@ -299,19 +337,28 @@ class FormulaLikeNamesInReportExportsTests(LoggedInWithAccountTestCase):
     def setUpTestData(cls):
         super().setUpTestData()
         main = Category.objects.create(name="=SUM(1)", category_type=Category.CategoryType.EXPENSE)
-        sub = Category.objects.create(name="+2", parent=main, category_type=Category.CategoryType.EXPENSE)
+        sub = Category.objects.create(
+            name="+2", parent=main, category_type=Category.CategoryType.EXPENSE
+        )
         for category in (main, sub):
             Transaction.objects.create(
-                account=cls.account, date=timezone.localdate(), category=category, amount=Decimal("-5.00")
+                account=cls.account,
+                date=timezone.localdate(),
+                category=category,
+                amount=Decimal("-5.00"),
             )
         Account.objects.create(name="@evil")
 
     def csv_names(self, slug):
-        response = self.client.get(reverse("finance:export_report", args=[slug]), {"format": "csv"})
+        response = self.client.get(
+            reverse("finance:export_report", args=[slug]), {"format": "csv"}
+        )
         return [row[0] for row in csv_rows(response)[1:]]
 
     def xlsx_cells(self, slug):
-        response = self.client.get(reverse("finance:export_report", args=[slug]), {"format": "xlsx"})
+        response = self.client.get(
+            reverse("finance:export_report", args=[slug]), {"format": "xlsx"}
+        )
         sheet = load_workbook(io.BytesIO(response.content)).active
         return [sheet.cell(row=row, column=1) for row in range(2, sheet.max_row + 1)]
 
@@ -340,20 +387,28 @@ class ReportExportTests(LoggedInWithAccountTestCase):
     @classmethod
     def setUpTestData(cls):
         super().setUpTestData()
-        cls.groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
+        cls.groceries = Category.objects.create(
+            name="Groceries", category_type=Category.CategoryType.EXPENSE
+        )
         Transaction.objects.create(
-            account=cls.account, date=timezone.localdate(), category=cls.groceries, amount=Decimal("-42.00")
+            account=cls.account,
+            date=timezone.localdate(),
+            category=cls.groceries,
+            amount=Decimal("-42.00"),
         )
 
     def test_spending_export_has_a_plain_amount_column_when_not_subtotaled(self):
-        response = self.client.get(reverse("finance:export_report", args=["spending"]), {"format": "csv"})
+        response = self.client.get(
+            reverse("finance:export_report", args=["spending"]), {"format": "csv"}
+        )
 
         rows = csv_rows(response)
         self.assertEqual(rows[0], ["Category", "Spending"])
 
     def test_spending_export_gets_period_columns_when_subtotaled(self):
         response = self.client.get(
-            reverse("finance:export_report", args=["spending"]), {"format": "csv", "subtotal": "month"}
+            reverse("finance:export_report", args=["spending"]),
+            {"format": "csv", "subtotal": "month"},
         )
 
         rows = csv_rows(response)
@@ -361,11 +416,15 @@ class ReportExportTests(LoggedInWithAccountTestCase):
         self.assertGreater(len(rows[0]), 2)  # Category + at least one period + Total
 
     def test_watched_expenses_export_404s_when_nothing_is_chosen(self):
-        response = self.client.get(reverse("finance:export_report", args=["watched-expenses"]), {"format": "csv"})
+        response = self.client.get(
+            reverse("finance:export_report", args=["watched-expenses"]), {"format": "csv"}
+        )
         self.assertEqual(response.status_code, 404)
 
     def test_net_worth_export_has_a_group_row_an_account_row_and_a_total_row(self):
-        response = self.client.get(reverse("finance:export_report", args=["net-worth"]), {"format": "csv"})
+        response = self.client.get(
+            reverse("finance:export_report", args=["net-worth"]), {"format": "csv"}
+        )
 
         rows = csv_rows(response)
         names = [row[0] for row in rows[1:]]
@@ -380,13 +439,20 @@ class ReportExportRegistryTests(LoggedInWithAccountTestCase):
     @classmethod
     def setUpTestData(cls):
         super().setUpTestData()
-        cls.groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
+        cls.groceries = Category.objects.create(
+            name="Groceries", category_type=Category.CategoryType.EXPENSE
+        )
         Transaction.objects.create(
-            account=cls.account, date=timezone.localdate(), category=cls.groceries, amount=Decimal("-42.00")
+            account=cls.account,
+            date=timezone.localdate(),
+            category=cls.groceries,
+            amount=Decimal("-42.00"),
         )
 
     def _csv(self, slug, **params):
-        response = self.client.get(reverse("finance:export_report", args=[slug]), {"format": "csv", **params})
+        response = self.client.get(
+            reverse("finance:export_report", args=[slug]), {"format": "csv", **params}
+        )
         return response, csv_rows(response)
 
     def test_every_report_exports_as_csv_and_xlsx(self):
@@ -395,10 +461,14 @@ class ReportExportRegistryTests(LoggedInWithAccountTestCase):
         for slug in REPORT_EXPORTS:
             for fmt, content_type in (("csv", "text/csv"), ("xlsx", "spreadsheetml")):
                 with self.subTest(slug=slug, format=fmt):
-                    response = self.client.get(reverse("finance:export_report", args=[slug]), {"format": fmt})
+                    response = self.client.get(
+                        reverse("finance:export_report", args=[slug]), {"format": fmt}
+                    )
                     self.assertEqual(response.status_code, 200)
                     self.assertIn(content_type, response["Content-Type"])
-                    self.assertIn(f"stashy-{REPORT_EXPORTS[slug].filename}-", response["Content-Disposition"])
+                    self.assertIn(
+                        f"stashy-{REPORT_EXPORTS[slug].filename}-", response["Content-Disposition"]
+                    )
 
     def test_an_unknown_report_is_a_404(self):
         response = self.client.get(reverse("finance:export_report", args=["no-such-report"]))
@@ -423,19 +493,26 @@ class ReportExportRegistryTests(LoggedInWithAccountTestCase):
         the export used to lack them."""
         salary = Category.objects.create(name="Salary", category_type=Category.CategoryType.INCOME)
         Transaction.objects.create(
-            account=self.account, date=timezone.localdate(), category=salary, amount=Decimal("100.00")
+            account=self.account,
+            date=timezone.localdate(),
+            category=salary,
+            amount=Decimal("100.00"),
         )
 
         _response, rows = self._csv("income-expense-vs-average")
         by_name = {row[0]: row for row in rows[1:]}
-        page_table = self.client.get(reverse("finance:reports")).context["income_expense_vs_average_table"]
+        page_table = self.client.get(reverse("finance:reports")).context[
+            "income_expense_vs_average_table"
+        ]
 
         self.assertEqual(by_name["Income total"][1], "100.00")
         self.assertEqual(by_name["Expense total"][1], "42.00")
         page_names = [row["name"] for group in page_table["groups"] for row in group["rows"]]
         self.assertEqual([row[0].strip() for row in rows[1:] if row[0] != "Total"], page_names)
 
-    def test_income_expense_vs_average_export_leaves_every_average_blank_with_no_earlier_periods(self):
+    def test_income_expense_vs_average_export_leaves_every_average_blank_with_no_earlier_periods(
+        self,
+    ):
         """ "Earliest to date" has nothing earlier to average: the
         Summary rows say so like the category rows do, instead of an
         average of 0.00."""
@@ -471,20 +548,28 @@ class RefundExportTests(LoggedInWithAccountTestCase):
     @classmethod
     def setUpTestData(cls):
         super().setUpTestData()
-        cls.groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
+        cls.groceries = Category.objects.create(
+            name="Groceries", category_type=Category.CategoryType.EXPENSE
+        )
         cls.organic = Category.objects.create(
             name="Organic", parent=cls.groceries, category_type=Category.CategoryType.EXPENSE
         )
-        cls.salary = Category.objects.create(name="Salary", category_type=Category.CategoryType.INCOME)
+        cls.salary = Category.objects.create(
+            name="Salary", category_type=Category.CategoryType.INCOME
+        )
 
     def add(self, amount, category=None, on=date(2026, 1, 10)):
         Transaction.objects.create(
-            account=self.account, date=on, category=category or self.groceries, amount=Decimal(amount)
+            account=self.account,
+            date=on,
+            category=category or self.groceries,
+            amount=Decimal(amount),
         )
 
     def get_export(self, slug, fmt="csv", **params):
         return self.client.get(
-            reverse("finance:export_report", args=[slug]), {"format": fmt, **self.JANUARY, **params}
+            reverse("finance:export_report", args=[slug]),
+            {"format": fmt, **self.JANUARY, **params},
         )
 
     def csv_rows(self, slug, **params):
@@ -497,15 +582,21 @@ class RefundExportTests(LoggedInWithAccountTestCase):
 
         rows = self.csv_rows("spending")
 
-        self.assertEqual(rows, [["Category", "Spending"], ["Groceries", "70.00"], ["Total", "70.00"]])
+        self.assertEqual(
+            rows, [["Category", "Spending"], ["Groceries", "70.00"], ["Total", "70.00"]]
+        )
 
-    def test_a_category_that_nets_to_a_refund_is_a_negative_number_in_the_csv_not_escaped_text(self):
+    def test_a_category_that_nets_to_a_refund_is_a_negative_number_in_the_csv_not_escaped_text(
+        self,
+    ):
         self.add("-40.00")
         self.add("100.00")
 
         rows = self.csv_rows("spending")
 
-        self.assertEqual(rows[1:], [["Groceries", "-60.00"], ["Total", "-60.00"]])  # no leading apostrophe
+        self.assertEqual(
+            rows[1:], [["Groceries", "-60.00"], ["Total", "-60.00"]]
+        )  # no leading apostrophe
 
     def test_a_category_that_nets_to_a_refund_is_a_real_negative_number_in_excel(self):
         self.add("-40.00")
@@ -524,13 +615,17 @@ class RefundExportTests(LoggedInWithAccountTestCase):
 
         rows = self.csv_rows("spending")
 
-        self.assertEqual(rows[1:], [["Groceries", "20.00"], ["  Organic", "-10.00"], ["Total", "20.00"]])
+        self.assertEqual(
+            rows[1:], [["Groceries", "20.00"], ["  Organic", "-10.00"], ["Total", "20.00"]]
+        )
 
     def test_a_subtotaled_export_nets_each_period_on_its_own(self):
         self.add("-100.00", on=date(2026, 1, 10))
         self.add("30.00", on=date(2026, 2, 10))
 
-        rows = self.csv_rows("spending", range="custom", start="01/01/2026", end="28/02/2026", subtotal="month")
+        rows = self.csv_rows(
+            "spending", range="custom", start="01/01/2026", end="28/02/2026", subtotal="month"
+        )
 
         self.assertEqual(rows[0], ["Category", "Jan 2026", "Feb 2026", "Total"])
         self.assertEqual(rows[1], ["Groceries", "100.00", "-30.00", "70.00"])
@@ -560,9 +655,13 @@ class RefundExportTests(LoggedInWithAccountTestCase):
 
         rows = self.csv_rows("income-expense")
 
-        self.assertEqual(rows[1:], [["Salary", "1000.00"], ["Groceries", "-70.00"], ["Total", "930.00"]])
+        self.assertEqual(
+            rows[1:], [["Salary", "1000.00"], ["Groceries", "-70.00"], ["Total", "930.00"]]
+        )
 
-    def test_the_spending_vs_average_file_nets_a_refund_in_the_current_and_the_average_columns(self):
+    def test_the_spending_vs_average_file_nets_a_refund_in_the_current_and_the_average_columns(
+        self,
+    ):
         self.add("-40.00")
         self.add("100.00")
         self.add("-50.00", on=date(2025, 12, 10))
@@ -579,10 +678,14 @@ class RefundExportTests(LoggedInWithAccountTestCase):
         self.add("800.00", self.salary, on=date(2025, 12, 5))
         self.add("-200.00", on=date(2025, 12, 6))
 
-    def test_the_income_and_expense_vs_average_file_has_the_same_rows_and_numbers_as_the_page(self):
+    def test_the_income_and_expense_vs_average_file_has_the_same_rows_and_numbers_as_the_page(
+        self,
+    ):
         self.add_two_months_for_the_vs_average_tables()
 
-        table = self.client.get(reverse("finance:reports"), self.JANUARY).context["income_expense_vs_average_table"]
+        table = self.client.get(reverse("finance:reports"), self.JANUARY).context[
+            "income_expense_vs_average_table"
+        ]
         rows = self.csv_rows("income-expense-vs-average")
 
         def cells(row):
@@ -593,16 +696,22 @@ class RefundExportTests(LoggedInWithAccountTestCase):
                 "" if difference is None else f"{difference:.2f}",
             ]
 
-        page_rows = [(row["name"], cells(row)) for group in table["groups"] for row in group["rows"]]
+        page_rows = [
+            (row["name"], cells(row)) for group in table["groups"] for row in group["rows"]
+        ]
         file_rows = [(row[0].strip(), row[1:]) for row in rows[1:] if row[0] != "Total"]
         self.assertEqual(file_rows, page_rows)
         self.assertEqual(dict(file_rows)["Income total"], ["1000.00", "800.00", "200.00"])
-        self.assertEqual(dict(file_rows)["Expense total"], ["220.00", "200.00", "20.00"])  # 250 less the refund
+        self.assertEqual(
+            dict(file_rows)["Expense total"], ["220.00", "200.00", "20.00"]
+        )  # 250 less the refund
 
     def test_the_income_and_expense_vs_average_excel_file_has_the_summary_rows_as_numbers(self):
         self.add_two_months_for_the_vs_average_tables()
 
-        sheet = load_workbook(io.BytesIO(self.get_export("income-expense-vs-average", "xlsx").content)).active
+        sheet = load_workbook(
+            io.BytesIO(self.get_export("income-expense-vs-average", "xlsx").content)
+        ).active
 
         by_name = {row[0].value.strip(): row[1:] for row in sheet.iter_rows(min_row=2)}
         self.assertEqual([cell.value for cell in by_name["Income total"]], [1000, 800, 200])
@@ -627,11 +736,17 @@ class ExportNamesCarryTheTimeTests(LoggedInWithAccountTestCase):
 
     def test_a_list_export_has_the_date_and_time(self):
         response = self.client.get(reverse("finance:export_accounts"), {"format": "csv"})
-        self.assertRegex(response["Content-Disposition"], rf'filename="stashy-accounts-{self.STAMP}\.csv"')
+        self.assertRegex(
+            response["Content-Disposition"], rf'filename="stashy-accounts-{self.STAMP}\.csv"'
+        )
 
     def test_a_report_export_has_the_date_and_time(self):
-        response = self.client.get(reverse("finance:export_report", args=["net-worth"]), {"format": "xlsx"})
-        self.assertRegex(response["Content-Disposition"], rf'filename="stashy-net-worth-{self.STAMP}\.xlsx"')
+        response = self.client.get(
+            reverse("finance:export_report", args=["net-worth"]), {"format": "xlsx"}
+        )
+        self.assertRegex(
+            response["Content-Disposition"], rf'filename="stashy-net-worth-{self.STAMP}\.xlsx"'
+        )
         self.assertTrue(re.search(self.STAMP, response["Content-Disposition"]))
 
 

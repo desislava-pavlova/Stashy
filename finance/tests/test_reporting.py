@@ -37,26 +37,47 @@ class CategoryTotalsTests(LoggedInWithAccountTestCase):
     @classmethod
     def setUpTestData(cls):
         super().setUpTestData()
-        cls.groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
-        cls.salary = Category.objects.create(name="Salary", category_type=Category.CategoryType.INCOME)
+        cls.groceries = Category.objects.create(
+            name="Groceries", category_type=Category.CategoryType.EXPENSE
+        )
+        cls.salary = Category.objects.create(
+            name="Salary", category_type=Category.CategoryType.INCOME
+        )
         cls.other_account = Account.objects.create(name="Savings")
 
     def test_expense_only_returns_positive_magnitudes_sorted_biggest_first(self):
         Transaction.objects.create(
-            account=self.account, date=date(2026, 1, 5), category=self.groceries, amount=Decimal("-30.00")
+            account=self.account,
+            date=date(2026, 1, 5),
+            category=self.groceries,
+            amount=Decimal("-30.00"),
         )
         Transaction.objects.create(
-            account=self.account, date=date(2026, 1, 6), category=self.groceries, amount=Decimal("-90.00")
+            account=self.account,
+            date=date(2026, 1, 6),
+            category=self.groceries,
+            amount=Decimal("-90.00"),
         )
-        rows = reporting.category_totals_top_level(date(2026, 1, 1), date(2026, 1, 31), expense_only=True)
-        self.assertEqual(rows, [{"category_id": self.groceries.pk, "name": "Groceries", "total": Decimal("120.00")}])
+        rows = reporting.category_totals_top_level(
+            date(2026, 1, 1), date(2026, 1, 31), expense_only=True
+        )
+        self.assertEqual(
+            rows,
+            [{"category_id": self.groceries.pk, "name": "Groceries", "total": Decimal("120.00")}],
+        )
 
     def test_signed_totals_span_income_and_expense_sorted_low_to_high(self):
         Transaction.objects.create(
-            account=self.account, date=date(2026, 1, 5), category=self.groceries, amount=Decimal("-30.00")
+            account=self.account,
+            date=date(2026, 1, 5),
+            category=self.groceries,
+            amount=Decimal("-30.00"),
         )
         Transaction.objects.create(
-            account=self.account, date=date(2026, 1, 6), category=self.salary, amount=Decimal("2000.00")
+            account=self.account,
+            date=date(2026, 1, 6),
+            category=self.salary,
+            amount=Decimal("2000.00"),
         )
         rows = reporting.category_totals_top_level(date(2026, 1, 1), date(2026, 1, 31))
         self.assertEqual([r["name"] for r in rows], ["Groceries", "Salary"])
@@ -66,22 +87,34 @@ class CategoryTotalsTests(LoggedInWithAccountTestCase):
     def test_transfers_are_excluded(self):
         transfer_category = self.account.ensure_transfer_category()
         Transaction.objects.create(
-            account=self.account, date=date(2026, 1, 5), category=transfer_category, amount=Decimal("-100.00")
+            account=self.account,
+            date=date(2026, 1, 5),
+            category=transfer_category,
+            amount=Decimal("-100.00"),
         )
         rows = reporting.category_totals_top_level(date(2026, 1, 1), date(2026, 1, 31))
         self.assertEqual(rows, [])
 
     def test_account_filter_limits_to_one_account(self):
         Transaction.objects.create(
-            account=self.account, date=date(2026, 1, 5), category=self.groceries, amount=Decimal("-30.00")
+            account=self.account,
+            date=date(2026, 1, 5),
+            category=self.groceries,
+            amount=Decimal("-30.00"),
         )
         Transaction.objects.create(
-            account=self.other_account, date=date(2026, 1, 6), category=self.groceries, amount=Decimal("-15.00")
+            account=self.other_account,
+            date=date(2026, 1, 6),
+            category=self.groceries,
+            amount=Decimal("-15.00"),
         )
         rows = reporting.category_totals_top_level(
             date(2026, 1, 1), date(2026, 1, 31), expense_only=True, account=self.account
         )
-        self.assertEqual(rows, [{"category_id": self.groceries.pk, "name": "Groceries", "total": Decimal("30.00")}])
+        self.assertEqual(
+            rows,
+            [{"category_id": self.groceries.pk, "name": "Groceries", "total": Decimal("30.00")}],
+        )
 
     def test_a_positive_amount_in_an_expense_category_just_nets_against_it_not_income(self):
         """Phase 13 R1: the category's type alone decides income vs.
@@ -89,18 +122,31 @@ class CategoryTotalsTests(LoggedInWithAccountTestCase):
         under an expense category) nets against that category's own
         total instead of counting as income anywhere."""
         Transaction.objects.create(
-            account=self.account, date=date(2026, 1, 5), category=self.groceries, amount=Decimal("-100.00")
+            account=self.account,
+            date=date(2026, 1, 5),
+            category=self.groceries,
+            amount=Decimal("-100.00"),
         )
         Transaction.objects.create(
-            account=self.account, date=date(2026, 1, 6), category=self.groceries, amount=Decimal("30.00")
+            account=self.account,
+            date=date(2026, 1, 6),
+            category=self.groceries,
+            amount=Decimal("30.00"),
         )
-        rows = reporting.category_totals_top_level(date(2026, 1, 1), date(2026, 1, 31), expense_only=True)
-        self.assertEqual(rows, [{"category_id": self.groceries.pk, "name": "Groceries", "total": Decimal("70.00")}])
+        rows = reporting.category_totals_top_level(
+            date(2026, 1, 1), date(2026, 1, 31), expense_only=True
+        )
+        self.assertEqual(
+            rows,
+            [{"category_id": self.groceries.pk, "name": "Groceries", "total": Decimal("70.00")}],
+        )
         totals = reporting.income_and_spending(date(2026, 1, 1), date(2026, 1, 31))
         self.assertEqual(totals["income"], Decimal("0.00"))
 
     def test_uncategorized_transactions_are_excluded(self):
-        Transaction.objects.create(account=self.account, date=date(2026, 1, 5), amount=Decimal("-30.00"))
+        Transaction.objects.create(
+            account=self.account, date=date(2026, 1, 5), amount=Decimal("-30.00")
+        )
         rows = reporting.category_totals_top_level(date(2026, 1, 1), date(2026, 1, 31))
         self.assertEqual(rows, [])
 
@@ -118,25 +164,38 @@ class CategoryTotalsVsAverageTests(LoggedInWithAccountTestCase):
     @classmethod
     def setUpTestData(cls):
         super().setUpTestData()
-        cls.groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
+        cls.groceries = Category.objects.create(
+            name="Groceries", category_type=Category.CategoryType.EXPENSE
+        )
         cls.start, cls.end = date(2026, 3, 1), date(2026, 3, 31)  # 31 days
 
     def test_current_period_total_and_trailing_average(self):
         Transaction.objects.create(
-            account=self.account, date=self.start, category=self.groceries, amount=Decimal("-50.00")
+            account=self.account,
+            date=self.start,
+            category=self.groceries,
+            amount=Decimal("-50.00"),
         )
         period_1_end = self.start - timedelta(days=1)  # 2026-02-28
         period_1_start = period_1_end - timedelta(days=30)  # 2026-01-29
         period_2_end = period_1_start - timedelta(days=1)  # 2026-01-28
         Transaction.objects.create(
-            account=self.account, date=period_1_start, category=self.groceries, amount=Decimal("-100.00")
+            account=self.account,
+            date=period_1_start,
+            category=self.groceries,
+            amount=Decimal("-100.00"),
         )
         Transaction.objects.create(
-            account=self.account, date=period_2_end, category=self.groceries, amount=Decimal("-300.00")
+            account=self.account,
+            date=period_2_end,
+            category=self.groceries,
+            amount=Decimal("-300.00"),
         )
 
         periods = reporting.vs_average_periods(self.start, self.end, 2)
-        rows = reporting.category_totals_vs_average(self.start, self.end, periods, expense_only=True)
+        rows = reporting.category_totals_vs_average(
+            self.start, self.end, periods, expense_only=True
+        )
         row = next(r for r in rows if r["name"] == "Groceries")
         self.assertEqual(row["current"], Decimal("50.00"))
         self.assertEqual(row["average"], Decimal("200.00"))
@@ -145,16 +204,24 @@ class CategoryTotalsVsAverageTests(LoggedInWithAccountTestCase):
         # A 10-day range looks back in 10-day chunks, not calendar
         # months.
         start, end = date(2026, 3, 1), date(2026, 3, 10)
-        Transaction.objects.create(account=self.account, date=start, category=self.groceries, amount=Decimal("-10.00"))
+        Transaction.objects.create(
+            account=self.account, date=start, category=self.groceries, amount=Decimal("-10.00")
+        )
         # Falls inside the immediately-preceding 10-day period
         # (2026-02-19 .. 2026-02-28).
         Transaction.objects.create(
-            account=self.account, date=date(2026, 2, 25), category=self.groceries, amount=Decimal("-40.00")
+            account=self.account,
+            date=date(2026, 2, 25),
+            category=self.groceries,
+            amount=Decimal("-40.00"),
         )
         # Falls just outside that window, so it must not count toward
         # the average.
         Transaction.objects.create(
-            account=self.account, date=date(2026, 2, 18), category=self.groceries, amount=Decimal("-999.00")
+            account=self.account,
+            date=date(2026, 2, 18),
+            category=self.groceries,
+            amount=Decimal("-999.00"),
         )
 
         periods = reporting.vs_average_periods(start, end, 1)
@@ -167,16 +234,24 @@ class CategoryTotalsVsAverageTests(LoggedInWithAccountTestCase):
         as zero toward its average, not skipped - 2 periods back, one
         with 0 and one with -20.00, averages to -10."""
         Transaction.objects.create(
-            account=self.account, date=self.start, category=self.groceries, amount=Decimal("-30.00")
+            account=self.account,
+            date=self.start,
+            category=self.groceries,
+            amount=Decimal("-30.00"),
         )
         period_1_start = self.start - timedelta(days=31)
         Transaction.objects.create(
-            account=self.account, date=period_1_start, category=self.groceries, amount=Decimal("-20.00")
+            account=self.account,
+            date=period_1_start,
+            category=self.groceries,
+            amount=Decimal("-20.00"),
         )
         # The 2nd trailing period gets no transaction at all - still
         # divides by 2, not 1.
         periods = reporting.vs_average_periods(self.start, self.end, 2)
-        rows = reporting.category_totals_vs_average(self.start, self.end, periods, expense_only=True)
+        rows = reporting.category_totals_vs_average(
+            self.start, self.end, periods, expense_only=True
+        )
         row = next(r for r in rows if r["name"] == "Groceries")
         self.assertEqual(row["average"], Decimal("10.00"))
 
@@ -185,7 +260,10 @@ class CategoryTotalsVsAverageTests(LoggedInWithAccountTestCase):
         # draws no dot. (A category that merely had no activity in
         # existing earlier periods averages 0: plan 04 R6.)
         Transaction.objects.create(
-            account=self.account, date=self.start, category=self.groceries, amount=Decimal("-20.00")
+            account=self.account,
+            date=self.start,
+            category=self.groceries,
+            amount=Decimal("-20.00"),
         )
         rows = reporting.category_totals_vs_average(self.start, self.end, [], expense_only=True)
         row = next(r for r in rows if r["name"] == "Groceries")
@@ -194,9 +272,14 @@ class CategoryTotalsVsAverageTests(LoggedInWithAccountTestCase):
 
     def test_signed_version_keeps_income_positive_and_expense_negative(self):
         salary = Category.objects.create(name="Salary", category_type=Category.CategoryType.INCOME)
-        Transaction.objects.create(account=self.account, date=self.start, category=salary, amount=Decimal("2000.00"))
         Transaction.objects.create(
-            account=self.account, date=self.start, category=self.groceries, amount=Decimal("-50.00")
+            account=self.account, date=self.start, category=salary, amount=Decimal("2000.00")
+        )
+        Transaction.objects.create(
+            account=self.account,
+            date=self.start,
+            category=self.groceries,
+            amount=Decimal("-50.00"),
         )
         periods = reporting.vs_average_periods(self.start, self.end, 3)
         rows = reporting.category_totals_vs_average(self.start, self.end, periods)
@@ -207,17 +290,29 @@ class CategoryTotalsVsAverageTests(LoggedInWithAccountTestCase):
     def test_account_filter_applies_to_both_the_current_and_average_sides(self):
         other_account = Account.objects.create(name="Savings")
         Transaction.objects.create(
-            account=self.account, date=self.start, category=self.groceries, amount=Decimal("-50.00")
+            account=self.account,
+            date=self.start,
+            category=self.groceries,
+            amount=Decimal("-50.00"),
         )
         Transaction.objects.create(
-            account=other_account, date=self.start, category=self.groceries, amount=Decimal("-999.00")
+            account=other_account,
+            date=self.start,
+            category=self.groceries,
+            amount=Decimal("-999.00"),
         )
         period_1_start = self.start - timedelta(days=31)
         Transaction.objects.create(
-            account=self.account, date=period_1_start, category=self.groceries, amount=Decimal("-30.00")
+            account=self.account,
+            date=period_1_start,
+            category=self.groceries,
+            amount=Decimal("-30.00"),
         )
         Transaction.objects.create(
-            account=other_account, date=period_1_start, category=self.groceries, amount=Decimal("-999.00")
+            account=other_account,
+            date=period_1_start,
+            category=self.groceries,
+            amount=Decimal("-999.00"),
         )
 
         periods = reporting.vs_average_periods(self.start, self.end, 1)
@@ -231,25 +326,42 @@ class CategoryTotalsVsAverageTests(LoggedInWithAccountTestCase):
 
 class CategoryTotalsTopLevelTests(LoggedInWithAccountTestCase):
     def test_subcategory_amount_rolls_up_into_its_top_level_parent(self):
-        groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
+        groceries = Category.objects.create(
+            name="Groceries", category_type=Category.CategoryType.EXPENSE
+        )
         supermarket = Category.objects.create(
             name="Supermarket", parent=groceries, category_type=Category.CategoryType.EXPENSE
         )
         Transaction.objects.create(
-            account=self.account, date=date(2026, 1, 5), category=groceries, amount=Decimal("-20.00")
+            account=self.account,
+            date=date(2026, 1, 5),
+            category=groceries,
+            amount=Decimal("-20.00"),
         )
         Transaction.objects.create(
-            account=self.account, date=date(2026, 1, 6), category=supermarket, amount=Decimal("-30.00")
+            account=self.account,
+            date=date(2026, 1, 6),
+            category=supermarket,
+            amount=Decimal("-30.00"),
         )
 
-        rows = reporting.category_totals_top_level(date(2026, 1, 1), date(2026, 1, 31), expense_only=True)
-        self.assertEqual(rows, [{"category_id": groceries.pk, "name": "Groceries", "total": Decimal("50.00")}])
+        rows = reporting.category_totals_top_level(
+            date(2026, 1, 1), date(2026, 1, 31), expense_only=True
+        )
+        self.assertEqual(
+            rows, [{"category_id": groceries.pk, "name": "Groceries", "total": Decimal("50.00")}]
+        )
 
     def test_signed_version_keeps_income_and_expense_separate_top_level_rows(self):
-        groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
+        groceries = Category.objects.create(
+            name="Groceries", category_type=Category.CategoryType.EXPENSE
+        )
         salary = Category.objects.create(name="Salary", category_type=Category.CategoryType.INCOME)
         Transaction.objects.create(
-            account=self.account, date=date(2026, 1, 5), category=groceries, amount=Decimal("-20.00")
+            account=self.account,
+            date=date(2026, 1, 5),
+            category=groceries,
+            amount=Decimal("-20.00"),
         )
         Transaction.objects.create(
             account=self.account, date=date(2026, 1, 6), category=salary, amount=Decimal("2000.00")
@@ -265,8 +377,12 @@ class CategoryTotalsTopLevelTests(LoggedInWithAccountTestCase):
         Transaction.objects.create(
             account=self.account, date=date(2026, 1, 5), category=salary, amount=Decimal("2000.00")
         )
-        Transaction.objects.create(account=self.account, date=date(2026, 1, 6), category=gift, amount=Decimal("50.00"))
-        rows = reporting.category_totals_top_level(date(2026, 1, 1), date(2026, 1, 31), income_only=True)
+        Transaction.objects.create(
+            account=self.account, date=date(2026, 1, 6), category=gift, amount=Decimal("50.00")
+        )
+        rows = reporting.category_totals_top_level(
+            date(2026, 1, 1), date(2026, 1, 31), income_only=True
+        )
         self.assertEqual([r["name"] for r in rows], ["Salary", "Gifts"])
 
 
@@ -296,20 +412,32 @@ class CategoryReportRowsTests(LoggedInWithAccountTestCase):
     @classmethod
     def setUpTestData(cls):
         super().setUpTestData()
-        cls.groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
+        cls.groceries = Category.objects.create(
+            name="Groceries", category_type=Category.CategoryType.EXPENSE
+        )
         cls.supermarket = Category.objects.create(
             name="Supermarket", parent=cls.groceries, category_type=Category.CategoryType.EXPENSE
         )
-        cls.salary = Category.objects.create(name="Salary", category_type=Category.CategoryType.INCOME)
+        cls.salary = Category.objects.create(
+            name="Salary", category_type=Category.CategoryType.INCOME
+        )
 
     def test_parent_rolls_up_its_subcategory_total(self):
         Transaction.objects.create(
-            account=self.account, date=date(2026, 1, 5), category=self.groceries, amount=Decimal("-20.00")
+            account=self.account,
+            date=date(2026, 1, 5),
+            category=self.groceries,
+            amount=Decimal("-20.00"),
         )
         Transaction.objects.create(
-            account=self.account, date=date(2026, 1, 6), category=self.supermarket, amount=Decimal("-30.00")
+            account=self.account,
+            date=date(2026, 1, 6),
+            category=self.supermarket,
+            amount=Decimal("-30.00"),
         )
-        table = reporting.category_report_rows(date(2026, 1, 1), date(2026, 1, 31), expense_only=True)
+        table = reporting.category_report_rows(
+            date(2026, 1, 1), date(2026, 1, 31), expense_only=True
+        )
         rows = table["groups"][0]["rows"]
         parent_row = next(r for r in rows if r["name"] == "Groceries")
         child_row = next(r for r in rows if r["name"] == "Supermarket")
@@ -320,49 +448,79 @@ class CategoryReportRowsTests(LoggedInWithAccountTestCase):
 
     def test_subcategory_appears_right_after_its_parent(self):
         Transaction.objects.create(
-            account=self.account, date=date(2026, 1, 5), category=self.supermarket, amount=Decimal("-10.00")
+            account=self.account,
+            date=date(2026, 1, 5),
+            category=self.supermarket,
+            amount=Decimal("-10.00"),
         )
-        table = reporting.category_report_rows(date(2026, 1, 1), date(2026, 1, 31), expense_only=True)
+        table = reporting.category_report_rows(
+            date(2026, 1, 1), date(2026, 1, 31), expense_only=True
+        )
         names = [r["name"] for r in table["groups"][0]["rows"]]
         self.assertEqual(names, ["Groceries", "Supermarket"])
 
     def test_income_group_comes_before_expense_group(self):
         Transaction.objects.create(
-            account=self.account, date=date(2026, 1, 5), category=self.groceries, amount=Decimal("-20.00")
+            account=self.account,
+            date=date(2026, 1, 5),
+            category=self.groceries,
+            amount=Decimal("-20.00"),
         )
         Transaction.objects.create(
-            account=self.account, date=date(2026, 1, 6), category=self.salary, amount=Decimal("2000.00")
+            account=self.account,
+            date=date(2026, 1, 6),
+            category=self.salary,
+            amount=Decimal("2000.00"),
         )
         table = reporting.category_report_rows(date(2026, 1, 1), date(2026, 1, 31))
         self.assertEqual([g["name"] for g in table["groups"]], ["Income", "Expense"])
 
     def test_grand_total_counts_each_top_level_category_once(self):
         Transaction.objects.create(
-            account=self.account, date=date(2026, 1, 5), category=self.groceries, amount=Decimal("-20.00")
+            account=self.account,
+            date=date(2026, 1, 5),
+            category=self.groceries,
+            amount=Decimal("-20.00"),
         )
         Transaction.objects.create(
-            account=self.account, date=date(2026, 1, 6), category=self.supermarket, amount=Decimal("-30.00")
+            account=self.account,
+            date=date(2026, 1, 6),
+            category=self.supermarket,
+            amount=Decimal("-30.00"),
         )
-        table = reporting.category_report_rows(date(2026, 1, 1), date(2026, 1, 31), expense_only=True)
+        table = reporting.category_report_rows(
+            date(2026, 1, 1), date(2026, 1, 31), expense_only=True
+        )
         # Not -20 + -30 + -50 (which would double count the rolled-up
         # parent) - just -50.
         self.assertEqual(table["totals"]["total"], Decimal("50.00"))
 
     def test_no_subtotal_gives_a_single_value_and_no_period_columns(self):
         Transaction.objects.create(
-            account=self.account, date=date(2026, 1, 5), category=self.groceries, amount=Decimal("-20.00")
+            account=self.account,
+            date=date(2026, 1, 5),
+            category=self.groceries,
+            amount=Decimal("-20.00"),
         )
-        table = reporting.category_report_rows(date(2026, 1, 1), date(2026, 1, 31), expense_only=True)
+        table = reporting.category_report_rows(
+            date(2026, 1, 1), date(2026, 1, 31), expense_only=True
+        )
         self.assertEqual(table["periods"], [])
         row = table["groups"][0]["rows"][0]
         self.assertEqual(row["values"], [Decimal("20.00")])
 
     def test_subtotal_by_month_splits_into_one_column_per_month_plus_a_total(self):
         Transaction.objects.create(
-            account=self.account, date=date(2026, 1, 5), category=self.groceries, amount=Decimal("-20.00")
+            account=self.account,
+            date=date(2026, 1, 5),
+            category=self.groceries,
+            amount=Decimal("-20.00"),
         )
         Transaction.objects.create(
-            account=self.account, date=date(2026, 2, 5), category=self.groceries, amount=Decimal("-30.00")
+            account=self.account,
+            date=date(2026, 2, 5),
+            category=self.groceries,
+            amount=Decimal("-30.00"),
         )
         table = reporting.category_report_rows(
             date(2026, 1, 1), date(2026, 2, 28), subtotal="month", expense_only=True
@@ -373,14 +531,19 @@ class CategoryReportRowsTests(LoggedInWithAccountTestCase):
         self.assertEqual(row["total"], Decimal("50.00"))
 
     def test_empty_period_returns_no_groups_and_no_totals(self):
-        table = reporting.category_report_rows(date(2026, 1, 1), date(2026, 1, 31), expense_only=True)
+        table = reporting.category_report_rows(
+            date(2026, 1, 1), date(2026, 1, 31), expense_only=True
+        )
         self.assertEqual(table["groups"], [])
         self.assertIsNone(table["totals"])
 
     def test_category_ids_restricts_to_that_set(self):
         other = Category.objects.create(name="Rent", category_type=Category.CategoryType.EXPENSE)
         Transaction.objects.create(
-            account=self.account, date=date(2026, 1, 5), category=self.groceries, amount=Decimal("-20.00")
+            account=self.account,
+            date=date(2026, 1, 5),
+            category=self.groceries,
+            amount=Decimal("-20.00"),
         )
         Transaction.objects.create(
             account=self.account, date=date(2026, 1, 6), category=other, amount=Decimal("-500.00")
@@ -397,17 +560,23 @@ class CategoryReportRowsTests(LoggedInWithAccountTestCase):
 
 class CategoryVsAverageReportRowsTests(LoggedInWithAccountTestCase):
     def test_difference_is_current_minus_average(self):
-        groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
+        groceries = Category.objects.create(
+            name="Groceries", category_type=Category.CategoryType.EXPENSE
+        )
         start, end = date(2026, 3, 1), date(2026, 3, 31)
         period_start = start - timedelta(days=31)  # 2026-01-29, the same 31-day period back
-        Transaction.objects.create(account=self.account, date=start, category=groceries, amount=Decimal("-50.00"))
+        Transaction.objects.create(
+            account=self.account, date=start, category=groceries, amount=Decimal("-50.00")
+        )
         Transaction.objects.create(
             account=self.account, date=period_start, category=groceries, amount=Decimal("-30.00")
         )
 
         periods = reporting.vs_average_periods(start, end, 1)
         table = reporting.category_vs_average_report_rows(start, end, periods, expense_only=True)
-        row = next(r for group in table["groups"] for r in group["rows"] if r["name"] == "Groceries")
+        row = next(
+            r for group in table["groups"] for r in group["rows"] if r["name"] == "Groceries"
+        )
         self.assertEqual(row["current"], Decimal("50.00"))
         self.assertEqual(row["average"], Decimal("30.00"))
         self.assertEqual(row["difference"], Decimal("20.00"))
@@ -422,11 +591,17 @@ class CategoryVsAverageReportRowsTests(LoggedInWithAccountTestCase):
         self.assertIsNone(table["totals"])
 
     def test_no_earlier_periods_means_no_average_or_difference(self):
-        groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
+        groceries = Category.objects.create(
+            name="Groceries", category_type=Category.CategoryType.EXPENSE
+        )
         start, end = date(2026, 3, 1), date(2026, 3, 31)
-        Transaction.objects.create(account=self.account, date=start, category=groceries, amount=Decimal("-50.00"))
+        Transaction.objects.create(
+            account=self.account, date=start, category=groceries, amount=Decimal("-50.00")
+        )
         table = reporting.category_vs_average_report_rows(start, end, [], expense_only=True)
-        row = next(r for group in table["groups"] for r in group["rows"] if r["name"] == "Groceries")
+        row = next(
+            r for group in table["groups"] for r in group["rows"] if r["name"] == "Groceries"
+        )
         self.assertIsNone(row["average"])
         self.assertIsNone(row["difference"])
         # 8.8 (F40): the total row follows its rows instead of showing
@@ -454,7 +629,9 @@ class CategoryVsAverageReportRowsTests(LoggedInWithAccountTestCase):
             (date(2026, 9, 3), groceries, "-12.00"),
         ]
         for on, category, amount in spending:
-            Transaction.objects.create(account=self.account, date=on, category=category, amount=Decimal(amount))
+            Transaction.objects.create(
+                account=self.account, date=on, category=category, amount=Decimal(amount)
+            )
         start, end = date(2026, 9, 1), date(2026, 9, 30)
         periods = reporting.vs_average_periods(start, end, 3, range_key="this_month")
         self.assertEqual(min(s for s, _e in periods), date(2026, 6, 1))
@@ -462,9 +639,13 @@ class CategoryVsAverageReportRowsTests(LoggedInWithAccountTestCase):
         table = reporting.category_vs_average_report_rows(start, end, periods, expense_only=True)
 
         grand_totals = [
-            sum(-Decimal(amount) for on, _category, amount in spending if s <= on <= e) for s, e in periods
+            sum(-Decimal(amount) for on, _category, amount in spending if s <= on <= e)
+            for s, e in periods
         ]
-        self.assertEqual(table["totals"]["average"], (sum(grand_totals) / len(periods)).quantize(Decimal("0.01")))
+        self.assertEqual(
+            table["totals"]["average"],
+            (sum(grand_totals) / len(periods)).quantize(Decimal("0.01")),
+        )
         self.assertEqual(table["totals"]["average"], Decimal("335.50"))
 
 
@@ -480,11 +661,15 @@ class RefundsNetAgainstTheirCategoryTests(LoggedInWithAccountTestCase):
     def setUpTestData(cls):
         super().setUpTestData()
         cls.groceries = Category.objects.create(name="Groceries", category_type=EXPENSE)
-        cls.organic = Category.objects.create(name="Organic", parent=cls.groceries, category_type=EXPENSE)
+        cls.organic = Category.objects.create(
+            name="Organic", parent=cls.groceries, category_type=EXPENSE
+        )
         cls.salary = Category.objects.create(name="Salary", category_type=INCOME)
 
     def add(self, amount, category, on=date(2026, 1, 10)):
-        Transaction.objects.create(account=self.account, date=on, category=category, amount=Decimal(amount))
+        Transaction.objects.create(
+            account=self.account, date=on, category=category, amount=Decimal(amount)
+        )
 
     def spending_rows(self, start=None, end=None, **kwargs):
         start, end = start or self.JANUARY[0], end or self.JANUARY[1]
@@ -561,10 +746,16 @@ class RefundsNetAgainstTheirCategoryTests(LoggedInWithAccountTestCase):
         self.add("100.00", self.groceries)
         earlier = [(date(2025, 12, 1), date(2025, 12, 31))]
 
-        chart = reporting.category_totals_vs_average(*self.JANUARY, earlier, expense_only=True, top_level=True)
-        table = reporting.category_vs_average_report_rows(*self.JANUARY, earlier, expense_only=True)
+        chart = reporting.category_totals_vs_average(
+            *self.JANUARY, earlier, expense_only=True, top_level=True
+        )
+        table = reporting.category_vs_average_report_rows(
+            *self.JANUARY, earlier, expense_only=True
+        )
 
-        self.assertEqual((chart[0]["current"], chart[0]["average"]), (Decimal("-60.00"), Decimal("50.00")))
+        self.assertEqual(
+            (chart[0]["current"], chart[0]["average"]), (Decimal("-60.00"), Decimal("50.00"))
+        )
         row = table["groups"][0]["rows"][0]
         self.assertEqual(
             (row["current"], row["average"], row["difference"]),
@@ -603,7 +794,10 @@ class RefundsAcrossCurrenciesAndAccountsTests(LoggedInWithAccountTestCase):
 
     def add(self, account, amount):
         Transaction.objects.create(
-            account=account, date=date(2026, 1, 10), category=self.groceries, amount=Decimal(amount)
+            account=account,
+            date=date(2026, 1, 10),
+            category=self.groceries,
+            amount=Decimal(amount),
         )
 
     def spending_everywhere(self, **kwargs):
@@ -652,7 +846,11 @@ class RefundsAcrossCurrenciesAndAccountsTests(LoggedInWithAccountTestCase):
         self.add(self.savings, "-50.00")
         self.add(self.savings, "80.00")
 
-        for account, expected in [(self.account, "70.00"), (self.savings, "-30.00"), (None, "40.00")]:
+        for account, expected in [
+            (self.account, "70.00"),
+            (self.savings, "-30.00"),
+            (None, "40.00"),
+        ]:
             with self.subTest(account=account):
                 shown = self.spending_everywhere(account=account)
                 self.assertEqual(shown, dict.fromkeys(shown, Decimal(expected)))
@@ -667,7 +865,9 @@ class RefundsAcrossCurrenciesAndAccountsTests(LoggedInWithAccountTestCase):
             *self.JANUARY, earlier, expense_only=True, account=self.account, top_level=True
         )
 
-        self.assertEqual([(r["name"], r["current"]) for r in rows], [("Groceries", Decimal("-60.00"))])
+        self.assertEqual(
+            [(r["name"], r["current"]) for r in rows], [("Groceries", Decimal("-60.00"))]
+        )
 
 
 class RefundsEdgeCasesTests(LoggedInWithAccountTestCase):
@@ -685,7 +885,9 @@ class RefundsEdgeCasesTests(LoggedInWithAccountTestCase):
         cls.salary = Category.objects.create(name="Salary", category_type=INCOME)
 
     def add(self, amount, category, on=date(2026, 1, 10)):
-        Transaction.objects.create(account=self.account, date=on, category=category, amount=Decimal(amount))
+        Transaction.objects.create(
+            account=self.account, date=on, category=category, amount=Decimal(amount)
+        )
 
     def test_a_purchase_refunded_in_full_stays_listed_at_a_plain_zero(self):
         """Locks in today's behaviour: the category is still listed, at
@@ -717,11 +919,17 @@ class RefundsEdgeCasesTests(LoggedInWithAccountTestCase):
         self.add("-40.00", self.groceries)
         self.add("50.00", self.groceries, on=date(2025, 12, 10))
 
-        rows = reporting.category_totals_vs_average(*self.JANUARY, self.DECEMBER, expense_only=True, top_level=True)
-        table = reporting.category_vs_average_report_rows(*self.JANUARY, self.DECEMBER, expense_only=True)
+        rows = reporting.category_totals_vs_average(
+            *self.JANUARY, self.DECEMBER, expense_only=True, top_level=True
+        )
+        table = reporting.category_vs_average_report_rows(
+            *self.JANUARY, self.DECEMBER, expense_only=True
+        )
 
         row = table["groups"][0]["rows"][0]
-        self.assertEqual((rows[0]["current"], rows[0]["average"]), (Decimal("40.00"), Decimal("-50.00")))
+        self.assertEqual(
+            (rows[0]["current"], rows[0]["average"]), (Decimal("40.00"), Decimal("-50.00"))
+        )
         self.assertEqual(
             (row["current"], row["average"], row["difference"]),
             (Decimal("40.00"), Decimal("-50.00"), Decimal("90.00")),
@@ -739,7 +947,9 @@ class RefundsEdgeCasesTests(LoggedInWithAccountTestCase):
         self.add("600.00", self.salary, on=date(2025, 11, 5))
         self.add("-100.00", self.groceries, on=date(2025, 11, 6))
 
-        totals = reporting.income_and_spending_vs_average(*self.JANUARY, [*self.DECEMBER, *november])
+        totals = reporting.income_and_spending_vs_average(
+            *self.JANUARY, [*self.DECEMBER, *november]
+        )
 
         self.assertEqual(totals["current_income"], Decimal("1000.00"))
         self.assertEqual(totals["current_spending"], Decimal("-50.00"))
@@ -784,7 +994,9 @@ class IncomeExpenseVsAverageTableTests(LoggedInWithAccountTestCase):
             (date(2025, 12, 5), cls.salary, "800.00"),
             (date(2025, 12, 6), cls.groceries, "-200.00"),
         ]:
-            Transaction.objects.create(account=cls.account, date=on, category=category, amount=Decimal(amount))
+            Transaction.objects.create(
+                account=cls.account, date=on, category=category, amount=Decimal(amount)
+            )
 
     def summary_rows(self, periods=DECEMBER, **kwargs):
         table = reporting.income_expense_vs_average_report_rows(*self.JANUARY, periods, **kwargs)
@@ -836,19 +1048,29 @@ class IncomeExpenseVsAverageTableTests(LoggedInWithAccountTestCase):
 class NetWorthByAccountTests(LoggedInWithAccountTestCase):
     def test_each_account_gets_its_own_running_balance_per_period(self):
         savings = Account.objects.create(name="Savings")
-        Transaction.objects.create(account=self.account, date=date(2026, 1, 10), amount=Decimal("100.00"))
-        Transaction.objects.create(account=savings, date=date(2026, 2, 10), amount=Decimal("50.00"))
+        Transaction.objects.create(
+            account=self.account, date=date(2026, 1, 10), amount=Decimal("100.00")
+        )
+        Transaction.objects.create(
+            account=savings, date=date(2026, 2, 10), amount=Decimal("50.00")
+        )
 
         table = reporting.net_worth_by_account(date(2026, 1, 1), date(2026, 2, 28), "month")
         self.assertEqual(table["periods"], ["Jan 2026", "Feb 2026"])
-        by_name = {row["name"]: row["values"] for group in table["groups"] for row in group["rows"]}
+        by_name = {
+            row["name"]: row["values"] for group in table["groups"] for row in group["rows"]
+        }
         self.assertEqual(by_name["Checking"], [Decimal("100.00"), Decimal("100.00")])
         self.assertEqual(by_name["Savings"], [Decimal("0.00"), Decimal("50.00")])
 
     def test_each_group_gets_its_own_rolled_up_total(self):
         savings = Account.objects.create(name="Savings")
-        Transaction.objects.create(account=self.account, date=date(2026, 1, 10), amount=Decimal("100.00"))
-        Transaction.objects.create(account=savings, date=date(2026, 1, 15), amount=Decimal("50.00"))
+        Transaction.objects.create(
+            account=self.account, date=date(2026, 1, 10), amount=Decimal("100.00")
+        )
+        Transaction.objects.create(
+            account=savings, date=date(2026, 1, 15), amount=Decimal("50.00")
+        )
         table = reporting.net_worth_by_account(date(2026, 1, 1), date(2026, 1, 31), "month")
         # Both accounts default to the same account_type, so they land
         # in one group together.
@@ -857,8 +1079,12 @@ class NetWorthByAccountTests(LoggedInWithAccountTestCase):
 
     def test_total_row_sums_every_account_per_period(self):
         savings = Account.objects.create(name="Savings")
-        Transaction.objects.create(account=self.account, date=date(2026, 1, 10), amount=Decimal("100.00"))
-        Transaction.objects.create(account=savings, date=date(2026, 1, 15), amount=Decimal("50.00"))
+        Transaction.objects.create(
+            account=self.account, date=date(2026, 1, 10), amount=Decimal("100.00")
+        )
+        Transaction.objects.create(
+            account=savings, date=date(2026, 1, 15), amount=Decimal("50.00")
+        )
         table = reporting.net_worth_by_account(date(2026, 1, 1), date(2026, 1, 31), "month")
         self.assertEqual(table["totals"], [Decimal("150.00")])
 
@@ -878,11 +1104,16 @@ class NetWorthByAccountTests(LoggedInWithAccountTestCase):
         table = reporting.net_worth_by_account(start, end, "week")
         week_ends = [min(end, monday + timedelta(days=6)) for monday in _mondays(start, end)]
         self.assertEqual(len(table["periods"]), len(week_ends))
-        by_name = {row["name"]: row["values"] for group in table["groups"] for row in group["rows"]}
+        by_name = {
+            row["name"]: row["values"] for group in table["groups"] for row in group["rows"]
+        }
         for account in accounts:
             with self.subTest(account=account.name):
                 expected = [
-                    sum((t.amount for t in account.transactions.filter(date__lte=as_of)), Decimal("0.00"))
+                    sum(
+                        (t.amount for t in account.transactions.filter(date__lte=as_of)),
+                        Decimal("0.00"),
+                    )
                     for as_of in week_ends
                 ]
                 self.assertEqual(by_name[account.name], expected)
@@ -899,8 +1130,12 @@ class NetWorthByAccountTests(LoggedInWithAccountTestCase):
 
 class EarliestToDateRangeTests(LoggedInWithAccountTestCase):
     def test_resolves_to_the_first_transactions_date(self):
-        Transaction.objects.create(account=self.account, date=date(2021, 10, 3), amount=Decimal("10.00"))
-        Transaction.objects.create(account=self.account, date=date(2022, 1, 1), amount=Decimal("5.00"))
+        Transaction.objects.create(
+            account=self.account, date=date(2021, 10, 3), amount=Decimal("10.00")
+        )
+        Transaction.objects.create(
+            account=self.account, date=date(2022, 1, 1), amount=Decimal("5.00")
+        )
         start, end, _ = reporting.resolve_range({"range": "earliest"})
         self.assertEqual(start, date(2021, 10, 3))
         self.assertEqual(end, timezone.localdate())
@@ -911,7 +1146,9 @@ class EarliestToDateRangeTests(LoggedInWithAccountTestCase):
 
     def test_respects_the_account_filter(self):
         other = Account.objects.create(name="Savings")
-        Transaction.objects.create(account=self.account, date=date(2021, 1, 1), amount=Decimal("1.00"))
+        Transaction.objects.create(
+            account=self.account, date=date(2021, 1, 1), amount=Decimal("1.00")
+        )
         Transaction.objects.create(account=other, date=date(2023, 6, 1), amount=Decimal("1.00"))
         start, _, _ = reporting.resolve_range({"range": "earliest"}, account=other)
         self.assertEqual(start, date(2023, 6, 1))
@@ -927,23 +1164,32 @@ class TrimmedAveragePeriodsTests(LoggedInWithAccountTestCase):
     whatever Average interval says"."""
 
     def test_periods_entirely_before_the_first_transaction_are_dropped(self):
-        groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
+        groceries = Category.objects.create(
+            name="Groceries", category_type=Category.CategoryType.EXPENSE
+        )
         start, end = date(2026, 3, 1), date(2026, 3, 31)
         # Only transaction is the current period's own - every one of
         # the 3 trailing 31-day periods ends before it, so none should
         # count.
-        Transaction.objects.create(account=self.account, date=start, category=groceries, amount=Decimal("-20.00"))
+        Transaction.objects.create(
+            account=self.account, date=start, category=groceries, amount=Decimal("-20.00")
+        )
         periods = reporting.trimmed_average_periods(start, end, 3, account=self.account)
         self.assertEqual(periods, [])
 
     def test_a_period_the_range_only_partly_precedes_data_is_kept(self):
-        groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
+        groceries = Category.objects.create(
+            name="Groceries", category_type=Category.CategoryType.EXPENSE
+        )
         start, end = date(2026, 3, 1), date(2026, 3, 31)
         # The first trailing period is 2026-01-29..2026-02-28; a
         # transaction on 2026-02-15 means that period doesn't entirely
         # precede the data, so it's kept.
         Transaction.objects.create(
-            account=self.account, date=date(2026, 2, 15), category=groceries, amount=Decimal("-5.00")
+            account=self.account,
+            date=date(2026, 2, 15),
+            category=groceries,
+            amount=Decimal("-5.00"),
         )
         periods = reporting.trimmed_average_periods(start, end, 3, account=self.account)
         self.assertEqual(len(periods), 1)
@@ -955,11 +1201,15 @@ class TrimmedAveragePeriodsTests(LoggedInWithAccountTestCase):
 
 class SubtotalOverflowTests(SimpleTestCase):
     def test_no_message_within_the_limit(self):
-        self.assertIsNone(reporting.subtotal_overflow_message(date(2026, 1, 1), date(2026, 1, 31), "month"))
+        self.assertIsNone(
+            reporting.subtotal_overflow_message(date(2026, 1, 1), date(2026, 1, 31), "month")
+        )
 
     def test_message_names_the_next_coarser_granularity_with_no_count(self):
         message = reporting.subtotal_overflow_message(date(2015, 1, 1), date(2026, 1, 1), "month")
-        self.assertEqual(message, "Too many months to show here. Try subtotaling by quarter instead.")
+        self.assertEqual(
+            message, "Too many months to show here. Try subtotaling by quarter instead."
+        )
         self.assertNotRegex(message, r"\d")
 
     def test_years_has_no_next_step(self):
@@ -967,38 +1217,62 @@ class SubtotalOverflowTests(SimpleTestCase):
         self.assertEqual(message, "Too many years to show here. Try a shorter date range.")
 
     def test_no_granularity_means_no_overflow(self):
-        self.assertIsNone(reporting.subtotal_overflow_message(date(1900, 1, 1), date(2026, 1, 1), ""))
+        self.assertIsNone(
+            reporting.subtotal_overflow_message(date(1900, 1, 1), date(2026, 1, 1), "")
+        )
 
 
 class ReportCurrencyConversionTests(LoggedInWithAccountTestCase):
     def test_converts_a_foreign_currency_account_using_the_latest_rate(self):
         usd_account = Account.objects.create(name="US Checking", currency="USD")
-        groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
+        groceries = Category.objects.create(
+            name="Groceries", category_type=Category.CategoryType.EXPENSE
+        )
         Transaction.objects.create(
-            account=usd_account, date=date(2026, 1, 5), category=groceries, amount=Decimal("-100.00")
+            account=usd_account,
+            date=date(2026, 1, 5),
+            category=groceries,
+            amount=Decimal("-100.00"),
         )
         ExchangeRate.objects.create(
             base_currency="USD", quote_currency="EUR", rate=Decimal("0.9"), date=date(2026, 1, 1)
         )
 
         rates = RateTable("EUR")
-        rows = reporting.category_totals_top_level(date(2026, 1, 1), date(2026, 1, 31), expense_only=True, rates=rates)
-        self.assertEqual(rows, [{"category_id": groceries.pk, "name": "Groceries", "total": Decimal("90.00")}])
+        rows = reporting.category_totals_top_level(
+            date(2026, 1, 1), date(2026, 1, 31), expense_only=True, rates=rates
+        )
+        self.assertEqual(
+            rows, [{"category_id": groceries.pk, "name": "Groceries", "total": Decimal("90.00")}]
+        )
 
     def test_no_known_rate_excludes_it_rather_than_mixing_currencies(self):
         usd_account = Account.objects.create(name="US Checking", currency="USD")
-        groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
+        groceries = Category.objects.create(
+            name="Groceries", category_type=Category.CategoryType.EXPENSE
+        )
         Transaction.objects.create(
-            account=usd_account, date=date(2026, 1, 5), category=groceries, amount=Decimal("-100.00")
+            account=usd_account,
+            date=date(2026, 1, 5),
+            category=groceries,
+            amount=Decimal("-100.00"),
         )
         rates = RateTable("EUR")
-        rows = reporting.category_totals_top_level(date(2026, 1, 1), date(2026, 1, 31), expense_only=True, rates=rates)
-        self.assertEqual(rows, [{"category_id": groceries.pk, "name": "Groceries", "total": Decimal("0.00")}])
+        rows = reporting.category_totals_top_level(
+            date(2026, 1, 1), date(2026, 1, 31), expense_only=True, rates=rates
+        )
+        self.assertEqual(
+            rows, [{"category_id": groceries.pk, "name": "Groceries", "total": Decimal("0.00")}]
+        )
 
     def test_net_worth_names_an_account_with_no_known_rate(self):
         usd_account = Account.objects.create(name="US Checking", currency="USD")
-        Transaction.objects.create(account=usd_account, date=date(2026, 1, 5), amount=Decimal("50.00"))
-        table = reporting.net_worth_by_account(date(2026, 1, 1), date(2026, 1, 31), "month", rates=RateTable("EUR"))
+        Transaction.objects.create(
+            account=usd_account, date=date(2026, 1, 5), amount=Decimal("50.00")
+        )
+        table = reporting.net_worth_by_account(
+            date(2026, 1, 1), date(2026, 1, 31), "month", rates=RateTable("EUR")
+        )
         self.assertIn("US Checking", table["missing_accounts"])
 
 
@@ -1009,7 +1283,9 @@ class CalendarAveragePeriodsTests(SimpleTestCase):
     """
 
     def test_this_month_compares_with_previous_full_months(self):
-        periods = reporting.vs_average_periods(date(2026, 9, 1), date(2026, 9, 15), 3, range_key="this_month")
+        periods = reporting.vs_average_periods(
+            date(2026, 9, 1), date(2026, 9, 15), 3, range_key="this_month"
+        )
         self.assertEqual(
             periods,
             [
@@ -1020,28 +1296,46 @@ class CalendarAveragePeriodsTests(SimpleTestCase):
         )
 
     def test_last_month_compares_with_the_months_before_it(self):
-        periods = reporting.vs_average_periods(date(2026, 8, 1), date(2026, 8, 31), 1, range_key="last_month")
+        periods = reporting.vs_average_periods(
+            date(2026, 8, 1), date(2026, 8, 31), 1, range_key="last_month"
+        )
         self.assertEqual(periods, [(date(2026, 7, 1), date(2026, 7, 31))])
 
     def test_quarter_compares_with_previous_quarters(self):
-        periods = reporting.vs_average_periods(date(2026, 7, 1), date(2026, 9, 15), 2, range_key="this_quarter")
-        self.assertEqual(periods, [(date(2026, 4, 1), date(2026, 6, 30)), (date(2026, 1, 1), date(2026, 3, 31))])
+        periods = reporting.vs_average_periods(
+            date(2026, 7, 1), date(2026, 9, 15), 2, range_key="this_quarter"
+        )
+        self.assertEqual(
+            periods, [(date(2026, 4, 1), date(2026, 6, 30)), (date(2026, 1, 1), date(2026, 3, 31))]
+        )
 
     def test_year_to_date_compares_with_previous_full_years(self):
-        periods = reporting.vs_average_periods(date(2026, 1, 1), date(2026, 9, 15), 2, range_key="ytd")
-        self.assertEqual(periods, [(date(2025, 1, 1), date(2025, 12, 31)), (date(2024, 1, 1), date(2024, 12, 31))])
+        periods = reporting.vs_average_periods(
+            date(2026, 1, 1), date(2026, 9, 15), 2, range_key="ytd"
+        )
+        self.assertEqual(
+            periods,
+            [(date(2025, 1, 1), date(2025, 12, 31)), (date(2024, 1, 1), date(2024, 12, 31))],
+        )
 
     def test_last_12_months_compares_with_earlier_12_month_blocks(self):
-        periods = reporting.vs_average_periods(date(2025, 10, 1), date(2026, 9, 15), 1, range_key="last_12_months")
+        periods = reporting.vs_average_periods(
+            date(2025, 10, 1), date(2026, 9, 15), 1, range_key="last_12_months"
+        )
         self.assertEqual(periods, [(date(2024, 10, 1), date(2025, 9, 30))])
 
     def test_custom_range_keeps_same_length_windows(self):
-        periods = reporting.vs_average_periods(date(2026, 3, 1), date(2026, 3, 10), 1, range_key="custom")
+        periods = reporting.vs_average_periods(
+            date(2026, 3, 1), date(2026, 3, 10), 1, range_key="custom"
+        )
         self.assertEqual(periods, [(date(2026, 2, 19), date(2026, 2, 28))])
 
     def test_earliest_to_date_has_nothing_before_it(self):
         self.assertEqual(
-            reporting.vs_average_periods(date(2021, 1, 1), date(2026, 9, 15), 3, range_key="earliest"), []
+            reporting.vs_average_periods(
+                date(2021, 1, 1), date(2026, 9, 15), 3, range_key="earliest"
+            ),
+            [],
         )
 
 
@@ -1054,7 +1348,10 @@ class TransferExclusionTests(StashTestCase):
 
     def test_transfers_are_excluded_from_income_and_spending(self):
         Transaction.objects.create(
-            account=self.account, date=date(2026, 1, 5), category=self.groceries, amount=Decimal("-20.00")
+            account=self.account,
+            date=date(2026, 1, 5),
+            category=self.groceries,
+            amount=Decimal("-20.00"),
         )
         Transaction.objects.create(
             account=self.account,
@@ -1067,7 +1364,10 @@ class TransferExclusionTests(StashTestCase):
 
     def test_transfers_are_excluded_from_the_spending_donut(self):
         Transaction.objects.create(
-            account=self.account, date=date(2026, 1, 5), category=self.groceries, amount=Decimal("-20.00")
+            account=self.account,
+            date=date(2026, 1, 5),
+            category=self.groceries,
+            amount=Decimal("-20.00"),
         )
         Transaction.objects.create(
             account=self.account,
@@ -1111,17 +1411,23 @@ class TransactionQuerySetTests(StashTestCase):
 
     def test_reportable_leaves_out_transfers_and_uncategorized(self):
         reportable = self.pks(Transaction.objects.reportable())
-        self.assertEqual(reportable, {self.spent.pk, self.refund.pk, self.earned.pk, self.february.pk})
+        self.assertEqual(
+            reportable, {self.spent.pk, self.refund.pk, self.earned.pk, self.february.pk}
+        )
 
     def test_of_kind_goes_by_the_category_type_not_the_sign(self):
         self.assertEqual(
             self.pks(Transaction.objects.reportable().of_kind(expense_only=True)),
             {self.spent.pk, self.refund.pk, self.february.pk},
         )
-        self.assertEqual(self.pks(Transaction.objects.reportable().of_kind(income_only=True)), {self.earned.pk})
+        self.assertEqual(
+            self.pks(Transaction.objects.reportable().of_kind(income_only=True)), {self.earned.pk}
+        )
 
     def test_for_account_none_means_every_account(self):
-        self.assertEqual(Transaction.objects.for_account(None).count(), Transaction.objects.count())
+        self.assertEqual(
+            Transaction.objects.for_account(None).count(), Transaction.objects.count()
+        )
         self.assertEqual(self.pks(Transaction.objects.for_account(self.bank)), {self.earned.pk})
 
 
@@ -1130,7 +1436,10 @@ class RollupToParentsTests(StashTestCase):
         food = Category.objects.create(name="Food", category_type=EXPENSE)
         groceries = Category.objects.create(name="Groceries", category_type=EXPENSE, parent=food)
         cafe = Category.objects.create(name="Cafe", category_type=EXPENSE, parent=food)
-        totals = {food.pk: [Decimal("1"), Decimal("0")], groceries.pk: [Decimal("2"), Decimal("3")]}
+        totals = {
+            food.pk: [Decimal("1"), Decimal("0")],
+            groceries.pk: [Decimal("2"), Decimal("3")],
+        }
 
         categories = reporting._with_parents([groceries.pk, cafe.pk])
         rolled = reporting._rollup_to_parents(totals, categories, 2)

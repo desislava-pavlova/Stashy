@@ -44,13 +44,19 @@ class SpendingTreeTests(StashTestCase):
     @classmethod
     def setUpTestData(cls):
         cls.account = Account.objects.create(name="Checking")
-        cls.food = Category.objects.create(name="Food", category_type=Category.CategoryType.EXPENSE)
+        cls.food = Category.objects.create(
+            name="Food", category_type=Category.CategoryType.EXPENSE
+        )
         cls.groceries = cls.food.create_subcategory("Groceries")
         cls.bakery = cls.food.create_subcategory("Bakery")
-        cls.rent = Category.objects.create(name="Rent", category_type=Category.CategoryType.EXPENSE)
+        cls.rent = Category.objects.create(
+            name="Rent", category_type=Category.CategoryType.EXPENSE
+        )
 
     def add(self, amount, category, on=date(2026, 9, 5)):
-        Transaction.objects.create(account=self.account, date=on, category=category, amount=Decimal(amount))
+        Transaction.objects.create(
+            account=self.account, date=on, category=category, amount=Decimal(amount)
+        )
 
     def test_groups_by_top_level_category_with_one_level_of_breakdown(self):
         self.add("-30.00", self.groceries)
@@ -73,9 +79,24 @@ class SpendingTreeTests(StashTestCase):
         self.assertEqual(
             food["children"],
             [
-                {"id": self.groceries.pk, "name": "Groceries", "with_subcategories": True, "total": 30.0},
-                {"id": self.bakery.pk, "name": "Bakery", "with_subcategories": True, "total": 12.5},
-                {"id": self.food.pk, "name": "Food (general)", "with_subcategories": False, "total": 7.5},
+                {
+                    "id": self.groceries.pk,
+                    "name": "Groceries",
+                    "with_subcategories": True,
+                    "total": 30.0,
+                },
+                {
+                    "id": self.bakery.pk,
+                    "name": "Bakery",
+                    "with_subcategories": True,
+                    "total": 12.5,
+                },
+                {
+                    "id": self.food.pk,
+                    "name": "Food (general)",
+                    "with_subcategories": False,
+                    "total": 7.5,
+                },
             ],
         )
 
@@ -99,7 +120,9 @@ class DashboardTests(LoggedInWithAccountTestCase):
             (date(2026, 8, 20), "-500.00", rent),
             (date(2026, 9, 3), "-40.00", rent),
         ]:
-            Transaction.objects.create(account=self.account, date=on, amount=Decimal(amount), category=category)
+            Transaction.objects.create(
+                account=self.account, date=on, amount=Decimal(amount), category=category
+            )
         response = self.client.get(reverse("finance:dashboard"))
         self.assertEqual(response.context["savings_rate"], Decimal("75.0"))
         self.assertEqual(response.context["savings_bar"], 75)
@@ -108,9 +131,14 @@ class DashboardTests(LoggedInWithAccountTestCase):
         self.assertContains(response, "75.0%")
 
     def test_a_month_with_only_a_refund_shows_negative_spending(self, _):
-        groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
+        groceries = Category.objects.create(
+            name="Groceries", category_type=Category.CategoryType.EXPENSE
+        )
         Transaction.objects.create(
-            account=self.account, date=date(2026, 9, 3), category=groceries, amount=Decimal("50.00")
+            account=self.account,
+            date=date(2026, 9, 3),
+            category=groceries,
+            amount=Decimal("50.00"),
         )
         response = self.client.get(reverse("finance:dashboard"))
         self.assertEqual(response.context["month_spending"], Decimal("-50.00"))
@@ -122,8 +150,13 @@ class DashboardTests(LoggedInWithAccountTestCase):
         profile.save()
         salary = Category.objects.create(name="Salary", category_type=Category.CategoryType.INCOME)
         rent = Category.objects.create(name="Rent", category_type=Category.CategoryType.EXPENSE)
-        for on, amount, category in [(date(2026, 8, 1), "2000.00", salary), (date(2026, 8, 20), "-576.00", rent)]:
-            Transaction.objects.create(account=self.account, date=on, amount=Decimal(amount), category=category)
+        for on, amount, category in [
+            (date(2026, 8, 1), "2000.00", salary),
+            (date(2026, 8, 20), "-576.00", rent),
+        ]:
+            Transaction.objects.create(
+                account=self.account, date=on, amount=Decimal(amount), category=category
+            )
         response = self.client.get(reverse("finance:dashboard"))
         self.assertContains(response, "71,2%")
         self.assertNotContains(response, "71.2%")
@@ -139,7 +172,9 @@ class DashboardTests(LoggedInWithAccountTestCase):
         reminder("Due in a week", date(2026, 9, 19))
         reminder("Too far away", date(2026, 9, 20))
         response = self.client.get(reverse("finance:dashboard"))
-        self.assertEqual([r.payee.name for r in response.context["due_soon"]], ["Overdue bill", "Due in a week"])
+        self.assertEqual(
+            [r.payee.name for r in response.context["due_soon"]], ["Overdue bill", "Due in a week"]
+        )
         self.assertContains(response, "badge-overdue")
 
     def test_brand_new_user_gets_a_welcome_instead_of_empty_widgets(self, _):
@@ -167,11 +202,17 @@ class DashboardRefundAndSavingsRateEdgeTests(LoggedInWithAccountTestCase):
     @classmethod
     def setUpTestData(cls):
         super().setUpTestData()
-        cls.salary = Category.objects.create(name="Salary", category_type=Category.CategoryType.INCOME)
-        cls.groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
+        cls.salary = Category.objects.create(
+            name="Salary", category_type=Category.CategoryType.INCOME
+        )
+        cls.groceries = Category.objects.create(
+            name="Groceries", category_type=Category.CategoryType.EXPENSE
+        )
 
     def add(self, on, amount, category, account=None):
-        Transaction.objects.create(account=account or self.account, date=on, category=category, amount=Decimal(amount))
+        Transaction.objects.create(
+            account=account or self.account, date=on, category=category, amount=Decimal(amount)
+        )
 
     def saved_tile(self, number_format):
         """The "Saved in August" tile as (its value's extra classes, its
@@ -193,7 +234,9 @@ class DashboardRefundAndSavingsRateEdgeTests(LoggedInWithAccountTestCase):
 
         for number_format, shown in self.EXPECTED.items():
             with self.subTest(number_format=number_format):
-                self.assertEqual(self.saved_tile(number_format), (" amount-negative", shown[0], "0"))
+                self.assertEqual(
+                    self.saved_tile(number_format), (" amount-negative", shown[0], "0")
+                )
 
     def test_a_rate_over_100_is_not_red_and_its_bar_stops_at_full(self, _):
         self.add(date(2026, 8, 1), "1000.00", self.salary)
@@ -208,12 +251,16 @@ class DashboardRefundAndSavingsRateEdgeTests(LoggedInWithAccountTestCase):
 
         page = self.client.get(reverse("finance:dashboard")).content.decode()
 
-        tile = re.search(r'Spent this month</div>\s*<div class="stat-value amount-negative">([^<]*)</div>', page)
+        tile = re.search(
+            r'Spent this month</div>\s*<div class="stat-value amount-negative">([^<]*)</div>', page
+        )
         self.assertTrue(tile.group(1).startswith("-50.00"), tile.group(1))
 
     def test_a_refund_in_another_currency_nets_in_the_tile_and_the_donut(self, _):
         usd = Account.objects.create(name="US card", currency="USD")
-        ExchangeRate.objects.create(base_currency="USD", quote_currency="EUR", rate=Decimal("0.5"), date=TODAY_12_SEPT)
+        ExchangeRate.objects.create(
+            base_currency="USD", quote_currency="EUR", rate=Decimal("0.5"), date=TODAY_12_SEPT
+        )
         self.add(date(2026, 9, 5), "-100.00", self.groceries, account=usd)  # 50.00 in euro
         self.add(date(2026, 9, 6), "30.00", self.groceries, account=usd)  # 15.00 in euro
         self.add(date(2026, 9, 7), "-20.00", self.groceries)
@@ -227,7 +274,9 @@ class DashboardRefundAndSavingsRateEdgeTests(LoggedInWithAccountTestCase):
 class DashboardExcludesResolvedRemindersTests(LoggedInWithAccountTestCase):
     @mock.patch("django.utils.timezone.localdate", return_value=TODAY_14_SEPT)
     def test_a_paid_reminder_due_soon_does_not_show_on_the_dashboard(self, _):
-        txn = Transaction.objects.create(account=self.account, date=date(2026, 9, 16), amount=Decimal("-1.00"))
+        txn = Transaction.objects.create(
+            account=self.account, date=date(2026, 9, 16), amount=Decimal("-1.00")
+        )
         Reminder.objects.create(
             account=self.account,
             amount=Decimal("1"),
@@ -245,11 +294,19 @@ class DashboardCurrencyTests(LoggedInWithAccountTestCase):
 
     def test_spending_in_another_currency_is_converted(self):
         today = timezone.localdate()
-        groceries = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
+        groceries = Category.objects.create(
+            name="Groceries", category_type=Category.CategoryType.EXPENSE
+        )
         usd = Account.objects.create(name="US card", currency="USD")
-        ExchangeRate.objects.create(base_currency="USD", quote_currency="EUR", rate=Decimal("0.5"), date=today)
-        Transaction.objects.create(account=self.account, date=today, category=groceries, amount=Decimal("-10.00"))
-        Transaction.objects.create(account=usd, date=today, category=groceries, amount=Decimal("-100.00"))
+        ExchangeRate.objects.create(
+            base_currency="USD", quote_currency="EUR", rate=Decimal("0.5"), date=today
+        )
+        Transaction.objects.create(
+            account=self.account, date=today, category=groceries, amount=Decimal("-10.00")
+        )
+        Transaction.objects.create(
+            account=usd, date=today, category=groceries, amount=Decimal("-100.00")
+        )
 
         response = self.client.get(reverse("finance:dashboard"))
 
@@ -278,7 +335,10 @@ class DashboardMissingRateTests(LoggedInWithAccountTestCase):
     def test_no_hint_once_the_rate_is_known(self):
         Account.objects.create(name="US card", currency="USD")
         ExchangeRate.objects.create(
-            base_currency="USD", quote_currency="EUR", rate=Decimal("0.5"), date=timezone.localdate()
+            base_currency="USD",
+            quote_currency="EUR",
+            rate=Decimal("0.5"),
+            date=timezone.localdate(),
         )
         for name in ("finance:dashboard", "finance:account_list"):
             with self.subTest(page=name):
@@ -288,7 +348,9 @@ class DashboardMissingRateTests(LoggedInWithAccountTestCase):
         for currency in ("USD", "GBP"):
             Account.objects.create(name=f"{currency} account", currency=currency)
         # Alphabetical, whatever order the accounts come in.
-        self.assertContains(self.client.get(reverse("finance:dashboard")), "No known rate for GBP, USD")
+        self.assertContains(
+            self.client.get(reverse("finance:dashboard")), "No known rate for GBP, USD"
+        )
 
     def test_two_accounts_in_one_currency_name_it_once(self):
         # The view hands the include the accounts, not the currencies,
@@ -310,8 +372,12 @@ class DashboardMissingRateTests(LoggedInWithAccountTestCase):
             self.assertNotIn(syntax, accounts_page)
         # From the Net worth label up to the next tile's label: that
         # tile's text, and only it.
-        net_worth_tile = body.split('<div class="stat-label">Net worth</div>')[1].split("stat-label")[0]
-        self.assertLess(net_worth_tile.index("active account"), net_worth_tile.index("No known rate"))
+        net_worth_tile = body.split('<div class="stat-label">Net worth</div>')[1].split(
+            "stat-label"
+        )[0]
+        self.assertLess(
+            net_worth_tile.index("active account"), net_worth_tile.index("No known rate")
+        )
         self.assertEqual(body.count("No known rate"), 1)
 
 
@@ -338,7 +404,9 @@ class SpendingTreeRefundTests(StashTestCase):
 
         tree = spending_tree(date(2026, 9, 1), date(2026, 9, 30))
 
-        self.assertEqual([(g["name"], g["total"]) for g in tree], [("Rent", 500.0), ("Groceries", -60.0)])
+        self.assertEqual(
+            [(g["name"], g["total"]) for g in tree], [("Rent", 500.0), ("Groceries", -60.0)]
+        )
         self.assertEqual(tree[1]["children"][0]["total"], -60.0)
         spending = income_and_spending(date(2026, 9, 1), date(2026, 9, 30))["spending"]
         self.assertEqual(Decimal(str(sum(g["total"] for g in tree))), spending)
@@ -361,7 +429,9 @@ class DashboardAccountGroupingTests(LoggedInWithAccountTestCase):
         Account.objects.create(name="Zeta savings", account_type=Account.AccountType.SAVINGS)
         Account.objects.create(name="Alpha cash", account_type=Account.AccountType.CASH)
         Account.objects.create(name="Debit account", account_type=Account.AccountType.DEBIT_CARD)
-        Account.objects.create(name="Old wallet", account_type=Account.AccountType.CASH, is_active=False)
+        Account.objects.create(
+            name="Old wallet", account_type=Account.AccountType.CASH, is_active=False
+        )
         response = self.client.get(reverse("finance:dashboard"))
         groups = response.context["account_groups"]
         self.assertEqual([g["key"] for g in groups], ["physical", "digital", "illiquid"])
@@ -383,7 +453,9 @@ class DashboardDonutCurrencyTests(LoggedInWithAccountTestCase):
         # The donut needs the actual symbol ("€"), not the bare ISO
         # code, to match how every other amount on the page already
         # displays via |moneyc.
-        Transaction.objects.create(account=self.account, date=timezone.localdate(), amount=Decimal("-10.00"))
+        Transaction.objects.create(
+            account=self.account, date=timezone.localdate(), amount=Decimal("-10.00")
+        )
         response = self.client.get(reverse("finance:dashboard"))
         self.assertContains(response, 'data-main-currency="€"')
         self.assertContains(response, 'data-currency-suffix="1"')
@@ -416,13 +488,17 @@ class DueSoonCardTests(LoggedInWithAccountTestCase):
         reminders are all due today)."""
         page = self.client.get(reverse("finance:dashboard")).content.decode()
         self.assertEqual(leaked_syntax_in(page), [])
-        return re.search(r'<section [^>]*aria-labelledby="due-title">.*?</section>', page, re.DOTALL).group(0)
+        return re.search(
+            r'<section [^>]*aria-labelledby="due-title">.*?</section>', page, re.DOTALL
+        ).group(0)
 
     def test_an_empty_card_says_nothing_is_due_soon(self, _):
         card = self.due_soon_card()
 
         self.assertIn("<h3>Nothing due soon</h3>", card)
-        self.assertIn("<p>Bills and income coming up in the next few days will show up here.</p>", card)
+        self.assertIn(
+            "<p>Bills and income coming up in the next few days will show up here.</p>", card
+        )
         self.assertNotIn("this week", card)
 
     def test_the_empty_message_names_no_number_and_the_subtitle_follows_the_look_ahead(self, _):
@@ -438,7 +514,10 @@ class DueSoonCardTests(LoggedInWithAccountTestCase):
     def test_a_card_with_items_lists_them_and_has_no_empty_message(self, _):
         payee = Payee.objects.create(name="Water bill")
         Reminder.objects.create(
-            account=self.account, payee=payee, amount=Decimal("10.00"), next_due_date=date(2026, 9, 15)
+            account=self.account,
+            payee=payee,
+            amount=Decimal("10.00"),
+            next_due_date=date(2026, 9, 15),
         )
 
         card = self.due_soon_card()

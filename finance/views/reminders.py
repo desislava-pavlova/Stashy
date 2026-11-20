@@ -147,5 +147,8 @@ def reminder_skip(request, pk):
     if reminder.frequency == Reminder.Frequency.ONE_TIME:
         messages.success(request, f"Skipped {label}.")
     else:
-        messages.success(request, f"Skipped {label}; moved it to {regional.format_date(reminder.next_due_date)}.")
+        messages.success(
+            request,
+            f"Skipped {label}; moved it to {regional.format_date(reminder.next_due_date)}.",
+        )
     return redirect("finance:reminder_list")

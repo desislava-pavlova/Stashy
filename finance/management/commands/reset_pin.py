@@ -32,15 +32,20 @@ def ask_for_pin():
 
 
 class Command(BaseCommand):
-    help = "Reset a stash's PIN directly - the last resort when both the PIN and its recovery code are lost."
+    help = (
+        "Reset a stash's PIN directly - the last resort when both the PIN and its recovery "
+        "code are lost."
+    )
 
     def add_arguments(self, parser):
-        parser.add_argument("name", help="The stash's owner name, or its folder under stashes/ if you know it.")
+        parser.add_argument(
+            "name", help="The stash's owner name, or its folder under stashes/ if you know it."
+        )
         parser.add_argument(
             "--pin",
             help=(
-                "The new 4-digit PIN. Leave it out to be asked for it twice (each digit shows as *, from "
-                "Python 3.14). A PIN typed here is saved in your terminal's history."
+                "The new 4-digit PIN. Leave it out to be asked for it twice (each digit shows as "
+                "*, from Python 3.14). A PIN typed here is saved in your terminal's history."
             ),
         )
 
@@ -56,4 +61,8 @@ class Command(BaseCommand):
             raise CommandError(str(error)) from error
         # Which stash changed, not just the name that was typed: a name
         # could match one stash's folder and another stash's owner.
-        self.stdout.write(self.style.SUCCESS(f'PIN reset for {possessive(owner_name)} stash (folder "{folder}").'))
+        self.stdout.write(
+            self.style.SUCCESS(
+                f'PIN reset for {possessive(owner_name)} stash (folder "{folder}").'
+            )
+        )

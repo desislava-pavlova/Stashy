@@ -139,7 +139,9 @@ class RequireStashMiddleware:
         return reverse("login")
 
     def __call__(self, request):
-        if not request.session.get("stash") and not request.path.startswith(self.exempt_prefixes()):
+        if not request.session.get("stash") and not request.path.startswith(
+            self.exempt_prefixes()
+        ):
             remembered = request.COOKIES.get(registry.LAST_STASH_COOKIE)
             if remembered and registry.is_stash(remembered):
                 request.session["stash"] = remembered
@@ -173,7 +175,11 @@ class RequireSetupMiddleware:
 
     def __call__(self, request):
         profile = getattr(request, "stashy_profile", None)
-        if profile is not None and not profile.setup_finished and not request.path.startswith(self.exempt_prefixes()):
+        if (
+            profile is not None
+            and not profile.setup_finished
+            and not request.path.startswith(self.exempt_prefixes())
+        ):
             return redirect("finance:welcome_step", step=profile.welcome_step + 1)
         return self.get_response(request)
 

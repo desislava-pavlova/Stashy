@@ -34,13 +34,25 @@ ONLY = []
 if "--only" in sys.argv:
     ONLY = [a for a in sys.argv[sys.argv.index("--only") + 1 :] if not a.startswith("--")]
 
-SKIP_TOP = {"staticfiles", "stashes", ".venv", "venv.bak", ".git", ".idea", "logs", "backups", "plans"}
+SKIP_TOP = {
+    "staticfiles",
+    "stashes",
+    ".venv",
+    "venv.bak",
+    ".git",
+    ".idea",
+    "logs",
+    "backups",
+    "plans",
+}
 SKIP_ANYWHERE = {"migrations", "vendor", "node_modules", "__pycache__"}
 
 BULLET = re.compile(r"^( *)((?:[-*•]|\d{1,2}[.)]|\([a-z0-9]\)|[a-z][.)]) +)")
 PRAGMA = re.compile(r"^(?:noqa|type:|fmt:|pragma|ruff:|pylint:|-\*-|!|:|isort:)", re.I)
 BANNER = re.compile(r"^-{3,}|^-{3,} .+ -{3,}$")
-CODE_LIKE = re.compile(r"^(?:def |class |import |from \S+ import |return\b|path\(|[\w.]+\(.*\)$|[\w.\[\]\"']+ = )")
+CODE_LIKE = re.compile(
+    r"^(?:def |class |import |from \S+ import |return\b|path\(|[\w.]+\(.*\)$|[\w.\[\]\"']+ = )"
+)
 
 
 def width_of(text):
@@ -75,7 +87,10 @@ def classify(lines, base):
             items[-1][3].append(stripped)
             items[-1][4].append(raw)
         elif (
-            relative >= 2 or stripped.startswith(">>>") or BANNER.match(stripped) or re.search(r"\S {3,}\S", stripped)
+            relative >= 2
+            or stripped.startswith(">>>")
+            or BANNER.match(stripped)
+            or re.search(r"\S {3,}\S", stripped)
         ):
             if previous == "pre":
                 items[-1][1].append(raw)
@@ -174,7 +189,9 @@ def comment_edits(lines):
                 for body in item[1]:
                     line = lead + body
                     new_lines.append(
-                        shorten_banner(line) if width_of(line) > WIDTH and BANNER.match(body.strip()) else line
+                        shorten_banner(line)
+                        if width_of(line) > WIDTH and BANNER.match(body.strip())
+                        else line
                     )
             else:
                 _, extra, marker, parts, sources = item
@@ -248,8 +265,15 @@ def docstring_edits(tree, lines):
                 is_last = position == len(items) - 1 and not closes_alone
                 widest = 0
                 for number, source in enumerate(sources):
-                    text = source if not (is_first and number == 0) else indent + '"""' + source[base:]
-                    widest = max(widest, width_of(text) + (3 if is_last and number == len(sources) - 1 else 0))
+                    text = (
+                        source
+                        if not (is_first and number == 0)
+                        else indent + '"""' + source[base:]
+                    )
+                    widest = max(
+                        widest,
+                        width_of(text) + (3 if is_last and number == len(sources) - 1 else 0),
+                    )
                 if widest <= WIDTH and (marker or not dash_starts_a_line(sources)):
                     if is_first:
                         new_lines.append(indent + '"""' + sources[0][base:])
@@ -280,7 +304,11 @@ class _NormaliseDocstrings(ast.NodeTransformer):
 
     def _fix(self, node):
         self.generic_visit(node)
-        if node.body and isinstance(node.body[0], ast.Expr) and isinstance(node.body[0].value, ast.Constant):
+        if (
+            node.body
+            and isinstance(node.body[0], ast.Expr)
+            and isinstance(node.body[0].value, ast.Constant)
+        ):
             value = node.body[0].value.value
             if isinstance(value, str):
                 node.body[0].value.value = " ".join(value.split())
@@ -329,7 +357,9 @@ def process(path):
     for start, end, replacement in edits:
         new[start:end] = replacement
     result = "\n".join(new) + "\n"
-    ok = code_fingerprint(source) == code_fingerprint(result) and comment_words(source) == comment_words(result)
+    ok = code_fingerprint(source) == code_fingerprint(result) and comment_words(
+        source
+    ) == comment_words(result)
     return source, result, crlf, ok, len(edits)
 
 
@@ -355,12 +385,16 @@ def main():
             totals["edits"] += count
             print(f"{count:4} edits  over-width {before:4} -> {after:3}  {name}")
             if APPLY:
-                path.write_bytes((result.replace("\n", "\r\n") if crlf else result).encode("utf-8"))
+                path.write_bytes(
+                    (result.replace("\n", "\r\n") if crlf else result).encode("utf-8")
+                )
         elif VERBOSE and before:
             print(f"   0 edits  over-width {before:4} -> {after:3}  {name}")
+    mode = "APPLIED" if APPLY else "DRY RUN"
     print(
-        f"{'APPLIED' if APPLY else 'DRY RUN'}: {totals['edits']} edits in {totals['files']} files; "
-        f"over-width lines {totals['before']} -> {totals['after']}; failed checks: {totals['failed']}"
+        f"{mode}: {totals['edits']} edits in {totals['files']} files; "
+        f"over-width lines {totals['before']} -> {totals['after']}; "
+        f"failed checks: {totals['failed']}"
     )
 
 

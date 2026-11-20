@@ -95,7 +95,8 @@ class AuditLogEntryAdmin(HandMadeRequestMixin, admin.ModelAdmin):
 
     @admin.display(description="Same operation")
     def same_operation(self, obj):
-        url = f"{reverse('admin:audit_auditlogentry_changelist')}?{urlencode({'operation': obj.operation})}"
+        changelist = reverse("admin:audit_auditlogentry_changelist")
+        url = f"{changelist}?{urlencode({'operation': obj.operation})}"
         return format_html('<a href="{}">show all rows from this action</a>', url)
 
     @admin.display(description="Full values")

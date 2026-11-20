@@ -21,7 +21,9 @@ class CategoryListView(ListView):
     context_object_name = "categories"
 
     def get_queryset(self):
-        qs = Category.objects.select_related("parent", "account").annotate(usage_count=Count("transactions"))
+        qs = Category.objects.select_related("parent", "account").annotate(
+            usage_count=Count("transactions")
+        )
         search = self.request.GET.get("q", "").strip()
         if search:
             qs = qs.filter(Q(name__icontains=search) | Q(parent__name__icontains=search))
@@ -107,11 +109,16 @@ def category_usage(request, pk):
                 transaction.category = target
                 transaction.save(update_fields=["category"])
                 moved += 1
-            messages.success(request, f"Moved {moved} transaction{'s' if moved != 1 else ''} to {target.full_name}.")
+            messages.success(
+                request,
+                f"Moved {moved} transaction{'s' if moved != 1 else ''} to {target.full_name}.",
+            )
         return redirect("finance:category_usage", pk=category.pk)
 
     other_categories = sorted(
-        Category.objects.exclude(Q(pk=category.pk) | Q(account__isnull=False)).select_related("parent"),
+        Category.objects.exclude(Q(pk=category.pk) | Q(account__isnull=False)).select_related(
+            "parent"
+        ),
         key=lambda c: c.full_name.lower(),
     )
     return render(

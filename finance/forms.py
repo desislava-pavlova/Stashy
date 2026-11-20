@@ -45,7 +45,11 @@ class DateInput(forms.DateInput):
 
     def __init__(self, attrs=None):
         prefs = regional.current()
-        defaults = {"data-datepicker": "", "placeholder": prefs.date_placeholder, "autocomplete": "off"}
+        defaults = {
+            "data-datepicker": "",
+            "placeholder": prefs.date_placeholder,
+            "autocomplete": "off",
+        }
         super().__init__(attrs={**defaults, **(attrs or {})}, format=prefs.date_pattern)
 
 
@@ -111,7 +115,9 @@ class SafeModelMultipleChoiceField(forms.ModelMultipleChoiceField):
                 continue  # not a number at all: Django's own check below says so, in its words
             if not lowest <= number <= highest:
                 raise ValidationError(
-                    self.error_messages["invalid_choice"], code="invalid_choice", params={"value": pk}
+                    self.error_messages["invalid_choice"],
+                    code="invalid_choice",
+                    params={"value": pk},
                 )
         return super()._check_values(value)
 
@@ -142,7 +148,8 @@ class AccountForm(BootstrapFormMixin, forms.ModelForm):
         # case).
         if not is_active and self.instance.pk and self.instance.balance != ZERO:
             raise ValidationError(
-                "This account still has a balance - it can't be made inactive until its balance is zero."
+                "This account still has a balance - it can't be made inactive until its "
+                "balance is zero."
             )
         return is_active
 
@@ -154,8 +161,12 @@ class AccountCreateForm(AccountForm):
     register never starts empty, and reconciliation always has a
     starting transaction to reconcile from."""
 
-    opening_balance = forms.DecimalField(max_digits=12, decimal_places=2, required=False, initial=0)
-    opening_balance_date = PlausibleDateField(required=False, widget=DateInput(), initial=timezone.localdate)
+    opening_balance = forms.DecimalField(
+        max_digits=12, decimal_places=2, required=False, initial=0
+    )
+    opening_balance_date = PlausibleDateField(
+        required=False, widget=DateInput(), initial=timezone.localdate
+    )
 
     field_order = [
         "name",
@@ -187,7 +198,9 @@ class AccountCreateForm(AccountForm):
         account = super().save(commit=commit)
         amount = self.cleaned_data.get("opening_balance", ZERO)
         if commit:
-            with system_action(f"Opening balance transaction created for account '{account.name}'"):
+            with system_action(
+                f"Opening balance transaction created for account '{account.name}'"
+            ):
                 Transaction.objects.create(
                     account=account,
                     date=self.cleaned_data["opening_balance_date"],
@@ -204,7 +217,9 @@ class TransferForm(forms.Form):
     transactions."""
 
     to_account = forms.ModelChoiceField(queryset=Account.objects.none(), label="Transfer to")
-    amount = forms.DecimalField(max_digits=12, decimal_places=2, min_value=CENT, help_text="Enter a positive amount.")
+    amount = forms.DecimalField(
+        max_digits=12, decimal_places=2, min_value=CENT, help_text="Enter a positive amount."
+    )
     date = PlausibleDateField(widget=DateInput(), initial=timezone.localdate)
 
     def __init__(self, *args, from_account=None, **kwargs):
@@ -293,7 +308,9 @@ class CategoryParentSelect(forms.Select):
         self.categories_by_id = categories_by_id or {}
 
     def create_option(self, name, value, label, selected, index, subindex=None, attrs=None):
-        option = super().create_option(name, value, label, selected, index, subindex=subindex, attrs=attrs)
+        option = super().create_option(
+            name, value, label, selected, index, subindex=subindex, attrs=attrs
+        )
         category = self.categories_by_id.get(getattr(value, "value", value))
         if category:
             option["attrs"]["data-category-type"] = category.category_type
@@ -310,7 +327,9 @@ class CategoryForm(BootstrapFormMixin, forms.ModelForm):
         # Transfer is a system-managed type (D7/D4) — never chosen by
         # hand.
         self.fields["category_type"].choices = [
-            choice for choice in self.fields["category_type"].choices if choice[0] != Category.CategoryType.TRANSFER
+            choice
+            for choice in self.fields["category_type"].choices
+            if choice[0] != Category.CategoryType.TRANSFER
         ]
         parent_field = self.fields["parent"]
         # Only a top-level category can be a parent (one level of
@@ -332,7 +351,9 @@ class CategoryForm(BootstrapFormMixin, forms.ModelForm):
     def clean(self):
         cleaned = super().clean()
         if self.instance.is_system_managed:
-            raise ValidationError("This category belongs to an account and is managed automatically.")
+            raise ValidationError(
+                "This category belongs to an account and is managed automatically."
+            )
         return cleaned
 
 
@@ -375,7 +396,9 @@ class TransactionForm(BootstrapFormMixin, forms.ModelForm):
         # still offer its own category, or saving the form would reject
         # it as invalid.
         self.fields["category"].queryset = categories_alphabetical(
-            self.fields["category"].queryset.filter(Q(account__isnull=True) | Q(pk=self.instance.category_id))
+            self.fields["category"].queryset.filter(
+                Q(account__isnull=True) | Q(pk=self.instance.category_id)
+            )
         )
         self.fields["category"].label_from_instance = lambda category: category.indented_name
 
@@ -446,7 +469,9 @@ class ReminderForm(BootstrapFormMixin, forms.ModelForm):
         )
         category_field.queryset = categories
         category_field.label_from_instance = lambda category: category.indented_name
-        self.fields["no_end_date"].initial = not self.instance.end_date if self.instance.pk else True
+        self.fields["no_end_date"].initial = (
+            not self.instance.end_date if self.instance.pk else True
+        )
 
     def clean(self):
         cleaned = super().clean()
@@ -473,15 +498,26 @@ class ReminderForm(BootstrapFormMixin, forms.ModelForm):
 
 
 class ImportUploadForm(forms.Form):
-    DATE_FORMAT_CHOICES = [("auto", "Detect automatically (recommended)"), *regional.DATE_FORMAT_CHOICES]
+    DATE_FORMAT_CHOICES = [
+        ("auto", "Detect automatically (recommended)"),
+        *regional.DATE_FORMAT_CHOICES,
+    ]
 
     account = forms.ModelChoiceField(
         queryset=Account.objects.filter(is_active=True),
-        help_text="Used for every row, unless the file has its own Account column - that takes over per row.",
+        help_text=(
+            "Used for every row, unless the file has its own Account column - "
+            "that takes over per row."
+        ),
     )
     file = forms.FileField(
-        help_text="CSV or XLSX (Date, Payee, Memo, Amount, optionally Num/Account/Category/Reconciled) or OFX/QFX",
-        validators=[FileExtensionValidator(SUPPORTED_EXTENSIONS, message=UNSUPPORTED_FILE_MESSAGE)],
+        help_text=(
+            "CSV or XLSX (Date, Payee, Memo, Amount, optionally "
+            "Num/Account/Category/Reconciled) or OFX/QFX"
+        ),
+        validators=[
+            FileExtensionValidator(SUPPORTED_EXTENSIONS, message=UNSUPPORTED_FILE_MESSAGE)
+        ],
     )
     date_format = forms.ChoiceField(
         choices=DATE_FORMAT_CHOICES,
@@ -542,7 +578,9 @@ class DateRangeFilterForm(forms.Form):
     # (stashy.js).
     start = forms.DateField(required=False, widget=DateInput(attrs={"data-range-date": ""}))
     end = forms.DateField(required=False, widget=DateInput(attrs={"data-range-date": ""}))
-    interval = forms.ChoiceField(choices=INTERVAL_CHOICES, required=False, initial="3", label="Average interval")
+    interval = forms.ChoiceField(
+        choices=INTERVAL_CHOICES, required=False, initial="3", label="Average interval"
+    )
     subtotal = forms.ChoiceField(choices=SUBTOTAL_CHOICES, required=False, label="Subtotal by")
     account = forms.ModelChoiceField(queryset=Account.objects.all(), required=False)
 
@@ -564,9 +602,13 @@ class DateRangeFilterForm(forms.Form):
             if start > end:
                 raise ValidationError("The start date must be on or before the end date.")
             if start.year < EARLIEST_YEAR or end.year > LATEST_YEAR:
-                raise ValidationError(f"Dates must fall between {EARLIEST_YEAR} and {LATEST_YEAR}.")
+                raise ValidationError(
+                    f"Dates must fall between {EARLIEST_YEAR} and {LATEST_YEAR}."
+                )
             if end > start + relativedelta(years=self.MAX_RANGE_YEARS):
-                raise ValidationError(f"A custom range can cover at most {self.MAX_RANGE_YEARS} years.")
+                raise ValidationError(
+                    f"A custom range can cover at most {self.MAX_RANGE_YEARS} years."
+                )
         return cleaned
 
 
@@ -582,7 +624,9 @@ class ProfileColumnsOnlyMixin:
         if commit:
             # The form's own fields, not Meta.fields, which is None for
             # a form written with exclude.
-            columns = [name for name in self.fields if not profile._meta.get_field(name).many_to_many]
+            columns = [
+                name for name in self.fields if not profile._meta.get_field(name).many_to_many
+            ]
             profile.save(update_fields=columns)
             self.save_m2m()
         return profile
@@ -599,7 +643,13 @@ class ProfileForm(ProfileColumnsOnlyMixin, BootstrapFormMixin, forms.ModelForm):
 
     class Meta:
         model = Profile
-        fields = ["main_currency", "time_zone", "date_format", "number_format", "first_day_of_week"]
+        fields = [
+            "main_currency",
+            "time_zone",
+            "date_format",
+            "number_format",
+            "first_day_of_week",
+        ]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -627,7 +677,9 @@ class WatchedExpensesForm(ProfileColumnsOnlyMixin, BootstrapFormMixin, forms.Mod
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["watched_expenses_categories"].queryset = categories_alphabetical(
-            Category.objects.filter(category_type=Category.CategoryType.EXPENSE, account__isnull=True)
+            Category.objects.filter(
+                category_type=Category.CategoryType.EXPENSE, account__isnull=True
+            )
         )
         self.fields["watched_expenses_title"].widget.attrs["class"] = "form-control"
 
@@ -645,7 +697,9 @@ def watched_expenses_picker_context(profile):
         button_label = f"{len(chosen)} categories selected"
     return {
         "watched_category_groups": grouped_categories(
-            Category.objects.filter(category_type=Category.CategoryType.EXPENSE, account__isnull=True)
+            Category.objects.filter(
+                category_type=Category.CategoryType.EXPENSE, account__isnull=True
+            )
         ),
         "watched_selected_values": {str(category.pk) for category in chosen},
         "watched_button_label": button_label,

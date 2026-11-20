@@ -30,7 +30,11 @@ urlpatterns = [
     path("accounts/login/", stash_auth_views.StashLoginView.as_view(), name="login"),
     # Logging out never needs a login: an expired session still lands on
     # the PIN page.
-    path("accounts/logout/", login_not_required(auth_views.LogoutView.as_view(next_page="login")), name="logout"),
+    path(
+        "accounts/logout/",
+        login_not_required(auth_views.LogoutView.as_view(next_page="login")),
+        name="logout",
+    ),
     path("accounts/forgot-pin/", stash_auth_views.forgot_pin, name="forgot_pin"),
     # The stash picker: where someone with no stash chosen is sent (see
     # finance.middleware.RequireStashMiddleware), and where a logged-in

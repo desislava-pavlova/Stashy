@@ -10,7 +10,12 @@ from django.contrib import messages
 from django.shortcuts import redirect, render
 
 from .. import starter_categories
-from ..forms import AccountCreateForm, ProfileForm, WatchedExpensesForm, watched_expenses_picker_context
+from ..forms import (
+    AccountCreateForm,
+    ProfileForm,
+    WatchedExpensesForm,
+    watched_expenses_picker_context,
+)
 from ..models import Profile
 
 
@@ -72,9 +77,8 @@ def _step_categories(request, profile, step):
             if sheet in available:
                 created = starter_categories.add_starter_categories(sheet)
                 if created:
-                    messages.success(
-                        request, f"Added {len(created)} categor{'y' if len(created) == 1 else 'ies'} from {sheet}."
-                    )
+                    noun = "category" if len(created) == 1 else "categories"
+                    messages.success(request, f"Added {len(created)} {noun} from {sheet}.")
             _advance(profile, step)
             return _to_step(step + 1)
     return render(

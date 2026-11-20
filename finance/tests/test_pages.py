@@ -101,7 +101,9 @@ class RenderCheckTests(LoggedInWithAccountTestCase):
     @classmethod
     def setUpTestData(cls):
         super().setUpTestData()
-        cls.category = Category.objects.create(name="Groceries", category_type=Category.CategoryType.EXPENSE)
+        cls.category = Category.objects.create(
+            name="Groceries", category_type=Category.CategoryType.EXPENSE
+        )
         cls.payee = Payee.objects.create(name="Corner Shop")
         cls.transaction = Transaction.objects.create(
             account=cls.account,
@@ -110,9 +112,14 @@ class RenderCheckTests(LoggedInWithAccountTestCase):
             payee=cls.payee,
             amount=Decimal("-5"),
         )
-        cls.reminder = Reminder.objects.create(account=cls.account, next_due_date=timezone.localdate())
+        cls.reminder = Reminder.objects.create(
+            account=cls.account, next_due_date=timezone.localdate()
+        )
         cls.recurring = Reminder.objects.create(
-            account=cls.account, next_due_date=timezone.localdate(), frequency="monthly", end_date=date(2099, 12, 31)
+            account=cls.account,
+            next_due_date=timezone.localdate(),
+            frequency="monthly",
+            end_date=date(2099, 12, 31),
         )
         Profile.for_user(cls.user).watched_expenses_categories.add(cls.category)
 
@@ -159,7 +166,9 @@ class RenderCheckTests(LoggedInWithAccountTestCase):
         profile = Profile.for_user(self.user)
         for step in range(1, Profile.WELCOME_STEPS_DONE + 1):
             with self.subTest(step=step):
-                profile.welcome_step = step - 1  # the wizard shows the step after the last finished one
+                profile.welcome_step = (
+                    step - 1
+                )  # the wizard shows the step after the last finished one
                 profile.save(update_fields=["welcome_step"])
                 response = self.client.get(reverse("finance:welcome_step", args=[step]))
                 self.assertEqual(response.status_code, 200)
@@ -178,7 +187,9 @@ class PublicPagesRenderCheckTests(StashTestCase):
     def setUpTestData(cls):
         # The stash's own user and Profile, which the PIN pages look
         # for.
-        Profile.for_user(get_user_model().objects.create_user(settings.TEST_STASH, password="1234"))
+        Profile.for_user(
+            get_user_model().objects.create_user(settings.TEST_STASH, password="1234")
+        )
 
     def test_no_public_page_leaks_template_syntax(self):
         # A fresh browser hasn't chosen a stash yet; self.client has
@@ -207,7 +218,9 @@ class HelpCardTipsTests(LoggedInWithAccountTestCase):
     def test_the_reminder_tip_names_the_real_due_soon_window(self):
         response = self.client.get(reverse("finance:reminder_add"))
         self.assertContains(
-            response, f"Anything due within the next {Reminder.DUE_SOON_DAYS} days shows up on your dashboard."
+            response,
+            f"Anything due within the next {Reminder.DUE_SOON_DAYS} days "
+            "shows up on your dashboard.",
         )
 
     def test_the_import_page_shows_its_tips(self):

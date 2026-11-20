@@ -17,7 +17,8 @@ ACCOUNT_TIPS = [
 ]
 CATEGORY_TIPS = [
     "Give a category a parent to make it a subcategory, like Food → Groceries.",
-    "Income and expense categories are reported separately — the Parent list narrows to match once you pick a type.",
+    "Income and expense categories are reported separately — the Parent list narrows to "
+    "match once you pick a type.",
     "Keeping it simple is fine too: top-level categories can be used on their own.",
 ]
 PAYEE_TIPS = [
@@ -36,12 +37,13 @@ TRANSACTION_TIPS = [
     "Moving money between your own accounts? Use the Transfer button on the account page instead.",
 ]
 IMPORT_TIPS = [
-    "CSV or XLSX columns recognized: Date, Num, Account, Payee, Category, Memo, Amount, Reconciled - "
-    "only Date needs a value; the rest can be left blank.",
+    "CSV or XLSX columns recognized: Date, Num, Account, Payee, Category, Memo, Amount, "
+    "Reconciled - only Date needs a value; the rest can be left blank.",
     'A category that doesn\'t exist yet is created for you automatically - marked "auto" in '
     'the category list - and understands "Parent:Child" or "Parent > Child".',
     "An Account column lets one file cover several accounts at once; a row naming an account "
     "that doesn't exist yet is skipped rather than guessed at.",
     'Leave Date format on "Detect automatically" unless Stashy gets it wrong for this '
-    "particular file - it reads a sample of the dates first and only asks you to pick when it can't tell.",
+    "particular file - it reads a sample of the dates first and only asks you to pick "
+    "when it can't tell.",
 ]

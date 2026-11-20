@@ -6552,3 +6552,75 @@ changes.
 **Files touched:** `pyproject.toml`; the 47 files ruff reordered (`audit/` 3,
 `finance/` 34, `scripts/` 4, `stashy/` 6); `CLAUDE.md`, `plans/03_structure_review.md`,
 `plans/README.md`, this log. No new files, no migration.
+
+
+## 20/11/2026 — Plan 03, Phase 3, part A (second half): code lines wrap at 99 (S43)
+
+**What changed:** `line-length` in `pyproject.toml` went from 119 to 99. `ruff format`
+rewrapped 67 files on its own, and the 39 lines it can't split were fixed by hand, plus
+five more that it skips (below), in 24 files. 1,211 tests (the same number, one of them
+with a one-word change, below), ruff clean, no migration (`makemigrations --check` says
+no changes), no data touched. This closes part A of Phase 3, item 3.0.
+
+**Why the code looks like this:**
+- **99, not 79 and not 119.** PEP 8's maximum is 79, and it lets a team agree on a longer
+  line, up to 99 and no more. Plan 02 chose 119 and gave "PEP 8 allows 99/119" as the
+  reason, which misread it; you asked for PEP 8 then and again on 13/11. Comments and
+  docstrings are already at 72 (17/11), so only code lines move here.
+- **Two fixes for the 39 lines ruff can't split, and no `noqa: E501`.** A long message or
+  help text becomes adjacent string literals split at a space; Python glues them into one
+  string while it reads the file, so the text is the same. A long f-string gets its
+  calculation in a named variable above it (`changelist`, `due_date`, `rate_date`,
+  `figure` and `biggest`, `created` and `rows`, `noun`, `mode`), which reads better than
+  wrapping the f-string. A `noqa` would only hide the line from the check that exists to
+  keep lines short.
+- **Proof instead of trust.** The suite notices a changed message only if a test asserts
+  on it, and most of these messages have none. So before editing by hand, the files
+  were copied; afterwards a script compared each file's syntax tree (Python's `ast`) with
+  its copy. 16 of the 24 files came out identical, which means every plain split left
+  the text byte for byte the same. The other 8 differ in exactly 10 places: 8 where a
+  variable was introduced, plus the fixture and the regex flag below, and each of those
+  was read.
+- **One fixture is data, not code, and one test paid for it.** `OFX_FILE`'s transaction
+  line in `test_imports.py` has a space in its memo ("weekly shop"), so ruff counts it as
+  too long. (It skips a line that is one word with no spaces, which is why the line below
+  it, longer still, was never flagged.) It was broken after `<FITID>1`, where an OFX file
+  may break and where real ones do: they put a tag on each line, and the importer read
+  the file the same. `test_a_transaction_repeated_within_one_ofx_file_is_a_duplicate`
+  then failed, because it finds the block with a regex whose `.` doesn't cross a line
+  break (`NoneType has no attribute group`). `re.DOTALL` on that regex is the one test
+  edit.
+- **`ruff format`'s 67 files were not read line by line.** It rewraps layout and never
+  changes the syntax tree, the suite passed, and a review of 67 rewrapped files would
+  mostly re-read ruff's output. The hand edits were reviewed instead, by the code
+  reviewer only. No field, query, migration, template or behaviour changed (`models.py`
+  got wrapped strings and two `__str__` variables, and `makemigrations --check` agrees),
+  so the database, security, front-end and QA reviewers were skipped as the rule allows
+  for style-only changes.
+- **What the review changed.** Nothing Critical, and it re-ran every restructured
+  message and `__str__` and found the same text. Fixed from it: five lines that ruff
+  skips because a line with no whitespace in it counts as one "word" (the name pattern in
+  `backup.py`, three test strings, the OFX fixture's last line) were split too, because
+  otherwise "code lines wrap at 99" in `CLAUDE.md` would have an exception nobody wrote
+  down; two variable names said less than they could (`created` held a phrase like
+  "3 transactions" and became `transactions`, `biggest` became `largest`); and the
+  `re.DOTALL` got a one-line comment, since a reader would ask why. Filed rather than
+  fixed, because they are not about line length: three small duplications and the
+  missing tests that would pin the restructured texts (plan 03, S125 and S126), and
+  "1 duplicates skipped" in the import summary (plan 04, R34), held back so this commit
+  changes no text a person reads.
+
+**Teaching note — a formatter changes layout, never meaning, and you can prove it.**
+When a tool rewrites dozens of files, reading each diff is slow and tiring, and a human
+eye skips over a changed word. Compare the program's structure instead: `ast.dump()` of
+the old and the new file is equal exactly when the code is, whatever the line breaks.
+Whatever differs is a short list you read closely. And a line that is too long is often
+a hint, not a formatting problem: an f-string that needs 110 columns is doing a
+calculation inside a string, and naming the calculation makes both lines easier to read.
+
+**Files touched:** `pyproject.toml`; the 67 files ruff rewrapped; the 24 files with hand
+edits (`audit/` 3, `finance/` 18, `scripts/` 2, `stashy/` 1, among them
+`finance/tests/test_imports.py`'s `re.DOTALL`); `CLAUDE.md` (a line-length bullet),
+`plans/02_architecture_cleanup.md` (C1's revision note), `plans/03_structure_review.md`,
+`plans/04_fixes_and_changes_plan.md`, `plans/README.md`, this log. No new files, no
+migration.

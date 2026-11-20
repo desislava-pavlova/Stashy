@@ -14,7 +14,12 @@ from django.views.generic import RedirectView
 from ..auth_forms import ChangePinForm, CurrentPinForm, ForgotPinForm, StashCreateForm
 from ..models import Profile
 from ..stashes import StashError, registry, security
-from .base import LEAKED_TEMPLATE_SYNTAX, REHASHING_PASSWORD_HASHERS, StashTestCase, every_finance_url
+from .base import (
+    LEAKED_TEMPLATE_SYNTAX,
+    REHASHING_PASSWORD_HASHERS,
+    StashTestCase,
+    every_finance_url,
+)
 
 
 class RecoveryCodeFormatTests(SimpleTestCase):
@@ -111,7 +116,9 @@ class LockoutTests(StashTestCase):
         self.assertFalse(security.is_locked_out(self.profile))
         self.assertFalse(security.check_pin(self.profile, "0000"))
         self.assertTrue(security.is_locked_out(self.profile))
-        self.assertEqual(self.profile.failed_pin_attempts, 0)  # the count starts again after a lockout
+        self.assertEqual(
+            self.profile.failed_pin_attempts, 0
+        )  # the count starts again after a lockout
         self.assertFalse(security.check_pin(self.profile, "1234"))
 
     def test_a_wrong_pin_while_locked_out_is_not_counted_and_does_not_extend_the_lockout(self):
@@ -120,7 +127,9 @@ class LockoutTests(StashTestCase):
         self.profile.save()
         self.assertFalse(security.check_pin(self.profile, "0000"))
         self.profile.refresh_from_db()
-        self.assertEqual((self.profile.failed_pin_attempts, self.profile.locked_until), (0, locked_until))
+        self.assertEqual(
+            (self.profile.failed_pin_attempts, self.profile.locked_until), (0, locked_until)
+        )
 
     def test_an_old_copy_counts_the_try_that_starts_the_lockout(self):
         old_copy = Profile.objects.get(pk=self.profile.pk)
@@ -161,10 +170,14 @@ class RecoveryCodeResetTests(StashTestCase):
     def setUpTestData(cls):
         cls.user = get_user_model().objects.create_user("tester", password="1234")
         cls.recovery_code = "ABCD-EFGH-JKLM"
-        cls.profile = Profile.objects.create(user=cls.user, recovery_code_hash=security._hash(cls.recovery_code))
+        cls.profile = Profile.objects.create(
+            user=cls.user, recovery_code_hash=security._hash(cls.recovery_code)
+        )
 
     def test_correct_code_resets_the_pin_and_issues_a_new_code(self):
-        ok, new_code = security.reset_pin_with_recovery_code(self.profile, self.recovery_code, "9999")
+        ok, new_code = security.reset_pin_with_recovery_code(
+            self.profile, self.recovery_code, "9999"
+        )
         self.assertTrue(ok)
         self.assertNotEqual(new_code, self.recovery_code)
         self.user.refresh_from_db()
@@ -185,7 +198,9 @@ class RecoveryCodeResetTests(StashTestCase):
         self.assertEqual(self.profile.failed_pin_attempts, 2)
 
     def test_wrong_code_counts_as_a_failed_attempt(self):
-        ok, new_code = security.reset_pin_with_recovery_code(self.profile, "WRONG-CODE-HERE", "9999")
+        ok, new_code = security.reset_pin_with_recovery_code(
+            self.profile, "WRONG-CODE-HERE", "9999"
+        )
         self.assertFalse(ok)
         self.assertIsNone(new_code)
         self.profile.refresh_from_db()
@@ -197,7 +212,9 @@ class RecoveryCodeResetTests(StashTestCase):
         self.profile.failed_pin_attempts = 2
         self.profile.locked_until = timezone.now() + timedelta(minutes=5)
         self.profile.save()
-        ok, new_code = security.reset_pin_with_recovery_code(self.profile, self.recovery_code, "9999")
+        ok, new_code = security.reset_pin_with_recovery_code(
+            self.profile, self.recovery_code, "9999"
+        )
         self.assertTrue(ok)
         self.assertTrue(new_code)
         self.user.refresh_from_db()
@@ -216,7 +233,9 @@ class RecoveryCodeResetTests(StashTestCase):
         self.profile.refresh_from_db()
         self.assertTrue(self.user.check_password("1234"))
         self.assertEqual(self.profile.recovery_code_hash, old_hash)
-        self.assertEqual((self.profile.failed_pin_attempts, self.profile.locked_until), (0, locked_until))
+        self.assertEqual(
+            (self.profile.failed_pin_attempts, self.profile.locked_until), (0, locked_until)
+        )
 
     def test_an_old_copy_cannot_get_a_wrong_code_past_the_lockout_either_way(self):
         """The request's copy says "not locked"; the saved row says it
@@ -229,7 +248,9 @@ class RecoveryCodeResetTests(StashTestCase):
         result = security.reset_pin_with_recovery_code(old_copy, "WRONG-CODE-HERE", "9999")
         self.assertEqual(result, (False, None))
         self.profile.refresh_from_db()
-        self.assertEqual((self.profile.failed_pin_attempts, self.profile.locked_until), (0, locked_until))
+        self.assertEqual(
+            (self.profile.failed_pin_attempts, self.profile.locked_until), (0, locked_until)
+        )
 
     def test_an_old_copy_cannot_use_a_code_that_has_since_been_replaced(self):
         old_copy = Profile.objects.select_related("user").get(pk=self.profile.pk)
@@ -255,7 +276,10 @@ class RecoveryCodeResetTests(StashTestCase):
         self.profile.save()
         for guess in ("", " ", "ABCD-EFGH-JKLM"):
             with self.subTest(guess=guess):
-                self.assertEqual(security.reset_pin_with_recovery_code(self.profile, guess, "9999"), (False, None))
+                self.assertEqual(
+                    security.reset_pin_with_recovery_code(self.profile, guess, "9999"),
+                    (False, None),
+                )
         self.user.refresh_from_db()
         self.assertTrue(self.user.check_password("1234"))
 
@@ -275,7 +299,11 @@ class ForgotPinPageTests(StashTestCase):
         )
 
     def reset(self, code=RECOVERY_CODE, pin="5678", confirm=None):
-        data = {"recovery_code": code, "new_pin": pin, "new_pin_confirm": pin if confirm is None else confirm}
+        data = {
+            "recovery_code": code,
+            "new_pin": pin,
+            "new_pin_confirm": pin if confirm is None else confirm,
+        }
         return self.client.post(reverse("forgot_pin"), data)
 
     def assert_nothing_changed(self, *, tries=0):
@@ -316,10 +344,14 @@ class ForgotPinPageTests(StashTestCase):
 
     def test_the_new_pin_logs_in_and_the_old_one_does_not(self):
         self.reset()
-        old = self.client.post(reverse("login"), {"username": settings.TEST_STASH, "password": "1234"})
+        old = self.client.post(
+            reverse("login"), {"username": settings.TEST_STASH, "password": "1234"}
+        )
         self.assertNotIn("_auth_user_id", self.client.session)
         self.assertEqual(old.status_code, 200)
-        new = self.client.post(reverse("login"), {"username": settings.TEST_STASH, "password": "5678"})
+        new = self.client.post(
+            reverse("login"), {"username": settings.TEST_STASH, "password": "5678"}
+        )
         self.assertRedirects(new, reverse("finance:dashboard"), fetch_redirect_response=False)
 
     def test_the_code_is_accepted_in_any_case_and_with_spaces_around_it(self):
@@ -348,8 +380,12 @@ class ForgotPinPageTests(StashTestCase):
         for _ in range(security.LOCKOUT_THRESHOLD - 1):
             self.assertContains(self.reset(code="WXYZ-WXYZ-WXYZ"), "Reset PIN</button>")
         response = self.reset(code="WXYZ-WXYZ-WXYZ")
-        self.assertContains(response, "Too many wrong attempts. The PIN screen is locked for about 5 minutes")
-        self.assertContains(response, "Reset PIN</button>")  # S91: the recovery code is the way out
+        self.assertContains(
+            response, "Too many wrong attempts. The PIN screen is locked for about 5 minutes"
+        )
+        self.assertContains(
+            response, "Reset PIN</button>"
+        )  # S91: the recovery code is the way out
         self.profile.refresh_from_db()
         self.assertTrue(security.is_locked_out(self.profile))
 
@@ -370,7 +406,9 @@ class ForgotPinPageTests(StashTestCase):
         self.profile.refresh_from_db()
         self.assertTrue(self.user.check_password("5678"))
         self.assertEqual((self.profile.failed_pin_attempts, self.profile.locked_until), (0, None))
-        login = self.client.post(reverse("login"), {"username": settings.TEST_STASH, "password": "5678"})
+        login = self.client.post(
+            reverse("login"), {"username": settings.TEST_STASH, "password": "5678"}
+        )
         self.assertRedirects(login, reverse("finance:dashboard"), fetch_redirect_response=False)
 
     def test_a_wrong_code_during_a_lockout_is_refused_and_leaves_the_lockout_alone(self):
@@ -385,19 +423,26 @@ class ForgotPinPageTests(StashTestCase):
 
     def test_the_lockout_is_shared_with_the_pin_screen(self):
         for _ in range(security.LOCKOUT_THRESHOLD - 1):
-            self.client.post(reverse("login"), {"username": settings.TEST_STASH, "password": "0000"})
+            self.client.post(
+                reverse("login"), {"username": settings.TEST_STASH, "password": "0000"}
+            )
         self.reset(code="WXYZ-WXYZ-WXYZ")
         self.profile.refresh_from_db()
         self.assertTrue(security.is_locked_out(self.profile))
         self.assertContains(self.client.get(reverse("forgot_pin")), "Too many wrong attempts")
         self.assertContains(
-            self.client.post(reverse("login"), {"username": settings.TEST_STASH, "password": "1234"}),
+            self.client.post(
+                reverse("login"), {"username": settings.TEST_STASH, "password": "1234"}
+            ),
             "Too many wrong PINs",
         )
 
 
 class StashCreatePageTests(StashTestCase):
-    databases = {"default", settings.TEST_STASH}  # no stash is chosen yet, so Django touches `default`
+    databases = {
+        "default",
+        settings.TEST_STASH,
+    }  # no stash is chosen yet, so Django touches `default`
 
     def test_the_page_is_never_cached(self):
         # S80: it also shows a new stash's recovery code, which the Back
@@ -409,8 +454,14 @@ class StashCreatePageTests(StashTestCase):
 
 class ForgotPinWithoutAProfileTests(StashTestCase):
     def test_a_stash_with_no_profile_goes_back_to_the_pin_screen(self):
-        self.assertRedirects(self.client.get(reverse("forgot_pin")), reverse("login"), fetch_redirect_response=False)
-        self.assertRedirects(self.client.post(reverse("forgot_pin")), reverse("login"), fetch_redirect_response=False)
+        self.assertRedirects(
+            self.client.get(reverse("forgot_pin")), reverse("login"), fetch_redirect_response=False
+        )
+        self.assertRedirects(
+            self.client.post(reverse("forgot_pin")),
+            reverse("login"),
+            fetch_redirect_response=False,
+        )
 
 
 class PinScreenLockoutTests(StashTestCase):
@@ -424,7 +475,9 @@ class PinScreenLockoutTests(StashTestCase):
         cls.profile = Profile.objects.create(user=cls.user)
 
     def log_in(self, pin):
-        return self.client.post(reverse("login"), {"username": settings.TEST_STASH, "password": pin})
+        return self.client.post(
+            reverse("login"), {"username": settings.TEST_STASH, "password": pin}
+        )
 
     def test_each_wrong_pin_counts_and_the_last_one_locks_the_stash(self):
         self.log_in("0000")
@@ -501,7 +554,9 @@ class ClosingTheBrowserTests(StashTestCase):
         self.assertIn(settings.SESSION_COOKIE_NAME, self.client.cookies)
         self.close_the_browser()
         self.assertNotIn(settings.SESSION_COOKIE_NAME, self.client.cookies)
-        self.assertEqual(self.client.cookies[registry.LAST_STASH_COOKIE].value, settings.TEST_STASH)
+        self.assertEqual(
+            self.client.cookies[registry.LAST_STASH_COOKIE].value, settings.TEST_STASH
+        )
 
 
 class AdminPasswordChangeTests(StashTestCase):
@@ -511,7 +566,9 @@ class AdminPasswordChangeTests(StashTestCase):
 
     @classmethod
     def setUpTestData(cls):
-        cls.user = get_user_model().objects.create_superuser(settings.TEST_STASH, email="", password="1234")
+        cls.user = get_user_model().objects.create_superuser(
+            settings.TEST_STASH, email="", password="1234"
+        )
         Profile.objects.create(user=cls.user)
 
     def setUp(self):
@@ -521,12 +578,16 @@ class AdminPasswordChangeTests(StashTestCase):
         for name in ("admin:password_change", "admin:password_change_done"):
             with self.subTest(page=name):
                 response = self.client.get(reverse(name))
-                self.assertRedirects(response, reverse("finance:change_pin"), fetch_redirect_response=False)
+                self.assertRedirects(
+                    response, reverse("finance:change_pin"), fetch_redirect_response=False
+                )
 
     def test_posting_a_new_password_there_changes_nothing(self):
         data = {"old_password": "1234", "new_password1": "a", "new_password2": "a"}
         response = self.client.post(reverse("admin:password_change"), data)
-        self.assertRedirects(response, reverse("finance:change_pin"), fetch_redirect_response=False)
+        self.assertRedirects(
+            response, reverse("finance:change_pin"), fetch_redirect_response=False
+        )
         self.user.refresh_from_db()
         self.assertTrue(self.user.check_password("1234"))
 
@@ -539,7 +600,9 @@ class AdminPasswordChangeTests(StashTestCase):
             with self.subTest(page=name):
                 response = self.client_class().get(reverse(name))
                 self.assertRedirects(
-                    response, f"{reverse('login')}?next={reverse(name)}", fetch_redirect_response=False
+                    response,
+                    f"{reverse('login')}?next={reverse(name)}",
+                    fetch_redirect_response=False,
                 )
 
     def test_the_admins_change_password_link_ends_on_change_pin(self):
@@ -566,12 +629,16 @@ class SwitchStashIsPostOnlyTests(StashTestCase):
 
     def test_post_returns_to_the_picker(self):
         self.assertRedirects(
-            self.client.post(reverse("switch_stash")), reverse("stash_picker"), fetch_redirect_response=False
+            self.client.post(reverse("switch_stash")),
+            reverse("stash_picker"),
+            fetch_redirect_response=False,
         )
 
     def test_the_pin_screen_offers_it_as_a_form_button(self):
         response = self.client.get(reverse("login"))
-        self.assertContains(response, f'<form method="post" action="{reverse("switch_stash")}"', html=False)
+        self.assertContains(
+            response, f'<form method="post" action="{reverse("switch_stash")}"', html=False
+        )
         self.assertNotContains(response, f'href="{reverse("switch_stash")}"')
         for leaked in LEAKED_TEMPLATE_SYNTAX:
             self.assertNotContains(response, leaked)
@@ -583,7 +650,9 @@ class AdminLoginTests(StashTestCase):
 
     def test_admin_login_sends_you_to_the_pin_screen_with_next(self):
         response = self.client.get("/admin/login/", {"next": "/admin/"})
-        self.assertRedirects(response, f"{reverse('login')}?next=%2Fadmin%2F", fetch_redirect_response=False)
+        self.assertRedirects(
+            response, f"{reverse('login')}?next=%2Fadmin%2F", fetch_redirect_response=False
+        )
 
     def test_posting_a_pin_there_logs_nobody_in(self):
         get_user_model().objects.create_superuser("test", password="1234")
@@ -610,7 +679,15 @@ class LoginByDefaultTests(StashTestCase):
                     self.assertTrue(response.url.startswith(f"{login_url}?next="), response.url)
 
     def test_the_pages_used_before_logging_in_are_public(self):
-        for name in ("login", "logout", "forgot_pin", "stash_picker", "stash_create", "switch_stash", "admin_login"):
+        for name in (
+            "login",
+            "logout",
+            "forgot_pin",
+            "stash_picker",
+            "stash_create",
+            "switch_stash",
+            "admin_login",
+        ):
             with self.subTest(name=name):
                 view = resolve(reverse(name)).func
                 self.assertFalse(getattr(view, "login_required", True))
@@ -643,7 +720,10 @@ class PinRuleTests(SimpleTestCase):
         # The forms strip spaces and line breaks first; validate_pin()
         # itself takes none.
         for bad in [*self.BAD_PINS, "1234\n", "", None]:
-            with self.subTest(pin=bad), self.assertRaisesMessage(StashError, "PIN must be exactly 4 digits."):
+            with (
+                self.subTest(pin=bad),
+                self.assertRaisesMessage(StashError, "PIN must be exactly 4 digits."),
+            ):
                 security.validate_pin(bad)
 
     def _form_errors(self, form_class, data):
@@ -660,13 +740,23 @@ class PinRuleTests(SimpleTestCase):
         for form_class, data, field in cases:
             for bad in self.BAD_PINS:
                 with self.subTest(form=form_class.__name__, pin=bad):
-                    errors = self._form_errors(form_class, {**data, field: bad, f"{field}_confirm": bad})
+                    errors = self._form_errors(
+                        form_class, {**data, field: bad, f"{field}_confirm": bad}
+                    )
                     self.assertEqual(errors[field], ["PIN must be exactly 4 digits."])
 
     def test_a_mismatched_confirmation_is_reported_on_the_second_box(self):
         cases = [
-            (StashCreateForm, {"owner_name": "Alex", "pin": "1234", "pin_confirm": "4321"}, "pin_confirm"),
-            (ForgotPinForm, {"recovery_code": "X", "new_pin": "1234", "new_pin_confirm": "4321"}, "new_pin_confirm"),
+            (
+                StashCreateForm,
+                {"owner_name": "Alex", "pin": "1234", "pin_confirm": "4321"},
+                "pin_confirm",
+            ),
+            (
+                ForgotPinForm,
+                {"recovery_code": "X", "new_pin": "1234", "new_pin_confirm": "4321"},
+                "new_pin_confirm",
+            ),
         ]
         for form_class, data, field in cases:
             with self.subTest(form=form_class.__name__):

@@ -110,12 +110,16 @@ class TransferCategoryTests(StashTestCase):
 
     def test_category_form_rejects_a_system_managed_category(self):
         account = Account.objects.create(name="Checking")
-        form = CategoryForm({"name": "Renamed", "category_type": "expense"}, instance=account.transfer_category)
+        form = CategoryForm(
+            {"name": "Renamed", "category_type": "expense"}, instance=account.transfer_category
+        )
         self.assertFalse(form.is_valid())
 
     def test_transfer_type_is_not_an_available_choice_when_creating_a_category(self):
         form = CategoryForm()
-        self.assertNotIn(Category.CategoryType.TRANSFER, dict(form.fields["category_type"].choices))
+        self.assertNotIn(
+            Category.CategoryType.TRANSFER, dict(form.fields["category_type"].choices)
+        )
 
 
 class TransferButtonTests(LoggedInTestCase):
@@ -177,7 +181,9 @@ class TransferButtonTests(LoggedInTestCase):
 
                 self.assertIn('min="0.01"', amount_box)
                 self.assertEqual(response.status_code, 302)
-        self.assertEqual(Transaction.objects.filter(account=self.checking, amount=Decimal("-0.01")).count(), 4)
+        self.assertEqual(
+            Transaction.objects.filter(account=self.checking, amount=Decimal("-0.01")).count(), 4
+        )
 
     def test_a_transfer_below_one_cent_is_refused_and_moves_no_money(self):
         for amount in ("0.009", "-0.01"):
@@ -200,7 +206,9 @@ class TransferButtonTests(LoggedInTestCase):
         self.assertFalse(Transaction.objects.exists())
 
     def test_cannot_transfer_to_the_same_account(self):
-        form_response = self.client.get(reverse("finance:account_transfer", args=[self.checking.pk]))
+        form_response = self.client.get(
+            reverse("finance:account_transfer", args=[self.checking.pk])
+        )
         options = form_response.context["form"].fields["to_account"].queryset
         self.assertNotIn(self.checking, options)
 
@@ -236,7 +244,10 @@ class TransferAmountLimitTests(StashTestCase):
     def test_the_message_for_too_little_names_the_limit_as_a_clean_cent(self):
         """Not 0.01000000000000000020..., which is what the float limit
         used to print."""
-        self.assertEqual(self.form("0.00").errors["amount"], ["Ensure this value is greater than or equal to 0.01."])
+        self.assertEqual(
+            self.form("0.00").errors["amount"],
+            ["Ensure this value is greater than or equal to 0.01."],
+        )
 
 
 class AccountGroupingTests(StashTestCase):
@@ -244,18 +255,26 @@ class AccountGroupingTests(StashTestCase):
         Account.objects.create(name="Zeta savings", account_type=Account.AccountType.SAVINGS)
         Account.objects.create(name="Alpha cash", account_type=Account.AccountType.CASH)
         Account.objects.create(name="Beta checking", account_type=Account.AccountType.DEBIT_CARD)
-        Account.objects.create(name="Old wallet", account_type=Account.AccountType.CASH, is_active=False)
+        Account.objects.create(
+            name="Old wallet", account_type=Account.AccountType.CASH, is_active=False
+        )
 
         groups = grouped_accounts(Account.objects.all())
-        self.assertEqual([g["key"] for g in groups], ["physical", "digital", "illiquid", "inactive"])
+        self.assertEqual(
+            [g["key"] for g in groups], ["physical", "digital", "illiquid", "inactive"]
+        )
         self.assertEqual([a.name for a in groups[0]["accounts"]], ["Alpha cash"])
         self.assertEqual([a.name for a in groups[-1]["accounts"]], ["Old wallet"])
 
 
 class PaymentDepositColumnTests(LoggedInWithAccountTestCase):
     def test_payment_and_deposit_show_in_separate_columns(self):
-        Transaction.objects.create(account=self.account, date=date(2026, 1, 1), amount=Decimal("-20.00"))
-        Transaction.objects.create(account=self.account, date=date(2026, 1, 2), amount=Decimal("30.00"))
+        Transaction.objects.create(
+            account=self.account, date=date(2026, 1, 1), amount=Decimal("-20.00")
+        )
+        Transaction.objects.create(
+            account=self.account, date=date(2026, 1, 2), amount=Decimal("30.00")
+        )
         response = self.client.get(reverse("finance:account_detail", args=[self.account.pk]))
         html = response.content.decode()
         # Payment shows unsigned (the column itself already means "money
@@ -275,11 +294,15 @@ class AccountRegisterStatusColumnTests(LoggedInWithAccountTestCase):
         return self.client.get(url).content.decode()
 
     def test_the_register_no_longer_uses_the_light_pill(self):
-        Transaction.objects.create(account=self.account, date=date(2026, 1, 1), amount=Decimal("-1.00"))
+        Transaction.objects.create(
+            account=self.account, date=date(2026, 1, 1), amount=Decimal("-1.00")
+        )
         self.assertNotIn("text-bg-light", self.register())
 
     def test_an_unreconciled_row_shows_a_muted_dash_and_no_badge(self):
-        Transaction.objects.create(account=self.account, date=date(2026, 1, 1), amount=Decimal("-1.00"))
+        Transaction.objects.create(
+            account=self.account, date=date(2026, 1, 1), amount=Decimal("-1.00")
+        )
         html = self.register()
         self.assertIn('<span class="text-muted">—</span>', html)
         self.assertNotIn("badge text-bg-light", html)
@@ -298,7 +321,8 @@ class AccountRegisterPagingTests(LoggedInWithAccountTestCase):
 
     def test_a_long_register_has_pages_and_the_count_covers_them_all(self):
         Transaction.objects.bulk_create(
-            Transaction(account=self.account, date=date(2026, 1, 1), amount=Decimal("-1.00")) for _ in range(1001)
+            Transaction(account=self.account, date=date(2026, 1, 1), amount=Decimal("-1.00"))
+            for _ in range(1001)
         )
         url = reverse("finance:account_detail", args=[self.account.pk])
         first, second = self.client.get(url), self.client.get(url, {"page": 2})
@@ -309,7 +333,9 @@ class AccountRegisterPagingTests(LoggedInWithAccountTestCase):
         self.assertContains(second, 'aria-current="page"><span class="page-link">2</span>')
 
     def test_a_short_register_has_no_page_links(self):
-        Transaction.objects.create(account=self.account, date=date(2026, 1, 1), amount=Decimal("-1.00"))
+        Transaction.objects.create(
+            account=self.account, date=date(2026, 1, 1), amount=Decimal("-1.00")
+        )
         response = self.client.get(reverse("finance:account_detail", args=[self.account.pk]))
         self.assertContains(response, "1 transaction")
         self.assertNotContains(response, 'class="pagination')
@@ -342,7 +368,9 @@ class InactiveAccountBalanceValidationTests(LoggedInTestCase):
     def test_can_deactivate_an_account_with_a_zero_balance(self):
         account = Account.objects.create(name="Checking")
         Transaction.objects.create(account=account, date=date(2026, 1, 1), amount=Decimal("50.00"))
-        Transaction.objects.create(account=account, date=date(2026, 1, 2), amount=Decimal("-50.00"))
+        Transaction.objects.create(
+            account=account, date=date(2026, 1, 2), amount=Decimal("-50.00")
+        )
         form = AccountForm(
             {
                 "name": "Checking",
@@ -405,8 +433,12 @@ class InactiveAccountBalanceValidationTests(LoggedInTestCase):
 class AccountDeleteTests(LoggedInWithAccountTestCase):
     def test_confirmation_counts_everything_that_would_be_deleted(self):
         for day in range(1, 4):
-            Transaction.objects.create(account=self.account, date=date(2026, 1, day), amount=Decimal("-1.00"))
-        Reminder.objects.create(account=self.account, amount=Decimal("500.00"), next_due_date=date(2026, 2, 1))
+            Transaction.objects.create(
+                account=self.account, date=date(2026, 1, day), amount=Decimal("-1.00")
+            )
+        Reminder.objects.create(
+            account=self.account, amount=Decimal("500.00"), next_due_date=date(2026, 2, 1)
+        )
         response = self.client.get(reverse("finance:account_delete", args=[self.account.pk]))
         self.assertContains(response, "3 transactions")
         self.assertContains(response, "1 reminder")

@@ -44,9 +44,13 @@ class AdminRuleTests(StashTestCase):
 
     def test_a_transfer_category_needs_an_account(self):
         with self.assertRaises(IntegrityError), transaction.atomic(using=settings.TEST_STASH):
-            Category.objects.create(name="Moving money", category_type=Category.CategoryType.TRANSFER)
+            Category.objects.create(
+                name="Moving money", category_type=Category.CategoryType.TRANSFER
+            )
         with self.assertRaises(ValidationError) as caught:
-            Category(name="Moving money", category_type=Category.CategoryType.TRANSFER).full_clean()
+            Category(
+                name="Moving money", category_type=Category.CategoryType.TRANSFER
+            ).full_clean()
         self.assertIn("category_type", caught.exception.message_dict)
 
     def test_an_accounts_transfer_category_stays_a_transfer(self):
@@ -58,7 +62,9 @@ class AdminRuleTests(StashTestCase):
     def test_a_reminder_amount_cant_be_negative(self):
         account = Account.objects.create(name="Checking")
         with self.assertRaises(IntegrityError), transaction.atomic(using=settings.TEST_STASH):
-            Reminder.objects.create(account=account, amount=Decimal("-5"), next_due_date=date(2026, 10, 1))
+            Reminder.objects.create(
+                account=account, amount=Decimal("-5"), next_due_date=date(2026, 10, 1)
+            )
         form = ReminderForm(
             data={
                 "reminder_type": EXPENSE,
@@ -110,19 +116,29 @@ class AdminHugeNumberTests(LoggedInAsSuperuserTestCase):
         self.assertRedirects(response, f"{url}?e=1")
 
     def test_a_huge_number_in_a_filter_goes_back_to_the_plain_list(self):
-        for query in ({"id__in": HUGE_NUMBER}, {"date__year": HUGE_NUMBER}, {"id__in": f"1,{HUGE_NUMBER}"}):
+        for query in (
+            {"id__in": HUGE_NUMBER},
+            {"date__year": HUGE_NUMBER},
+            {"id__in": f"1,{HUGE_NUMBER}"},
+        ):
             with self.subTest(query=query):
-                self.assert_redirected_to_the_plain_list("admin:finance_transaction_changelist", query)
+                self.assert_redirected_to_the_plain_list(
+                    "admin:finance_transaction_changelist", query
+                )
 
     def test_the_audit_log_list_is_covered_too(self):
         for query in ({"id__in": HUGE_NUMBER}, {"timestamp__year": HUGE_NUMBER}):
             with self.subTest(query=query):
-                self.assert_redirected_to_the_plain_list("admin:audit_auditlogentry_changelist", query)
+                self.assert_redirected_to_the_plain_list(
+                    "admin:audit_auditlogentry_changelist", query
+                )
 
     def test_an_ordinary_filter_still_works(self):
         account = Account.objects.create(name="Checking")
         Transaction.objects.create(account=account, date=date(2026, 9, 1), amount=Decimal("10"))
-        response = self.client.get(reverse("admin:finance_transaction_changelist"), {"date__year": "2026"})
+        response = self.client.get(
+            reverse("admin:finance_transaction_changelist"), {"date__year": "2026"}
+        )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.context["cl"].result_list), 1)
 
@@ -139,7 +155,9 @@ class AdminHugeNumberTests(LoggedInAsSuperuserTestCase):
 
     def test_a_refusal_is_logged_with_the_parameter_names_and_not_what_was_typed(self):
         with self.assertLogs("stashy.admin_mixins", "WARNING") as logged:
-            self.client.get(reverse("admin:finance_transaction_changelist"), {"id__in": HUGE_NUMBER})
+            self.client.get(
+                reverse("admin:finance_transaction_changelist"), {"id__in": HUGE_NUMBER}
+            )
         message = logged.output[0]
         self.assertIn("id__in", message)
         self.assertNotIn(HUGE_NUMBER, message)
@@ -197,7 +215,9 @@ class AdminHugeNumberTests(LoggedInAsSuperuserTestCase):
     def test_the_first_and_the_last_but_one_year_of_the_calendar_still_list(self):
         for year in ("1", "9998"):
             with self.subTest(year=year):
-                response = self.client.get(reverse("admin:finance_transaction_changelist"), {"date__year": year})
+                response = self.client.get(
+                    reverse("admin:finance_transaction_changelist"), {"date__year": year}
+                )
                 self.assertEqual(response.status_code, 200)
 
     def test_an_address_the_error_flag_is_already_on_gets_a_page_not_another_redirect(self):
@@ -205,7 +225,9 @@ class AdminHugeNumberTests(LoggedInAsSuperuserTestCase):
         refused too, something else is wrong, and Django shows its
         "Database error" page instead of redirecting forever: the mixin
         must not get in the way of that."""
-        response = self.client.get(reverse("admin:finance_transaction_changelist"), {"e": "1", "id__in": HUGE_NUMBER})
+        response = self.client.get(
+            reverse("admin:finance_transaction_changelist"), {"e": "1", "id__in": HUGE_NUMBER}
+        )
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "admin/invalid_setup.html")
 
@@ -224,13 +246,20 @@ class AdminRefusedLookupTests(LoggedInAsSuperuserTestCase):
         account = Account.objects.create(name="Checking")
         # A row for the payee list, which would otherwise be empty.
         Payee.objects.create(name="Lidl")
-        Transaction.objects.create(account=account, date=date(2026, 9, 1), amount=Decimal("10"), memo="lunch")
+        Transaction.objects.create(
+            account=account, date=date(2026, 9, 1), amount=Decimal("10"), memo="lunch"
+        )
 
     def test_a_regex_lookup_in_the_address_is_refused(self):
         url = reverse("admin:finance_transaction_changelist")
         # The last query is a valid pattern: refused too, so no pattern
         # (a slow one included) reaches the database.
-        for query in ({"memo__regex": "("}, {"memo__iregex": "["}, {"memo__regex": "a{2,1}"}, {"memo__regex": "lun"}):
+        for query in (
+            {"memo__regex": "("},
+            {"memo__iregex": "["},
+            {"memo__regex": "a{2,1}"},
+            {"memo__regex": "lun"},
+        ):
             with self.subTest(query=query):
                 self.assertEqual(self.client.get(url, query).status_code, 400)
 
@@ -238,7 +267,12 @@ class AdminRefusedLookupTests(LoggedInAsSuperuserTestCase):
         """One letter was an IndexError and any other count a
         ProgrammingError, on any field and through a relation."""
         url = reverse("admin:finance_transaction_changelist")
-        for query in ({"memo__range": "a"}, {"memo__range": "abc"}, {"id__range": "1"}, {"account__id__range": "1"}):
+        for query in (
+            {"memo__range": "a"},
+            {"memo__range": "abc"},
+            {"id__range": "1"},
+            {"account__id__range": "1"},
+        ):
             with self.subTest(query=query):
                 self.assertEqual(self.client.get(url, query).status_code, 400)
 
@@ -337,7 +371,9 @@ class AdminAutocompleteValueTests(LoggedInAsSuperuserTestCase):
 
     def selected_in(self, response, field):
         """The values of the dropdown's selected options."""
-        dropdown = re.search(rf'<select name="{field}".*?</select>', response.content.decode(), re.S)
+        dropdown = re.search(
+            rf'<select name="{field}".*?</select>', response.content.decode(), re.S
+        )
         self.assertIsNotNone(dropdown, f"no dropdown for {field}")
         return re.findall(r'<option value="([^"]*)" selected', dropdown.group(0))
 
@@ -351,14 +387,18 @@ class AdminAutocompleteValueTests(LoggedInAsSuperuserTestCase):
                     self.assertEqual(self.selected_in(response, field), [])
 
     def test_a_real_id_in_the_address_is_still_selected(self):
-        response = self.client.get(reverse("admin:finance_transaction_add"), {"account": self.account.pk})
+        response = self.client.get(
+            reverse("admin:finance_transaction_add"), {"account": self.account.pk}
+        )
         self.assertEqual(self.selected_in(response, "account"), [str(self.account.pk)])
 
     def test_a_form_posted_with_such_a_value_is_drawn_again_with_its_error(self):
         url = reverse("admin:finance_transaction_add")
         for value in (HUGE_NUMBER, "zz"):
             with self.subTest(value=value):
-                response = self.client.post(url, {"account": value, "date": "2026-09-01", "amount": "1"})
+                response = self.client.post(
+                    url, {"account": value, "date": "2026-09-01", "amount": "1"}
+                )
                 self.assertEqual(response.status_code, 200)
                 self.assertIn("account", response.context["adminform"].form.errors)
                 self.assertEqual(self.selected_in(response, "account"), [])
@@ -383,7 +423,11 @@ class AdminAutocompleteValueTests(LoggedInAsSuperuserTestCase):
         payee = Payee.objects.create(name="Lidl")
         category = Category.objects.create(name="Food", category_type=EXPENSE)
         saved = Transaction.objects.create(
-            account=self.account, date=date(2026, 9, 1), amount=Decimal("1"), payee=payee, category=category
+            account=self.account,
+            date=date(2026, 9, 1),
+            amount=Decimal("1"),
+            payee=payee,
+            category=category,
         )
         response = self.client.get(reverse("admin:finance_transaction_change", args=[saved.pk]))
         for field, chosen in (("account", self.account), ("payee", payee), ("category", category)):
@@ -409,7 +453,9 @@ class AdminAutocompleteValueTests(LoggedInAsSuperuserTestCase):
         placeholder can show which one the check asked: they must not
         keep the account that exists out of the dropdown."""
         url = reverse("admin:finance_transaction_add")
-        with mock.patch.object(connections["default"].ops, "integer_field_range", return_value=(10**6, 10**7)):
+        with mock.patch.object(
+            connections["default"].ops, "integer_field_range", return_value=(10**6, 10**7)
+        ):
             response = self.client.get(url, {"account": self.account.pk})
         self.assertEqual(self.selected_in(response, "account"), [str(self.account.pk)])
 
@@ -447,7 +493,9 @@ class AdminBulkActionTests(LoggedInAsSuperuserTestCase):
     def setUpTestData(cls):
         super().setUpTestData()
         cls.account = Account.objects.create(name="Checking")
-        cls.row = Transaction.objects.create(account=cls.account, date=date(2026, 9, 1), amount=Decimal("10"))
+        cls.row = Transaction.objects.create(
+            account=cls.account, date=date(2026, 9, 1), amount=Decimal("10")
+        )
 
     def post_action(self, selected, **extra):
         data = {"action": "delete_selected", "_selected_action": selected, **extra}
@@ -458,7 +506,14 @@ class AdminBulkActionTests(LoggedInAsSuperuserTestCase):
         list_url = reverse("admin:finance_transaction_changelist")
         # With `post: yes` the action would delete: it must not, not
         # even the real row selected along with the bad id.
-        for selected in ([HUGE_NUMBER], ["abc"], [real, HUGE_NUMBER], [real, "abc"], [""], ["1.5"]):
+        for selected in (
+            [HUGE_NUMBER],
+            ["abc"],
+            [real, HUGE_NUMBER],
+            [real, "abc"],
+            [""],
+            ["1.5"],
+        ):
             with self.subTest(selected=selected):
                 response = self.post_action(selected, post="yes")
                 # Not fetched here: the page shows the message once, and
@@ -490,7 +545,12 @@ class AdminBulkActionTests(LoggedInAsSuperuserTestCase):
         back to the list without a word. One SQLite can't hold is
         refused with the warning."""
         list_url = reverse("admin:finance_transaction_changelist")
-        for selected, refused in ((2**63 - 1, False), (-(2**63), False), (2**63, True), (-(2**63) - 1, True)):
+        for selected, refused in (
+            (2**63 - 1, False),
+            (-(2**63), False),
+            (2**63, True),
+            (-(2**63) - 1, True),
+        ):
             with self.subTest(selected=selected):
                 response = self.post_action([str(selected)], post="yes")
                 self.assertRedirects(response, list_url, fetch_redirect_response=False)
@@ -522,7 +582,9 @@ class AdminBulkActionTests(LoggedInAsSuperuserTestCase):
         """The dropdown's twin of this test is in the class above:
         limits made up for the picker's placeholder must not refuse
         the row that exists."""
-        with mock.patch.object(connections["default"].ops, "integer_field_range", return_value=(10**6, 10**7)):
+        with mock.patch.object(
+            connections["default"].ops, "integer_field_range", return_value=(10**6, 10**7)
+        ):
             response = self.post_action([str(self.row.pk)], post="yes")
         self.assertEqual(response.status_code, 302)
         self.assertFalse(Transaction.objects.exists())
@@ -540,7 +602,9 @@ class AdminBulkActionTests(LoggedInAsSuperuserTestCase):
         way, such an action would be read as one on the list."""
         model_admin = admin.site._registry[Transaction]
         request = RequestFactory().post("/", {helpers.ACTION_CHECKBOX_NAME: [str(self.row.pk)]})
-        with mock.patch.object(admin.ModelAdmin, "response_action", return_value="answered") as djangos:
+        with mock.patch.object(
+            admin.ModelAdmin, "response_action", return_value="answered"
+        ) as djangos:
             answer = model_admin.response_action(
                 request, Transaction.objects.all(), action_location=ActionLocation.CHANGE_FORM
             )
@@ -574,17 +638,36 @@ class AdminOddParameterTests(LoggedInAsSuperuserTestCase):
     def setUpTestData(cls):
         super().setUpTestData()
         account = Account.objects.create(name="Checking")
-        Transaction.objects.create(account=account, date=date(2026, 9, 1), amount=Decimal("10"), memo="lunch")
+        Transaction.objects.create(
+            account=account, date=date(2026, 9, 1), amount=Decimal("10"), memo="lunch"
+        )
 
     def test_page_order_search_and_popup_parameters_are_never_a_500_page(self):
         for list_name in self.LISTS:
-            for name in ("p", "o", "all", "q", "_popup", "_to_field", "_changelist_filters", "ot", "index"):
+            for name in (
+                "p",
+                "o",
+                "all",
+                "q",
+                "_popup",
+                "_to_field",
+                "_changelist_filters",
+                "ot",
+                "index",
+            ):
                 for value in self.ODD:
                     with self.subTest(list=list_name, name=name, value=value[:12]):
-                        self.assertLess(self.client.get(reverse(list_name), {name: value}).status_code, 500)
+                        self.assertLess(
+                            self.client.get(reverse(list_name), {name: value}).status_code, 500
+                        )
 
     def test_a_filter_the_list_offers_given_a_bad_value_is_never_a_500_page(self):
-        for name in ("account__id__exact", "category__id__exact", "reconciled__exact", "account__isnull"):
+        for name in (
+            "account__id__exact",
+            "category__id__exact",
+            "reconciled__exact",
+            "account__isnull",
+        ):
             for value in self.ODD:
                 with self.subTest(name=name, value=value[:12]):
                     response = self.client.get(reverse(self.LISTS[0]), {name: value})
@@ -596,7 +679,13 @@ class AdminOddParameterTests(LoggedInAsSuperuserTestCase):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", RuntimeWarning)
             for name in ("timestamp__gte", "timestamp__lt"):
-                for value in ("0001-01-01", "9999-12-31", "0000-01-01", "10000-01-01", "2026-02-30"):
+                for value in (
+                    "0001-01-01",
+                    "9999-12-31",
+                    "0000-01-01",
+                    "10000-01-01",
+                    "2026-02-30",
+                ):
                     with self.subTest(name=name, value=value):
                         response = self.client.get(reverse(self.LISTS[1]), {name: value})
                         self.assertLess(response.status_code, 500)
@@ -618,7 +707,11 @@ class AdminLongInputTests(LoggedInAsSuperuserTestCase):
         account = Account.objects.create(name="Checking")
         payee = Payee.objects.create(name="Lidl")
         cls.row = Transaction.objects.create(
-            account=account, date=date(2026, 9, 1), amount=Decimal("10"), memo="m" * 250, payee=payee
+            account=account,
+            date=date(2026, 9, 1),
+            amount=Decimal("10"),
+            memo="m" * 250,
+            payee=payee,
         )
 
     def found(self, list_name, query):
@@ -670,7 +763,9 @@ class AdminLongInputTests(LoggedInAsSuperuserTestCase):
             url = reverse(f"admin:finance_transaction_{view}", args=[self.row.pk])
             for to_field in ("", "id"):
                 with self.subTest(view=view, to_field=to_field):
-                    self.assertEqual(self.client.get(url, {"_to_field": to_field}).status_code, 200)
+                    self.assertEqual(
+                        self.client.get(url, {"_to_field": to_field}).status_code, 200
+                    )
 
 
 class AdminAccountDropdownOrderTests(LoggedInAsSuperuserTestCase):
@@ -682,7 +777,12 @@ class AdminAccountDropdownOrderTests(LoggedInAsSuperuserTestCase):
         names = [f"Account {number:02d}" for number in range(30)]
         for name in reversed(names):
             Account.objects.create(name=name)
-        query = {"term": "", "app_label": "finance", "model_name": "transaction", "field_name": "account"}
+        query = {
+            "term": "",
+            "app_label": "finance",
+            "model_name": "transaction",
+            "field_name": "account",
+        }
         with warnings.catch_warnings():
             warnings.simplefilter("error", UnorderedObjectListWarning)
             first = self.client.get(reverse("admin:autocomplete"), query).json()
@@ -699,8 +799,12 @@ class AdminAccountListTests(LoggedInAsSuperuserTestCase):
 
     def queries_with(self, count):
         create_accounts_with_a_transaction(count)
-        response, query_count = self.get_and_count_queries(reverse("admin:finance_account_changelist"))
-        self.assertEqual({a.balance for a in response.context["cl"].result_list}, {Decimal("10.00")})
+        response, query_count = self.get_and_count_queries(
+            reverse("admin:finance_account_changelist")
+        )
+        self.assertEqual(
+            {a.balance for a in response.context["cl"].result_list}, {Decimal("10.00")}
+        )
         return query_count
 
     def test_more_accounts_need_no_more_queries(self):

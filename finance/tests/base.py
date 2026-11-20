@@ -56,7 +56,9 @@ def leaked_syntax_in(page):
     and "}}" outside <script> blocks, where JavaScript uses them for
     itself."""
     outside_scripts = re.sub(r"<script\b.*?</script>", "", page, flags=re.DOTALL | re.IGNORECASE)
-    return [s for s in LEAKED_TEMPLATE_SYNTAX if s in page] + [s for s in ("{{", "}}") if s in outside_scripts]
+    return [s for s in LEAKED_TEMPLATE_SYNTAX if s in page] + [
+        s for s in ("{{", "}}") if s in outside_scripts
+    ]
 
 
 # Values for the URL parameters other than <pk>, so every pattern in
@@ -72,7 +74,9 @@ def every_finance_url(pk_of=lambda name: 1):
         assert isinstance(pattern, URLPattern)
         kwargs = {}
         for parameter in pattern.pattern.converters:
-            kwargs[parameter] = pk_of(pattern.name) if parameter == "pk" else OTHER_URL_VALUES[parameter]
+            kwargs[parameter] = (
+                pk_of(pattern.name) if parameter == "pk" else OTHER_URL_VALUES[parameter]
+            )
         yield pattern.name, reverse(f"finance:{pattern.name}", kwargs=kwargs)
 
 
@@ -107,7 +111,9 @@ def create_reminders(account, count):
     """`count` new one-time reminders, half of them with a payee and the
     rest with only a category (a subcategory of "Food"), so a page that
     shows either one can be checked for the queries it makes."""
-    food = Category.objects.get_or_create(name="Food", category_type=Category.CategoryType.EXPENSE)[0]
+    food = Category.objects.get_or_create(
+        name="Food", category_type=Category.CategoryType.EXPENSE
+    )[0]
     for i in range(count):
         Reminder.objects.create(
             account=account,
@@ -253,7 +259,9 @@ class StarterCategoriesFileMixin:
         self.addCleanup(tmp.cleanup)
         self.starter_categories_file = Path(tmp.name) / "starter_categories.xlsx"
         patcher = mock.patch.object(
-            starter_categories, "starter_categories_path", return_value=self.starter_categories_file
+            starter_categories,
+            "starter_categories_path",
+            return_value=self.starter_categories_file,
         )
         patcher.start()
         self.addCleanup(patcher.stop)
@@ -280,7 +288,9 @@ class LoggedInTestCase(StashTestCase):
 
     @classmethod
     def setUpTestData(cls):
-        cls.user = get_user_model().objects.create_user("tester", password="not-a-real-password-123")
+        cls.user = get_user_model().objects.create_user(
+            "tester", password="not-a-real-password-123"
+        )
 
     def setUp(self):
         self.client.force_login(self.user)
@@ -294,7 +304,9 @@ class LoggedInAsSuperuserTestCase(LoggedInTestCase):
     def setUpTestData(cls):
         # Not LoggedInTestCase's own: that one makes an ordinary user
         # with the same name.
-        cls.user = get_user_model().objects.create_superuser("tester", password="not-a-real-password-123")
+        cls.user = get_user_model().objects.create_superuser(
+            "tester", password="not-a-real-password-123"
+        )
 
 
 class LoggedInWithAccountTestCase(LoggedInTestCase):

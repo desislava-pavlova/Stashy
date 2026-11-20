@@ -21,7 +21,12 @@ from django.views.decorators.http import require_POST
 from .. import backup as finance_backup
 from ..auth_forms import ChangePinForm, CurrentPinForm
 from ..currency import RateFetchError, RateTable, fetch_latest_rates
-from ..forms import ProfileForm, WatchedExpensesForm, convertible_currencies, watched_expenses_picker_context
+from ..forms import (
+    ProfileForm,
+    WatchedExpensesForm,
+    convertible_currencies,
+    watched_expenses_picker_context,
+)
 from ..models import Account
 from ..stashes import StashError, registry, security
 
@@ -48,7 +53,11 @@ def _render_settings(request, profile, form=None, watched_form=None):
     """The Settings page. A form that failed validation is passed in, so
     its errors show; every other form starts fresh."""
     rates = RateTable(profile.main_currency)
-    known_rates = [(code, rates.known(code)) for code in _rate_currencies(profile) if code != profile.main_currency]
+    known_rates = [
+        (code, rates.known(code))
+        for code in _rate_currencies(profile)
+        if code != profile.main_currency
+    ]
     recent_backups = finance_backup.list_backups(_stash_backup_root(request), limit=5)
     return render(
         request,
@@ -59,7 +68,9 @@ def _render_settings(request, profile, form=None, watched_form=None):
             **watched_expenses_picker_context(profile),
             "profile": profile,
             "known_rates": known_rates,
-            "recent_backups": [{"name": p.name, "size_kb": p.stat().st_size // 1024} for p in recent_backups],
+            "recent_backups": [
+                {"name": p.name, "size_kb": p.stat().st_size // 1024} for p in recent_backups
+            ],
         },
     )
 
@@ -91,11 +102,14 @@ def check_rates(request):
         messages.error(request, str(error))
     else:
         if stored:
-            messages.success(request, f"Updated {len(stored)} exchange rate{'s' if len(stored) != 1 else ''}.")
+            messages.success(
+                request, f"Updated {len(stored)} exchange rate{'s' if len(stored) != 1 else ''}."
+            )
         if unavailable:
             messages.warning(
                 request,
-                f"No rate available for: {', '.join(unavailable)}. Enter it by hand in the admin if you need one.",
+                f"No rate available for: {', '.join(unavailable)}. "
+                "Enter it by hand in the admin if you need one.",
             )
     return redirect("finance:settings")
 
@@ -238,7 +252,8 @@ def backup_restore(request):
             else:
                 messages.success(
                     request,
-                    f"Restored from {backup_path.name}. A safety backup of what was there before is in backups/ too.",
+                    f"Restored from {backup_path.name}. A safety backup of what was there "
+                    "before is in backups/ too.",
                 )
             return redirect("finance:settings")
         if security.is_locked_out(profile):
