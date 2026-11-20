@@ -11,6 +11,7 @@ from openpyxl import load_workbook
 
 from .models import Category, name_key
 
+
 STARTER_CATEGORIES_FILENAME = "starter_categories.xlsx"
 SHEET_CHOICES = ["Basic", "Extended"]
 

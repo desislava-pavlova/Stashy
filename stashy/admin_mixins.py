@@ -16,6 +16,7 @@ from django.core.exceptions import ValidationError
 from django.db import connections, models
 from django.db.models.constants import LOOKUP_SEP
 
+
 logger = logging.getLogger(__name__)
 
 # Lookups no admin page ever sends. Typed into an address, a bad

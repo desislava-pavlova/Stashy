@@ -11,7 +11,6 @@ it lives in `reporting.py`.
 import contextlib
 from datetime import date, timedelta
 
-from dateutil.relativedelta import relativedelta
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator
@@ -20,6 +19,8 @@ from django.db.models import Case, F, Max, Q, Sum, Value, When
 from django.db.models.functions import Coalesce
 from django.urls import reverse
 from django.utils import timezone
+
+from dateutil.relativedelta import relativedelta
 
 from audit.context import system_action
 

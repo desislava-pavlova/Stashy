@@ -7,12 +7,13 @@ Transactions form.
 
 from datetime import date, timedelta
 
-from dateutil.relativedelta import relativedelta
 from django.contrib import messages
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse_lazy
 from django.utils import timezone
 from django.views.generic import CreateView, DeleteView
+
+from dateutil.relativedelta import relativedelta
 
 from .. import regional
 from ..content import REMINDER_TIPS

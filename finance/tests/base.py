@@ -27,12 +27,14 @@ from django.db import connections
 from django.test import Client, TestCase
 from django.test.utils import CaptureQueriesContext
 from django.urls import URLPattern, reverse
+
 from openpyxl import Workbook
 
 from .. import db_router, starter_categories
 from .. import urls as finance_urls
 from ..models import Account, Category, Payee, Profile, Reminder, Transaction
 from ..stashes import registry
+
 
 # Tests that patch timezone.localdate pretend today is one of these
 # days, so the fixed dates they set up keep their meaning (overdue, due

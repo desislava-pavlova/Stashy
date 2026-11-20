@@ -6510,3 +6510,45 @@ from it, and whether they can leave the limit even though every input stayed ins
 **Files touched:** `finance/services/reconciliation.py`, `finance/views/accounts.py`,
 `finance/tests/test_reconciliation.py`, `CLAUDE.md`, `plans/03_structure_review.md`,
 `plans/README.md`, this log. No new files, no migration.
+
+## 20/11/2026 — Plan 03, Phase 3, part A (first half): Django gets its own import group (S40)
+
+**What changed:** every file's imports now sit in four groups: Python's own, Django,
+the other libraries (dateutil, decouple, openpyxl, ofxparse, whitenoise, tzlocal), then
+Stashy's own, with two blank lines after the last import. Before, Django shared a group
+with the other libraries, so `dateutil` came before `django`. 47 files were
+reshuffled, all by `ruff check --fix`; no line of logic changed. 1,211 tests (the same
+number), ruff clean, no migration, no data touched. Phase 3 is also written into five
+parts in the plan (Claude's call: 22 items are too many to review at once, and Phases 1
+and 2 went the same way); this is the first commit of part A, and S43 (line length 99)
+is the second.
+
+**Why the code looks like this:**
+- **A tool decides, not a habit.** The `I` rule in ruff was already sorting imports;
+  three lines in `pyproject.toml` (`section-order`, a `django` section and
+  `lines-after-imports = 2`) teach it your grouping. From now on `ruff check .` (and so
+  `check.bat`) fails on a file that breaks it, so a new file can't drift.
+- **No group labels** (`# Django`, `# Other libraries`). The sorter glues a comment to
+  the import below it, so after sorting the labels end up in the wrong place and split
+  the groups. The blank lines and the module names already say which group is which.
+- **Two blank lines everywhere, not only before a `def` or `class`.** The sorter's
+  default is two before a `def` or `class` and one before anything else, so files that
+  opened with a constant or a comment had one. Setting it to 2 makes every file look the
+  same.
+- **First, and alone in its commit.** A pure reshuffle touches dozens of files. Done
+  first and on its own, the later moves (new modules, the forms package) are written in
+  the new order and their diffs show only what really moved.
+- **What the suite doesn't cover was read.** `scripts/bootstrap.py` runs before Django
+  and isn't started by any test, so its part of the diff was read: one added blank
+  line. The same for the three `scripts/dev` tools.
+
+**Teaching note — let a tool own the style rules.** An import order kept by hand is
+re-argued in every review and slips whenever someone is in a hurry. Written once as a
+tool setting, it is checked in a second, and the people (and Claude) can spend their
+attention on logic. Keep a mechanical rewrite in its own commit, too: a reviewer can
+trust a diff that is only reordering, and can't trust one that mixes it with real
+changes.
+
+**Files touched:** `pyproject.toml`; the 47 files ruff reordered (`audit/` 3,
+`finance/` 34, `scripts/` 4, `stashy/` 6); `CLAUDE.md`, `plans/03_structure_review.md`,
+`plans/README.md`, this log. No new files, no migration.

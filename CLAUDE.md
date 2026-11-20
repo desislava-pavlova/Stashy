@@ -372,6 +372,10 @@ check.bat                                                        # ruff check + 
   occurrence before that is an unpaid earlier period and stays (S51).
 - Imports go at the top of the module. One that must stay inside a
   function gets a `# Imported here: <why>` comment (a test checks).
+  They sit in four groups, Python's own, Django, other libraries, then
+  Stashy's own, with two blank lines after the last one (ruff's `I` rule
+  enforces it: `ruff check --fix .` sorts). No group labels: the sorter
+  would misplace them.
 - Code that changes audited data goes through model `save()`/`delete()`,
   never `queryset.update()`/`bulk_create()`, and automatic logic runs inside
   `system_action("reason")`.

@@ -15,6 +15,7 @@ from stashy.admin_mixins import HandMadeRequestMixin
 
 from .models import Account, Category, ExchangeRate, ImportBatch, Payee, Profile, Reconciliation, Reminder, Transaction
 
+
 # The admin is used by regular people, not a developer - Users and
 # Groups (a single shared login per stash, no group permissions) have
 # nothing useful to show them.

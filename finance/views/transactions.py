@@ -7,7 +7,6 @@ quick save behind the list's Edit mode. The date range is worked out by
 from datetime import date
 from urllib.parse import urlencode
 
-from dateutil.relativedelta import relativedelta
 from django.contrib import messages
 from django.db.models import Q, Sum
 from django.http import JsonResponse
@@ -16,6 +15,8 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 from django.views.generic import DeleteView
+
+from dateutil.relativedelta import relativedelta
 
 from audit.context import system_action
 
@@ -27,6 +28,7 @@ from ..models import Account, Category, Reminder, Transaction, grouped_categorie
 from ..money import ZERO
 from ..reporting import EARLIEST_RANGE_KEY, resolve_range
 from ._helpers import AMOUNT_SORT_COLUMNS, _as_id, _as_ids, _paged, _safe_next, _sorted
+
 
 # Reports' date-range presets, plus "All dates": no date limits at all,
 # so even a transaction dated in the future by mistake shows up. It

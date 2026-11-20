@@ -8,12 +8,14 @@ import os
 import tempfile
 from pathlib import Path
 
+
 # Tests never need the real key, so they don't depend on .env existing.
 # python-decouple reads the process environment before .env, so this
 # wins over a key in .env.
 os.environ.setdefault("SECRET_KEY", "test-only-key-never-used-for-real-data")
 
 from .base import *  # noqa: F403
+
 
 # Tests never see your stashes. Each test run gets a new temporary
 # folder, deleted again when the run ends, holding one stash: the test

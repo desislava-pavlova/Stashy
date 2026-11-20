@@ -13,6 +13,7 @@ from django.core.management.base import BaseCommand, CommandError
 from finance.stashes import StashError, registry
 from finance.text import possessive
 
+
 # From Python 3.14, getpass can show a * for each key, so you see how
 # many digits you've typed without seeing them. Stashy.bat still
 # installs on 3.12 and 3.13, where it shows nothing.

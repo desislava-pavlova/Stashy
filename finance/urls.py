@@ -21,6 +21,7 @@ from .views import (
 )
 from .views import settings as settings_views
 
+
 app_name = "finance"
 
 urlpatterns = [

@@ -20,9 +20,11 @@ from decimal import ROUND_HALF_UP, Decimal
 from importlib import resources
 from pathlib import Path
 
-import tzlocal
 from django.conf import settings
 from django.utils import timezone
+
+import tzlocal
+
 
 NBSP = " "
 

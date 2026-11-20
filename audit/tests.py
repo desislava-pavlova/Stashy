@@ -28,6 +28,7 @@ from finance.tests.base import (
     post_import,
 )
 
+
 Action = AuditLogEntry.Action
 
 

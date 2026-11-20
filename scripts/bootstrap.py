@@ -17,6 +17,7 @@ import urllib.request
 import webbrowser
 from pathlib import Path
 
+
 ROOT = Path(__file__).resolve().parent.parent
 
 

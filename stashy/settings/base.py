@@ -12,9 +12,11 @@ https://docs.djangoproject.com/en/6.1/ref/settings/
 
 from pathlib import Path
 
-from decouple import config
 from django.contrib.messages import constants as message_constants
 from django.core.exceptions import ImproperlyConfigured
+
+from decouple import config
+
 
 # --- Folders ----------------------------------------------------------
 # Every folder Stashy reads or writes is named here, so moving the data

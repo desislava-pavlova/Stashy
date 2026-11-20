@@ -34,6 +34,7 @@ from ..models import Profile
 from ..stashes import registry
 from .base import StashTestCase
 
+
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 
 

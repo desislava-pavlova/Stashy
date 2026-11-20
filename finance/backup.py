@@ -22,6 +22,7 @@ import sqlite3
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+
 BACKUP_DIR_NAME = "backups"
 QUARTERLY_MIN_GAP_DAYS = 90
 

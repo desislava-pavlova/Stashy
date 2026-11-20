@@ -8,6 +8,7 @@ a template as `tips`.
 
 from .models import Reminder
 
+
 ACCOUNT_TIPS = [
     "Opening balance is what the account held on the day you start tracking it in Stashy"
     " — Stashy turns it into a real transaction.",

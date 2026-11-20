@@ -18,6 +18,7 @@ to its async task, if Django ever runs one).
 from contextlib import contextmanager
 from contextvars import ContextVar
 
+
 _current_alias = ContextVar("stash_alias", default=None)
 
 

@@ -20,6 +20,16 @@ ignore = [
 # user-facing text, and Cyrillic text in date patterns and tests.
 allowed-confusables = [" ", "–", "г"]
 
+[tool.ruff.lint.isort]
+# Python's own imports, then Django, then the other libraries, then Stashy's own. The blank
+# lines between the groups and the module names say which is which, so no group labels.
+section-order = ["future", "standard-library", "django", "third-party", "first-party", "local-folder"]
+# Two blank lines after the imports in every file, not only before a def or class.
+lines-after-imports = 2
+
+[tool.ruff.lint.isort.sections]
+django = ["django"]
+
 [tool.ruff.lint.pycodestyle]
 # PEP 8 wraps comments and docstrings at 72, whatever the code's line length is (rule W505).
 max-doc-length = 72

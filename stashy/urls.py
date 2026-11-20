@@ -12,6 +12,7 @@ from django.views.generic import RedirectView
 
 from finance.views import auth as stash_auth_views
 
+
 admin.site.site_header = "Stashy admin"
 admin.site.site_title = "Stashy admin"
 admin.site.index_title = "Data, users & audit log"

@@ -16,6 +16,7 @@ from ..money import parse_amount, to_cent
 from ..templatetags.stashy_format import money
 from .base import StashTestCase
 
+
 NBSP = "\u00a0"
 
 

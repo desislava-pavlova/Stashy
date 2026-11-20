@@ -11,6 +11,7 @@ from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from .limits import MAX_AMOUNT
 
+
 CENT = Decimal("0.01")
 ZERO = Decimal("0.00")
 

@@ -11,6 +11,7 @@ import sys
 import tokenize
 from pathlib import Path
 
+
 ROOT = Path(sys.argv[1])
 COUNT_ONLY = "--count" in sys.argv
 

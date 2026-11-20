@@ -18,6 +18,7 @@ from ..models import Account, Category, ExchangeRate, Transaction
 from ..reporting import income_and_spending, spending_tree
 from .base import LoggedInWithAccountTestCase, StashTestCase, create_accounts_with_a_transaction
 
+
 EXPENSE, INCOME = Category.CategoryType.EXPENSE, Category.CategoryType.INCOME
 
 

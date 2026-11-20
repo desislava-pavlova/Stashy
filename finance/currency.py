@@ -24,6 +24,7 @@ from . import regional
 from .limits import is_plausible_date, is_plausible_rate
 from .money import CENT, ZERO
 
+
 DEFAULT_CURRENCY = "EUR"
 FRANKFURTER_URL = "https://api.frankfurter.dev/v1/latest"
 

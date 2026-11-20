@@ -25,6 +25,7 @@ import tokenize
 import unicodedata
 from pathlib import Path
 
+
 ROOT = Path(sys.argv[1])
 WIDTH = int(sys.argv[sys.argv.index("--width") + 1]) if "--width" in sys.argv else 72
 APPLY = "--apply" in sys.argv

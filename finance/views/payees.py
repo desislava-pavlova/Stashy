@@ -14,6 +14,7 @@ from ..models import Category, Payee, Transaction, categories_alphabetical
 from ..money import ZERO
 from ._helpers import _as_id
 
+
 PAYEE_SORT_KEYS = {
     "name": lambda row: row["payee"].name.lower(),
     "category": lambda row: row["categories_label"].lower(),

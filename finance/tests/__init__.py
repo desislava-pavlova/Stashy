@@ -22,6 +22,7 @@ Run one module with `manage.py test finance.tests.test_reminders`.
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 
+
 # The tests run inside a throwaway test stash that only the test
 # settings make. This stops a run started with the app's own settings
 # (an editor set up that way, say) before any test can get near your

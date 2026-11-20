@@ -21,6 +21,7 @@ from django.utils import timezone
 from .context import SYSTEM, current_context, new_operation_id
 from .models import AuditLogEntry
 
+
 Action = AuditLogEntry.Action
 
 # Secrets never appear in the log, not even their hash.

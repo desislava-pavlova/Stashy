@@ -21,6 +21,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import models
 from django.test import SimpleTestCase
 from django.urls import reverse
+
 from openpyxl import Workbook
 
 from .. import forms as finance_forms
@@ -54,6 +55,7 @@ from .base import (
     csv_upload,
     leaked_syntax_in,
 )
+
 
 # Day first, the way the test stash's dates are typed.
 BAD_DATES = ("31/12/1899", "01/01/2101", "01/09/0026", "31/12/9999", "01/01/0001")

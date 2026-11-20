@@ -13,6 +13,7 @@ from .. import starter_categories
 from ..forms import AccountCreateForm, ProfileForm, WatchedExpensesForm, watched_expenses_picker_context
 from ..models import Profile
 
+
 STEP_COUNT = Profile.WELCOME_STEPS_DONE
 
 

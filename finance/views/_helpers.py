@@ -11,10 +11,12 @@ from django.core.paginator import Paginator
 from django.db.models import Case, DecimalField, F, When
 from django.http import HttpResponse
 from django.utils.http import url_has_allowed_host_and_scheme
+
 from openpyxl import Workbook
 from openpyxl.cell.cell import TYPE_STRING
 
 from .. import regional
+
 
 # What the Payment and Deposit headers sort by: the amount on that side,
 # and NULL on the other. Every column sorts ascending on the first click

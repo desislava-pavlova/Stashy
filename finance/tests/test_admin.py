@@ -30,6 +30,7 @@ from ..forms import ReminderForm
 from ..models import Account, Category, Payee, Reminder, Transaction
 from .base import LoggedInAsSuperuserTestCase, StashTestCase, create_accounts_with_a_transaction
 
+
 # More digits than any database id has: an OverflowError wherever it is
 # looked up.
 HUGE_NUMBER = "9" * 30

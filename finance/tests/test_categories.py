@@ -12,6 +12,7 @@ from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.test import SimpleTestCase
 from django.urls import reverse
+
 from openpyxl import load_workbook
 
 from .. import starter_categories
@@ -19,6 +20,7 @@ from ..forms import CategoryForm, TransactionForm
 from ..models import Account, Category, Payee, Transaction, categories_alphabetical, grouped_categories, name_key
 from ..services.importing import _resolve_category
 from .base import LoggedInTestCase, LoggedInWithAccountTestCase, StarterCategoriesFileMixin, StashTestCase
+
 
 Type = Category.CategoryType
 

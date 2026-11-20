@@ -15,6 +15,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connections
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
+
 from openpyxl import Workbook
 
 from ..forms import ImportUploadForm
@@ -22,6 +23,7 @@ from ..models import Account, Category, ImportBatch, Payee, Transaction, name_ke
 from ..services import importing
 from ..services.importing import _parse_transaction_number
 from .base import LEAKED_TEMPLATE_SYNTAX, LoggedInWithAccountTestCase, StashTestCase, csv_upload, post_import
+
 
 EXPENSE, INCOME = Category.CategoryType.EXPENSE, Category.CategoryType.INCOME
 

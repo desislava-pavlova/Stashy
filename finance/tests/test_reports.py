@@ -7,13 +7,14 @@ from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
 
-from dateutil.relativedelta import relativedelta
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.template.loader import render_to_string
 from django.test import SimpleTestCase
 from django.urls import reverse
 from django.utils import timezone
+
+from dateutil.relativedelta import relativedelta
 
 from .. import reporting
 from ..forms import DateRangeFilterForm, WatchedExpensesForm, watched_expenses_picker_context
@@ -22,6 +23,7 @@ from ..regional import NBSP
 from ..templatetags.stashy_format import diff_tint
 from ..views.exports import REPORT_EXPORTS
 from .base import LEAKED_TEMPLATE_SYNTAX, LoggedInWithAccountTestCase, StashTestCase, csv_rows
+
 
 EXPENSE, INCOME = Category.CategoryType.EXPENSE, Category.CategoryType.INCOME
 

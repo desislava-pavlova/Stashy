@@ -27,12 +27,14 @@ and the Accounts page use `currency.convert_balances()` and Reports uses
 from datetime import timedelta
 from decimal import Decimal
 
-from dateutil.relativedelta import relativedelta
 from django.db.models import Sum
 from django.utils import timezone
 
+from dateutil.relativedelta import relativedelta
+
 from .models import Account, Category, Transaction, grouped_accounts, grouped_categories
 from .money import ZERO, to_cent
+
 
 # Default depth for "Average interval": how many earlier periods to
 # average over (see vs_average_periods() below). The Reports page opens

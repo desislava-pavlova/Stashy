@@ -14,6 +14,7 @@ import sys
 import tokenize
 from pathlib import Path
 
+
 ROOT = Path(sys.argv[1])
 INCLUDE_TESTS = "--tests" in sys.argv
 SKIP_TOP = {"staticfiles", "stashes", ".venv", "venv.bak", ".git", ".idea", "logs", "backups", "plans"}

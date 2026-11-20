@@ -11,6 +11,7 @@ from finance import regional
 from finance.currency import CURRENCY_SYMBOLS, format_money
 from finance.models import ExchangeRate
 
+
 register = template.Library()
 
 

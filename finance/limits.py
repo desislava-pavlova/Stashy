@@ -17,6 +17,7 @@ from decimal import Decimal
 
 from django.core.exceptions import ValidationError
 
+
 # Years a stored date can lie in. A typo like 0026 or 2206 is far
 # outside what a personal ledger holds, and a year near 1 or 9999
 # overflows the calendar maths (a reminder's next date, a report's
