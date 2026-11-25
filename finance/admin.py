@@ -24,6 +24,7 @@ from .models import (
     Reminder,
     Transaction,
 )
+from .services.accounts import open_account
 
 
 # The admin is used by regular people, not a developer - Users and
@@ -89,6 +90,15 @@ class AccountAdmin(StashyModelAdmin):
         # Every balance in the list comes from the same query, not one
         # extra query per account.
         return super().get_queryset(request).with_balances()
+
+    def save_model(self, request, obj, form, change):
+        """A new account gets its opening-balance transaction here too
+        (D1), as it does from the Accounts page. The admin has no box
+        for the amount, so it is zero."""
+        if change:
+            super().save_model(request, obj, form, change)
+        else:
+            open_account(obj)
 
     def get_readonly_fields(self, request, obj=None):
         # Account.clean() refuses a new currency once transactions

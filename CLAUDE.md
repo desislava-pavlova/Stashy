@@ -46,7 +46,7 @@ terms.
 ## Commands
 
 ```
-.venv\Scripts\python.exe manage.py test                          # full suite, ~70 s (1,211 tests on 19/11/2026)
+.venv\Scripts\python.exe manage.py test                          # full suite, ~70 s (1,230 tests on 25/11/2026)
 .venv\Scripts\python.exe manage.py test finance.tests.test_reminders  # one module (audit: `test audit`)
 .venv\Scripts\python.exe manage.py migrate --database <stash>    # one stash (Stashy.bat does all, with backups)
 .venv\Scripts\python.exe manage.py reset_pin <owner name>        # real, visible action - ask first
@@ -109,23 +109,37 @@ check.bat                                                        # ruff check + 
     `TransactionQuerySet` (`in_range`, `reportable`, `of_kind`,
     `for_account`) is what every report query is built from. The reminder
     rules live on the model: `mark_entered()`, `skip()`,
-    `apply_to_series()`.
-  - `services/`: `importing.py` (`import_file()` → `ImportResult`, raises
-    `ImportFileError`) and `reconciliation.py` (`reconcile()`, raises
+    `apply_to_series()`. `payee_summaries()` gives the Payees page its
+    figures.
+  - `services/`: `accounts.py` (`open_account()` saves a new account
+    with its opening-balance transaction, D1; `transfer()` makes a
+    transfer's two legs, D7, and refuses the same account or two
+    currencies: the Add account form, the welcome wizard, the admin's
+    Add account and the Transfer form all go through them),
+    `importing.py` (`import_file()` → `ImportResult`, raises
+    `ImportFileError`), `reconciliation.py` (`reconcile()`, raises
     `UnacceptedDifferenceError`, or `AmountTooBigError` for a gap or an
-    opening balance over the limit). Plain functions, no HTTP. Each runs in its
-    own `atomic(using=<stash>)`. An import's Reconciled cell means
+    opening balance over the limit) and `rates.py` (`RateTable`,
+    `convert_balances()`, `fetch_latest_rates()`). Plain functions, no
+    HTTP. Each one that writes runs in its own `atomic(using=<stash>)`. An import's Reconciled cell means
     reconciled unless it is blank, `n`, `no`, `false`, `0`, `u`,
     `unreconciled`, `uncleared`, or a "cleared" mark (`c`, `cleared`, `*`):
     only R-like values reconcile, since cleared only means the bank has it.
   - `views/`: one module per area (`dashboard`, `accounts`, `categories`,
     `payees`, `transactions`, `reminders`, `imports`, `exports`, `reports`,
     `settings`, `api`, `auth` for picker/login/forgot-PIN, `welcome` for the
-    4-step wizard), plus `_helpers.py` (`_sorted`, `_paged`, `_safe_next`,
-    the export writers). `finance/urls.py` imports the modules, not the
-    views; there are no re-exports in `views/__init__.py`.
-  - Ids read from a URL or a form go through `_as_id()` / `_as_ids()`
-    (`views/_helpers.py`: plain ASCII digits that fit SQLite, else None), never
+    4-step wizard), plus `_helpers.py` (what several views share:
+    `apply_sort`, `paged`, `safe_next`, `plural`. They have no leading
+    underscore, since the module's name already says "internal"; a view
+    never imports another view's private names). `finance/urls.py` imports
+    the modules, not the views; there are no re-exports in
+    `views/__init__.py`.
+  - `filters.py` reads a page's filters from its address, once for the
+    page and its export: `filtered_transactions()` (Transactions) and
+    `report_filters()` (Reports). A view or an export never reads those
+    filters itself, so a downloaded file always matches the page.
+  - Ids read from a URL or a form go through `as_id()` / `as_ids()`
+    (`ids.py`: plain ASCII digits that fit SQLite, else None), never
     `str.isdigit()` and never straight into a lookup: a bad id then answers
     like one that doesn't exist (404, a message, or the filter ignored). A
     lookup by None finds nothing. A multi-choice field uses
@@ -134,13 +148,13 @@ check.bat                                                        # ruff check + 
     the usual "not a valid choice" error (plan 03, S106). A ModelForm's
     many-to-many field gets it through `Meta.field_classes`.
   - Transaction lists page at `TRANSACTIONS_PER_PAGE` (1,000) through
-    `_paged()`, only when the range is longer than a year or open (the
+    `paged()`, only when the range is longer than a year or open (the
     account register always is). The count and total cover every page;
-    exports ignore `page`. `_paged()` ends every order with `-pk`, so tied
+    exports ignore `page`. `paged()` ends every order with `-pk`, so tied
     rows never repeat or vanish across pages; the transactions export ends
-    its order the same way (`_ordered_with_ties_broken()`), so it matches
+    its order the same way (`ordered_with_ties_broken()`), so it matches
     the page.
-  - Column sorting: `_sorted()` takes a dict of column key -> list of
+  - Column sorting: `apply_sort()` takes a dict of column key -> list of
     field names, or of expressions. The Payment and Deposit headers sort
     their own side (keys `payment` and `deposit`, `AMOUNT_SORT_COLUMNS`):
     an expression that is NULL on the other side, written so ascending
@@ -178,7 +192,7 @@ check.bat                                                        # ruff check + 
     the export alike.
   - Settings: the page saves preferences; `check_rates`, `create_backup`
     and `save_watched_expenses` are their own POST URLs.
-  - `content.py`: the help-card tips (`*_TIPS`).
+  - `tips.py`: the help-card tips (`*_TIPS`).
   - `forms.py`, `auth_forms.py` (`PinField` and `PinConfirmMixin`: every
     PIN box uses `stashes.security.pin_validator`). A page that asks for
     the PIN again while logged in uses `CurrentPinForm`, which checks it
@@ -189,8 +203,10 @@ check.bat                                                        # ruff check + 
     lock), and checks through `_check()`, which never re-saves the hash (a
     re-save would log you out). `backup_now()` never overwrites a backup. For the same reason, forms that
     edit the Profile save only their own columns (`ProfileColumnsOnlyMixin`).
-  - `reporting.py`: all report maths. `currency.py`: RateTable,
-    Frankfurter. `money.py`: Decimal helpers, `parse_amount`.
+  - `reporting.py`: all report maths. `currency.py`: the currency list and
+    `format_money()`, plain data that imports no model (a test checks);
+    the rates are in `services/rates.py`. `money.py`: Decimal helpers,
+    `parse_amount`.
     `limits.py`: the limits on stored dates, numbers and amounts (see
     Domain rules).
     `regional.py`: date and number formats per user.
@@ -253,7 +269,8 @@ check.bat                                                        # ruff check + 
   `request.stashy_profile`) → RequireSetup (welcome wizard) → … →
   StashAtomicRequest.
 - Exports: pass real values (`Decimal`, `date`, `None`) to
-  `_export_response()`, never `str()`. The writers format them, escape
+  `_export_response()` (`views/exports.py`, which holds the writers),
+  never `str()`. The writers format them, escape
   formula-like text in CSV and keep text as text in XLSX, where they also drop
   the control characters a worksheet can't hold (openpyxl refuses the cell, so
   one odd memo was a 500 page; S107).

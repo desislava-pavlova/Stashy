@@ -12,10 +12,10 @@ from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
 from .. import reporting
-from ..currency import RateTable
 from ..forms import DateRangeFilterForm
 from ..models import Account, Category, ExchangeRate, Transaction
 from ..reporting import income_and_spending, spending_tree
+from ..services.rates import RateTable
 from .base import LoggedInWithAccountTestCase, StashTestCase, create_accounts_with_a_transaction
 
 

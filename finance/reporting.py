@@ -15,12 +15,12 @@ The rule everywhere: a category's own type decides income vs. spending,
 never the sign of its amount. Amounts are added up signed, so a refund
 (a positive amount in an expense category) shrinks its category, and an
 expense report flips the sign once, on the net total (`_as_shown()`).
-Every total also passes through an optional `rates` (a
-`currency.RateTable`), so multi-currency accounts convert into the main
-currency the same way net worth does (D2: latest known rate, not
+Every total also passes through an optional `rates` (a `RateTable`
+from `services/rates.py`), so multi-currency accounts convert into the
+main currency the same way net worth does (D2: latest known rate, not
 historical). Net worth is the exception to "one place": the dashboard
-and the Accounts page use `currency.convert_balances()` and Reports uses
-`net_worth_by_account()`. They agree because both convert through
+and the Accounts page use `convert_balances()` from there and Reports
+uses `net_worth_by_account()`. They agree because both convert through
 `RateTable`.
 """
 

@@ -12,6 +12,7 @@ from django.utils import timezone
 
 from ..forms import AccountCreateForm, AccountForm, CategoryForm, TransferForm
 from ..models import Account, Category, Payee, Profile, Reminder, Transaction, grouped_accounts
+from ..services.accounts import open_account, transfer
 from .base import LoggedInTestCase, LoggedInWithAccountTestCase, StashTestCase
 
 
@@ -85,6 +86,133 @@ class OpeningBalanceTests(LoggedInTestCase):
         self.assertEqual(opening.amount, Decimal("0.00"))
         self.assertEqual(opening.date, timezone.localdate())
         self.assertEqual(opening.payee.name, Payee.OPENING_BALANCE)
+
+
+class OpenAccountServiceTests(StashTestCase):
+    """Plan 03, S15: the opening-balance rule (D1) lives in
+    services/accounts.py, so every way an account comes in gets it."""
+
+    def test_it_saves_the_account_and_makes_its_opening_balance(self):
+        account = open_account(Account(name="Savings"), Decimal("500.00"), date(2026, 1, 1))
+
+        self.assertEqual(account, Account.objects.get(name="Savings"))
+        opening = Transaction.objects.get(account=account)
+        self.assertEqual(opening.amount, Decimal("500.00"))
+        self.assertEqual(opening.date, date(2026, 1, 1))
+        self.assertEqual(opening.payee.name, Payee.OPENING_BALANCE)
+        self.assertEqual(opening.category, account.transfer_category)
+        self.assertEqual(opening.memo, "Opening Balance")
+
+    def test_with_no_amount_or_date_it_is_zero_and_dated_today(self):
+        account = open_account(Account(name="Wallet"))
+
+        opening = Transaction.objects.get(account=account)
+        self.assertEqual(opening.amount, Decimal("0.00"))
+        self.assertEqual(opening.date, timezone.localdate())
+
+    def test_no_account_is_saved_when_its_opening_balance_cannot_be_made(self):
+        with (
+            mock.patch.object(Transaction.objects, "create", side_effect=RuntimeError("full")),
+            self.assertRaises(RuntimeError),
+        ):
+            open_account(Account(name="Savings"))
+
+        self.assertFalse(Account.objects.filter(name="Savings").exists())
+
+
+class TransferServiceTests(StashTestCase):
+    """Plan 03, S15: a transfer's two legs (D7) are made in
+    services/accounts.py."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.checking = Account.objects.create(name="Checking")
+        cls.savings = Account.objects.create(name="Savings")
+
+    def test_it_makes_a_payment_and_a_deposit_of_the_same_amount(self):
+        payment, deposit = transfer(
+            self.checking, self.savings, Decimal("25.50"), date(2026, 3, 4)
+        )
+
+        self.assertEqual((payment.account, payment.amount), (self.checking, Decimal("-25.50")))
+        self.assertEqual((deposit.account, deposit.amount), (self.savings, Decimal("25.50")))
+        for leg in (payment, deposit):
+            self.assertEqual(leg.date, date(2026, 3, 4))
+            self.assertEqual(leg.payee.name, Payee.TRANSFER_MONEY)
+        self.assertEqual(payment.category, self.checking.transfer_category)
+        self.assertEqual(deposit.category, self.savings.transfer_category)
+        self.assertEqual(payment.memo, "Transfer to Savings")
+        self.assertEqual(deposit.memo, "Transfer from Checking")
+
+    def test_two_accounts_in_different_currencies_are_refused(self):
+        dollars = Account.objects.create(name="Dollars", currency="USD")
+
+        with self.assertRaisesMessage(ValueError, "both accounts need the same currency"):
+            transfer(self.checking, dollars, Decimal("10.00"), date(2026, 3, 4))
+
+        self.assertFalse(Transaction.objects.exists())
+
+    def test_an_account_cannot_transfer_to_itself(self):
+        with self.assertRaisesMessage(ValueError, "two different accounts"):
+            transfer(self.checking, self.checking, Decimal("10.00"), date(2026, 3, 4))
+
+        self.assertFalse(Transaction.objects.exists())
+
+    def test_an_amount_of_zero_or_less_is_refused(self):
+        """A negative amount would quietly turn the payment into a
+        deposit."""
+        for amount in ("0", "0.00", "-5.00"):
+            with (
+                self.subTest(amount=amount),
+                self.assertRaisesMessage(ValueError, "an amount above zero"),
+            ):
+                transfer(self.checking, self.savings, Decimal(amount), date(2026, 3, 4))
+
+        self.assertFalse(Transaction.objects.exists())
+
+    def test_neither_leg_is_saved_when_the_second_cannot_be_made(self):
+        make_leg = Transaction.objects.create
+        legs = []
+
+        def make_then_fail(**fields):
+            legs.append(fields)
+            if len(legs) == 2:
+                raise RuntimeError("disk full")
+            return make_leg(**fields)
+
+        with (
+            mock.patch.object(Transaction.objects, "create", side_effect=make_then_fail),
+            self.assertRaises(RuntimeError),
+        ):
+            transfer(self.checking, self.savings, Decimal("10.00"), date(2026, 3, 4))
+
+        self.assertEqual(len(legs), 2)
+        self.assertFalse(Transaction.objects.exists())
+
+
+class AccountFormsAndTheServicesTests(StashTestCase):
+    def test_a_transfer_form_cannot_be_made_without_its_account(self):
+        with self.assertRaises(TypeError):
+            TransferForm()
+
+    def test_saving_a_new_account_form_without_committing_makes_nothing(self):
+        form = AccountCreateForm(
+            {
+                "name": "Checking",
+                "account_type": "cash",
+                "currency": "USD",
+                "is_active": True,
+                "opening_balance": "100.00",
+                "opening_balance_date": "01/01/2026",
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+
+        account = form.save(commit=False)
+
+        self.assertIsNone(account.pk)
+        self.assertFalse(Account.objects.exists())
+        self.assertFalse(Transaction.objects.exists())
 
 
 class TransferCategoryTests(StashTestCase):

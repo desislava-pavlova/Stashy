@@ -207,7 +207,7 @@ class PublicPagesRenderCheckTests(StashTestCase):
 
 
 class HelpCardTipsTests(LoggedInWithAccountTestCase):
-    """The help-card tips (finance/content.py) show beside the forms."""
+    """The help-card tips (finance/tips.py) show beside the forms."""
 
     def test_the_add_account_page_shows_its_tips(self):
         response = self.client.get(reverse("finance:account_add"))

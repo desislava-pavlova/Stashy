@@ -7,12 +7,12 @@ from django.contrib import messages
 from django.shortcuts import redirect, render
 
 from .. import regional
-from ..content import IMPORT_TIPS
 from ..forms import ImportUploadForm
 from ..limits import EARLIEST_YEAR, LATEST_YEAR
 from ..models import ImportBatch
 from ..services import importing
-from ._helpers import _plural
+from ..tips import IMPORT_TIPS
+from ._helpers import plural
 
 
 def import_transactions(request):
@@ -40,14 +40,14 @@ def import_transactions(request):
 
 
 def _import_summary(result):
-    transactions = _plural(result.created, "transaction")
+    transactions = plural(result.created, "transaction")
     summary = f"Imported {transactions} ({result.duplicates} duplicates skipped)."
     if result.unknown_account:
-        unknown_rows = _plural(result.unknown_account, "row")
+        unknown_rows = plural(result.unknown_account, "row")
         summary += f" {unknown_rows} skipped - named an account that doesn't exist yet."
     if result.unreadable:
         summary += (
-            f" {_plural(result.unreadable, 'row')} skipped - unreadable date or amount, "
+            f" {plural(result.unreadable, 'row')} skipped - unreadable date or amount, "
             f"or a date outside {EARLIEST_YEAR} to {LATEST_YEAR}."
         )
     if result.date_format:

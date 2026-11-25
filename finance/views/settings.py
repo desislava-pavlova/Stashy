@@ -20,15 +20,11 @@ from django.views.decorators.http import require_POST
 
 from .. import backup as finance_backup
 from ..auth_forms import ChangePinForm, CurrentPinForm
-from ..currency import RateFetchError, RateTable, fetch_latest_rates
-from ..forms import (
-    ProfileForm,
-    WatchedExpensesForm,
-    convertible_currencies,
-    watched_expenses_picker_context,
-)
+from ..forms import ProfileForm, WatchedExpensesForm
 from ..models import Account
+from ..services.rates import RateFetchError, RateTable, fetch_latest_rates
 from ..stashes import StashError, registry, security
+from ._helpers import watched_expenses_picker_context
 
 
 def _stash_backup_root(request):
@@ -46,7 +42,10 @@ def _current_stash_db_path(request):
 
 
 def _rate_currencies(profile):
-    return convertible_currencies(Account.objects.all()) or [profile.main_currency]
+    """The currencies Stashy needs rates for: the ones accounts use, or
+    just the main currency before there is an account."""
+    in_use = set(Account.objects.values_list("currency", flat=True))
+    return sorted(in_use) or [profile.main_currency]
 
 
 def _render_settings(request, profile, form=None, watched_form=None):

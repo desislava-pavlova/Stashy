@@ -22,6 +22,7 @@ from django.core.paginator import UnorderedObjectListWarning
 from django.db import IntegrityError, connections, models, transaction
 from django.test import RequestFactory, SimpleTestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from stashy.admin_mixins import HandMadeRequestMixin, key_fits, names_for_log
 
@@ -103,6 +104,43 @@ class AdminRuleTests(StashTestCase):
         self.assertNotIn("currency", model_admin.get_readonly_fields(request, account))
         Transaction.objects.create(account=account, date=date(2026, 9, 1), amount=Decimal("10"))
         self.assertIn("currency", model_admin.get_readonly_fields(request, account))
+
+
+class AdminAddAccountTests(LoggedInAsSuperuserTestCase):
+    """Plan 03, S15: every account has an opening-balance transaction
+    (D1), also one added in the admin, which has no box for the
+    amount."""
+
+    FIELDS = {
+        "name": "Wallet",
+        "account_type": "cash",
+        "currency": "EUR",
+        "institution": "",
+        "is_active": "on",
+        "notes": "",
+    }
+
+    def test_a_new_account_gets_a_zero_opening_balance_dated_today(self):
+        response = self.client.post(reverse("admin:finance_account_add"), self.FIELDS)
+
+        self.assertEqual(response.status_code, 302)
+        account = Account.objects.get(name="Wallet")
+        opening = Transaction.objects.get(account=account)
+        self.assertEqual(opening.amount, Decimal("0.00"))
+        self.assertEqual(opening.date, timezone.localdate())
+        self.assertEqual(opening.payee.name, Payee.OPENING_BALANCE)
+        self.assertEqual(opening.category, account.transfer_category)
+
+    def test_changing_an_account_adds_no_opening_balance(self):
+        self.client.post(reverse("admin:finance_account_add"), self.FIELDS)
+        account = Account.objects.get(name="Wallet")
+
+        url = reverse("admin:finance_account_change", args=[account.pk])
+        response = self.client.post(url, {**self.FIELDS, "name": "Purse"})
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(Account.objects.get(pk=account.pk).name, "Purse")
+        self.assertEqual(Transaction.objects.filter(account=account).count(), 1)
 
 
 class AdminHugeNumberTests(LoggedInAsSuperuserTestCase):

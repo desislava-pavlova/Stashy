@@ -511,6 +511,57 @@ class AuditStandsAloneTests(SimpleTestCase):
                         self.assertFalse(name == "finance" or name.startswith("finance."))
 
 
+class CurrencyStandsAloneTests(SimpleTestCase):
+    """Plan 03, S17: currency.py is plain data and formatting. `models`
+    imports it for its currency choices, so it must never import
+    `models`, the services or Django in return (that was the import
+    cycle that needed two "Imported here" workarounds)."""
+
+    FORBIDDEN_FIRST_PARTS = {"models", "services", "django"}
+
+    @staticmethod
+    def imported_names(source):
+        """Every module an import in `source` names, relative ones with
+        their dots, and `from . import x` as `.x`."""
+        names = []
+        for node in ast.walk(ast.parse(source)):
+            if isinstance(node, ast.Import):
+                names += [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                base = "." * node.level + (node.module or "")
+                names += [base if base.strip(".") else f".{alias.name}" for alias in node.names]
+        return names
+
+    @classmethod
+    def is_forbidden(cls, name):
+        """Whether an imported name is `models`, a service or Django,
+        spelled relative (`.models`) or in full (`finance.models`)."""
+        first_part = name.lstrip(".").removeprefix("finance.").split(".")[0]
+        return first_part in cls.FORBIDDEN_FIRST_PARTS
+
+    def test_currency_imports_no_models_services_or_django(self):
+        source = (Path(settings.BASE_DIR) / "finance" / "currency.py").read_text(encoding="utf-8")
+        for name in self.imported_names(source):
+            with self.subTest(imported=name):
+                self.assertFalse(self.is_forbidden(name))
+
+    def test_the_check_does_notice_each_way_of_importing_them(self):
+        names = self.imported_names(
+            "from .models import Account\n"
+            "from . import models\n"
+            "from .services.rates import RateTable\n"
+            "from finance.models import Account\n"
+            "from django.db import router\n"
+            "import django\n"
+            "from decimal import Decimal\n"
+        )
+        flagged = [n for n in names if self.is_forbidden(n)]
+        self.assertEqual(
+            flagged,
+            [".models", ".models", ".services.rates", "finance.models", "django.db", "django"],
+        )
+
+
 class OneTodayTests(SimpleTestCase):
     """8.1 (F8): "today" is the stash's own date (its time zone
     preference), so app code asks timezone.localdate(), never the

@@ -6,13 +6,21 @@ Every export builds rows of real values (Decimal, date, None) and hands
 them to _export_response(), which formats them for the chosen file type.
 """
 
+import csv
+import re
 from collections.abc import Callable
+from datetime import date
+from decimal import Decimal
 from typing import NamedTuple
 
 from django.http import Http404, HttpResponse
 from django.utils import timezone
 
-from ..currency import RateTable
+from openpyxl import Workbook
+from openpyxl.cell.cell import TYPE_STRING
+
+from .. import regional
+from ..filters import filtered_transactions, report_filters
 from ..models import Account, Category, Payee
 from ..reporting import (
     category_report_rows,
@@ -21,9 +29,9 @@ from ..reporting import (
     net_worth_by_account,
     watched_expenses_category_ids,
 )
-from ._helpers import _export_response, _ordered_with_ties_broken, _sorted
-from .reports import _report_filters
-from .transactions import TRANSACTION_LIST_SORT_FIELDS, _filtered_transactions
+from ..services.rates import RateTable
+from ._helpers import apply_sort, ordered_with_ties_broken
+from .transactions import TRANSACTION_LIST_SORT_FIELDS
 
 
 def _filename(stem):
@@ -38,6 +46,101 @@ def _requested_format(request):
 
 
 # ----------------------------------------------------------------------
+# Export writers - CSV built in; XLSX via openpyxl
+# ----------------------------------------------------------------------
+
+# Excel, LibreOffice and Google Sheets treat a cell starting with one of
+# these as a formula, and imported bank text can start with anything -
+# so text cells that do get a leading apostrophe in CSV, the usual "this
+# is text" marker (OWASP's advice for CSV injection). The apostrophe
+# goes after any leading spaces: the report layouts indent a
+# subcategory's name with two, and an indent must not hide a formula
+# from this check.
+_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _csv_cell(value):
+    """One export value as CSV text: amounts with exactly two decimals,
+    ISO dates (what Stashy's own import reads back), and text made safe
+    from formula injection."""
+    if value is None:
+        return ""
+    if isinstance(value, Decimal):
+        return f"{value:.2f}"
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, str):
+        text = value.lstrip(" ")
+        if text.startswith(_FORMULA_PREFIXES):
+            return value[: len(value) - len(text)] + "'" + text
+    return value
+
+
+def _csv_response(filename, headers, rows):
+    response = HttpResponse(content_type="text/csv; charset=utf-8")
+    response["Content-Disposition"] = f'attachment; filename="{filename}.csv"'
+    # A BOM first, or Excel guesses the wrong encoding and shows
+    # Cyrillic as garbage.
+    response.write("﻿")
+    writer = csv.writer(response)
+    writer.writerow(headers)
+    writer.writerows([_csv_cell(value) for value in row] for row in rows)
+    return response
+
+
+# What a worksheet can't hold: the control characters XML forbids (every
+# one but tab, line feed and carriage return), and U+FFFE and U+FFFF.
+# Text pasted from a PDF or a bank's page can carry them. openpyxl
+# refuses the first kind when the cell is set, and its own list
+# (`ILLEGAL_CHARACTERS_RE`) misses the last two, which the XML writer
+# then refuses when the file is saved. Either way one odd memo turned
+# the whole export into an error page.
+_FORBIDDEN_IN_WORKSHEETS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\ufffe\uffff]")
+
+
+def _xlsx_response(filename, headers, rows):
+    """Amounts go in as real numbers and dates as real dates, so Excel
+    can add them up and sort them. Text is always stored as text -
+    openpyxl would otherwise write a string starting with "=" as a
+    formula - and loses the characters a worksheet can't hold (see
+    _FORBIDDEN_IN_WORKSHEETS; tabs and line breaks stay). The headers
+    are fixed labels, never text a user typed, so they are not cleaned.
+    """
+    date_format = regional.current().date_placeholder
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.append(headers)
+    for row_index, row in enumerate(rows, start=2):
+        for column_index, value in enumerate(row, start=1):
+            cell = sheet.cell(row=row_index, column=column_index)
+            if value is None:
+                continue
+            if isinstance(value, str):
+                cell.value = _FORBIDDEN_IN_WORKSHEETS.sub("", value)
+                cell.data_type = TYPE_STRING
+                continue
+            cell.value = value
+            if isinstance(value, Decimal):
+                cell.number_format = "0.00"
+            elif isinstance(value, date):
+                cell.number_format = date_format
+    response = HttpResponse(
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    response["Content-Disposition"] = f'attachment; filename="{filename}.xlsx"'
+    workbook.save(response)
+    return response
+
+
+def _export_response(fmt, filename, headers, rows):
+    """Pass real values in `rows` (Decimal, date, None), never str():
+    the writers format them."""
+    if fmt == "xlsx":
+        return _xlsx_response(filename, headers, rows)
+    return _csv_response(filename, headers, rows)
+
+
+# ----------------------------------------------------------------------
 # List exports
 # ----------------------------------------------------------------------
 
@@ -46,9 +149,11 @@ def export_transactions(request):
     """Exports whatever the transaction list is currently
     filtered/sorted to - same filters, so what you get matches what you
     were looking at."""
-    transactions, _filters = _filtered_transactions(request)
-    transactions, _sort, _sort_next = _sorted(request, transactions, TRANSACTION_LIST_SORT_FIELDS)
-    transactions = _ordered_with_ties_broken(transactions)
+    transactions, _filters = filtered_transactions(request)
+    transactions, _sort, _sort_next = apply_sort(
+        request, transactions, TRANSACTION_LIST_SORT_FIELDS
+    )
+    transactions = ordered_with_ties_broken(transactions)
     headers = [
         "Date",
         "Number",
@@ -328,7 +433,7 @@ def export_report(request, report):
     if export is None:
         raise Http404("No such report.")
     profile = request.stashy_profile
-    table = export.build(_report_filters(request), RateTable(profile.main_currency), profile)
+    table = export.build(report_filters(request), RateTable(profile.main_currency), profile)
     if table is None:
         return HttpResponse(export.empty_message, status=404)
     headers, rows = export.layout(table, export.amount_label)

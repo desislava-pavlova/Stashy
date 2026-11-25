@@ -6,13 +6,14 @@ from decimal import Decimal
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, connections, transaction
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
 from audit.models import AuditLogEntry
 
 from ..forms import PayeeForm
-from ..models import Account, Category, Payee, Transaction, name_key
+from ..models import Account, Category, Payee, Transaction, name_key, payee_summaries
 from .base import (
     LoggedInTestCase,
     LoggedInWithAccountTestCase,
@@ -403,6 +404,96 @@ class PayeeListFilterAndSortTests(LoggedInWithAccountTestCase):
         self.assertEqual(row["categories_label"], "Groceries, Household")
         self.assertEqual(row["totals"], [("EUR", Decimal("-45.00"))])
         self.assertEqual(row["usage_count"], 2)
+
+
+class PayeeSummariesTests(StashTestCase):
+    """Plan 03, S66: the grouping and totals behind the payee list,
+    asked of the database once for the whole list."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.euros = Account.objects.create(name="Euros", currency="EUR")
+        cls.dollars = Account.objects.create(name="Dollars", currency="USD")
+        cls.groceries = Category.objects.create(name="Groceries")
+        cls.supermarket = cls.groceries.create_subcategory("Supermarket")
+
+    def spend(self, payee, amount, account=None, category=None):
+        return Transaction.objects.create(
+            account=account or self.euros,
+            date=date(2026, 1, 5),
+            payee=payee,
+            category=category,
+            amount=Decimal(amount),
+        )
+
+    def test_a_payee_with_no_transactions_has_an_empty_summary(self):
+        payee = Payee.objects.create(name="Never Used")
+
+        (summary,) = payee_summaries([payee])
+
+        self.assertEqual(summary["payee"], payee)
+        self.assertEqual(summary["categories"], [])
+        self.assertEqual(summary["categories_label"], "")
+        self.assertEqual(summary["category_count"], 0)
+        self.assertEqual(summary["totals"], [])
+        self.assertEqual(summary["total_sort_value"], Decimal("0"))
+        self.assertEqual(summary["usage_count"], 0)
+
+    def test_a_subcategory_reads_parent_then_child_and_no_category_reads_uncategorized(self):
+        payee = Payee.objects.create(name="Lidl")
+        self.spend(payee, "-1.00", category=self.supermarket)
+        self.spend(payee, "-2.00", category=self.groceries)
+        self.spend(payee, "-3.00", category=None)
+
+        (summary,) = payee_summaries([payee])
+
+        self.assertEqual(
+            summary["categories"], ["Groceries", "Groceries > Supermarket", "Uncategorized"]
+        )
+        self.assertEqual(summary["category_count"], 3)
+
+    def test_totals_are_per_currency_and_usage_counts_every_transaction(self):
+        payee = Payee.objects.create(name="Lidl")
+        self.spend(payee, "-10.00")
+        self.spend(payee, "-5.00")
+        self.spend(payee, "-3.00", account=self.dollars)
+
+        (summary,) = payee_summaries([payee])
+
+        self.assertEqual(
+            summary["totals"], [("EUR", Decimal("-15.00")), ("USD", Decimal("-3.00"))]
+        )
+        self.assertEqual(summary["total_sort_value"], Decimal("-18.00"))
+        self.assertEqual(summary["usage_count"], 3)
+
+    def test_each_payee_gets_only_its_own_figures_in_the_order_given(self):
+        lidl = Payee.objects.create(name="Lidl")
+        ikea = Payee.objects.create(name="Ikea")
+        self.spend(lidl, "-10.00", category=self.groceries)
+        self.spend(ikea, "-90.00")
+
+        summaries = payee_summaries([ikea, lidl])
+
+        self.assertEqual([s["payee"] for s in summaries], [ikea, lidl])
+        self.assertEqual([s["usage_count"] for s in summaries], [1, 1])
+        self.assertEqual([s["categories"] for s in summaries], [["Uncategorized"], ["Groceries"]])
+        self.assertEqual(
+            [s["total_sort_value"] for s in summaries], [Decimal("-90.00"), Decimal("-10.00")]
+        )
+
+    def test_the_number_of_queries_does_not_grow_with_the_payees(self):
+        payees = []
+        for number in range(6):
+            payee = Payee.objects.create(name=f"Shop {number}")
+            self.spend(payee, "-1.00", category=self.groceries)
+            payees.append(payee)
+
+        def queries_for(chosen):
+            with CaptureQueriesContext(connections[settings.TEST_STASH]) as queries:
+                payee_summaries(chosen)
+            return len(queries)
+
+        self.assertEqual(queries_for(payees[:1]), queries_for(payees))
 
 
 class PayeeListDistinctCategoriesTests(LoggedInWithAccountTestCase):

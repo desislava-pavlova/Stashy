@@ -21,7 +21,7 @@ from django.utils import timezone
 from .. import models
 from ..forms import TransactionForm
 from ..models import Account, Category, Payee, Profile, Transaction
-from ..views._helpers import _as_id, _as_ids, _safe_next
+from ..views._helpers import safe_next
 from ..views.transactions import _longer_than_a_year
 from .base import (
     LEAKED_TEMPLATE_SYNTAX,
@@ -377,7 +377,7 @@ class PaymentAndDepositSortingTests(LoggedInWithAccountTestCase):
 
     def test_the_export_is_in_the_same_order_as_the_page_ties_included(self):
         # Rows with nothing in the sorted column tie, so the page breaks
-        # the tie by newest first (see _paged()). The export must break
+        # the tie by newest first (see paged()). The export must break
         # it the same way, or it stops matching what you were looking
         # at.
         for sort in ("payment", "-payment", "deposit", "-deposit"):
@@ -678,46 +678,6 @@ class NameColumnSortingTests(LoggedInWithAccountTestCase):
                 self.assertEqual(names, self.IN_ORDER[::-1])
 
 
-class AsIdTests(SimpleTestCase):
-    """S2's helper: an id from a hand-editable place is plain ASCII
-    digits that fit SQLite, else None."""
-
-    def test_ids_that_fit(self):
-        for text, expected in (
-            ("5", 5),
-            ("0", 0),
-            ("007", 7),
-            ("0" * 5000 + "1", 1),
-            ("9223372036854775807", 2**63 - 1),
-        ):
-            with self.subTest(text=text[:30]):
-                self.assertEqual(_as_id(text), expected)
-
-    def test_everything_else_is_none_and_never_an_error(self):
-        for value in (
-            "",
-            " ",
-            "abc",
-            "1.5",
-            "-1",
-            "+1",
-            "1 2",
-            "²",
-            "٣",
-            "9223372036854775808",
-            "9" * 30,
-            "9" * 4301,
-            None,
-            5,
-            ["5"],
-        ):
-            with self.subTest(value=str(value)[:30]):
-                self.assertIsNone(_as_id(value))
-
-    def test_a_list_keeps_only_the_ids(self):
-        self.assertEqual(_as_ids(["1", "x", "²", "3", "9" * 4301, ""]), [1, 3])
-
-
 class HandEditedIdTests(LoggedInWithAccountTestCase):
     """S2: whatever a hand-edited URL sends in place of an id must not
     become a 500 page. "²" is the sneaky one: `str.isdigit()` is true
@@ -765,7 +725,7 @@ class HandEditedIdTests(LoggedInWithAccountTestCase):
 
     def test_the_new_transaction_form_takes_a_hand_edited_account_without_an_error(self):
         # `?account=` here goes straight into the form's starting
-        # values, not through _as_id().
+        # values, not through as_id().
         for bad in self.BAD_IDS:
             with self.subTest(account=bad[:12]):
                 response = self.client.get(reverse("finance:transaction_add"), {"account": bad})
@@ -1663,7 +1623,7 @@ class SafeNextTests(SimpleTestCase):
             "javascript:alert(1)",
         ):
             with self.subTest(url=url):
-                self.assertEqual(_safe_next(request, url), "")
+                self.assertEqual(safe_next(request, url), "")
         self.assertEqual(
-            _safe_next(request, "/transactions/?account=3"), "/transactions/?account=3"
+            safe_next(request, "/transactions/?account=3"), "/transactions/?account=3"
         )

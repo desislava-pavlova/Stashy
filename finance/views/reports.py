@@ -1,19 +1,17 @@
 """The Reports page: it reads the filters off the address, asks
 `reporting.py` for each report's numbers and hands them to the template.
-The filters are read by `_report_filters()`, which the exports share, so
-a downloaded file always matches what is on screen. No report maths
-belongs here.
+The filters are read by `report_filters()` in `filters.py`, which the
+exports share, so a downloaded file always matches what is on screen.
+No report maths belongs here.
 """
 
 from django.shortcuts import render
 
 from .. import regional
-from ..currency import RateTable, format_money
-from ..forms import DateRangeFilterForm
+from ..currency import format_money
+from ..filters import report_filters
 from ..models import Account
 from ..reporting import (
-    DEFAULT_LOOKBACK_PERIODS,
-    DEFAULT_RANGE_KEY,
     category_report_rows,
     category_totals_top_level,
     category_totals_vs_average,
@@ -22,54 +20,14 @@ from ..reporting import (
     income_and_spending_vs_average,
     income_expense_vs_average_report_rows,
     net_worth_by_account,
-    resolve_range,
     savings_rate,
     subtotal_overflow_message,
-    trimmed_average_periods,
     uncategorized_count,
     watched_expenses_category_ids,
     watched_expenses_series,
     watched_expenses_totals,
 )
-
-
-def _report_filters(request):
-    """Shared by the reports page and the report export view, so both
-    read the exact same filters off the querystring - what you export
-    always matches what's on screen.
-
-    On an invalid submission, `form` is swapped for a fresh, unbound one
-    so the widgets show the defaults actually being used rather than
-    echoing back the rejected values; the original errors are kept
-    separately in "form_errors" for the page's warning banner."""
-    submitted = DateRangeFilterForm(request.GET or None)
-    invalid = bool(request.GET) and not submitted.is_valid()
-    filters = submitted.cleaned_data if submitted.is_valid() else {}
-    account = filters.get("account")
-    start, end, interval = resolve_range(filters, account=account)
-    # "Average interval" is how many earlier periods to average over -
-    # see reporting.vs_average_periods() for what an earlier period is.
-    try:
-        lookback = int(interval)
-    except (TypeError, ValueError):
-        lookback = DEFAULT_LOOKBACK_PERIODS
-    range_key = filters.get("range") or DEFAULT_RANGE_KEY
-    periods = trimmed_average_periods(start, end, lookback, account=account, range_key=range_key)
-    return {
-        "form": DateRangeFilterForm() if invalid else submitted,
-        "form_errors": submitted.errors if invalid else None,
-        "start": start,
-        "end": end,
-        "lookback": lookback,
-        "periods": periods,
-        "average_periods": len(periods),
-        # One earlier period isn't an average, and none at all is
-        # nothing to compare with - the vs-average reports say so
-        # instead of drawing one.
-        "has_average": len(periods) >= 2,
-        "subtotal": filters.get("subtotal") or "",
-        "account": account,
-    }
+from ..services.rates import RateTable
 
 
 def _float_rows(rows, *decimal_keys):
@@ -163,7 +121,7 @@ def _vs_average_stat(label, current, average, higher_is_better, formatter):
 
 
 def reports_view(request):
-    filters = _report_filters(request)
+    filters = report_filters(request)
     start, end, periods, subtotal, account = (
         filters["start"],
         filters["end"],

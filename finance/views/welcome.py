@@ -10,13 +10,9 @@ from django.contrib import messages
 from django.shortcuts import redirect, render
 
 from .. import starter_categories
-from ..forms import (
-    AccountCreateForm,
-    ProfileForm,
-    WatchedExpensesForm,
-    watched_expenses_picker_context,
-)
+from ..forms import AccountCreateForm, ProfileForm, WatchedExpensesForm
 from ..models import Profile
+from ._helpers import watched_expenses_picker_context
 
 
 STEP_COUNT = Profile.WELCOME_STEPS_DONE

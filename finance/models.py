@@ -5,7 +5,9 @@ holds the checks a form or the admin shows, and `save()` keeps the
 hidden columns in step (`name_key`, a recurring reminder's
 occurrences). A model never says which stash it is in: `db_router.py`
 sends the query to the active one. Report maths doesn't belong here;
-it lives in `reporting.py`.
+it lives in `reporting.py`. (`grouped_accounts()`,
+`grouped_categories()` and `payee_summaries()` only shape a model's
+own rows for a list page.)
 """
 
 import contextlib
@@ -15,7 +17,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
-from django.db.models import Case, F, Max, Q, Sum, Value, When
+from django.db.models import Case, Count, F, Max, Q, Sum, Value, When
 from django.db.models.functions import Coalesce
 from django.urls import reverse
 from django.utils import timezone
@@ -640,6 +642,65 @@ class Payee(models.Model):
                 seen.add(transaction.category_id)
                 history.append(transaction)
         return history
+
+
+def payee_summaries(payees):
+    """One summary per payee in `payees`, for the Payees page: the
+    categories it was used with, how many transactions it has, and its
+    total in each currency.
+
+    The list can hold hundreds of payees, so each kind of data is asked
+    of the database once for the whole list, never once per payee.
+    """
+    payees = list(payees)
+    history = Transaction.objects.filter(payee_id__in=[payee.pk for payee in payees])
+
+    pairs = list(
+        history.values_list("payee_id", "category_id")
+        # Transaction's default ordering would add its date, number and
+        # created-at columns to the DISTINCT and repeat each category
+        # once per transaction.
+        .order_by()
+        .distinct()
+    )
+    categories = Category.objects.select_related("parent").in_bulk(
+        {category_id for _, category_id in pairs if category_id is not None}
+    )
+    labels_by_payee = {}
+    for payee_id, category_id in pairs:
+        label = "Uncategorized" if category_id is None else categories[category_id].full_name
+        labels_by_payee.setdefault(payee_id, []).append(label)
+
+    usage_by_payee = {
+        row["payee_id"]: row["count"]
+        for row in history.values("payee_id").annotate(count=Count("id"))
+    }
+
+    totals_by_payee = {}
+    for row in history.values("payee_id", "account__currency").annotate(total=Sum("amount")):
+        totals_by_payee.setdefault(row["payee_id"], []).append(
+            (row["account__currency"], row["total"])
+        )
+
+    summaries = []
+    for payee in payees:
+        labels = sorted(labels_by_payee.get(payee.pk, []))
+        totals = sorted(totals_by_payee.get(payee.pk, []))
+        summaries.append(
+            {
+                "payee": payee,
+                "categories": labels,
+                # A sort key only: the template shows one label per row.
+                "categories_label": ", ".join(labels),
+                "category_count": len(labels),
+                "totals": totals,
+                # Currency-blind, for sort order only: never shown as an
+                # amount.
+                "total_sort_value": sum((amount for _, amount in totals), ZERO),
+                "usage_count": usage_by_payee.get(payee.pk, 0),
+            }
+        )
+    return summaries
 
 
 class TransactionQuerySet(models.QuerySet):

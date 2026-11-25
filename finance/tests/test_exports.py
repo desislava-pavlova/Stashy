@@ -13,8 +13,7 @@ from django.utils import timezone
 from openpyxl import load_workbook
 
 from ..models import Account, Category, Payee, Profile, Transaction
-from ..views._helpers import _csv_cell
-from ..views.exports import REPORT_EXPORTS
+from ..views.exports import REPORT_EXPORTS, _csv_cell
 from .base import LoggedInWithAccountTestCase, create_accounts_with_a_transaction, csv_rows
 
 

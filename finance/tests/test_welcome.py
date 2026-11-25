@@ -2,6 +2,7 @@
 order they come in."""
 
 from datetime import timedelta
+from decimal import Decimal
 from unittest import mock
 
 from django.contrib.auth import get_user_model
@@ -13,7 +14,7 @@ from django.utils import timezone
 from openpyxl import load_workbook
 
 from .. import starter_categories
-from ..models import Account, Category, Profile, name_key
+from ..models import Account, Category, Profile, Transaction, name_key
 from .base import StarterCategoriesFileMixin, StashTestCase
 
 
@@ -411,3 +412,5 @@ class WelcomeStepFourTests(WelcomeWizardTestCase):
         self.profile.refresh_from_db()
         self.assertTrue(self.profile.setup_finished)
         self.assertTrue(Account.objects.filter(name="Checking").exists())
+        opening = Transaction.objects.get(account__name="Checking")
+        self.assertEqual(opening.amount, Decimal("50.00"))

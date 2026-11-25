@@ -2,7 +2,7 @@
 savings rate, the spending donut and what is due soon. Income,
 spending and the donut come from `reporting.py`, the same sums Reports
 uses, so they never disagree with it; net worth comes from
-`currency.convert_balances()`, as on the Accounts page.
+`rates.convert_balances()`, as on the Accounts page.
 """
 
 from datetime import timedelta
@@ -10,9 +10,10 @@ from datetime import timedelta
 from django.shortcuts import render
 from django.utils import timezone
 
-from ..currency import SUFFIX_CURRENCIES, RateTable, convert_balances
+from ..currency import SUFFIX_CURRENCIES
 from ..models import Account, Reminder, grouped_accounts
 from ..reporting import income_and_spending, savings_rate, spending_tree
+from ..services.rates import RateTable, convert_balances
 
 
 def _greeting():

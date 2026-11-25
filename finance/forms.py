@@ -16,8 +16,6 @@ from django.utils import timezone
 
 from dateutil.relativedelta import relativedelta
 
-from audit.context import system_action
-
 from . import regional
 from .limits import (
     EARLIEST_YEAR,
@@ -32,9 +30,9 @@ from .models import (
     Reminder,
     Transaction,
     categories_alphabetical,
-    grouped_categories,
 )
 from .money import CENT, ZERO
+from .services.accounts import open_account, transfer
 from .services.importing import SUPPORTED_EXTENSIONS, UNSUPPORTED_FILE_MESSAGE
 
 
@@ -98,7 +96,7 @@ class SafeModelMultipleChoiceField(forms.ModelMultipleChoiceField):
     outside what the database can hold is refused first, before any
     query. (A single-choice field already copes, because Django's `pk=`
     lookup returns nothing for it, and ids read from a URL go through
-    views/_helpers.py's `_as_id()`, which guards the same limit.)
+    `as_id()` in ids.py, which guards the same limit.)
 
     This overrides `_check_values()`, a private Django method, because
     it is the one place the ids are checked; the tests for both forms
@@ -156,10 +154,10 @@ class AccountForm(BootstrapFormMixin, forms.ModelForm):
 
 class AccountCreateForm(AccountForm):
     """Account creation also asks for an opening balance, which becomes
-    a real transaction (D1). Every new account gets one, even a
-    zero-amount one dated today by default, so a fresh account's
-    register never starts empty, and reconciliation always has a
-    starting transaction to reconcile from."""
+    a real transaction (D1) when the account is saved. A blank amount
+    or date means zero, dated today (clean() fills them in), and
+    services/accounts.py does the saving. With commit=False nothing
+    is saved and no opening balance is made."""
 
     opening_balance = forms.DecimalField(
         max_digits=12, decimal_places=2, required=False, initial=0
@@ -195,21 +193,14 @@ class AccountCreateForm(AccountForm):
         return cleaned
 
     def save(self, commit=True):
-        account = super().save(commit=commit)
-        amount = self.cleaned_data.get("opening_balance", ZERO)
-        if commit:
-            with system_action(
-                f"Opening balance transaction created for account '{account.name}'"
-            ):
-                Transaction.objects.create(
-                    account=account,
-                    date=self.cleaned_data["opening_balance_date"],
-                    payee=Payee.system(Payee.OPENING_BALANCE),
-                    category=account.ensure_transfer_category(),
-                    memo="Opening Balance",
-                    amount=amount,
-                )
-        return account
+        account = super().save(commit=False)
+        if not commit:
+            return account
+        return open_account(
+            account,
+            self.cleaned_data["opening_balance"],
+            self.cleaned_data["opening_balance_date"],
+        )
 
 
 class TransferForm(forms.Form):
@@ -222,13 +213,11 @@ class TransferForm(forms.Form):
     )
     date = PlausibleDateField(widget=DateInput(), initial=timezone.localdate)
 
-    def __init__(self, *args, from_account=None, **kwargs):
+    def __init__(self, *args, from_account, **kwargs):
         super().__init__(*args, **kwargs)
         self.from_account = from_account
-        # The same amount is used on both legs (no conversion happens
-        # here), so the destination must share this account's currency —
-        # otherwise "100" would leave as 100 EUR and arrive as 100 USD,
-        # silently inventing or destroying money.
+        # transfer() converts nothing, so only offer accounts in this
+        # account's currency.
         self.fields["to_account"].queryset = Account.objects.filter(
             is_active=True, currency=from_account.currency
         ).exclude(pk=from_account.pk)
@@ -242,27 +231,12 @@ class TransferForm(forms.Form):
         _use_regional_dates(self)
 
     def save(self):
-        to_account = self.cleaned_data["to_account"]
-        amount, on = self.cleaned_data["amount"], self.cleaned_data["date"]
-        payee = Payee.system(Payee.TRANSFER_MONEY)
-        with system_action(f"Transfer from '{self.from_account.name}' to '{to_account.name}'"):
-            out = Transaction.objects.create(
-                account=self.from_account,
-                date=on,
-                payee=payee,
-                category=self.from_account.ensure_transfer_category(),
-                memo=f"Transfer to {to_account.name}",
-                amount=-amount,
-            )
-            into = Transaction.objects.create(
-                account=to_account,
-                date=on,
-                payee=payee,
-                category=to_account.ensure_transfer_category(),
-                memo=f"Transfer from {self.from_account.name}",
-                amount=amount,
-            )
-        return out, into
+        return transfer(
+            self.from_account,
+            self.cleaned_data["to_account"],
+            self.cleaned_data["amount"],
+            self.cleaned_data["date"],
+        )
 
 
 class ReconcileStartForm(forms.Form):
@@ -682,31 +656,3 @@ class WatchedExpensesForm(ProfileColumnsOnlyMixin, BootstrapFormMixin, forms.Mod
             )
         )
         self.fields["watched_expenses_title"].widget.attrs["class"] = "form-control"
-
-
-def watched_expenses_picker_context(profile):
-    """What the Watched-expenses category picker needs, on Settings and
-    in the welcome wizard: the expense categories in groups, the ones
-    already chosen, and the button's label."""
-    chosen = list(profile.watched_expenses_categories.select_related("parent"))
-    if not chosen:
-        button_label = "No categories chosen"
-    elif len(chosen) == 1:
-        button_label = chosen[0].full_name
-    else:
-        button_label = f"{len(chosen)} categories selected"
-    return {
-        "watched_category_groups": grouped_categories(
-            Category.objects.filter(
-                category_type=Category.CategoryType.EXPENSE, account__isnull=True
-            )
-        ),
-        "watched_selected_values": {str(category.pk) for category in chosen},
-        "watched_button_label": button_label,
-    }
-
-
-def convertible_currencies(accounts):
-    """Currencies actually in use, for the settings page's 'known rates'
-    list."""
-    return sorted({account.currency for account in accounts})

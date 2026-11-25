@@ -6624,3 +6624,105 @@ edits (`audit/` 3, `finance/` 18, `scripts/` 2, `stashy/` 1, among them
 `plans/02_architecture_cleanup.md` (C1's revision note), `plans/03_structure_review.md`,
 `plans/04_fixes_and_changes_plan.md`, `plans/README.md`, this log. No new files, no
 migration.
+
+
+## 25/11/2026 — Plan 03, Phase 3, part B: code moves into new modules (S15, S16, S17, S47, S66)
+
+**What changed:** five moves, one theme: a rule or a helper gets a home named after what
+it does. 1,230 tests (1,211 before, 19 new), ruff clean, no migration (`makemigrations
+--check` says no changes), no data touched. No template, static file or URL changed.
+- `finance/services/accounts.py`: `open_account()` saves a new account with its
+  opening-balance transaction (D1) and `transfer()` makes a transfer's two legs (D7). The
+  Add account form, the Transfer form and (through the form) the welcome wizard call them,
+  and so does the admin's Add account, which used to skip the opening balance.
+- `finance/filters.py` (`report_filters()`, `filtered_transactions()`), `finance/ids.py`
+  (`as_id()`, `as_ids()`), and the helpers in `views/_helpers.py` lost their underscore.
+  The CSV/XLSX writers moved into `views/exports.py`.
+- `finance/services/rates.py` (`RateTable`, `convert_balances()`, `fetch_latest_rates()`);
+  `currency.py` is now only the currency list and `format_money()`.
+- `content.py` became `tips.py`.
+- `payee_summaries()` in `models.py`: the Payees page's grouping and totals, out of the view.
+
+**Behaviour that is not the same as before** (everything else reads the same):
+- The admin's **Add account** now creates a zero opening balance dated today. It had none,
+  which broke D1 ("every account has one, so a balance is a sum of transactions").
+- `TransferForm` needs its `from_account` (it used to default to `None` and then fail on
+  the first line that used it). `transfer()` refuses the same account, two currencies and
+  an amount that isn't above zero with a `ValueError`; the Transfer page never sends those.
+
+**Why the code looks like this:**
+- **A rule that lives in a form is skipped by every other way in.** The admin's Add page
+  doesn't run `AccountCreateForm`, so it never made the opening balance. The rule is now
+  a plain function, and each way in calls it. Both functions run in their own
+  `atomic(using=<stash>)`: a new account and its opening transaction are saved together or
+  not at all, and so are a transfer's two legs. Inside a request that nests as a
+  savepoint under the request's own transaction, which is fine. A test makes the second
+  leg fail and checks that the first is gone.
+- **`transfer()` guards its own rules.** The form's dropdown already offers only accounts
+  in the same currency, but the function moves the money and does no conversion, so it
+  refuses what would invent money rather than trusting every future caller to have
+  filtered first. The code reviewer added the amount: a negative one would quietly turn
+  the payment into a deposit.
+- **`_sorted` is `apply_sort`, because a plain `sorted` would hide Python's own.** The other
+  names simply lost the underscore: the module is called `_helpers`, which already says
+  "internal", and a view importing another view's private name is what S16 was about. The
+  Transactions reader keeps today's name, `filtered_transactions()`, instead of the plan's
+  `transaction_filters()`, because it returns the queryset as well as the filters.
+- **`as_id()` got its own module.** `filters.py` sits outside `views/`, and it needs
+  `as_id()`. Leaving that in `views/_helpers.py` would have made a lower-level module
+  import from the package that imports it. A tiny `ids.py` with no Django in it fixes the
+  direction; 3.21 will put the shared "can this be a database id?" check under it.
+- **The writers keep their underscore; two helpers were not moved but absorbed.** Only
+  `exports.py` uses the CSV/XLSX writers, so they are private there.
+  `convertible_currencies()` was one line with one caller and is inside
+  `_rate_currencies()`. `watched_expenses_picker_context()` has two callers in two views, so
+  it went to `views/_helpers.py`.
+- **The rate code moved out of `currency.py` to break a cycle.** `models` imports
+  `currency` for the currency choices, and `RateTable` needed `models`, hence two "Imported
+  here" workarounds inside functions. With the rate code in a service (which imports
+  `models` like any service), `currency.py` needs nothing from the database, and a test
+  now fails if it ever imports `models`, a service or Django again, spelled either way.
+- **The file move was done by script, byte for byte.** `_csv_response()` writes a byte
+  order mark as a literal, invisible character, and retyping the block by hand would have
+  lost it. A script cut the text out of one file and pasted it into the other, keeping
+  each file's own line endings. (Making that character visible is filed as S129.)
+- **`payee_summaries()` builds "Parent > Child" through `Category.full_name`.** The view
+  wrote that by hand from two joined columns. Using the model's own property costs one
+  query (the category rows, read once by id), so the page asks four things of the
+  database for any number of payees, and a test counts them for 1 payee and for 6.
+- **Tests follow the code.** `test_currency.py` is `test_rates.py`; the `as_id()` tests are
+  `test_ids.py`. One test needed more than an import edit: the rate tests patch the
+  network call by its path, and that path now says `finance.services.rates`.
+
+**What the reviews changed.** Code, database and security reviewers; the front-end
+reviewer was skipped because no template, static file or URL changed. Nothing Critical.
+Done from them: the amount guard in `transfer()`, a sentence on what
+`save(commit=False)` does, one place for the currency rule's explanation, two docstrings
+that had become ambiguous, the `as_id()` tests' new home, an opening-balance check in the
+wizard's test, and the guard test also catching `from finance.models import ...`. Filed
+(plan 03, S127–S132) because they are in code that was only moved, and part B's rule is
+that every page reads the same as before. The one real bug among them: a payee whose
+amounts add up to zero (say -0.10, -0.20 and +0.30) gets a total of
+-2.8E-17, which the page prints as 0.00 but paints red, because SQLite adds decimals as
+floats and nobody rounds them (S127; the old view did the same).
+
+**Teaching note — dependencies should point one way, and a function should guard what it
+promises.** When two modules import each other, Python makes you hide one import inside a
+function and write a comment apologising. That is the code telling you the pieces are
+sorted wrongly: `currency.py` held both plain data and a database reader, so the data had
+to know about models. Split by what each piece needs, and the arrows all point the same
+way. The same thought explains `ids.py`: a helper that the lower layer needs can't live in
+the layer above it. And a rule kept only in a form is a rule that the next way in will
+forget, as the admin did; a function that moves money should refuse what it can't do
+correctly, whoever calls it.
+
+**Files touched:** new `finance/services/accounts.py`, `finance/services/rates.py`,
+`finance/filters.py`, `finance/ids.py`, `finance/tests/test_ids.py`; renamed
+`finance/content.py` → `finance/tips.py` and `finance/tests/test_currency.py` →
+`finance/tests/test_rates.py`; changed `finance/currency.py`, `forms.py`, `admin.py`,
+`models.py`, `reporting.py` (a docstring), `views/` (`_helpers`, `exports`, `reports`,
+`transactions`, `payees`, `accounts`, `categories`, `imports`, `dashboard`, `settings`,
+`welcome`, `reminders`), the tests (`test_accounts`, `test_admin`, `test_payees`,
+`test_project`, `test_welcome`, `test_exports`, `test_transactions`, `test_reports`,
+`test_reporting`, `test_settings`, `test_pages`, `test_rates`); `CLAUDE.md`, `README.md`,
+`plans/03_structure_review.md`, `plans/README.md`, this log. No migration.

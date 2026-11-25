@@ -13,9 +13,9 @@ from django.utils import timezone
 
 from audit.models import AuditLogEntry
 
-from ..currency import RateFetchError
 from ..forms import ProfileForm, SafeModelMultipleChoiceField, WatchedExpensesForm
 from ..models import Account, Category, ExchangeRate, Profile
+from ..services.rates import RateFetchError
 from ..stashes import security
 from .base import (
     LEAKED_TEMPLATE_SYNTAX,

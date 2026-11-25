@@ -16,9 +16,9 @@ from django.views.generic import CreateView, DeleteView
 from dateutil.relativedelta import relativedelta
 
 from .. import regional
-from ..content import REMINDER_TIPS
 from ..forms import ReminderForm
 from ..models import Reminder
+from ..tips import REMINDER_TIPS
 
 
 def _reminder_window_cutoff(window, today):

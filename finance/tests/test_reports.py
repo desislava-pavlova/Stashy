@@ -17,10 +17,11 @@ from django.utils import timezone
 from dateutil.relativedelta import relativedelta
 
 from .. import reporting
-from ..forms import DateRangeFilterForm, WatchedExpensesForm, watched_expenses_picker_context
+from ..forms import DateRangeFilterForm, WatchedExpensesForm
 from ..models import Account, Category, Profile, Transaction
 from ..regional import NBSP
 from ..templatetags.stashy_format import diff_tint
+from ..views._helpers import watched_expenses_picker_context
 from ..views.exports import REPORT_EXPORTS
 from .base import LEAKED_TEMPLATE_SYNTAX, LoggedInWithAccountTestCase, StashTestCase, csv_rows
 

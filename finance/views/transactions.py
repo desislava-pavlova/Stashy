@@ -1,14 +1,14 @@
 """The Transactions pages: the filtered, sorted and paged list; add,
 edit and delete (a reminder's Enter lands on the same form); and the
-quick save behind the list's Edit mode. The date range is worked out by
-`reporting.resolve_range()`, the same as on Reports.
+quick save behind the list's Edit mode. The list's filters are read by
+`filtered_transactions()` in `filters.py`, which the export shares.
 """
 
 from datetime import date
 from urllib.parse import urlencode
 
 from django.contrib import messages
-from django.db.models import Q, Sum
+from django.db.models import Sum
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -21,13 +21,15 @@ from dateutil.relativedelta import relativedelta
 from audit.context import system_action
 
 from .. import regional
-from ..content import TRANSACTION_TIPS
 from ..currency import format_money
+from ..filters import filtered_transactions
 from ..forms import DateRangeFilterForm, TransactionForm
+from ..ids import as_id
 from ..models import Account, Category, Reminder, Transaction, grouped_categories
 from ..money import ZERO
-from ..reporting import EARLIEST_RANGE_KEY, resolve_range
-from ._helpers import AMOUNT_SORT_COLUMNS, _as_id, _as_ids, _paged, _safe_next, _sorted
+from ..reporting import EARLIEST_RANGE_KEY
+from ..tips import TRANSACTION_TIPS
+from ._helpers import AMOUNT_SORT_COLUMNS, apply_sort, paged, safe_next
 
 
 # Reports' date-range presets, plus "All dates": no date limits at all,
@@ -64,93 +66,15 @@ def _longer_than_a_year(start, end):
         return False
 
 
-def _filtered_transactions(request):
-    """Every filter the transaction list applies, shared with its
-    CSV/XLSX export so what you export always matches what you're
-    currently looking at."""
-    transactions = Transaction.objects.select_related("account", "category__parent", "payee")
-
-    account_id = request.GET.get("account", "")
-    # Category is multi-select - one or more "category" values, any mix
-    # of digit category ids and the literal "none" for uncategorized,
-    # matched with OR.
-    category_values = request.GET.getlist("category")
-    status = request.GET.get("status", "")
-    search = request.GET.get("q", "").strip()
-    with_subcategories = request.GET.get("with_subcategories") == "1"
-    include_uncategorized = "none" in category_values
-    selected_categories = list(
-        Category.objects.filter(pk__in=_as_ids(category_values)).select_related("parent")
-    )
-
-    range_key = request.GET.get("range", "")
-    if range_key == EARLIEST_RANGE_KEY:
-        range_key = ""  # a bookmark from before "Earliest to date" became "All dates"
-    start = regional.parse_date(request.GET.get("start"))
-    end = regional.parse_date(request.GET.get("end"))
-    if range_key == "custom":
-        pass
-    elif range_key:
-        start, end, _ = resolve_range({"range": range_key})
-    elif "range" in request.GET:
-        # "All dates". The form still sends its date boxes, holding the
-        # previous range's dates.
-        start = end = None
-    elif start is None and end is None:
-        # Default view: this year, until you explicitly ask for
-        # something else.
-        start, end, _ = resolve_range({"range": "this_year"})
-        range_key = "this_year"
-    else:
-        range_key = "custom"  # dates without a range: the dashboard's links
-
-    if (account_pk := _as_id(account_id)) is not None:
-        transactions = transactions.filter(account_id=account_pk)
-    if selected_categories or include_uncategorized:
-        category_ids = {c.pk for c in selected_categories}
-        if with_subcategories:
-            for category in selected_categories:
-                category_ids.update(sub.pk for sub in category.descendants())
-        category_filter = Q(category_id__in=category_ids) if category_ids else Q(pk__in=[])
-        if include_uncategorized:
-            category_filter |= Q(category__isnull=True)
-        transactions = transactions.filter(category_filter)
-    if start:
-        transactions = transactions.filter(date__gte=start)
-    if end:
-        transactions = transactions.filter(date__lte=end)
-    if status == "reconciled":
-        transactions = transactions.filter(reconciled=True)
-    elif status == "unreconciled":
-        transactions = transactions.filter(reconciled=False)
-    if search:
-        transactions = transactions.filter(
-            Q(payee__name__icontains=search) | Q(memo__icontains=search)
-        )
-
-    return transactions, {
-        "account_id": account_id,
-        "category_values": category_values,
-        "selected_categories": selected_categories,
-        "include_uncategorized": include_uncategorized,
-        "with_subcategories": with_subcategories,
-        "status": status,
-        "range_key": range_key,
-        "start": start,
-        "end": end,
-        "search": search,
-    }
-
-
 def transaction_list(request):
-    transactions, filters = _filtered_transactions(request)
-    transactions, sort, sort_next = _sorted(request, transactions, TRANSACTION_LIST_SORT_FIELDS)
+    transactions, filters = filtered_transactions(request)
+    transactions, sort, sort_next = apply_sort(request, transactions, TRANSACTION_LIST_SORT_FIELDS)
     # Every page shows the total of everything the filters match, so
     # it's taken before paging. It adds amounts across accounts
     # without converting currencies, so it is only exact for a
     # single-currency stash.
     total_amount = transactions.aggregate(total=Sum("amount"))["total"] or ZERO
-    rows, page_obj = _paged(
+    rows, page_obj = paged(
         request, transactions, split=_longer_than_a_year(filters["start"], filters["end"])
     )
 
@@ -226,13 +150,13 @@ def transaction_list(request):
 
 def transaction_form_view(request, pk=None):
     instance = get_object_or_404(Transaction, pk=pk) if pk else None
-    next_url = _safe_next(request, request.POST.get("next") or request.GET.get("next", ""))
+    next_url = safe_next(request, request.POST.get("next") or request.GET.get("next", ""))
     reminder = None
     reminder_id = request.POST.get("reminder") or request.GET.get("reminder")
     # Only for a brand-new transaction - editing an existing one never
     # carries a reminder link.
     if reminder_id and not instance:
-        reminder = get_object_or_404(Reminder, pk=_as_id(reminder_id))
+        reminder = get_object_or_404(Reminder, pk=as_id(reminder_id))
     initial = {}
     if instance and instance.payee_id:
         initial["payee_name"] = instance.payee.name
@@ -407,12 +331,12 @@ class TransactionDeleteView(DeleteView):
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        ctx["next"] = _safe_next(self.request, self.request.GET.get("next", ""))
+        ctx["next"] = safe_next(self.request, self.request.GET.get("next", ""))
         return ctx
 
     def get_success_url(self):
         # Back to wherever the delete link was opened from (e.g. the
         # all-accounts list), same as editing already does - otherwise
         # falls back to the transaction's own account.
-        next_url = _safe_next(self.request, self.request.POST.get("next", ""))
+        next_url = safe_next(self.request, self.request.POST.get("next", ""))
         return next_url or reverse("finance:account_detail", kwargs={"pk": self.object.account_id})

@@ -12,8 +12,8 @@ from urllib.parse import parse_qs, urlsplit
 
 from audit.models import AuditLogEntry
 
-from ..currency import RateFetchError, RateTable, convert_balances, fetch_latest_rates
 from ..models import Account, ExchangeRate, Transaction
+from ..services.rates import RateFetchError, RateTable, convert_balances, fetch_latest_rates
 from .base import StashTestCase
 
 
@@ -93,7 +93,7 @@ def frankfurter_replies(payload, raw=None):
     response.__enter__.return_value = io.BytesIO(
         raw if raw is not None else json.dumps(payload).encode()
     )
-    return mock.patch("finance.currency.urllib.request.urlopen", return_value=response)
+    return mock.patch("finance.services.rates.urllib.request.urlopen", return_value=response)
 
 
 class FetchLatestRatesTests(StashTestCase):
@@ -222,7 +222,7 @@ class FetchLatestRatesTests(StashTestCase):
 
     def test_offline_raises_and_stores_nothing(self):
         offline = mock.patch(
-            "finance.currency.urllib.request.urlopen", side_effect=URLError("no internet")
+            "finance.services.rates.urllib.request.urlopen", side_effect=URLError("no internet")
         )
         with (
             offline,

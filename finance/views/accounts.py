@@ -1,8 +1,8 @@
 """The accounts pages: the list with net worth, an account's register,
 add/edit/delete, and the Transfer and Reconcile flows that start from an
-account. The rules live in `forms.py` (the opening balance, a
-transfer), the models and `services/reconciliation.py`; a view reads the
-request and picks the template.
+account. The rules live in `services/accounts.py` (the opening
+balance, a transfer), `services/reconciliation.py` and the models; a
+view reads the request and picks the template.
 """
 
 from django.contrib import messages
@@ -11,8 +11,7 @@ from django.urls import reverse_lazy
 from django.views.generic import CreateView, DeleteView, ListView, UpdateView
 
 from .. import regional
-from ..content import ACCOUNT_TIPS
-from ..currency import SUFFIX_CURRENCIES, convert_balances, format_money
+from ..currency import SUFFIX_CURRENCIES, format_money
 from ..forms import (
     AccountCreateForm,
     AccountForm,
@@ -24,7 +23,9 @@ from ..limits import MAX_AMOUNT
 from ..models import Account, grouped_accounts
 from ..money import ZERO
 from ..services import reconciliation
-from ._helpers import AMOUNT_SORT_COLUMNS, _paged, _sorted
+from ..services.rates import convert_balances
+from ..tips import ACCOUNT_TIPS
+from ._helpers import AMOUNT_SORT_COLUMNS, apply_sort, paged
 
 
 class AccountListView(ListView):
@@ -59,11 +60,11 @@ ACCOUNT_REGISTER_SORT_FIELDS = {
 def account_detail(request, pk):
     account = get_object_or_404(Account, pk=pk)
     transactions = account.transactions.select_related("category__parent", "payee")
-    transactions, sort, sort_next = _sorted(request, transactions, ACCOUNT_REGISTER_SORT_FIELDS)
+    transactions, sort, sort_next = apply_sort(request, transactions, ACCOUNT_REGISTER_SORT_FIELDS)
     # The register has no date range - it always shows the account's
     # whole history - so it follows the Transactions page's rule for an
     # open range and splits into pages.
-    rows, page_obj = _paged(request, transactions, split=True)
+    rows, page_obj = paged(request, transactions, split=True)
     return render(
         request,
         "finance/account_detail.html",

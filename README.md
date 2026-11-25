@@ -145,7 +145,8 @@ every stash automatically).
   (inactive accounts always sort last; an account can only be made inactive
   once its balance is zero). Every new account gets an opening balance
   transaction — the amount and date you enter, or 0 dated today if you leave
-  them blank — so every account's balance is a pure sum of its transactions.
+  them blank (an account added in the admin always gets 0 dated today) —
+  so every account's balance is a pure sum of its transactions.
   Each account has its own currency; **Settings** sets your main currency and
   lets you fetch exchange rates (needs internet) to convert everything for net
   worth; an account whose currency has no known rate is left out of the total,
@@ -307,10 +308,12 @@ Stashy/
 │   ├── views/            # one file per area: accounts.py, transactions.py, reports.py,
 │   │                     #   exports.py, settings.py, auth.py (picker, PIN login),
 │   │                     #   welcome.py (the setup wizard), and so on
-│   ├── content.py        # the "Stashy tips" text shown beside forms
+│   ├── tips.py           # the "Stashy tips" text shown beside forms
 │   ├── starter_categories.xlsx  # Basic/Extended starting category lists (welcome wizard)
-│   ├── services/         # importing a file, reconciling an account
+│   ├── services/         # opening accounts and transfers, importing a file,
+│   │                     #   reconciling an account, exchange rates
 │   ├── forms.py
+│   ├── filters.py        # reads a page's filters from its address (page and export share them)
 │   ├── limits.py         # the limits on stored dates, numbers and amounts
 │   ├── reporting.py      # report calculations
 │   ├── stashes/          # registry.py: creating and finding stashes, owner names;
