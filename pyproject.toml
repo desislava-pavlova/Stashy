@@ -6,7 +6,7 @@
 [tool.ruff]
 line-length = 99
 target-version = "py312"
-extend-exclude = ["migrations", "staticfiles", "stashes", "backups", "logs"]
+extend-exclude = ["migrations", "staticfiles", "./stashes", "backups", "logs"]
 
 [tool.ruff.lint]
 select = ["E", "W", "F", "I", "N", "B", "UP", "DJ", "SIM", "C4", "RUF"]

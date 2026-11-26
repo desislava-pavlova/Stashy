@@ -8,6 +8,7 @@ import io
 import re
 from datetime import date, datetime
 from decimal import Decimal
+from unittest import mock
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -279,6 +280,35 @@ class CategoryAutoCreateTests(ImportTestCase):
             )
         self._import("Date,Payee,Memo,Amount\n10/01/2026,Lidl,,-10.00\n")
         self.assertEqual(Transaction.objects.get(date=date(2026, 1, 10)).category, household)
+
+    def test_a_guess_sees_the_rows_the_same_file_already_made_and_skips_the_whole_history(self):
+        """S65: the guess reads the payee's newest transaction only, so
+        a row earlier in the file counts when it is newer than what was
+        stored, and the payee's whole history is never loaded."""
+        groceries = Category.objects.create(name="Groceries", category_type=EXPENSE)
+        household = Category.objects.create(name="Household", category_type=EXPENSE)
+        payee = Payee.objects.create(name="Lidl")
+        Transaction.objects.create(
+            account=self.account,
+            date=date(2026, 1, 8),
+            payee=payee,
+            category=household,
+            amount=Decimal("-5.00"),
+        )
+        file = (
+            "Date,Payee,Memo,Amount,Category\n"
+            "10/01/2026,Lidl,,-10.00,\n"
+            "20/01/2026,Lidl,,-11.00,Groceries\n"
+            "25/01/2026,Lidl,,-12.00,\n"
+        )
+
+        with mock.patch.object(Payee, "category_history", side_effect=AssertionError):
+            self._import(file)
+
+        categories = {t.date.day: t.category for t in Transaction.objects.filter(payee=payee)}
+        self.assertEqual(categories[10], household)
+        self.assertEqual(categories[20], groceries)
+        self.assertEqual(categories[25], groceries)
 
     def test_auto_generated_badge_shown_in_category_list(self):
         Category.objects.create(name="Made by hand", category_type=Category.CategoryType.EXPENSE)

@@ -250,8 +250,12 @@ def main():
         print(f"\n!! {error}")
         return 1
 
+    # Imported here: waitress is installed only after
+    # install_requirements() has run, not when this module loads.
     from waitress import serve
 
+    # Imported here: importing it loads the settings, which read `.env`,
+    # and ensure_env_file() has only just made that file on a first run.
     from stashy.wsgi import application
 
     step(f"Starting Stashy at {BROWSER_URL}")

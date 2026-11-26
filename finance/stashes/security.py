@@ -20,6 +20,7 @@ from django.utils import timezone
 from ..models import Profile
 from . import StashError
 
+
 # \Z rather than $, which would also accept a trailing newline; [0-9]
 # rather than \d, which would also accept digits from other scripts.
 PIN_RE = re.compile(r"^[0-9]{4}\Z")
@@ -79,6 +80,15 @@ def lockout_seconds_remaining(profile):
     if not is_locked_out(profile):
         return 0
     return max(0, int((profile.locked_until - timezone.now()).total_seconds()))
+
+
+def lockout_minutes_remaining(profile):
+    """The minutes a PIN screen tells someone to wait, rounded up so it
+    never says "0 minutes" while the lockout still holds; 0 when the
+    stash isn't locked out."""
+    if not is_locked_out(profile):
+        return 0
+    return lockout_seconds_remaining(profile) // 60 + 1
 
 
 def register_failed_attempt(profile):
@@ -147,6 +157,19 @@ def check_pin(profile, pin):
         return False
 
 
+def set_pin(user, new_pin):
+    """Makes `new_pin` the PIN of the stash's user, the one place a PIN
+    is saved (Change PIN, a reset with the recovery code, the reset_pin
+    command). The PIN is the user's password and the user isn't an
+    audited model, so this leaves no audit row. Raises StashError for a
+    PIN that breaks the rule, since a form's check isn't the only way
+    here. It saves one column: a page that keeps the login going after
+    it must renew the session's hash itself."""
+    validate_pin(new_pin)
+    user.set_password(new_pin)
+    user.save(update_fields=["password"])
+
+
 def reset_pin_with_recovery_code(profile, recovery_code, new_pin):
     """True (and rotates in a fresh recovery code, invalidating the old
     one) if the recovery code matches; False otherwise, counting the
@@ -166,8 +189,7 @@ def reset_pin_with_recovery_code(profile, recovery_code, new_pin):
             register_failed_attempt(profile)
             return False, None
         new_code, new_hash = new_recovery_code()
-        profile.user.set_password(new_pin)
-        profile.user.save(update_fields=["password"])
+        set_pin(profile.user, new_pin)
         profile.recovery_code_hash = new_hash
         profile.failed_pin_attempts = 0
         profile.locked_until = None

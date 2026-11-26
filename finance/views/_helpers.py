@@ -4,9 +4,9 @@ needs on two pages."""
 
 from django.core.paginator import Paginator
 from django.db.models import Case, DecimalField, F, When
-from django.utils.http import url_has_allowed_host_and_scheme
 
 from ..models import Category, grouped_categories
+from ..same_site import stays_on_this_site
 
 
 # What the Payment and Deposit headers sort by: the amount on that side,
@@ -94,13 +94,8 @@ def paged(request, transactions, split):
 
 def safe_next(request, url):
     """`url` if it stays on this site, else "" - never redirect
-    off-site. Django's own check also refuses tricks a plain "starts
-    with /" test lets through, like `/\\evil.com`, which browsers read
-    as `//evil.com`."""
-    allowed = url_has_allowed_host_and_scheme(
-        url, allowed_hosts={request.get_host()}, require_https=request.is_secure()
-    )
-    return url if allowed else ""
+    off-site (see `same_site.stays_on_this_site()`)."""
+    return url if stays_on_this_site(request, url) else ""
 
 
 def plural(count, word, many=None):
@@ -124,7 +119,7 @@ def watched_expenses_picker_context(profile):
         "watched_category_groups": grouped_categories(
             Category.objects.filter(
                 category_type=Category.CategoryType.EXPENSE, account__isnull=True
-            )
+            ).select_related("parent")
         ),
         "watched_selected_values": {str(category.pk) for category in chosen},
         "watched_button_label": button_label,

@@ -50,15 +50,15 @@ def dashboard(request):
     rate = savings_rate(last_month["income"], last_month["spending"])
 
     # Reminder.DUE_SOON_DAYS is the one definition of "soon", so this
-    # window and each reminder's computed status agree.
+    # window and each reminder's computed status agree. Already paid or
+    # skipped doesn't belong on a "what needs attention" widget, even if
+    # its date still falls in the lookahead window.
     due_soon = list(
         Reminder.objects.filter(next_due_date__lte=today + timedelta(days=Reminder.DUE_SOON_DAYS))
+        .not_done()
         .select_related("account", "payee", "category__parent")
         .order_by("next_due_date")
     )
-    # Already paid or skipped doesn't belong on a "what needs attention"
-    # widget, even if its date still falls in the lookahead window.
-    due_soon = [r for r in due_soon if r.status(today) not in ("paid", "skipped")]
     for reminder in due_soon:
         reminder.days_until = (reminder.next_due_date - today).days
 

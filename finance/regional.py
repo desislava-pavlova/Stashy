@@ -183,6 +183,20 @@ def detect_from_computer():
     return replace(DEFAULTS, **found)
 
 
+def profile_defaults_from_computer():
+    """This computer's regional settings as the Profile columns that
+    hold them, for a new Profile: a stash made from the site and a
+    Profile made on first login both fill the same four. The main
+    currency isn't one of them (it is asked for, not detected)."""
+    detected = detect_from_computer()
+    return {
+        "time_zone": detected.time_zone,
+        "date_format": detected.date_format,
+        "number_format": detected.number_format,
+        "first_day_of_week": detected.first_day_of_week,
+    }
+
+
 def _read_windows_settings():
     # Imported here: winreg exists only on Windows (the caller catches
     # the ImportError).

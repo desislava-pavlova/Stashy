@@ -56,9 +56,9 @@ def reminder_list(request):
         reminders = reminders.filter(next_due_date__lte=cutoff)
     if window == "month":
         reminders = reminders.filter(next_due_date__gte=today.replace(day=1))
-    reminders = list(reminders)
     if not show_done:
-        reminders = [r for r in reminders if r.status(today) not in ("paid", "skipped")]
+        reminders = reminders.not_done()
+    reminders = list(reminders)
     return render(
         request,
         "finance/reminder_list.html",
@@ -131,9 +131,7 @@ class ReminderDeleteView(DeleteView):
         # Only the ones that would actually be deleted - a paid/skipped
         # occurrence is detached and kept, not removed
         # (Reminder.delete()).
-        ctx["occurrence_count"] = self.object.occurrences.filter(
-            last_entered_transaction__isnull=True, skipped=False
-        ).count()
+        ctx["occurrence_count"] = self.object.occurrences.unresolved().count()
         return ctx
 
 

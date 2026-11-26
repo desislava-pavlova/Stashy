@@ -37,13 +37,23 @@ MAX_REMINDER_INTERVAL = 120
 # not a safe maximum: the next number is one more than the highest.
 MAX_TRANSACTION_NUMBER = 999_999_999
 
-# What a money column holds: 12 digits, 2 of them after the point.
-MAX_AMOUNT = Decimal("9999999999.99")
+# What a money column holds: 12 digits, 2 of them after the point. Every
+# money column and form box reads these two numbers, and the biggest
+# amount follows from them.
+AMOUNT_MAX_DIGITS = 12
+AMOUNT_DECIMAL_PLACES = 2
+MAX_AMOUNT = Decimal(10 ** (AMOUNT_MAX_DIGITS - AMOUNT_DECIMAL_PLACES)) - Decimal(1).scaleb(
+    -AMOUNT_DECIMAL_PLACES
+)
 
 # What the exchange rate column holds: 20 digits, 10 of them after the
 # point. A rate that rounds to zero at that size is no rate.
-MAX_EXCHANGE_RATE = Decimal("9999999999.9999999999")
-_EXCHANGE_RATE_STEP = Decimal("0.0000000001")
+RATE_MAX_DIGITS = 20
+RATE_DECIMAL_PLACES = 10
+MAX_EXCHANGE_RATE = Decimal(10 ** (RATE_MAX_DIGITS - RATE_DECIMAL_PLACES)) - Decimal(1).scaleb(
+    -RATE_DECIMAL_PLACES
+)
+_EXCHANGE_RATE_STEP = Decimal(1).scaleb(-RATE_DECIMAL_PLACES)
 
 
 def is_plausible_date(value):

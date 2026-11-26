@@ -137,7 +137,7 @@ class StashLoginView(LoginView):
         context["owner_name"] = self.profile.owner_name if self.profile else self.stash_name
         context["locked_out"] = bool(self.profile) and security.is_locked_out(self.profile)
         context["lockout_minutes"] = (
-            (security.lockout_seconds_remaining(self.profile) // 60 + 1) if self.profile else 0
+            security.lockout_minutes_remaining(self.profile) if self.profile else 0
         )
         return context
 
@@ -199,7 +199,6 @@ def forgot_pin(request):
     # After the try above, so the last wrong code shows the lockout at
     # once. The form stays: a right recovery code still works during
     # one.
-    locked_out = security.is_locked_out(profile)
     return render(
         request,
         "registration/forgot_pin.html",
@@ -207,9 +206,7 @@ def forgot_pin(request):
             "owner_name": profile.owner_name,
             "owner_possessive": profile.owner_possessive,
             "form": form,
-            "locked_out": locked_out,
-            "lockout_minutes": (security.lockout_seconds_remaining(profile) // 60 + 1)
-            if locked_out
-            else 0,
+            "locked_out": security.is_locked_out(profile),
+            "lockout_minutes": security.lockout_minutes_remaining(profile),
         },
     )

@@ -26,6 +26,7 @@ from ..models import (
     Payee,
     Transaction,
     categories_alphabetical,
+    category_name_order,
     grouped_categories,
     name_key,
 )
@@ -375,6 +376,21 @@ class CategoriesAlphabeticalOrderTests(StashTestCase):
         # "[" sorts before every letter, so by name alone the Transfer
         # categories would come first.
         self.assertEqual(self.names(), ["Zebra pay", "apple", "[Bank]", "[Wallet]"])
+
+    def test_the_python_sorts_follow_the_database_for_letters_lower_does_not_fold(self):
+        """S109: "ß" lower-cases to itself but folds to "ss", so sorting
+        by `.lower()` put "Strasse2" before "Straße" while the dropdown
+        (the database's `name_key`) put it after."""
+        strasse = self.make("Straße")
+        self.make("Strasse2")
+        self.make("Zeta", parent=strasse)
+        in_the_dropdown = self.names()
+        self.assertEqual(in_the_dropdown, ["Straße", "Zeta", "Strasse2"])
+
+        by_python = [c.name for c in sorted(Category.objects.all(), key=category_name_order)]
+        self.assertEqual(by_python, in_the_dropdown)
+        groups = grouped_categories(Category.objects.select_related("parent"))
+        self.assertEqual([c.name for c in groups[0]["categories"]], in_the_dropdown)
 
     def test_the_transaction_form_offers_the_same_order(self):
         car = self.make("Car")

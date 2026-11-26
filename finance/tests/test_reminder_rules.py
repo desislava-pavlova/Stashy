@@ -98,6 +98,52 @@ class StatusTests(LoggedInWithAccountTestCase):
         )
         self.assertEqual(r.status(), "due_soon")
 
+    def test_not_done_leaves_out_exactly_what_the_status_calls_paid_or_skipped(self, _):
+        """The database's version of the rule must never drift from
+        status(): a recurring reminder with a stale link is not paid."""
+        txn = Transaction.objects.create(
+            account=self.account, date=date(2026, 1, 1), amount=Decimal("-1.00")
+        )
+        for fields in [
+            {},
+            {"last_entered_transaction": txn},
+            {"skipped": True},
+            {"frequency": "monthly", "last_entered_transaction": txn},
+            {"frequency": "monthly", "skipped": True},
+        ]:
+            Reminder.objects.create(
+                account=self.account,
+                amount=Decimal("1"),
+                next_due_date=date(2026, 12, 1),
+                **fields,
+            )
+
+        everything = list(Reminder.objects.all())
+        by_status = {r.pk for r in everything if r.status() not in ("paid", "skipped")}
+
+        kept = set(Reminder.objects.not_done().values_list("pk", flat=True))
+        self.assertEqual(kept, by_status)
+        self.assertEqual(len(everything) - len(kept), 3)  # a paid and two skipped ones
+
+    def test_resolved_and_unresolved_split_the_occurrences_in_two(self, _):
+        txn = Transaction.objects.create(
+            account=self.account, date=date(2026, 1, 1), amount=Decimal("-1.00")
+        )
+        for fields in [{}, {"last_entered_transaction": txn}, {"skipped": True}]:
+            Reminder.objects.create(
+                account=self.account,
+                amount=Decimal("1"),
+                next_due_date=date(2026, 12, 1),
+                **fields,
+            )
+
+        resolved = set(Reminder.objects.resolved().values_list("pk", flat=True))
+        unresolved = set(Reminder.objects.unresolved().values_list("pk", flat=True))
+
+        self.assertEqual((len(resolved), len(unresolved)), (2, 1))
+        self.assertFalse(resolved & unresolved)
+        self.assertEqual(resolved | unresolved, set(Reminder.objects.values_list("pk", flat=True)))
+
     def test_deleting_the_reminder_does_not_touch_the_transaction(self, _):
         txn = Transaction.objects.create(
             account=self.account, date=date(2026, 9, 1), amount=Decimal("-1.00")
@@ -379,6 +425,94 @@ class AutoGenerateOccurrencesTests(LoggedInWithAccountTestCase):
         self.assertTrue(form.is_valid(), form.errors)
         form.save()
         self.assertTrue(Reminder.objects.filter(pk=october.pk).exists())
+
+    def test_a_paid_occurrence_does_not_hide_an_open_one_on_the_same_date(self, _):
+        """S101: the rows were kept in a dict keyed by date, so the
+        second of two on one date hid the first, and an open preview
+        past the new end date was never dropped."""
+        root = Reminder.objects.create(
+            account=self.account,
+            amount=Decimal("10.00"),
+            next_due_date=date(2026, 9, 20),
+            frequency="monthly",
+            end_date=date(2026, 12, 20),
+        )
+        open_december = root.occurrences.get(next_due_date=date(2026, 12, 20))
+        txn = Transaction.objects.create(
+            account=self.account, date=date(2026, 12, 20), amount=Decimal("-10.00")
+        )
+        paid_december = Reminder.objects.create(
+            account=self.account,
+            series=root,
+            next_due_date=date(2026, 12, 20),
+            last_entered_transaction=txn,
+        )
+
+        root.end_date = date(2026, 10, 20)
+        root.save()
+
+        self.assertFalse(Reminder.objects.filter(pk=open_december.pk).exists())
+        self.assertTrue(Reminder.objects.filter(pk=paid_december.pk).exists())
+
+    def test_the_wanted_dates_stop_at_the_end_date_of_an_unsaved_reminder(self, _):
+        reminder = Reminder(
+            account=self.account,
+            next_due_date=date(2026, 9, 20),
+            frequency="monthly",
+            end_date=date(2026, 12, 20),
+        )
+        self.assertEqual(
+            reminder._wanted_dates(), [date(2026, 10, 20), date(2026, 11, 20), date(2026, 12, 20)]
+        )
+
+    def test_regenerating_adds_each_missing_date_once_and_leaves_the_others(self, _):
+        root = Reminder.objects.create(
+            account=self.account,
+            amount=Decimal("10.00"),
+            next_due_date=date(2026, 9, 20),
+            frequency="monthly",
+            end_date=date(2026, 11, 20),
+        )
+        before = set(root.occurrences.values_list("pk", flat=True))
+
+        root.end_date = date(2026, 12, 20)
+        root.save()
+
+        dates = list(
+            root.occurrences.order_by("next_due_date").values_list("next_due_date", flat=True)
+        )
+        self.assertEqual(dates, [date(2026, 10, 20), date(2026, 11, 20), date(2026, 12, 20)])
+        self.assertTrue(before < set(root.occurrences.values_list("pk", flat=True)))
+
+    def test_a_regeneration_that_fails_half_way_changes_nothing(self, _):
+        """S101: the drops and the additions are one unit."""
+        root = Reminder.objects.create(
+            account=self.account,
+            amount=Decimal("10.00"),
+            next_due_date=date(2026, 9, 20),
+            frequency="monthly",
+            end_date=date(2026, 11, 20),
+        )
+        before = list(root.occurrences.order_by("pk").values_list("pk", "next_due_date"))
+        create = Reminder.objects.create
+        calls = []
+
+        def create_once_then_fail(**kwargs):
+            calls.append(kwargs["next_due_date"])
+            if len(calls) == 2:
+                raise RuntimeError("the disk is full")
+            return create(**kwargs)
+
+        root.end_date = date(2027, 2, 20)  # three more dates to add
+        with (
+            mock.patch.object(Reminder.objects, "create", create_once_then_fail),
+            self.assertRaisesMessage(RuntimeError, "the disk is full"),
+        ):
+            root.regenerate_occurrences()
+
+        self.assertEqual(
+            list(root.occurrences.order_by("pk").values_list("pk", "next_due_date")), before
+        )
 
     def _series_with_a_september_whose_payment_was_deleted(self):
         """S51: September was entered (so it became a Paid record and
@@ -942,6 +1076,31 @@ class ReminderEnterAndSkipTests(StashTestCase):
         self.assertEqual(second.amount, Decimal("5"))  # skipped: a record now, left alone
         open_amounts = set(head.occurrences.filter(skipped=False).values_list("amount", flat=True))
         self.assertEqual(open_amounts, {Decimal("9")})
+
+    def test_a_series_edit_labels_the_head_like_the_occurrences_in_the_audit_log(self):
+        head = self.reminder(Reminder.Frequency.MONTHLY)
+        first = head.occurrences.order_by("next_due_date").first()
+        first.amount = Decimal("9")
+        first.save(update_fields=["amount"])
+
+        already_logged = AuditLogEntry.objects.order_by("pk").last().pk
+
+        first.apply_to_series()
+
+        changed_amounts = AuditLogEntry.objects.filter(
+            table="finance_reminder", column="amount", pk__gt=already_logged
+        )
+        self.assertIn(str(head.pk), set(changed_amounts.values_list("row_id", flat=True)))
+        self.assertGreater(changed_amounts.count(), 1)
+        self.assertEqual(
+            set(changed_amounts.values_list("source", "reason")),
+            {
+                (
+                    AuditLogEntry.Source.AUTOMATIC,
+                    f"Series-wide edit applied from reminder ({first})",
+                )
+            },
+        )
 
 
 class ReminderSaveTests(StashTestCase):

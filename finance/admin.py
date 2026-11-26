@@ -128,6 +128,23 @@ class PayeeAdmin(StashyModelAdmin):
     search_fields = ("name",)
 
 
+class CategoryFilter(admin.RelatedFieldListFilter):
+    """The sidebar's Category choices. Each is labelled with its main
+    category ("Food > Groceries"), which reads the category's parent:
+    `list_select_related` doesn't reach a filter, so the choices are
+    read here with their parents in the one query, not one more for
+    every subcategory."""
+
+    def field_choices(self, field, request, model_admin):
+        categories = field.remote_field.model._default_manager.complex_filter(
+            field.get_limit_choices_to()
+        ).select_related("parent")
+        ordering = self.field_admin_ordering(field, request, model_admin)
+        if ordering:
+            categories = categories.order_by(*ordering)
+        return [(category.pk, str(category)) for category in categories]
+
+
 @admin.register(Transaction)
 class TransactionAdmin(StashyModelAdmin):
     list_display = (
@@ -139,7 +156,7 @@ class TransactionAdmin(StashyModelAdmin):
         "amount",
         "reconciled",
     )
-    list_filter = ("account", "category", "reconciled")
+    list_filter = ("account", ("category", CategoryFilter), "reconciled")
     search_fields = ("payee__name", "memo")
     date_hierarchy = "date"
     autocomplete_fields = ("payee", "category", "account")

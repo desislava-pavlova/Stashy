@@ -4,9 +4,7 @@ Whatever a hand-edited address or a posted form sends goes through
 here before it reaches a lookup. It must not touch the database.
 """
 
-# The biggest number SQLite's INTEGER holds. A lookup by a bigger one is
-# an OverflowError.
-_LARGEST_ID = 2**63 - 1
+from stashy.key_range import fits_the_database, key_range
 
 
 def as_id(value):
@@ -24,10 +22,10 @@ def as_id(value):
     # more than 4,300 digits into an int (a ValueError), so the length
     # is checked first; leading zeros don't count.
     digits = text.lstrip("0") or "0"
-    if len(digits) > len(str(_LARGEST_ID)):
+    if len(digits) > len(str(key_range()[1])):
         return None
     number = int(digits)
-    return number if number <= _LARGEST_ID else None
+    return number if fits_the_database(number) else None
 
 
 def as_ids(values):

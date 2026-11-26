@@ -8,7 +8,8 @@ can import it.
 
 from django import forms
 from django.core.exceptions import ValidationError
-from django.db import connections
+
+from stashy.key_range import fits_the_database
 
 from .. import regional
 from ..limits import validate_plausible_date
@@ -87,15 +88,12 @@ class SafeModelMultipleChoiceField(forms.ModelMultipleChoiceField):
     using it would show a Django upgrade renaming it."""
 
     def _check_values(self, value):
-        # The pk is a BigAutoField on every model here, and this is the
-        # range that field can hold.
-        lowest, highest = connections[self.queryset.db].ops.integer_field_range("BigIntegerField")
         for pk in value:
             try:
                 number = int(pk)
             except (TypeError, ValueError):
                 continue  # not a number at all: Django's own check below says so, in its words
-            if not lowest <= number <= highest:
+            if not fits_the_database(number, self.queryset.db):
                 raise ValidationError(
                     self.error_messages["invalid_choice"],
                     code="invalid_choice",

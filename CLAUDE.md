@@ -46,11 +46,11 @@ terms.
 ## Commands
 
 ```
-.venv\Scripts\python.exe manage.py test                          # full suite, ~70 s (1,344 tests on 26/11/2026)
+.venv\Scripts\python.exe manage.py test                          # full suite, ~70 s (1,380 tests on 26/11/2026)
 .venv\Scripts\python.exe manage.py test finance.tests.test_reminders  # one module (audit: `test audit`)
 .venv\Scripts\python.exe manage.py migrate --database <stash>    # one stash (Stashy.bat does all, with backups)
 .venv\Scripts\python.exe manage.py reset_pin <owner name>        # real, visible action - ask first
-.venv\Scripts\ruff.exe check .  /  ruff.exe format .      # must stay clean (pyproject.toml)
+.venv\Scripts\ruff.exe check .  /  ruff.exe format .      # must stay clean (pyproject.toml; it skips only the data folder `./stashes`)
 .venv\Scripts\coverage.exe run manage.py test; .venv\Scripts\coverage.exe report
 check.bat                                                        # ruff check + format check + full suite in one go (the user double-clicks it)
 ```
@@ -98,7 +98,9 @@ check.bat                                                        # ruff check + 
   at its top: `STASHES_DIR`, `STATIC_ROOT`, `LOG_DIR`) and `settings/test.py`
   (picked by `manage.py test` itself: MD5 hasher, plain static storage, no
   log file). Also URLs, `storage.py` (fingerprinted static names that skip
-  the vendored `.map` references) and `formats/en` (European formats).
+  the vendored `.map` references), `key_range.py` (the one "can the database hold
+  this number as a key?" check: `as_id()`, `SafeModelMultipleChoiceField` and the
+  admin all call it) and `formats/en` (European formats).
 - `DEBUG` defaults to off. Errors go to the console and to `logs/stashy.log`
   (rotating). `finance/templates/404.html` and `500.html` are the friendly
   pages; the 500 page gets no context, so it uses only static files and
@@ -109,7 +111,8 @@ check.bat                                                        # ruff check + 
     `TransactionQuerySet` (`in_range`, `reportable`, `of_kind`,
     `for_account`) is what every report query is built from. The reminder
     rules live on the model: `mark_entered()`, `skip()`,
-    `apply_to_series()`. `payee_summaries()` gives the Payees page its
+    `apply_to_series()`; `Reminder.objects.not_done()` is the database's version of
+    `status()`'s "paid or skipped". `payee_summaries()` gives the Payees page its
     figures.
   - `services/`: `accounts.py` (`open_account()` saves a new account
     with its opening-balance transaction, D1; `transfer()` makes a
@@ -235,7 +238,10 @@ check.bat                                                        # ruff check + 
     files above it are standard library only, because bootstrap imports them
     before Django is configured (a test checks, for `backup.py` too), so any
     new rule about which folders are stashes goes there) and `security.py` (PIN rule, lockout, recovery
-    codes; a right recovery code works during a lockout). `StashError` is in `stashes/__init__.py`. `registry` imports
+    codes; a right recovery code works during a lockout). `security.set_pin()` is the one
+    place a PIN is saved, and it checks the rule. `restore_stash()` runs under one lock
+    (one restore at a time) and refuses a call inside a transaction on that stash.
+    `StashError` is in `stashes/__init__.py`. `registry` imports
     `security`, never the reverse. `text.py`: `possessive()`.
     `db_router.py`, `middleware.py`,
     `backup.py` (standard library only, since bootstrap imports it before
@@ -304,6 +310,9 @@ check.bat                                                        # ruff check + 
   `StashyModelAdmin`.
 - Secrets shown once (a new recovery code) go in the local-memory cache,
   never the signed-cookie session.
+- "Does this link stay on this site?" is answered by `same_site.stays_on_this_site()`
+  only (`safe_next()` and the stash middleware call it); a test fails for any other call
+  of Django's `url_has_allowed_host_and_scheme`.
 - Tests: `finance/tests/test_<area>.py`, one module per area, named after the
   code they test (`views/<area>.py`; `reporting.py` → `test_reporting.py`,
   while the Reports page is `test_reports.py`; the reminder rules on the
@@ -374,7 +383,9 @@ check.bat                                                        # ruff check + 
   lists and reports, and asks for a value inside it when someone saves
   it. `Transaction.next_number()` leaves out a stored number above the
   limit and never goes past it. A new limit is a constant and a
-  validator there, not a copy elsewhere. SQLite doesn't enforce
+  validator there, not a copy elsewhere (the money and rate column sizes are
+  `AMOUNT_MAX_DIGITS`, `AMOUNT_DECIMAL_PLACES` and `RATE_*`; a test fails for a
+  literal `max_digits=`). SQLite doesn't enforce
   `max_digits`, so a number too big for its column that gets stored
   breaks every page that reads it: a sum of two amounts is checked too
   (`reconcile()` refuses a gap or an opening balance over the limit).
@@ -385,7 +396,8 @@ check.bat                                                        # ruff check + 
   `Payee.objects.named()`/`.resolve()` or `name_key=name_key(x)`, never
   `name__iexact` or `Lower()`: SQLite folds only A-Z, so Cyrillic slips past.
   Sort on `name_key` too (dropdowns, the Payee and Category columns,
-  `Meta.ordering`), never on `name` or `Lower(name)`. The system payees are
+  `Meta.ordering`), never on `name` or `Lower(name)`; in Python use `name_key` or
+  `category_name_order()`, never `.lower()`. The system payees are
   recognised through it: `Payee.is_system`, `Payee.SYSTEM_KEYS`.
 - The one-level subcategory rule and the duplicate-name messages live in
   `Category.clean()`/`Payee.clean()`, so forms and the admin share them.
@@ -405,7 +417,8 @@ check.bat                                                        # ruff check + 
   the new due date (`save()` reads the stored one first). An open
   occurrence before that is an unpaid earlier period and stays (S51).
 - Imports go at the top of the module. One that must stay inside a
-  function gets a `# Imported here: <why>` comment (a test checks).
+  function gets a `# Imported here: <why>` comment (a test checks `finance`, `audit`,
+  `stashy`, `scripts` and `manage.py`, nested imports too).
   They sit in four groups, Python's own, Django, other libraries, then
   Stashy's own, with two blank lines after the last one (ruff's `I` rule
   enforces it: `ruff check --fix .` sorts). No group labels: the sorter

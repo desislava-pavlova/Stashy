@@ -41,7 +41,9 @@ S17, S47, S66) is done; its reviews added S127–S132 (section R).
 Phase 2 finished on 19/11/2026 and Phase 3's part A on 20/11/2026.
 *26/11/2026:* Phase 3 part C (the forms package, the shared helpers and the
 small habits: S48, S18's Python parts, S20) is done; its reviews added
-S133–S135 (section S).
+S133–S135 (section S). Part D (the small fixes) is done except 3.15, the OFX
+reader, which waits for your choice; its reviews added S136 and S137 and plan
+04's R36.
 
 **Baseline (10/10/2026):** 723 tests green. `ruff check .` and
 `ruff format --check .` are clean, `manage.py check` finds nothing, and
@@ -1706,7 +1708,39 @@ Filed here:
   planned": the git history checks, and `git rm -r --cached staticfiles
   .idea` (Phase 6).
 
-<!-- Next number: S136 -->
+- **S136 — A restore still puts today's recovery code and lockout back
+  after `migrate`, not before** (the third part of 3.18; Claude's call not
+  to build it in part D). While `migrate` runs on a restored backup, the
+  live file holds the backup's recovery code and lockout. For a backup of
+  today's schema that is milliseconds. For an older one it is as long as
+  the migration, and writing the code into the backup beforehand isn't
+  possible, because its Profile table lacks the columns until it is
+  migrated. **Fix if wanted:** build the restored database as a separate
+  file first (copy the backup, register it under a temporary name, migrate
+  it, put today's PIN, recovery code and lockout in through the ORM), then
+  replace the live file with the finished one. That also means a failed
+  migration leaves the live stash untouched, which today it doesn't. A
+  redesign of `restore_stash()`, not a small edit; proposed: its own part.
+
+- **S137 — The owner name's limit is typed in three places** (code
+  reviewer; part D). `60` and its message are in `registry.validate_owner_name()`,
+  `Profile.owner_name` (`max_length=60`) and `forms/auth.py`. **Fix:** one
+  `OWNER_NAME_MAX_LENGTH` constant that the three read, like S124's
+  amounts. Proposed: Phase 3, part E or Phase 2's leftovers.
+- Judged not worth planning, from part D's reviews (26/11/2026):
+  `transaction_form_view` is about 100 lines with four levels of nesting
+  (already 3.7's: its two initial-value blocks become helpers);
+  `views/auth.py` builds its form empty and then again on a POST (`request.POST or None` would
+  change what an empty POST shows, so it stays); `regenerate_occurrences()`'s
+  Paid-or-skipped filters were left as `resolved()` and `unresolved()` and not
+  `not_done()`, because `not_done()` follows `status()` (a recurring row with a
+  stale link is not paid) and the occurrence rule does not.
+- A reviewer's claim not borne out: `CategoryAdmin`'s list is said to read
+  each row's parent and account one at a time; the existing query-count test
+  (`test_more_categories_need_no_more_queries`) shows the same count for 1
+  and 5 categories, so Django's own join covers it.
+
+<!-- Next number: S138 -->
 
 ---
 
@@ -2147,6 +2181,10 @@ section R's S127–S132 from its reviews.*
 S126, S127, S129 and S132 closed on the way), with section S's S133–S135 from
 its reviews.*
 
+*Part D built and closed 26/11/2026 (items 3.10 to 3.12 and 3.16 to 3.23; 3.15
+waits for your choice between an own OFX reader and a kept copy of ofxparse),
+with S136 and S137 and plan 04's R36 from its reviews.*
+
 - [x] **3.0** First, the two tool settings, each as its own commit:
   S40, Django gets its own import group and `lines-after-imports = 2` in
   `pyproject.toml`, then `ruff check --fix .` reorders the 14 files and
@@ -2254,16 +2292,41 @@ its reviews.*
   `forms/categories.py`, as S48 put it there. `CheckRatesForm` no longer
   exists. One test changed beyond its imports: the guard that every plain
   form's date box carries the limits now walks every module of the package.*
-- [ ] **3.10** S63: `bootstrap.py`'s in-function imports get their
+- [x] **3.10** S63: `bootstrap.py`'s in-function imports get their
   comment, and the guard test checks `scripts/` and nested imports. (The
   comments were written on 16/11/2026 with S110, which added a third import
   and one `_make_project_importable()` for the repeated `sys.path` line;
-  the guard test is still to do.)
-- [ ] **3.11** S64: the small slips (one regional-settings helper, the
+  the guard test is still to do.) *Done 26/11/2026. The test now walks
+  `finance`, `audit`, `stashy`, `scripts` and `manage.py`, and finds an
+  import in an `if`, `try`, `with` or inner function (a helper with its own
+  test). It found two bare imports in `bootstrap.py` (`waitress` and
+  `stashy.wsgi`, both waiting for the installed requirements and `.env`)
+  and Django's own import in `manage.py`; all three have their reason now.*
+- [x] **3.11** S64: the small slips (one regional-settings helper, the
   savings rate's rounding, `messages` shadowed, `apply_to_series()`
   inside `system_action()`, `Stashy.bat`'s Python version checked).
-- [ ] **3.12** S65: the import remembers each payee's history; the
+  *Done 26/11/2026. `regional.profile_defaults_from_computer()` is the one
+  place the four detected settings become Profile columns (a new stash and
+  a Profile made on first login both call it); `savings_rate()` rounds half
+  up, so 12.25 is 12.3 and -12.25 is -12.3 (it gave 12.2); the loop
+  variable in `transaction_quick_edit` is `problems`; `apply_to_series()`
+  saves the head and the occurrences inside one `system_action()`, so the
+  audit log labels them alike. `Stashy.bat` is deliberate: plan 07 put
+  `py -3.15` first on purpose (the installer page offers the newest Python
+  and the list needs it to find that one), and Stashy itself runs on 3.14
+  and 3.12 or newer, so nothing changed.*
+- [x] **3.12** S65: the import remembers each payee's history; the
   dashboard and Reminders filter resolved occurrences in the database.
+  *Done 26/11/2026. Claude's call on the first half: not a per-import
+  cache. A cached answer would miss a row of the same file that is newer
+  than what was stored, so `Payee.latest_category()` reads the payee's
+  newest transaction only (one row, not the whole history) and the answer
+  is exactly `category_history()[0]`'s. A test makes the file's own newer
+  row count and fails if `category_history()` is called. The second half:
+  `ReminderQuerySet.not_done()` is the database's version of `status()`'s
+  "paid or skipped" rule (skipped, or one-time with a linked transaction;
+  a recurring head with a stale link is not paid), used by the dashboard
+  and the Reminders list; a test holds the two rules together.*
 - [x] **3.13** S66: `payee_list`'s maths into `payee_summaries()`. With
   3.2. *Done 25/11/2026, in `models.py` after `Payee`. It builds "Parent >
   Child" through `Category.full_name`, which costs one query: the
@@ -2275,31 +2338,88 @@ its reviews.*
 - [ ] **3.15** S71: OFX files read without ofxparse's deprecated calls
   (another reader, or a copy kept inside Stashy: your choice). The OFX
   import tests pass unchanged. It doesn't touch `models.py`, so 3.14
-  doesn't have to wait for it.
-- [ ] **3.16** S82: one `security.set_pin()` for the three places that
-  save a PIN.
-- [ ] **3.17** S89: the PIN pages' small duplication, and one "stays on this
-  site" check outside `views/`.
-- [ ] **3.18** S88's small edges: `restore_stash()` refuses to run inside
+  doesn't have to wait for it. *Waiting for your choice (26/11/2026), see
+  the report of part D.*
+- [x] **3.16** S82: one `security.set_pin()` for the three places that
+  save a PIN. *Done 26/11/2026. Change PIN, the reset with the recovery
+  code and `reset_pin` all call it. Claude's call: it also checks the PIN
+  rule and raises `StashError`, so a caller that skipped the form's check
+  can't store a bad PIN, and a test fails if any app code other than
+  `security.py` calls `set_password()`.*
+- [x] **3.17** S89: the PIN pages' small duplication, and one "stays on this
+  site" check outside `views/`. *Done 26/11/2026, in part.
+  `security.lockout_minutes_remaining()` replaced the two copies of the
+  round-up; `finance/same_site.py` holds `stays_on_this_site()`, which
+  `safe_next()` and the stash middleware both call (a test fails if any
+  other module asks Django's `url_has_allowed_host_and_scheme`). Left for
+  3.6, where the views are rebuilt anyway: the "invalid form, then if
+  locked, log out" two-liner in three views (a helper would be longer than
+  the lines it replaces), `recovery_code_view`'s two jobs, and the
+  `views/pin.py` idea.*
+- [x] **3.18** S88's small edges: `restore_stash()` refuses to run inside
   a transaction (it would wait forever for the lock), today's recovery
   code goes into a copy of the backup before it replaces the live file, and
-  one lock keeps two restores at the same moment apart.
-- [ ] **3.19** S101: `regenerate_occurrences()`'s smaller things (two
+  one lock keeps two restores at the same moment apart. *Done 26/11/2026
+  for two of the three: a call inside a transaction on the stash raises a
+  `RuntimeError` (a mistake in the code, not in what someone typed), and a
+  module-level lock keeps two restores apart: a second one at the same
+  moment is refused with "A restore is already running" instead of waiting
+  on a server thread (a test checks the lock is held while the file is
+  copied and always let go). The middle one is not
+  built, Claude's call, and filed as S136: closing it means preparing the
+  whole restored database (copy, migrate, put today's login back) as a
+  separate file and swapping it in, because a backup from before an
+  update has no columns to write the recovery code into until it is
+  migrated.*
+- [x] **3.19** S101: `regenerate_occurrences()`'s smaller things (two
   occurrences on one date, a set for the wanted dates, not loading every
-  old Paid row, atomic outside a request).
-- [ ] **3.20** S109: the Python-side name sorts use `name_key`, like the
-  database (your call for the accounts).
-- [ ] **3.21** S116: one "can this be a database id?" function in the
+  old Paid row, atomic outside a request). *Done 26/11/2026. It reads the
+  open previews and only the dates from the first wanted one on, so old
+  Paid rows are never loaded and a Paid row can't hide an open one on the
+  same date; the wanted dates are a set; the drops and additions are one
+  `atomic(using=self._state.db)` (the instance's own stash, so no router
+  is needed in a model). Three tests, each failing on the old code. S123
+  stays as it was.*
+- [x] **3.20** S109: the Python-side name sorts use `name_key`, like the
+  database (your call for the accounts). *Done 26/11/2026 for the sorts:
+  `category_name_order()` (a subcategory right after its parent, both by
+  `name_key`) is used by `grouped_categories()` and the two sorts in
+  `views/categories.py`; the Payees page sorts by `name_key`; the account
+  sorts and the picker's owner names do too. A test uses "Straße", which
+  folds to "strasse" and so sorts before "Strasse2", where `.lower()` put
+  it after. **Still your call:** accounts have no `name_key` column, so
+  `Account.Meta.ordering` and the Account column still sort by spelling
+  ("lidl" after "Zara"); giving them one is a migration, like S4's.*
+- [x] **3.21** S116: one "can this be a database id?" function in the
   project package, called by `_as_id()`, `SafeModelMultipleChoiceField` and
   `key_fits()`; the existing tests of the three pass unchanged. With it
   S124: `max_digits=12, decimal_places=2` is written in about eight
   places, and `MAX_AMOUNT` is a ninth copy of the same fact; constants in
-  `limits.py` that the columns and `MAX_AMOUNT` both read.
-- [ ] **3.22** S133: ruff looks inside `finance/stashes/`: the pattern
+  `limits.py` that the columns and `MAX_AMOUNT` both read. *Done
+  26/11/2026. `stashy/key_range.py` (`key_range()`, `fits_the_database()`)
+  is read by `as_id()`, the multi-choice field and `key_fits()`; the
+  tests of the three pass unchanged. `limits.py` has `AMOUNT_MAX_DIGITS`
+  and `AMOUNT_DECIMAL_PLACES` (`MAX_AMOUNT` is worked out from them) and,
+  the same way, `RATE_MAX_DIGITS` and `RATE_DECIMAL_PLACES` for the
+  exchange rate; every column and form box reads them. Two tests fail on a
+  second copy: no `integer_field_range` outside `key_range.py`, no
+  `max_digits=<digit>` in app code. No migration.*
+- [x] **3.22** S133: ruff looks inside `finance/stashes/`: the pattern
   becomes `"/stashes"` (the data folder at the top only), and the seven
-  errors that were hidden there are fixed.
-- [ ] **3.23** S134: the admin Transactions list's Category filter reads
-  each subcategory's parent in one query, not one per subcategory.
+  errors that were hidden there are fixed. *Done 26/11/2026: two import
+  blocks sorted, `registry.py`'s long messages split at a space, and a
+  test reads `pyproject.toml` and fails if a bare name in `extend-exclude`
+  hides a folder of code. The pattern is `"./stashes"`, not the plan's
+  `"/stashes"`: on Windows the leading slash matched nothing (the data folder
+  was skipped only because `.gitignore` also lists it), which the code reviewer
+  found by probing a folder with no `.gitignore`; `./stashes` skips the top-level
+  folder and reads `finance/stashes/`. `scripts/dev`'s tools skip only the
+  top-level `stashes`, so they already read this folder.*
+- [x] **3.23** S134: the admin Transactions list's Category filter reads
+  each subcategory's parent in one query, not one per subcategory. *Done
+  26/11/2026: `CategoryFilter`, a `RelatedFieldListFilter` whose choices
+  are read with `select_related("parent")`. The query-count test fails on
+  the old filter (12 queries against 16) and passes on the new one.*
 
 **Done when:** the suite is green with no test edited except for moved
 imports, and every page renders the same as before.

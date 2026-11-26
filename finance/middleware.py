@@ -16,10 +16,10 @@ from django.conf import settings
 from django.db import DEFAULT_DB_ALIAS, transaction
 from django.shortcuts import redirect
 from django.urls import reverse
-from django.utils.http import url_has_allowed_host_and_scheme
 
 from . import db_router, regional
 from .models import Profile
+from .same_site import stays_on_this_site
 from .stashes import registry
 
 
@@ -134,9 +134,7 @@ class RequireStashMiddleware:
         example.com, so a crafted link to Stashy would otherwise bounce
         the browser there. Then the PIN screen instead."""
         path = request.get_full_path()
-        if url_has_allowed_host_and_scheme(path, allowed_hosts={request.get_host()}):
-            return path
-        return reverse("login")
+        return path if stays_on_this_site(request, path) else reverse("login")
 
     def __call__(self, request):
         if not request.session.get("stash") and not request.path.startswith(

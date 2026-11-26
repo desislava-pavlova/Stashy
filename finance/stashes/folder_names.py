@@ -17,6 +17,7 @@ device and can't open, copy or delete it.
 
 from pathlib import Path
 
+
 # The file that makes a folder a stash. Where the backups go is
 # backup.backups_folder(), which backup.py owns because it makes them.
 DB_FILE_NAME = "db.sqlite3"

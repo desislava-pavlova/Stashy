@@ -25,14 +25,14 @@ uses `net_worth_by_account()`. They agree because both convert through
 """
 
 from datetime import timedelta
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from django.db.models import Sum
 from django.utils import timezone
 
 from dateutil.relativedelta import relativedelta
 
-from .models import Account, Category, Transaction, grouped_accounts, grouped_categories
+from .models import Account, Category, Transaction, grouped_accounts, grouped_categories, name_key
 from .money import ZERO, to_cent
 
 
@@ -181,11 +181,13 @@ def income_and_spending(start, end, account=None, rates=None):
 
 
 def savings_rate(income, spending):
-    """Percentage of income that wasn't spent; None when there was no
-    income to save from."""
+    """Percentage of income that wasn't spent, to one decimal; None
+    when there was no income to save from. A tie rounds up, away from
+    zero, like every amount of money (the default would round it to the
+    even digit)."""
     if income <= 0:
         return None
-    return ((income - spending) / income * 100).quantize(Decimal("0.1"))
+    return ((income - spending) / income * 100).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
 
 
 _MONTH_RANGES = {"this_month", "last_month"}
@@ -801,7 +803,7 @@ def net_worth_by_account(start, end, granularity, rates=None):
     for group in grouped_accounts(accounts):
         rows = [
             {"id": account.pk, "name": account.name, "values": values_by_account[account.pk]}
-            for account in sorted(group["accounts"], key=lambda a: a.name.lower())
+            for account in sorted(group["accounts"], key=lambda a: name_key(a.name))
         ]
         group_totals = [ZERO] * width
         for row in rows:

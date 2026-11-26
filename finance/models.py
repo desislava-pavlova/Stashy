@@ -16,9 +16,10 @@ from datetime import date, timedelta
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator
-from django.db import models
+from django.db import models, router
 from django.db.models import Case, Count, F, Max, Q, Sum, Value, When
 from django.db.models.functions import Coalesce
+from django.db.transaction import atomic
 from django.urls import reverse
 from django.utils import timezone
 
@@ -28,7 +29,15 @@ from audit.context import system_action
 
 from . import regional
 from .currency import CURRENCY_CHOICES, DEFAULT_CURRENCY
-from .limits import MAX_REMINDER_INTERVAL, MAX_TRANSACTION_NUMBER, validate_plausible_date
+from .limits import (
+    AMOUNT_DECIMAL_PLACES,
+    AMOUNT_MAX_DIGITS,
+    MAX_REMINDER_INTERVAL,
+    MAX_TRANSACTION_NUMBER,
+    RATE_DECIMAL_PLACES,
+    RATE_MAX_DIGITS,
+    validate_plausible_date,
+)
 from .money import ZERO, to_cent
 from .text import possessive
 
@@ -124,16 +133,9 @@ class Profile(models.Model):
         profile = cls.objects.filter(user=user).first()
         if profile is not None:
             return profile
-        detected = regional.detect_from_computer()
         with system_action("Preferences created from this computer's regional settings"):
             profile, _ = cls.objects.get_or_create(
-                user=user,
-                defaults={
-                    "time_zone": detected.time_zone,
-                    "date_format": detected.date_format,
-                    "number_format": detected.number_format,
-                    "first_day_of_week": detected.first_day_of_week,
-                },
+                user=user, defaults=regional.profile_defaults_from_computer()
             )
         return profile
 
@@ -204,7 +206,10 @@ class AccountQuerySet(models.QuerySet):
             balance_total=Coalesce(
                 Sum("transactions__amount"),
                 Value(ZERO),
-                output_field=models.DecimalField(max_digits=14, decimal_places=2),
+                # Room for the sum of many amounts, so two digits more.
+                output_field=models.DecimalField(
+                    max_digits=AMOUNT_MAX_DIGITS + 2, decimal_places=AMOUNT_DECIMAL_PLACES
+                ),
             )
         )
 
@@ -335,7 +340,7 @@ def grouped_accounts(accounts):
     """Accounts split into Physical Liquid → Digital Liquid → Illiquid →
     Inactive, by name within each group."""
     groups = []
-    for account in sorted(accounts, key=lambda a: (a.group_order, a.name.lower())):
+    for account in sorted(accounts, key=lambda a: (a.group_order, name_key(a.name))):
         key, name, explainer = account.group
         if not groups or groups[-1]["key"] != key:
             groups.append({"key": key, "name": name, "explainer": explainer, "accounts": []})
@@ -534,19 +539,26 @@ def categories_alphabetical(queryset):
     ).order_by("_sort_type", "_sort_group", "_sort_child")
 
 
+def category_name_order(category):
+    """The sort key for putting categories in alphabetical order in
+    Python: a subcategory right after its own parent, both compared
+    through `name_key` like the database does it
+    (categories_alphabetical() above). `.lower()` would differ from it
+    for letters such as the German "ß", so a list and a dropdown could
+    disagree."""
+    if category.parent_id:
+        return (category.parent.name_key, category.name_key)
+    return (category.name_key, "")
+
+
 def grouped_categories(categories):
     """Categories split into Income -> Expense -> Transfer groups;
     within each group, ordered by (top-level) parent name, then by
     subcategory name under it."""
 
     def sort_key(category):
-        parent_name = (category.parent.name if category.parent_id else category.name).lower()
-        return (
-            _CATEGORY_TYPE_ORDER.get(category.category_type, _UNKNOWN_TYPE_RANK),
-            parent_name,
-            category.parent_id is not None,
-            category.name.lower(),
-        )
+        type_rank = _CATEGORY_TYPE_ORDER.get(category.category_type, _UNKNOWN_TYPE_RANK)
+        return (type_rank, *category_name_order(category))
 
     groups = []
     for category in sorted(categories, key=sort_key):
@@ -645,6 +657,14 @@ class Payee(models.Model):
                 seen.add(transaction.category_id)
                 history.append(transaction)
         return history
+
+    def latest_category(self):
+        """The category of this payee's most recent transaction, or None
+        when it has none or that one has no category: the first entry of
+        category_history() without reading the rest of the history (an
+        import asks this for every row it creates)."""
+        latest = self.transactions.select_related("category").first()
+        return latest.category if latest else None
 
     def remembered_memo(self, category_id):
         """The memo of this payee's most recent transaction in the
@@ -766,7 +786,9 @@ class Transaction(models.Model):
         Category, null=True, blank=True, on_delete=models.SET_NULL, related_name="transactions"
     )
     memo = models.CharField(max_length=255, blank=True)
-    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    amount = models.DecimalField(
+        max_digits=AMOUNT_MAX_DIGITS, decimal_places=AMOUNT_DECIMAL_PLACES
+    )
     reconciled = models.BooleanField(default=False)
     import_batch = models.ForeignKey(
         "ImportBatch",
@@ -848,6 +870,36 @@ AMOUNT_NOT_NEGATIVE = (
 )
 
 
+def _reminder_transaction():
+    """One unit of work on the stash Reminder rows live in. Inside a
+    request's own transaction it is a savepoint; from the shell or a
+    script it is what makes several writes succeed or fail together."""
+    return atomic(using=router.db_for_write(Reminder))
+
+
+class ReminderQuerySet(models.QuerySet):
+    def not_done(self):
+        """Without the reminders `Reminder.status()` calls "paid" or
+        "skipped", decided by the database: a page that hides them
+        needn't load every one there has ever been. The two rules are
+        the same one, so a test holds them together."""
+        return self.exclude(
+            Q(skipped=True)
+            | Q(frequency=Reminder.Frequency.ONE_TIME, last_entered_transaction__isnull=False)
+        )
+
+    def resolved(self):
+        """The occurrences someone has paid or skipped: a real record
+        now, which a series edit, a regeneration and a delete all leave
+        alone. A payment link counts whatever the row's frequency (see
+        not_done(), which follows `status()` and so doesn't)."""
+        return self.filter(Q(last_entered_transaction__isnull=False) | Q(skipped=True))
+
+    def unresolved(self):
+        """The occurrences nobody has paid or skipped: the previews."""
+        return self.filter(last_entered_transaction__isnull=True, skipped=False)
+
+
 class Reminder(models.Model):
     """A recurring bill or income reminder."""
 
@@ -900,8 +952,8 @@ class Reminder(models.Model):
         Category, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
     )
     amount = models.DecimalField(
-        max_digits=12,
-        decimal_places=2,
+        max_digits=AMOUNT_MAX_DIGITS,
+        decimal_places=AMOUNT_DECIMAL_PLACES,
         null=True,
         blank=True,
         validators=[MinValueValidator(0, message=AMOUNT_NOT_NEGATIVE)],
@@ -938,6 +990,8 @@ class Reminder(models.Model):
         "self", null=True, blank=True, on_delete=models.CASCADE, related_name="occurrences"
     )
     notes = models.CharField(max_length=255, blank=True)
+
+    objects = ReminderQuerySet.as_manager()
 
     class Meta:
         ordering = ["next_due_date"]
@@ -977,10 +1031,11 @@ class Reminder(models.Model):
         regenerate = self.frequency != self.Frequency.ONE_TIME and schedule_saved
         # Read before the save overwrites it: regenerate_occurrences()
         # must know if the due date moved.
-        previous_due_date = self._stored_due_date() if regenerate else None
-        super().save(*args, **kwargs)
-        if regenerate:
-            self.regenerate_occurrences(previous_due_date=previous_due_date)
+        with _reminder_transaction():
+            previous_due_date = self._stored_due_date() if regenerate else None
+            super().save(*args, **kwargs)
+            if regenerate:
+                self.regenerate_occurrences(previous_due_date=previous_due_date)
 
     def _stored_due_date(self):
         """The due date saved in the database right now, or None for a
@@ -995,15 +1050,14 @@ class Reminder(models.Model):
         # already paid or skipped is a real historical record now, not
         # just a preview, so it's detached (series -> null) and kept
         # standing on its own instead of disappearing with the series.
-        if self.frequency != self.Frequency.ONE_TIME:
-            resolved = self.occurrences.filter(
-                Q(last_entered_transaction__isnull=False) | Q(skipped=True)
-            )
-            with system_action(f"Occurrence detached from deleted recurring reminder ({self})"):
-                for occurrence in resolved:
-                    occurrence.series = None
-                    occurrence.save(update_fields=["series"])
-        return super().delete(*args, **kwargs)
+        with _reminder_transaction():
+            if self.frequency != self.Frequency.ONE_TIME:
+                reason = f"Occurrence detached from deleted recurring reminder ({self})"
+                with system_action(reason):
+                    for occurrence in self.occurrences.resolved():
+                        occurrence.series = None
+                        occurrence.save(update_fields=["series"])
+            return super().delete(*args, **kwargs)
 
     def signed_amount(self):
         if self.amount is None:
@@ -1152,20 +1206,21 @@ class Reminder(models.Model):
     def apply_to_series(self):
         """A "whole series" edit: copy this reminder's SERIES_FIELDS
         onto its series head (when it's an occurrence) and onto every
-        occurrence not yet paid or skipped."""
+        occurrence not yet paid or skipped. The head and the occurrences
+        are one automatic change, so the audit log labels them alike."""
         root = self.series if self.series_id else self
-        if root.pk != self.pk:
-            for field in self.SERIES_FIELDS:
-                setattr(root, field, getattr(self, field))
-            root.save(update_fields=self.SERIES_FIELDS)
-        targets = root.occurrences.filter(
-            last_entered_transaction__isnull=True, skipped=False
-        ).exclude(pk=self.pk)
-        with system_action(f"Series-wide edit applied from reminder ({self})"):
-            for occurrence in targets:
-                for field in self.SERIES_FIELDS:
-                    setattr(occurrence, field, getattr(self, field))
-                occurrence.save(update_fields=self.SERIES_FIELDS)
+        values = self._series_values()
+        # A head needs no copy of its own values.
+        head = [root] if root.pk != self.pk else []
+        open_occurrences = root.occurrences.unresolved().exclude(pk=self.pk)
+        with (
+            _reminder_transaction(),
+            system_action(f"Series-wide edit applied from reminder ({self})"),
+        ):
+            for reminder in [*head, *open_occurrences]:
+                for field, value in values.items():
+                    setattr(reminder, field, value)
+                reminder.save(update_fields=self.SERIES_FIELDS)
 
     def _move_past_period(self, transaction=None, skipped=False):
         self.record_period(transaction=transaction, skipped=skipped)
@@ -1176,6 +1231,20 @@ class Reminder(models.Model):
             self.last_entered_transaction = None
             self.save(update_fields=["last_entered_transaction"])
         self.advance_due_date()
+
+    def _wanted_dates(self):
+        """The due dates after this reminder's own that its series
+        should have a row for, oldest first: up to the end date, or the
+        default horizon when there is none. It reads no database."""
+        horizon = self.end_date or self.default_generation_horizon()
+        dates = []
+        cursor = self.next_due_date
+        for _ in range(500):  # safety cap - far more occurrences than any real horizon needs
+            cursor = self._advance(cursor)
+            if cursor > horizon:
+                break
+            dates.append(cursor)
+        return dates
 
     def regenerate_occurrences(self, previous_due_date=None):
         """Keep this recurring reminder's auto-generated future
@@ -1203,24 +1272,37 @@ class Reminder(models.Model):
         if self.frequency == self.Frequency.ONE_TIME:
             return
         first_preview_date = min(previous_due_date or self.next_due_date, self.next_due_date)
-        horizon = self.end_date or self.default_generation_horizon()
-        wanted_dates = []
-        cursor = self.next_due_date
-        for _ in range(500):  # safety cap - far more occurrences than any real horizon needs
-            cursor = self._advance(cursor)
-            if cursor > horizon:
-                break
-            wanted_dates.append(cursor)
+        wanted_dates = self._wanted_dates()
+        wanted = set(wanted_dates)
         series_values = self._series_values()
-        existing = {o.next_due_date: o for o in self.occurrences.all()}
-        with system_action(f"Auto-generated occurrences updated for recurring reminder ({self})"):
-            for occ_date, occ in existing.items():
-                is_open = not occ.last_entered_transaction_id and not occ.skipped
-                is_preview = occ_date >= first_preview_date
-                if is_open and is_preview and occ_date not in wanted_dates:
-                    occ.delete()
+        # One unit, read and writes together, so a crash half way leaves
+        # the occurrences as they were and no other writer slips in
+        # between the reading and the writing.
+        with (
+            _reminder_transaction(),
+            system_action(f"Auto-generated occurrences updated for recurring reminder ({self})"),
+        ):
+            # Only rows that can matter are read: the open previews
+            # (those that may go) and the dates from the first wanted
+            # one on (those that need no new row). The old Paid and
+            # Skipped rows, which only pile up, are never loaded. Two
+            # occurrences on one date are two rows here, so a Paid one
+            # can't hide an open one.
+            previews = self.occurrences.unresolved().filter(next_due_date__gte=first_preview_date)
+            existing_dates = (
+                set(
+                    self.occurrences.filter(next_due_date__gte=wanted_dates[0]).values_list(
+                        "next_due_date", flat=True
+                    )
+                )
+                if wanted_dates
+                else set()
+            )
+            for occurrence in previews:
+                if occurrence.next_due_date not in wanted:
+                    occurrence.delete()
             for occ_date in wanted_dates:
-                if occ_date not in existing:
+                if occ_date not in existing_dates:
                     Reminder.objects.create(
                         series=self,
                         frequency=self.Frequency.ONE_TIME,
@@ -1240,8 +1322,8 @@ class ExchangeRate(models.Model):
     base_currency = models.CharField("from", max_length=3, choices=CURRENCY_CHOICES)
     quote_currency = models.CharField("to", max_length=3, choices=CURRENCY_CHOICES)
     rate = models.DecimalField(
-        max_digits=20,
-        decimal_places=10,
+        max_digits=RATE_MAX_DIGITS,
+        decimal_places=RATE_DECIMAL_PLACES,
         help_text="How much 1 unit of the first currency is worth in the second.",
     )
     date = models.DateField(validators=[validate_plausible_date])
@@ -1270,8 +1352,12 @@ class Reconciliation(models.Model):
 
     account = models.ForeignKey(Account, on_delete=models.CASCADE, related_name="reconciliations")
     statement_date = models.DateField(validators=[validate_plausible_date])
-    statement_balance = models.DecimalField(max_digits=12, decimal_places=2)
-    opening_balance = models.DecimalField(max_digits=12, decimal_places=2)
+    statement_balance = models.DecimalField(
+        max_digits=AMOUNT_MAX_DIGITS, decimal_places=AMOUNT_DECIMAL_PLACES
+    )
+    opening_balance = models.DecimalField(
+        max_digits=AMOUNT_MAX_DIGITS, decimal_places=AMOUNT_DECIMAL_PLACES
+    )
     # Set only when the statement balance and the reconciled
     # transactions didn't already match exactly and you chose to accept
     # the difference (SET_NULL if that adjustment transaction is later

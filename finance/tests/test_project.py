@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import tomllib
 from io import StringIO
 from pathlib import Path
 from unittest import mock
@@ -589,32 +590,169 @@ class OneTodayTests(SimpleTestCase):
                     )
 
 
+def function_level_imports(tree):
+    """Every import statement that sits inside a function, however
+    deeply (in an `if`, `try` or `with`, or in a function inside a
+    function), once each."""
+    found = []
+
+    def visit(node, inside_function):
+        for child in ast.iter_child_nodes(node):
+            if inside_function and isinstance(child, (ast.Import, ast.ImportFrom)):
+                found.append(child)
+            visit(
+                child,
+                inside_function or isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)),
+            )
+
+    visit(tree, False)
+    return found
+
+
+class OnePlaceSavesAPinTests(SimpleTestCase):
+    """S82: Change PIN, the recovery-code reset and the reset_pin
+    command all save a PIN through security.set_pin(), which holds the
+    rule and the one-column save."""
+
+    def test_only_set_pin_sets_a_password_in_app_code(self):
+        root = Path(settings.BASE_DIR)
+        for folder in ("finance", "audit", "stashy"):
+            for path in (root / folder).rglob("*.py"):
+                if "tests" in path.parts or "migrations" in path.parts:
+                    continue
+                if path.name.startswith("test") or path.name == "security.py":
+                    continue
+                with self.subTest(file=str(path.relative_to(root))):
+                    self.assertNotIn(".set_password(", path.read_text(encoding="utf-8"))
+
+
+class BootstrapNamesTheSameStashesFolderTests(SimpleTestCase):
+    """The launch script runs before Django, so it can't read the
+    settings and repeats the folder's name: this keeps the two equal."""
+
+    def test_the_launch_script_scans_the_folder_the_settings_name(self):
+        self.assertEqual(bootstrap.ROOT / "stashes", Path(base.STASHES_DIR))
+
+
+class SharedFactsHaveOneHomeTests(SimpleTestCase):
+    """S116 and S124: a fact the code states in one place stays in one
+    place. A copy elsewhere drifts the day the first one changes."""
+
+    def app_code(self):
+        root = Path(settings.BASE_DIR)
+        for folder in ("finance", "audit", "stashy"):
+            for path in (root / folder).rglob("*.py"):
+                if "tests" in path.parts or "migrations" in path.parts:
+                    continue
+                if path.name.startswith("test"):
+                    continue
+                yield path, path.read_text(encoding="utf-8")
+
+    def test_only_key_range_asks_the_database_how_big_a_key_can_be(self):
+        for path, text in self.app_code():
+            if path.name == "key_range.py":
+                continue
+            with self.subTest(file=path.name):
+                self.assertNotIn("integer_field_range", text)
+
+    def test_no_column_or_box_spells_out_how_many_digits_a_number_has(self):
+        """The money and rate columns read their sizes from limits."""
+        for path, text in self.app_code():
+            with self.subTest(file=path.name):
+                self.assertNotRegex(text, r"max_digits=\d|decimal_places=\d")
+
+
+class RuffReadsTheCodeTests(SimpleTestCase):
+    """S133: a bare name in ruff's `extend-exclude` skips a folder of
+    that name at any depth, so `stashes` hid the code in
+    `finance/stashes/` for as long as it was there. The data folder is
+    named with a leading slash instead."""
+
+    def test_no_bare_exclude_name_hides_a_folder_of_code(self):
+        root = Path(settings.BASE_DIR)
+        config = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+        bare = {
+            pattern
+            for pattern in config["tool"]["ruff"]["extend-exclude"]
+            if "/" not in pattern and "*" not in pattern
+        }
+        for folder in ("finance", "audit", "stashy", "scripts"):
+            for path in (root / folder).rglob("*.py"):
+                hidden = set(path.relative_to(root).parts[:-1]) & bare - {"migrations"}
+                with self.subTest(file=str(path.relative_to(root))):
+                    self.assertFalse(hidden, "ruff never reads this file")
+
+
+class OneSiteCheckTests(SimpleTestCase):
+    """S89: "does this link stay on this site?" is answered in
+    same_site.py only, so the middleware and the views can't drift
+    apart."""
+
+    def test_only_same_site_asks_django_whether_a_url_is_allowed(self):
+        root = Path(settings.BASE_DIR)
+        for folder in ("finance", "audit", "stashy"):
+            for path in (root / folder).rglob("*.py"):
+                if "tests" in path.parts or "migrations" in path.parts:
+                    continue
+                if path.name == "same_site.py":
+                    continue
+                with self.subTest(file=str(path.relative_to(root))):
+                    self.assertNotIn(
+                        "url_has_allowed_host_and_scheme", path.read_text(encoding="utf-8")
+                    )
+
+    def test_the_middleware_imports_nothing_from_the_views(self):
+        path = Path(settings.BASE_DIR) / "finance" / "middleware.py"
+        imported = imported_modules(path.read_text(encoding="utf-8"))
+        self.assertFalse([name for name in imported if name.startswith(".views")], imported)
+
+
 class NoHiddenImportCyclesTests(SimpleTestCase):
     """6.10 (F50): an import inside a function always says why."""
 
     def test_every_function_level_import_has_a_reason(self):
         root = Path(settings.BASE_DIR)
-        for folder in ("finance", "audit"):
-            for path in (root / folder).rglob("*.py"):
-                if path.name.startswith("test") or "migrations" in path.parts:
-                    continue
-                lines = path.read_text(encoding="utf-8").splitlines()
-                tree = ast.parse("\n".join(lines))
-                for function in ast.walk(tree):
-                    if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                        continue
-                    for node in function.body:
-                        if not isinstance(node, (ast.Import, ast.ImportFrom)):
-                            continue
-                        comments_above = []
-                        index = node.lineno - 2
-                        while index >= 0 and lines[index].strip().startswith("#"):
-                            comments_above.append(lines[index].strip())
-                            index -= 1
-                        with self.subTest(file=str(path.relative_to(root)), line=node.lineno):
-                            self.assertTrue(
-                                any(c.startswith("# Imported here") for c in comments_above)
-                            )
+        paths = [root / "manage.py"]
+        for folder in ("finance", "audit", "stashy", "scripts"):
+            paths += (root / folder).rglob("*.py")
+        for path in paths:
+            if path.name.startswith("test") or "migrations" in path.parts:
+                continue
+            lines = path.read_text(encoding="utf-8").splitlines()
+            for node in function_level_imports(ast.parse("\n".join(lines))):
+                comments_above = []
+                index = node.lineno - 2
+                while index >= 0 and lines[index].strip().startswith("#"):
+                    comments_above.append(lines[index].strip())
+                    index -= 1
+                with self.subTest(file=str(path.relative_to(root)), line=node.lineno):
+                    self.assertTrue(any(c.startswith("# Imported here") for c in comments_above))
+
+    def test_the_search_finds_imports_nested_in_blocks_and_inner_functions(self):
+        source = "\n".join(
+            [
+                "import at_the_top",
+                "def outer():",
+                "    import direct",
+                "    if True:",
+                "        from . import in_an_if",
+                "    try:",
+                "        import in_a_try",
+                "    except ImportError:",
+                "        pass",
+                "    def inner():",
+                "        with open('x'):",
+                "            import in_an_inner_function",
+                "class Holder:",
+                "    import in_a_class_body",
+            ]
+        )
+        names = [
+            alias.name
+            for node in function_level_imports(ast.parse(source))
+            for alias in node.names
+        ]
+        self.assertEqual(names, ["direct", "in_an_if", "in_a_try", "in_an_inner_function"])
 
 
 class ImportedModulesTests(SimpleTestCase):

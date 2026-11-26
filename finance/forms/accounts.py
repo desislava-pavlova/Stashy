@@ -9,6 +9,7 @@ from django.core.exceptions import ValidationError
 from django.utils import timezone
 
 from .. import regional
+from ..limits import AMOUNT_DECIMAL_PLACES, AMOUNT_MAX_DIGITS
 from ..models import Account, Transaction
 from ..money import CENT, ZERO
 from ..services.accounts import open_account, transfer
@@ -61,7 +62,10 @@ class AccountCreateForm(AccountForm):
     is saved and no opening balance is made."""
 
     opening_balance = forms.DecimalField(
-        max_digits=12, decimal_places=2, required=False, initial=0
+        max_digits=AMOUNT_MAX_DIGITS,
+        decimal_places=AMOUNT_DECIMAL_PLACES,
+        required=False,
+        initial=0,
     )
     opening_balance_date = PlausibleDateField(
         required=False, widget=DateInput(), initial=timezone.localdate
@@ -110,7 +114,10 @@ class TransferForm(BootstrapFormMixin, forms.Form):
 
     to_account = forms.ModelChoiceField(queryset=Account.objects.none(), label="Transfer to")
     amount = forms.DecimalField(
-        max_digits=12, decimal_places=2, min_value=CENT, help_text="Enter a positive amount."
+        max_digits=AMOUNT_MAX_DIGITS,
+        decimal_places=AMOUNT_DECIMAL_PLACES,
+        min_value=CENT,
+        help_text="Enter a positive amount.",
     )
     date = PlausibleDateField(widget=DateInput(), initial=timezone.localdate)
 
@@ -142,8 +149,8 @@ class ReconcileStartForm(forms.Form):
 
     statement_date = PlausibleDateField(widget=DateInput(), initial=timezone.localdate)
     statement_balance = forms.DecimalField(
-        max_digits=12,
-        decimal_places=2,
+        max_digits=AMOUNT_MAX_DIGITS,
+        decimal_places=AMOUNT_DECIMAL_PLACES,
         help_text="The ending balance shown on your bank or card statement.",
     )
 
@@ -163,7 +170,9 @@ class ReconcileFinishForm(forms.Form):
     gets a message instead of a server error."""
 
     statement_date = PlausibleDateField(input_formats=["%Y-%m-%d"])
-    statement_balance = forms.DecimalField(max_digits=12, decimal_places=2)
+    statement_balance = forms.DecimalField(
+        max_digits=AMOUNT_MAX_DIGITS, decimal_places=AMOUNT_DECIMAL_PLACES
+    )
     transaction = SafeModelMultipleChoiceField(queryset=Transaction.objects.none(), required=False)
     accept_difference = forms.BooleanField(required=False)
 

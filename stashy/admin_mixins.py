@@ -13,8 +13,10 @@ from django.contrib.admin import helpers
 from django.contrib.admin.options import IncorrectLookupParameters
 from django.contrib.admin.widgets import AutocompleteSelect
 from django.core.exceptions import ValidationError
-from django.db import connections, models
+from django.db import models
 from django.db.models.constants import LOOKUP_SEP
+
+from .key_range import fits_the_database
 
 
 logger = logging.getLogger(__name__)
@@ -59,8 +61,7 @@ def key_fits(key_field, value, db):
         return False
     if not isinstance(key_field, models.IntegerField):
         return True
-    lowest, highest = connections[db].ops.integer_field_range(key_field.get_internal_type())
-    return number is not None and lowest <= number <= highest
+    return number is not None and fits_the_database(number, db, key_field.get_internal_type())
 
 
 class SafeAutocompleteSelect(AutocompleteSelect):

@@ -11,7 +11,7 @@ from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.core.management import CommandError, call_command
-from django.db import DEFAULT_DB_ALIAS, connections
+from django.db import DEFAULT_DB_ALIAS, connections, transaction
 from django.test import SimpleTestCase
 from django.utils import timezone
 
@@ -64,6 +64,23 @@ class CreateAndResetStashTests(TemporaryStashesMixin, SimpleTestCase):
         user.refresh_from_db()
         self.assertTrue(user.check_password("5678"))
         self.assertEqual(Profile.objects.using(folder).get().failed_pin_attempts, 0)
+
+    def test_a_new_stash_starts_with_this_computers_regional_settings(self):
+        self.make_stashes()
+        detected = regional.Preferences(
+            date_format="ymd",
+            number_format="dot_comma",
+            first_day_of_week=0,
+            time_zone="Europe/Sofia",
+        )
+        with mock.patch.object(regional, "detect_from_computer", return_value=detected):
+            folder, _ = self.create_stash("Alex", "1234")
+
+        profile = Profile.objects.using(folder).get()
+        self.assertEqual(profile.date_format, "ymd")
+        self.assertEqual(profile.number_format, "dot_comma")
+        self.assertEqual(profile.first_day_of_week, 0)
+        self.assertEqual(profile.time_zone, "Europe/Sofia")
 
     def test_reset_rejects_a_bad_pin_and_an_unknown_stash(self):
         self.make_stashes()
@@ -725,6 +742,64 @@ class RestoreKeepsTodaysLoginTests(TemporaryStashesMixin, SimpleTestCase):
             registry.restore_stash(folder, backup_path)
 
         self.assert_todays_login_is_kept(folder, todays_code)
+
+    def test_a_restore_inside_a_transaction_is_refused_before_anything_is_touched(self):
+        """Plan 03, S88: the copy would wait for the lock the caller's
+        own transaction holds, so it fails at once, not hangs."""
+        folder = self.make_alex()
+        backup_path = self.back_up(folder, "test")
+        safety_copies = list(registry.stash_backups_dir(folder).glob("*before_restore*"))
+
+        with (
+            transaction.atomic(using=folder),
+            self.assertRaisesMessage(RuntimeError, "must not run inside a transaction"),
+        ):
+            registry.restore_stash(folder, backup_path)
+
+        self.assertEqual(
+            list(registry.stash_backups_dir(folder).glob("*before_restore*")), safety_copies
+        )
+
+    def test_a_second_restore_at_the_same_moment_is_refused_and_touches_nothing(self):
+        folder = self.make_alex()
+        backup_path = self.back_up(folder, "test")
+        safety_copies = list(registry.stash_backups_dir(folder).glob("*before_restore*"))
+
+        with (
+            registry._restore_lock,
+            self.assertRaisesMessage(StashError, "A restore is already running"),
+        ):
+            registry.restore_stash(folder, backup_path)
+
+        self.assertEqual(
+            list(registry.stash_backups_dir(folder).glob("*before_restore*")), safety_copies
+        )
+
+    def test_one_restore_runs_at_a_time_and_the_lock_is_always_let_go(self):
+        """Plan 03, S88: a second restore at the same moment would read
+        today's login after the first had copied the backup in."""
+        folder = self.make_alex()
+        backup_path = self.back_up(folder, "test")
+        real_restore = finance_backup.restore_from
+        held = []
+
+        def restore_and_note_the_lock(*args, **kwargs):
+            held.append(registry._restore_lock.locked())
+            return real_restore(*args, **kwargs)
+
+        with mock.patch.object(finance_backup, "restore_from", restore_and_note_the_lock):
+            registry.restore_stash(folder, backup_path)
+        self.assertEqual(held, [True])
+        self.assertFalse(registry._restore_lock.locked())
+
+        with (
+            mock.patch.object(
+                registry, "_check_backup_can_be_restored", side_effect=StashError("no")
+            ),
+            self.assertRaises(StashError),
+        ):
+            registry.restore_stash(folder, backup_path)
+        self.assertFalse(registry._restore_lock.locked())
 
 
 class NewStashRegionalSettingsTests(TemporaryStashesMixin, SimpleTestCase):

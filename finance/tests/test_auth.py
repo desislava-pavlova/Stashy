@@ -61,6 +61,15 @@ class LockoutTests(StashTestCase):
         self.profile.refresh_from_db()
         self.assertEqual(self.profile.locked_until, original)
 
+    def test_the_minutes_to_wait_round_up_and_are_zero_when_not_locked(self):
+        now = timezone.now()
+        with mock.patch.object(security.timezone, "now", return_value=now):
+            self.assertEqual(security.lockout_minutes_remaining(self.profile), 0)
+            for seconds, minutes in [(300, 6), (241, 5), (61, 2), (60, 2), (59, 1), (1, 1)]:
+                with self.subTest(seconds=seconds):
+                    self.profile.locked_until = now + timedelta(seconds=seconds)
+                    self.assertEqual(security.lockout_minutes_remaining(self.profile), minutes)
+
     def test_successful_login_clears_a_partial_failure_count(self):
         security.register_failed_attempt(self.profile)
         self.profile.refresh_from_db()
@@ -761,6 +770,32 @@ class PinRuleTests(SimpleTestCase):
         for form_class, data, field in cases:
             with self.subTest(form=form_class.__name__):
                 self.assertEqual(self._form_errors(form_class, data)[field], ["PINs don't match."])
+
+
+class SetPinTests(StashTestCase):
+    """S82: the one place a PIN is saved."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = get_user_model().objects.create_user("tester", password="1234")
+
+    def test_the_new_pin_replaces_the_old_one_and_only_the_password_is_saved(self):
+        self.user.first_name = "Unsaved"
+        security.set_pin(self.user, "5678")
+
+        saved = get_user_model().objects.get(pk=self.user.pk)
+        self.assertTrue(saved.check_password("5678"))
+        self.assertFalse(saved.check_password("1234"))
+        self.assertEqual(saved.first_name, "")
+
+    def test_a_pin_that_breaks_the_rule_is_refused_and_the_old_one_stays(self):
+        for bad in PinRuleTests.BAD_PINS:
+            with (
+                self.subTest(pin=bad),
+                self.assertRaisesMessage(StashError, "PIN must be exactly 4 digits."),
+            ):
+                security.set_pin(self.user, bad)
+        self.assertTrue(get_user_model().objects.get(pk=self.user.pk).check_password("1234"))
 
 
 class CurrentPinFormRuleTests(StashTestCase):

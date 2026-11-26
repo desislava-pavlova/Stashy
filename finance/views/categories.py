@@ -11,7 +11,7 @@ from django.views.generic import CreateView, DeleteView, ListView, UpdateView
 
 from ..forms.categories import CategoryForm
 from ..ids import as_id, as_ids
-from ..models import Category, Transaction, grouped_categories
+from ..models import Category, Transaction, category_name_order, grouped_categories
 from ..tips import CATEGORY_TIPS
 from ._helpers import plural
 
@@ -88,7 +88,7 @@ class CategoryDeleteView(SystemManagedCategoryGuard, DeleteView):
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         descendants = self.object.descendants()
-        ctx["descendants"] = sorted(descendants, key=lambda c: c.full_name.lower())
+        ctx["descendants"] = sorted(descendants, key=category_name_order)
         ctx["affected_transaction_count"] = Transaction.objects.filter(
             category__in=[self.object, *descendants]
         ).count()
@@ -130,7 +130,7 @@ def category_usage(request, pk):
         Category.objects.exclude(Q(pk=category.pk) | Q(account__isnull=False)).select_related(
             "parent"
         ),
-        key=lambda c: c.full_name.lower(),
+        key=category_name_order,
     )
     return render(
         request,

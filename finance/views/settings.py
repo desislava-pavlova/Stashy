@@ -156,8 +156,7 @@ def change_pin_view(request):
     if request.method == "POST":
         form = ChangePinForm(request.POST, profile=profile)
         if form.is_valid():
-            request.user.set_password(form.cleaned_data["new_pin"])
-            request.user.save(update_fields=["password"])
+            security.set_pin(request.user, form.cleaned_data["new_pin"])
             update_session_auth_hash(request, request.user)
             messages.success(request, "PIN changed.")
             return redirect("finance:settings")

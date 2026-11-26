@@ -6821,3 +6821,108 @@ changed `finance/admin.py`, `backup.py`, `filters.py`, `models.py`, `services/` 
 the tests (`base` and 20 modules, `audit/tests.py`); `CLAUDE.md`, `README.md`,
 `plans/03_structure_review.md`, `plans/04_fixes_and_changes_plan.md`, `plans/README.md`, this log.
 No migration.
+
+## 26/11/2026 — Plan 03, Phase 3, part D: the small fixes (S63, S64, S65, S82, S88, S89, S101, S109, S116, S124, S133, S134)
+
+**What changed:** eleven of part D's twelve items (3.15, the OFX reader, waits for your choice).
+1,380 tests (1,344 before; 36 new), ruff clean, no migration (`makemigrations --check` says no changes), no data touched.
+No template, static file or URL changed.
+- **3.10, the import guard looks everywhere.** The test that every import inside a function says why
+  now walks `finance`, `audit`, `stashy`, `scripts` and `manage.py`, and finds an import hiding in an
+  `if`, `try`, `with` or inner function. It found three that had no reason (two in `bootstrap.py`,
+  one in `manage.py`).
+- **3.11, small slips.** One `regional.profile_defaults_from_computer()` for the four detected
+  settings; `savings_rate()` rounds half up like money; a loop variable stopped hiding Django's
+  `messages`; `apply_to_series()` saves the head and the occurrences in one `system_action()`.
+  `Stashy.bat` was checked and left: plan 07 put Python 3.15 first on purpose.
+- **3.12, less work per row and per page.** An imported row asks for its payee's newest transaction
+  (`Payee.latest_category()`), not the whole history; the dashboard and Reminders hide Paid and
+  Skipped reminders in the database (`ReminderQuerySet.not_done()`).
+- **3.16, 3.17, 3.18, the PIN and the restore.** `security.set_pin()` is the one place a PIN is
+  saved; `security.lockout_minutes_remaining()` is the one round-up; `same_site.stays_on_this_site()`
+  is the one "stays on this site" check, used by `safe_next()` and the stash middleware;
+  `restore_stash()` refuses a call made inside a transaction and refuses a second restore at the same
+  moment.
+- **3.19, `regenerate_occurrences()`.** It reads only what can matter, a set of wanted dates, two
+  occurrences on one date are two rows, and the drops and additions are one transaction.
+- **3.20, 3.21, one rule for names, ids and amounts.** Python's name sorts use `name_key`
+  (`category_name_order()` for categories); `stashy/key_range.py` is the one "can the database hold
+  this number?"; `limits.py` has the digit counts the money and rate columns read.
+- **3.22, 3.23.** Ruff reads `finance/stashes/` (the exclude is `./stashes`, the data folder only);
+  the admin's Category filter reads each subcategory's parent in one query.
+
+**Behaviour that is not the same as before** (everything else reads the same):
+- A savings rate that lands exactly between two tenths rounds up: 12.25% shows 12.3% (it showed 12.2%).
+- A second Restore pressed while one is running is refused with "A restore is already running", and
+  nothing is touched. Before, two restores at the same moment ran side by side on two server threads.
+- Two occurrences of one reminder on the same date: shortening the end date now drops the open one
+  even when a Paid one shares its date. Before, the Paid one hid it.
+- A list of names that differ in "ß" and "ss" is in the database's order on the Payees page and the
+  category pages (it was in a slightly different one).
+
+**Why the code looks like this:**
+- **A cache would have been the wrong fix for the import's guess.** The plan said "remember it per
+  payee". But a row of the same file can be newer than what was stored, and the next row's guess must
+  see it. A cached answer misses that; reading one row (the newest) is exact and cheap. A test builds
+  that file and also fails if `category_history()` is called.
+- **The database's rule and Python's rule are written twice, so a test ties them.**
+  `not_done()` repeats what `Reminder.status()` decides; a test creates one of every kind and compares
+  the two. `resolved()` and `unresolved()` name the simpler occurrence rule that three methods and a
+  page had each typed out.
+- **A model asks the router, not the instance, which stash to use.** The first version of the
+  regeneration's transaction used `self._state.db`. The reviewer pointed out that it is the only
+  transaction in the project that doesn't go through `router.db_for_write()`: it is right today only
+  because `save()` has just set it, and an unsaved instance would have opened the transaction on the
+  empty picker database. `_reminder_transaction()` is now the one place that says it.
+- **Refuse, don't wait, for a second restore.** Waiting keeps a server thread busy for the length of a
+  migration and then restores the same file again; refusing costs nothing and says why.
+- **One module, one fact: three tests keep it that way.** No `set_password()` outside `security.py`,
+  no `url_has_allowed_host_and_scheme` outside `same_site.py`, no `integer_field_range` outside
+  `key_range.py`, no `max_digits=<digit>` in app code. They are cheap greps, and they fail the day
+  someone types the fact a second time.
+- **`"./stashes"`, not a bare name.** A bare name in ruff's `extend-exclude` matches a folder of that
+  name at any depth, so the data folder's name also hid `finance/stashes/`. My first try, `"/stashes"`,
+  matched nothing on Windows (the data folder was skipped only because `.gitignore` lists it too); the
+  code reviewer found it by probing a folder with no `.gitignore`. A new test reads
+  `pyproject.toml` and fails for any bare name that would hide code.
+- **Not built, and said so.** Writing today's recovery code into a copy of the backup first cannot work
+  for an old backup (its Profile table has no such column until it is migrated). Closing that window
+  properly means preparing the restored database as a separate file and swapping it in, which is a
+  redesign of `restore_stash()`: filed as S136, not squeezed into a small-fixes part.
+- **A new test must fail on the old code.** A scratch script put the old regeneration and the old
+  guess back in memory and ran the three new behaviour tests: all three failed. The admin filter's
+  test failed on the old filter (16 queries against 12). The other new tests cover new functions.
+
+**What the reviews changed.** Code, database and security (no front-end or QA round: no template,
+static file or URL changed, and the new tests were written and proven here). Nothing Critical. Done
+from them: the regeneration's transaction goes through the router (`_reminder_transaction()`), reads
+inside it, and `save()`, `delete()` and `apply_to_series()` are units of work too; `resolved()` and
+`unresolved()` replaced four typed-out copies of the occurrence rule; `CategoryFilter` reads the
+related model's default manager and its `limit_choices_to`; a second restore is refused, not queued;
+the Watched-expenses picker reads each subcategory's parent with the page (it cost a query per
+subcategory on Settings and in the welcome wizard, found by the code reviewer; a test fails without
+it, 8 queries against 3); `_wanted_dates()` came out of `regenerate_occurrences()`; the ruff exclude
+became `./stashes`; and a test keeps the launch script's stashes folder equal to the settings'.
+Filed: plan 03's S136 (the restore's recovery code, a redesign) and S137 (the owner name's limit typed
+in three places), and plan 04's R36: a search for a Cyrillic name in the other case finds nothing,
+because SQLite's `icontains` folds only A-Z (older than this part; found in the Payees and
+Categories pages). Judged not worth planning: the form built twice on a POST in `views/auth.py`, and
+a reviewer's N+1 claim for the admin's Categories list, which the existing query-count test shows
+isn't there.
+
+**Teaching note — put the fact in one place, then guard it.** Part D is mostly one idea repeated:
+the PIN is saved in one function, "stays on this site" is answered in one module, a key's range
+comes from one place, an amount's size from one pair of constants. Each started as two or three
+copies that were right on the day they were typed. The fix is not only to merge them, it is to add a
+cheap test (a grep of the source) that fails when a copy comes back, because the next copy is typed
+by someone who has never read this entry. Second lesson, from the cache that wasn't: when a plan says
+"cache it", check what the cache would forget. Speed that changes the answer is not an optimisation.
+
+**Files touched:** new `finance/same_site.py`, `stashy/key_range.py`, `finance/tests/test_same_site.py`,
+`finance/tests/test_key_range.py`; changed `finance/` (`admin`, `limits`, `middleware`, `models`,
+`regional`, `reporting`, `ids`; `forms/` `_base` and `accounts`; `services/importing`; `stashes/`
+`registry` and `security`; `views/` `_helpers`, `auth`, `categories`, `dashboard`, `payees`, `reminders`,
+`settings`, `transactions`), `stashy/admin_mixins.py`, `scripts/bootstrap.py`, `manage.py`,
+`pyproject.toml`, the tests (`test_project`, `test_stashes`, `test_reminder_rules`, `test_auth`,
+`test_admin`, `test_categories`, `test_payees`, `test_imports`, `test_dashboard`, `test_formatting`);
+`CLAUDE.md`, `plans/03_structure_review.md`, this log. No migration.

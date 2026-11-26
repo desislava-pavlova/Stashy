@@ -935,3 +935,14 @@ class AdminListQueryTests(LoggedInAsSuperuserTestCase):
         self.add_categories(4)
         _, many = self.get_and_count_queries(url)
         self.assertEqual(few, many)
+
+    def test_the_transactions_category_filter_reads_every_parent_in_one_query(self):
+        """S134: each choice is labelled "Main > Sub", which read the
+        subcategory's parent one query at a time."""
+        url = reverse("admin:finance_transaction_changelist")
+        self.add_categories(1)
+        _, few = self.get_and_count_queries(url)
+        self.add_categories(4)
+        response, many = self.get_and_count_queries(url)
+        self.assertEqual(few, many)
+        self.assertContains(response, "Main 1-0 &gt; Sub 1-0")

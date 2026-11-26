@@ -9,8 +9,10 @@ from pathlib import Path
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.db import connections
 from django.template.loader import render_to_string
 from django.test import SimpleTestCase
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 
@@ -1048,6 +1050,22 @@ class WatchedExpensesPickerTests(StashTestCase):
             watched_expenses_picker_context(self.profile)["watched_button_label"],
             "2 categories selected",
         )
+
+    def test_more_subcategories_need_no_more_queries(self):
+        """The groups put each subcategory after its parent, which reads
+        the parent: that has to come with the categories, not one
+        query per subcategory."""
+
+        def queries_for_the_picker():
+            with CaptureQueriesContext(connections[settings.TEST_STASH]) as queries:
+                watched_expenses_picker_context(self.profile)
+            return len(queries)
+
+        few = queries_for_the_picker()
+        for i in range(5):
+            Category.objects.create(name=f"Extra {i}", category_type=EXPENSE, parent=self.food)
+
+        self.assertEqual(queries_for_the_picker(), few)
 
 
 class NoEarlierActivityAveragesZeroTests(LoggedInWithAccountTestCase):

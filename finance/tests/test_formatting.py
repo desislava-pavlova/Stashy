@@ -199,6 +199,25 @@ class RegionalPreferencesTests(SimpleTestCase):
         detected = self.detect_with(side_effect=RuntimeError("the zone setting is unreadable"))
         self.assertEqual(detected.time_zone, regional.DEFAULTS.time_zone)
 
+    def test_the_profile_defaults_are_the_four_detected_settings_and_no_currency(self):
+        detected = regional.Preferences(
+            date_format="mdy",
+            number_format="comma_dot",
+            first_day_of_week=0,
+            time_zone="Europe/Sofia",
+            main_currency="USD",
+        )
+        with mock.patch.object(regional, "detect_from_computer", return_value=detected):
+            self.assertEqual(
+                regional.profile_defaults_from_computer(),
+                {
+                    "time_zone": "Europe/Sofia",
+                    "date_format": "mdy",
+                    "number_format": "comma_dot",
+                    "first_day_of_week": 0,
+                },
+            )
+
 
 class ProfileTests(StashTestCase):
     def test_profile_is_created_once_and_then_left_alone(self):

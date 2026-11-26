@@ -264,6 +264,31 @@ class PayeeHistoryTests(StashTestCase):
         self.assertEqual(len(history), 1)
         self.assertIsNone(history[0].category)
 
+    def test_the_latest_category_is_the_first_history_entrys_in_every_case(self):
+        """S65: an import asks for it on every row, so it reads one
+        transaction, and must answer what the whole history's first
+        entry would."""
+        self.assertIsNone(self.payee.latest_category())  # no transactions
+        steps = [
+            (date(2026, 1, 5), self.groceries, self.groceries),
+            (date(2026, 1, 10), self.household, self.household),  # newer date wins
+            (date(2026, 1, 7), self.groceries, self.household),  # entered last, dated earlier
+            (date(2026, 1, 12), None, None),  # the newest has no category
+        ]
+        for when, category, expected in steps:
+            Transaction.objects.create(
+                account=self.account,
+                date=when,
+                payee=self.payee,
+                category=category,
+                amount=Decimal("-10.00"),
+            )
+            with self.subTest(date=when):
+                self.assertEqual(self.payee.latest_category(), expected)
+                self.assertEqual(
+                    self.payee.latest_category(), self.payee.category_history()[0].category
+                )
+
 
 class PayeeDetailTests(LoggedInWithAccountTestCase):
     def test_shows_every_category_with_its_last_memo_and_amount(self):
@@ -320,6 +345,18 @@ class PayeeListFilterAndSortTests(LoggedInWithAccountTestCase):
     def test_default_sort_is_by_name(self):
         names = [r["payee"].name for r in self.rows()]
         self.assertEqual(names, ["Ikea", "Lidl"])
+
+    def test_the_name_sort_follows_the_database_order_for_letters_lower_does_not_fold(self):
+        """S109: "Straße" folds to "strasse", so it comes before
+        "Strasse2", as the database's `name_key` order has it; sorting
+        by `.lower()` put it after."""
+        Payee.objects.create(name="Strasse2")
+        Payee.objects.create(name="Straße")
+
+        names = [r["payee"].name for r in self.rows()]
+
+        self.assertEqual(names, ["Ikea", "Lidl", "Straße", "Strasse2"])
+        self.assertEqual(names, list(Payee.objects.values_list("name", flat=True)))
 
     def test_the_payee_header_shows_the_arrow_without_a_sort_in_the_url(self):
         # The list is sorted by name even without ?sort=, so "Payee"

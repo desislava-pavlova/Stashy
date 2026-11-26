@@ -340,10 +340,7 @@ def _fingerprint(account_id, txn_date, amount, payee):
 def _guessed_category(payee):
     """The category to pre-fill for an imported row with no Category
     column value: this payee's most recently used category, if any."""
-    if payee is None:
-        return None
-    history = payee.category_history()
-    return history[0].category if history else None
+    return payee.latest_category() if payee is not None else None
 
 
 _CATEGORY_SEPARATOR_RE = re.compile(r"\s*[:>]\s*")

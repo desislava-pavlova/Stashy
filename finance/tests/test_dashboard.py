@@ -42,6 +42,12 @@ class SavingsRateTests(SimpleTestCase):
     def test_no_income_means_no_rate(self):
         self.assertIsNone(savings_rate(Decimal("0"), Decimal("80")))
 
+    def test_a_tie_rounds_up_away_from_zero_like_money_does(self):
+        """12.25 and -12.25 sit exactly between two tenths: the default
+        rounding would give 12.2 and -12.2 (the even digit)."""
+        self.assertEqual(savings_rate(Decimal("400"), Decimal("351")), Decimal("12.3"))
+        self.assertEqual(savings_rate(Decimal("400"), Decimal("449")), Decimal("-12.3"))
+
 
 class SpendingTreeTests(StashTestCase):
     @classmethod

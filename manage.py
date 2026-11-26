@@ -14,6 +14,7 @@ def main():
         "DJANGO_SETTINGS_MODULE", "stashy.settings.test" if is_test_run else "stashy.settings.base"
     )
     try:
+        # Imported here: a missing Django gets the message below.
         from django.core.management import execute_from_command_line
     except ImportError as exc:
         raise ImportError(

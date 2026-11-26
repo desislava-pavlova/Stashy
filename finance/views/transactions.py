@@ -302,7 +302,7 @@ def transaction_quick_edit(request, pk):
     instance = get_object_or_404(Transaction, pk=pk)
     form = TransactionForm(request.POST, instance=instance)
     if not form.is_valid():
-        errors = {field: list(messages) for field, messages in form.errors.items()}
+        errors = {field: list(problems) for field, problems in form.errors.items()}
         return JsonResponse({"ok": False, "errors": errors}, status=400)
     account = form.cleaned_data["account"]
     if not account.is_active:

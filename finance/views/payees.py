@@ -9,14 +9,15 @@ from django.views.generic import CreateView, DeleteView, UpdateView
 
 from ..forms.payees import PayeeForm
 from ..ids import as_id
-from ..models import Category, Payee, categories_alphabetical, payee_summaries
+from ..models import Category, Payee, categories_alphabetical, name_key, payee_summaries
 from ..tips import PAYEE_TIPS
 from ._helpers import next_sort_keys
 
 
+# Names sort through `name_key`, as the database's own ordering does.
 PAYEE_SORT_KEYS = {
-    "name": lambda row: row["payee"].name.lower(),
-    "category": lambda row: row["categories_label"].lower(),
+    "name": lambda row: row["payee"].name_key,
+    "category": lambda row: name_key(row["categories_label"]),
     "amount": lambda row: row["total_sort_value"],
     "usage": lambda row: row["usage_count"],
 }
