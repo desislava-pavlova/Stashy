@@ -312,7 +312,8 @@ Stashy/
 │   ├── starter_categories.xlsx  # Basic/Extended starting category lists (welcome wizard)
 │   ├── services/         # opening accounts and transfers, importing a file,
 │   │                     #   reconciling an account, exchange rates
-│   ├── forms.py
+│   ├── forms/            # one file per area, like views/: accounts.py, categories.py, …,
+│   │                     #   auth.py (the picker and PIN forms)
 │   ├── filters.py        # reads a page's filters from its address (page and export share them)
 │   ├── limits.py         # the limits on stored dates, numbers and amounts
 │   ├── reporting.py      # report calculations

@@ -16,8 +16,7 @@ from datetime import date
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from urllib.parse import urlencode
 
-from django.db import router
-from django.db import transaction as db_transaction
+from django.db import router, transaction
 from django.db.models import F, Q
 
 from audit.context import system_action
@@ -92,7 +91,8 @@ def convert_balances(accounts, main_currency, rates=None):
     Returns (their total in the main currency, the accounts left out
     because no rate is known).
     """
-    rates = rates or RateTable(main_currency)
+    if rates is None:
+        rates = RateTable(main_currency)
     total, missing = ZERO, []
     for account in accounts:
         account.current_balance = account.balance
@@ -148,7 +148,7 @@ def fetch_latest_rates(main_currency, currencies):
     # (`atomic()` alone would open it on `default`, the picker's empty
     # placeholder).
     with (
-        db_transaction.atomic(using=router.db_for_write(ExchangeRate)),
+        transaction.atomic(using=router.db_for_write(ExchangeRate)),
         system_action("Exchange rates fetched from Frankfurter (European Central Bank)"),
     ):
         for code in wanted:

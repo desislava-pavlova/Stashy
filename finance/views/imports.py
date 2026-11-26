@@ -7,7 +7,7 @@ from django.contrib import messages
 from django.shortcuts import redirect, render
 
 from .. import regional
-from ..forms import ImportUploadForm
+from ..forms.imports import ImportUploadForm
 from ..limits import EARLIEST_YEAR, LATEST_YEAR
 from ..models import ImportBatch
 from ..services import importing

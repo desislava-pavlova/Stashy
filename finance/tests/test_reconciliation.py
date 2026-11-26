@@ -8,7 +8,38 @@ from django.urls import reverse
 
 from ..models import Account, Payee, Reconciliation, Transaction
 from ..services import reconciliation
-from .base import LoggedInWithAccountTestCase, StashTestCase
+from .base import AMOUNTS_THAT_CANCEL_OUT, LoggedInWithAccountTestCase, StashTestCase
+
+
+class ReconciledBalanceRoundingTests(LoggedInWithAccountTestCase):
+    """SQLite adds decimals as floats, so -0.10, -0.20 and 0.30 come
+    back as a tiny negative number. The balance shows exactly 0.00."""
+
+    def test_amounts_that_cancel_out_give_a_plain_zero(self):
+        for amount in AMOUNTS_THAT_CANCEL_OUT:
+            Transaction.objects.create(
+                account=self.account,
+                date=date(2026, 1, 5),
+                amount=Decimal(amount),
+                reconciled=True,
+            )
+        self.assertEqual(str(self.account.reconciled_balance()), "0.00")
+
+    def test_a_balance_that_is_not_zero_has_exactly_two_decimals(self):
+        for amount in ("0.10", "0.20", "0.30"):
+            Transaction.objects.create(
+                account=self.account,
+                date=date(2026, 1, 5),
+                amount=Decimal(amount),
+                reconciled=True,
+            )
+        self.assertEqual(str(self.account.reconciled_balance()), "0.60")
+
+    def test_with_nothing_reconciled_it_is_0_00(self):
+        Transaction.objects.create(
+            account=self.account, date=date(2026, 1, 5), amount=Decimal("5.00")
+        )
+        self.assertEqual(str(self.account.reconciled_balance()), "0.00")
 
 
 class ReconciledBalanceTests(LoggedInWithAccountTestCase):
@@ -401,6 +432,15 @@ class ReconcileSizeTests(LoggedInWithAccountTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "finance/account_reconcile_review.html")
         self.assertContains(response, "more than Stashy can store")
+        # The two figures in the message: the one that is too big, and
+        # the largest that fits.
+        self.assertContains(
+            response,
+            "A figure in that reconciliation, 10\N{NO-BREAK SPACE}000\N{NO-BREAK SPACE}000"
+            "\N{NO-BREAK SPACE}499.00 \N{EURO SIGN}, is more than Stashy can store "
+            "(9\N{NO-BREAK SPACE}999\N{NO-BREAK SPACE}999\N{NO-BREAK SPACE}999.99 "
+            "\N{EURO SIGN}).",
+        )
         self.assertFalse(Reconciliation.objects.exists())
         self.assertEqual(Transaction.objects.count(), 1)
         register = self.client.get(reverse("finance:account_detail", args=[self.account.pk]))

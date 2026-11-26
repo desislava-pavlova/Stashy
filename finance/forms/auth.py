@@ -1,12 +1,14 @@
-"""Forms for the multi-stash login screens - kept separate from
-finance/forms.py since these belong to the picker/login layer, not the
-finance app's own data forms."""
+"""The forms of the picker and PIN screens: create a stash, log in,
+forgot PIN, and the two that ask for the PIN again while logged in.
+They belong to the multi-stash layer, so every PIN box checks through
+stashes.security, the one place that knows the PIN rule.
+"""
 
 from django import forms
 from django.contrib.auth.forms import AuthenticationForm
 from django.core.exceptions import ValidationError
 
-from .stashes import StashError, registry, security
+from ..stashes import StashError, registry, security
 
 
 def _pin_widget(autofocus=False):

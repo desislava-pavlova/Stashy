@@ -18,39 +18,24 @@ from django.urls import reverse
 
 from openpyxl import Workbook
 
-from ..forms import ImportUploadForm
+from ..forms.imports import ImportUploadForm
 from ..models import Account, Category, ImportBatch, Payee, Transaction, name_key
 from ..services import importing
-from ..services.importing import _parse_transaction_number
+from ..services.importing import ImportResult, _parse_transaction_number
+from ..views.imports import _import_summary
 from .base import (
     LEAKED_TEMPLATE_SYNTAX,
     LoggedInWithAccountTestCase,
     StashTestCase,
     csv_upload,
+    ofx_file,
     post_import,
 )
 
 
 EXPENSE, INCOME = Category.CategoryType.EXPENSE, Category.CategoryType.INCOME
 
-OFX_FILE = b"""OFXHEADER:100
-DATA:OFXSGML
-VERSION:102
-SECURITY:NONE
-ENCODING:USASCII
-CHARSET:1252
-COMPRESSION:NONE
-OLDFILEUID:NONE
-NEWFILEUID:NONE
-
-<OFX><BANKMSGSRSV1><STMTTRNRS><TRNUID>1<STATUS><CODE>0<SEVERITY>INFO</STATUS>
-<STMTRS><CURDEF>EUR<BANKACCTFROM><BANKID>1<ACCTID>2<ACCTTYPE>CHECKING</BANKACCTFROM>
-<BANKTRANLIST><DTSTART>20260101<DTEND>20260131
-<STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20260105<TRNAMT>-12.50<FITID>1
-<NAME>Lidl<MEMO>weekly shop</STMTTRN>
-</BANKTRANLIST><LEDGERBAL><BALAMT>100<DTASOF>20260131</LEDGERBAL>
-</STMTRS></STMTTRNRS></BANKMSGSRSV1></OFX>
-"""
+OFX_FILE = ofx_file()
 
 
 class ImportTestCase(LoggedInWithAccountTestCase):
@@ -386,6 +371,33 @@ class DateFormatDetectionTests(ImportTestCase):
         self._import("Date,Payee,Memo,Amount\n03/04/2026,Shop,,-10.00\n")
         self.assertEqual(Transaction.objects.get().date, date(2026, 4, 3))
 
+    def test_day_first_dates_may_use_dots_or_dashes(self):
+        self._import("Date,Payee,Memo,Amount\n25.01.2026,Dot,,-1.00\n26-01-2026,Dash,,-2.00\n")
+        dates = {t.payee.name: t.date for t in Transaction.objects.all()}
+        self.assertEqual(dates, {"Dot": date(2026, 1, 25), "Dash": date(2026, 1, 26)})
+
+    def test_year_first_dates_may_use_slashes(self):
+        self._import("Date,Payee,Memo,Amount\n2026/01/25,Shop,,-1.00\n")
+        self.assertEqual(Transaction.objects.get().date, date(2026, 1, 25))
+
+    def test_an_iso_date_in_a_day_first_file_is_still_read(self):
+        # 25/01 settles the file as day-first, and the date app links
+        # carry, YYYY-MM-DD, is read in every format.
+        self._import("Date,Payee,Memo,Amount\n25/01/2026,A,,-1.00\n2026-02-03,B,,-2.00\n")
+        dates = {t.payee.name: t.date for t in Transaction.objects.all()}
+        self.assertEqual(dates, {"A": date(2026, 1, 25), "B": date(2026, 2, 3)})
+
+    def test_spaces_around_a_date_are_ignored(self):
+        self._import('Date,Payee,Memo,Amount\n"  25/01/2026 ",Shop,,-1.00\n')
+        self.assertEqual(Transaction.objects.get().date, date(2026, 1, 25))
+
+    def test_a_date_that_does_not_exist_is_unreadable_not_a_crash(self):
+        result = importing.import_file(
+            csv_upload("Date,Payee,Amount\n30/02/2026,Shop,-1.00\n32/01/2026,Shop,-1.00\n"),
+            self.account,
+        )
+        self.assertEqual((result.created, result.unreadable), (0, 2))
+
     def test_an_explicit_override_beats_auto_detection(self):
         # Would auto-detect as day-first (25 can only be a day); forcing
         # month-first instead makes this row fail to parse as a date
@@ -640,3 +652,59 @@ class ImportPageTests(StashTestCase):
             response, reverse("finance:account_detail", kwargs={"pk": self.account.pk})
         )
         self.assertContains(response, "Imported 1 transaction (0 duplicates skipped).")
+
+
+class ImportSummaryTests(StashTestCase):
+    def test_a_row_naming_an_unknown_account_has_its_own_sentence(self):
+        for count, rows in ((1, "1 row"), (2, "2 rows")):
+            with self.subTest(rows=rows):
+                summary = _import_summary(
+                    ImportResult(created=3, duplicates=0, unknown_account=count)
+                )
+                self.assertEqual(
+                    summary,
+                    "Imported 3 transactions (0 duplicates skipped). "
+                    f"{rows} skipped - named an account that doesn't exist yet.",
+                )
+
+    def test_the_count_of_transactions_is_singular_for_one_and_plural_for_none(self):
+        for created, words in ((0, "0 transactions"), (1, "1 transaction"), (2, "2 transactions")):
+            with self.subTest(created=created):
+                self.assertEqual(
+                    _import_summary(ImportResult(created=created)),
+                    f"Imported {words} (0 duplicates skipped).",
+                )
+
+    def test_unreadable_rows_have_their_own_sentence_with_the_limits(self):
+        for count, rows in ((1, "1 row"), (2, "2 rows")):
+            with self.subTest(rows=rows):
+                self.assertEqual(
+                    _import_summary(ImportResult(created=3, unreadable=count)),
+                    "Imported 3 transactions (0 duplicates skipped). "
+                    f"{rows} skipped - unreadable date or amount, "
+                    "or a date outside 1900 to 2100.",
+                )
+
+    def test_every_part_comes_in_its_own_order_and_a_part_with_nothing_to_say_is_left_out(self):
+        result = ImportResult(
+            created=1,
+            duplicates=2,
+            unknown_account=1,
+            unreadable=1,
+            date_format="mdy",
+            encoding_note="The file was read as Windows-1251.",
+        )
+        self.assertEqual(
+            _import_summary(result),
+            "Imported 1 transaction (2 duplicates skipped). "
+            "1 row skipped - named an account that doesn't exist yet. "
+            "1 row skipped - unreadable date or amount, or a date outside 1900 to 2100. "
+            "Read dates as MM/DD/YYYY. The file was read as Windows-1251.",
+        )
+        self.assertNotIn("skipped -", _import_summary(ImportResult(created=1)))
+        self.assertNotIn("Read dates", _import_summary(ImportResult(created=1)))
+
+    def test_a_date_format_the_form_does_not_list_is_shown_as_it_is(self):
+        self.assertTrue(
+            _import_summary(ImportResult(date_format="odd")).endswith(" Read dates as odd.")
+        )

@@ -7,10 +7,11 @@ from django.shortcuts import get_object_or_404, render
 from django.urls import reverse_lazy
 from django.views.generic import CreateView, DeleteView, UpdateView
 
-from ..forms import PayeeForm
+from ..forms.payees import PayeeForm
 from ..ids import as_id
 from ..models import Category, Payee, categories_alphabetical, payee_summaries
 from ..tips import PAYEE_TIPS
+from ._helpers import next_sort_keys
 
 
 PAYEE_SORT_KEYS = {
@@ -46,7 +47,7 @@ def payee_list(request):
         # Payee header shows its arrow.
         sort = "name"
     rows.sort(key=PAYEE_SORT_KEYS[sort.removeprefix("-")], reverse=sort.startswith("-"))
-    sort_next = {name: (f"-{name}" if sort == name else name) for name in PAYEE_SORT_KEYS}
+    sort_next = next_sort_keys(PAYEE_SORT_KEYS, sort)
 
     return render(
         request,

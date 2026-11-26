@@ -23,10 +23,11 @@ from audit.context import system_action
 from .. import regional
 from ..currency import format_money
 from ..filters import filtered_transactions
-from ..forms import DateRangeFilterForm, TransactionForm
+from ..forms.filters import DateRangeFilterForm
+from ..forms.transactions import TransactionForm
 from ..ids import as_id
 from ..models import Account, Category, Reminder, Transaction, grouped_categories
-from ..money import ZERO
+from ..money import to_cent
 from ..reporting import EARLIEST_RANGE_KEY
 from ..tips import TRANSACTION_TIPS
 from ._helpers import AMOUNT_SORT_COLUMNS, apply_sort, paged, safe_next
@@ -73,7 +74,7 @@ def transaction_list(request):
     # it's taken before paging. It adds amounts across accounts
     # without converting currencies, so it is only exact for a
     # single-currency stash.
-    total_amount = transactions.aggregate(total=Sum("amount"))["total"] or ZERO
+    total_amount = to_cent(transactions.aggregate(total=Sum("amount"))["total"])
     rows, page_obj = paged(
         request, transactions, split=_longer_than_a_year(filters["start"], filters["end"])
     )
@@ -148,6 +149,29 @@ def transaction_list(request):
     return render(request, "finance/transaction_list.html", context)
 
 
+def initial_from_reminder(reminder):
+    """The form's starting values for entering `reminder` as a
+    transaction. It is reviewed and adjusted before it is saved, rather
+    than created silently, so a reminder with no fixed amount can still
+    be entered."""
+    memo = ""
+    if reminder.payee_id and reminder.category_id:
+        # What you wrote last time for this payee in this category beats
+        # the reminder's own generic notes.
+        memo = reminder.payee.remembered_memo(reminder.category_id)
+    initial = {
+        "account": reminder.account_id,
+        "category": reminder.category_id,
+        "amount": reminder.signed_amount(),
+        "memo": memo or reminder.notes,
+        "date": reminder.next_due_date,
+        "transaction_number": Transaction.next_number(reminder.next_due_date),
+    }
+    if reminder.payee_id:
+        initial["payee_name"] = reminder.payee.name
+    return initial
+
+
 def transaction_form_view(request, pk=None):
     instance = get_object_or_404(Transaction, pk=pk) if pk else None
     next_url = safe_next(request, request.POST.get("next") or request.GET.get("next", ""))
@@ -162,31 +186,7 @@ def transaction_form_view(request, pk=None):
         initial["payee_name"] = instance.payee.name
     if not instance:
         if reminder:
-            # A reminder's "Enter" - review/adjust before saving, rather
-            # than silently creating the transaction, so a reminder with
-            # no fixed amount can still be entered.
-            initial["account"] = reminder.account_id
-            if reminder.payee_id:
-                initial["payee_name"] = reminder.payee.name
-            initial["category"] = reminder.category_id
-            initial["amount"] = reminder.signed_amount()
-            # Prefer the memo you actually used last time for this exact
-            # payee + category combo (the payee's memorized history)
-            # over the reminder's own generic notes, if one exists.
-            remembered_memo = None
-            if reminder.payee_id and reminder.category_id:
-                match = next(
-                    (
-                        t
-                        for t in reminder.payee.category_history()
-                        if t.category_id == reminder.category_id
-                    ),
-                    None,
-                )
-                remembered_memo = match.memo if match else None
-            initial["memo"] = remembered_memo or reminder.notes
-            initial["date"] = reminder.next_due_date
-            initial["transaction_number"] = Transaction.next_number(reminder.next_due_date)
+            initial.update(initial_from_reminder(reminder))
         else:
             default_account = request.GET.get("account")
             if default_account:

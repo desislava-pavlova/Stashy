@@ -19,11 +19,12 @@ from django.urls import reverse
 from django.utils import timezone
 
 from .. import models
-from ..forms import TransactionForm
+from ..forms.transactions import TransactionForm
 from ..models import Account, Category, Payee, Profile, Transaction
 from ..views._helpers import safe_next
 from ..views.transactions import _longer_than_a_year
 from .base import (
+    AMOUNTS_THAT_CANCEL_OUT,
     LEAKED_TEMPLATE_SYNTAX,
     TODAY_13_SEPT,
     LoggedInTestCase,
@@ -107,6 +108,30 @@ class DefaultViewTests(LoggedInWithAccountTestCase):
         shown, response = self.shown(mock_today)
         self.assertEqual(len(shown), 1)
         self.assertEqual(response.context["range"], "this_year")
+
+    def test_an_unknown_range_is_this_year_like_no_filters_at_all(self, mock_today):
+        # Last 12 months, which Reports falls back to, would show both.
+        shown, response = self.shown(mock_today, range="not_a_range")
+        self.assertEqual(len(shown), 1)
+        self.assertEqual(response.context["range"], "this_year")
+
+    def test_an_unknown_range_beats_typed_dates_as_a_named_range_does(self, mock_today):
+        # Dates typed for 2025 are ignored, like they are for
+        # range=last_year, so the rows are this year's.
+        _shown, response = self.shown(
+            mock_today, range="not_a_range", start="2025-01-01", end="2025-12-31"
+        )
+        self.assertEqual([t.date for t in response.context["transactions"]], [date(2026, 3, 1)])
+        self.assertEqual(response.context["range"], "this_year")
+        self.assertEqual(
+            (response.context["start"], response.context["end"]),
+            (date(2026, 1, 1), date(2026, 12, 31)),
+        )
+
+    def test_an_unknown_range_keeps_the_other_filters(self, mock_today):
+        _shown, response = self.shown(mock_today, range="not_a_range", status="reconciled")
+        self.assertEqual(response.context["transactions"].count(), 0)
+        self.assertEqual(response.context["status"], "reconciled")
 
     def test_explicit_all_dates_shows_everything(self, mock_today):
         shown, response = self.shown(mock_today, range="")
@@ -281,6 +306,19 @@ class SortingTests(LoggedInWithAccountTestCase):
                 ).content.decode()
                 self.assertRegex(html, rf"{column.title()}\s*<i [^>]*caret-down-fill")
                 self.assertEqual(html.count("sort-arrow"), 1)
+
+    def test_each_header_asks_for_the_opposite_of_the_sort_in_use(self):
+        url = reverse("finance:transaction_list")
+        for current, date_next in (("", "date"), ("date", "-date"), ("-date", "date")):
+            with self.subTest(sort=current):
+                response = self.client.get(url, {"range": "", "sort": current})
+                self.assertEqual(response.context["sort_next"]["date"], date_next)
+                self.assertEqual(response.context["sort_next"]["payee"], "payee")
+                # The address is HTML-escaped: "&amp;" joins parameters.
+                self.assertRegex(
+                    response.content.decode(),
+                    rf'href="[^"]*[?;]sort={date_next}(&amp;[^"]*)?" class="sort-link">Date',
+                )
 
     def test_the_old_amount_sort_is_ignored_not_a_crash(self):
         # S39: "amount" was the one sort both headers shared; a saved
@@ -1627,3 +1665,39 @@ class SafeNextTests(SimpleTestCase):
         self.assertEqual(
             safe_next(request, "/transactions/?account=3"), "/transactions/?account=3"
         )
+
+
+class TransactionsTotalRoundingTests(LoggedInWithAccountTestCase):
+    """The total under the list is a sum SQLite does in floating
+    point: amounts that cancel out show a plain 0.00."""
+
+    def test_a_total_of_amounts_that_cancel_out_is_a_plain_zero(self):
+        for amount in AMOUNTS_THAT_CANCEL_OUT:
+            Transaction.objects.create(
+                account=self.account, date=timezone.localdate(), amount=Decimal(amount)
+            )
+        response = self.client.get(reverse("finance:transaction_list"))
+        self.assertEqual(str(response.context["total_amount"]), "0.00")
+
+    def test_a_total_that_is_not_zero_has_exactly_two_decimals(self):
+        for amount in ("0.10", "0.20", "0.30"):
+            Transaction.objects.create(
+                account=self.account, date=timezone.localdate(), amount=Decimal(amount)
+            )
+        response = self.client.get(reverse("finance:transaction_list"))
+        self.assertEqual(str(response.context["total_amount"]), "0.60")
+
+    def test_no_transactions_total_0_00(self):
+        response = self.client.get(reverse("finance:transaction_list"))
+        self.assertEqual(str(response.context["total_amount"]), "0.00")
+
+    def test_the_total_covers_every_page_and_is_rounded_once(self):
+        # Over a thousand rows in a range longer than a year: the page
+        # shows 1,000 of them and the total is of all of them.
+        Transaction.objects.bulk_create(
+            Transaction(account=self.account, date=date(2025, 1, 1), amount=Decimal("0.10"))
+            for _ in range(1001)
+        )
+        response = self.client.get(reverse("finance:transaction_list"), {"range": ""})
+        self.assertEqual(response.context["transaction_count"], 1001)
+        self.assertEqual(str(response.context["total_amount"]), "100.10")

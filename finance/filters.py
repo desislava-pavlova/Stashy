@@ -9,7 +9,7 @@ here builds a response or touches a template.
 from django.db.models import Q
 
 from . import regional
-from .forms import DateRangeFilterForm
+from .forms.filters import DateRangeFilterForm
 from .ids import as_id, as_ids
 from .models import Category, Transaction
 from .reporting import (
@@ -19,6 +19,14 @@ from .reporting import (
     resolve_range,
     trimmed_average_periods,
 )
+
+
+# The range the Transactions page starts on, and the one it falls
+# back to for a range it doesn't know.
+TRANSACTIONS_DEFAULT_RANGE = "this_year"
+# Every range the Date range box offers. Any other `?range=` is a
+# hand-typed or old address.
+_RANGE_KEYS = {key for key, _ in DateRangeFilterForm.RANGE_CHOICES}
 
 
 def report_filters(request):
@@ -82,6 +90,10 @@ def filtered_transactions(request):
     range_key = request.GET.get("range", "")
     if range_key == EARLIEST_RANGE_KEY:
         range_key = ""  # a bookmark from before "Earliest to date" became "All dates"
+    elif range_key and range_key not in _RANGE_KEYS:
+        # Not Reports' fallback, Last 12 months: this page has its own
+        # default, and the Date range box then shows it.
+        range_key = TRANSACTIONS_DEFAULT_RANGE
     start = regional.parse_date(request.GET.get("start"))
     end = regional.parse_date(request.GET.get("end"))
     if range_key == "custom":
@@ -95,8 +107,8 @@ def filtered_transactions(request):
     elif start is None and end is None:
         # Default view: this year, until you explicitly ask for
         # something else.
-        start, end, _ = resolve_range({"range": "this_year"})
-        range_key = "this_year"
+        start, end, _ = resolve_range({"range": TRANSACTIONS_DEFAULT_RANGE})
+        range_key = TRANSACTIONS_DEFAULT_RANGE
     else:
         range_key = "custom"  # dates without a range: the dashboard's links
 

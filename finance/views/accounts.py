@@ -12,7 +12,7 @@ from django.views.generic import CreateView, DeleteView, ListView, UpdateView
 
 from .. import regional
 from ..currency import SUFFIX_CURRENCIES, format_money
-from ..forms import (
+from ..forms.accounts import (
     AccountCreateForm,
     AccountForm,
     ReconcileFinishForm,

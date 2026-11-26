@@ -9,10 +9,11 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse_lazy
 from django.views.generic import CreateView, DeleteView, ListView, UpdateView
 
-from ..forms import CategoryForm
+from ..forms.categories import CategoryForm
 from ..ids import as_id, as_ids
 from ..models import Category, Transaction, grouped_categories
 from ..tips import CATEGORY_TIPS
+from ._helpers import plural
 
 
 class CategoryListView(ListView):
@@ -48,13 +49,23 @@ class SystemManagedCategoryGuard:
     """Blocks edit/delete of an account's own transfer category — it's
     managed automatically (D7)."""
 
+    _category = None
+
+    def get_object(self, queryset=None):
+        """The category, read once per request: dispatch() needs it for
+        the guard, and the edit or delete view asks for it again. Django
+        makes a new view object for every request, which is what makes
+        keeping it on the object safe."""
+        if self._category is None:
+            self._category = super().get_object(queryset)
+        return self._category
+
     def dispatch(self, request, *args, **kwargs):
-        self.request, self.args, self.kwargs = request, args, kwargs
-        self.object = self.get_object()
-        if self.object.is_system_managed:
+        category = self.get_object()
+        if category.is_system_managed:
             messages.error(
                 request,
-                f"'{self.object.full_name}' belongs to the {self.object.account.name} account"
+                f"'{category.full_name}' belongs to the {category.account.name} account"
                 " and is managed automatically.",
             )
             return redirect("finance:category_list")
@@ -111,7 +122,7 @@ def category_usage(request, pk):
                 moved += 1
             messages.success(
                 request,
-                f"Moved {moved} transaction{'s' if moved != 1 else ''} to {target.full_name}.",
+                f"Moved {plural(moved, 'transaction')} to {target.full_name}.",
             )
         return redirect("finance:category_usage", pk=category.pk)
 

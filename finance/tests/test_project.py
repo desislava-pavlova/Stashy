@@ -31,8 +31,8 @@ from scripts import bootstrap
 from stashy.settings import base
 
 from ..models import Profile
-from ..stashes import registry
-from .base import StashTestCase
+from ..stashes import folder_names, registry
+from .base import StashTestCase, imported_modules
 
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
@@ -331,6 +331,24 @@ class LaunchScriptFindsTheSameStashesTests(SimpleTestCase):
         if database:
             (folder / "db.sqlite3").touch()
 
+    def test_the_script_names_a_stashs_database_file_as_the_app_does(self):
+        self.assertEqual(
+            bootstrap._db_file(self.root / "stashes" / "alex").name,
+            registry.stash_db_path("alex").name,
+        )
+
+    def test_the_script_follows_the_file_name_the_app_keeps_in_one_place(self):
+        """Both sides spelling "db.sqlite3" themselves would also pass
+        the test above. Renaming the file in `folder_names` shows that
+        the script reads it from there: its path and scan both move."""
+        self.make_folder("alex")
+        stash = self.root / "stashes" / "alex"
+        with mock.patch.object(folder_names, "DB_FILE_NAME", "renamed.sqlite3"):
+            self.assertEqual(bootstrap._db_file(stash), stash / "renamed.sqlite3")
+            self.assertEqual(bootstrap._stash_dirs(), [])  # alex holds the old name only
+            (stash / "renamed.sqlite3").touch()
+            self.assertEqual(bootstrap._stash_dirs(), [stash])
+
     def test_only_real_stashes_are_found(self):
         self.make_folder("alex")
         self.make_folder("default-dan")
@@ -372,15 +390,9 @@ class LaunchScriptImportsNeedNoDjangoTests(SimpleTestCase):
 
     @staticmethod
     def modules_the_script_takes_from_the_app():
-        tree = ast.parse(Path(bootstrap.__file__).read_text(encoding="utf-8"))
+        source = Path(bootstrap.__file__).read_text(encoding="utf-8")
         return sorted(
-            {
-                node.module
-                for node in ast.walk(tree)
-                if isinstance(node, ast.ImportFrom)
-                and node.module
-                and node.module.split(".")[0] == "finance"
-            }
+            {name for name in imported_modules(source) if name.split(".")[0] == "finance"}
         )
 
     @staticmethod
@@ -397,20 +409,11 @@ class LaunchScriptImportsNeedNoDjangoTests(SimpleTestCase):
         """Every import in the file, even one inside a function. A
         relative import counts: it names something of the app, which
         could be anything."""
-        found = []
-        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-            if isinstance(node, ast.Import):
-                names = [alias.name for alias in node.names]
-            elif isinstance(node, ast.ImportFrom):
-                names = ["." * node.level + (node.module or "")]
-            else:
-                continue
-            found += [
-                name
-                for name in names
-                if name.startswith(".") or name.split(".")[0] not in sys.stdlib_module_names
-            ]
-        return found
+        return [
+            name
+            for name in imported_modules(path.read_text(encoding="utf-8"))
+            if name.startswith(".") or name.split(".")[0] not in sys.stdlib_module_names
+        ]
 
     def test_what_the_script_takes_from_the_app_uses_the_standard_library_only(self):
         modules = self.modules_the_script_takes_from_the_app()
@@ -434,7 +437,9 @@ class LaunchScriptImportsNeedNoDjangoTests(SimpleTestCase):
             "    from . import registry\n",
             encoding="utf-8",
         )
-        self.assertEqual(self.imports_outside_the_standard_library(path), ["django.conf", "."])
+        self.assertEqual(
+            self.imports_outside_the_standard_library(path), ["django.conf", ".registry"]
+        )
 
 
 class TestRunFolderIsRemovedAtExitTests(SimpleTestCase):
@@ -498,17 +503,9 @@ class AuditStandsAloneTests(SimpleTestCase):
         for path in audit_dir.rglob("*.py"):
             if path.name == "tests.py" or "migrations" in path.parts:
                 continue
-            tree = ast.parse(path.read_text(encoding="utf-8"))
-            for node in ast.walk(tree):
-                if isinstance(node, ast.ImportFrom):
-                    names = [node.module or ""]
-                elif isinstance(node, ast.Import):
-                    names = [alias.name for alias in node.names]
-                else:
-                    continue
-                for name in names:
-                    with self.subTest(file=path.name, module=name):
-                        self.assertFalse(name == "finance" or name.startswith("finance."))
+            for name in imported_modules(path.read_text(encoding="utf-8")):
+                with self.subTest(file=path.name, module=name):
+                    self.assertFalse(name == "finance" or name.startswith("finance."))
 
 
 class CurrencyStandsAloneTests(SimpleTestCase):
@@ -519,19 +516,6 @@ class CurrencyStandsAloneTests(SimpleTestCase):
 
     FORBIDDEN_FIRST_PARTS = {"models", "services", "django"}
 
-    @staticmethod
-    def imported_names(source):
-        """Every module an import in `source` names, relative ones with
-        their dots, and `from . import x` as `.x`."""
-        names = []
-        for node in ast.walk(ast.parse(source)):
-            if isinstance(node, ast.Import):
-                names += [alias.name for alias in node.names]
-            elif isinstance(node, ast.ImportFrom):
-                base = "." * node.level + (node.module or "")
-                names += [base if base.strip(".") else f".{alias.name}" for alias in node.names]
-        return names
-
     @classmethod
     def is_forbidden(cls, name):
         """Whether an imported name is `models`, a service or Django,
@@ -541,12 +525,12 @@ class CurrencyStandsAloneTests(SimpleTestCase):
 
     def test_currency_imports_no_models_services_or_django(self):
         source = (Path(settings.BASE_DIR) / "finance" / "currency.py").read_text(encoding="utf-8")
-        for name in self.imported_names(source):
+        for name in imported_modules(source):
             with self.subTest(imported=name):
                 self.assertFalse(self.is_forbidden(name))
 
     def test_the_check_does_notice_each_way_of_importing_them(self):
-        names = self.imported_names(
+        names = imported_modules(
             "from .models import Account\n"
             "from . import models\n"
             "from .services.rates import RateTable\n"
@@ -560,6 +544,23 @@ class CurrencyStandsAloneTests(SimpleTestCase):
             flagged,
             [".models", ".models", ".services.rates", "finance.models", "django.db", "django"],
         )
+
+
+class PackagesReExportNothingTests(SimpleTestCase):
+    """`finance/views/` and `finance/forms/` have one module per area,
+    and every import names the real one (`from ..forms.accounts import
+    AccountForm`). Their `__init__.py` is a docstring and nothing else:
+    an import or an `__all__` there would bring back a second way to
+    reach the same form or view."""
+
+    def test_the_init_files_hold_only_their_docstring(self):
+        root = Path(settings.BASE_DIR) / "finance"
+        for package in ("forms", "views"):
+            path = root / package / "__init__.py"
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            with self.subTest(package=package):
+                self.assertIsNotNone(ast.get_docstring(tree), "a package starts with a docstring")
+                self.assertEqual(len(tree.body), 1)
 
 
 class OneTodayTests(SimpleTestCase):
@@ -614,3 +615,28 @@ class NoHiddenImportCyclesTests(SimpleTestCase):
                             self.assertTrue(
                                 any(c.startswith("# Imported here") for c in comments_above)
                             )
+
+
+class ImportedModulesTests(SimpleTestCase):
+    def test_every_way_of_importing_is_named_with_its_dots(self):
+        lines = [
+            "import a.b",
+            "from c import d",
+            "from . import e",
+            "from .. import f",
+            "from .g import h",
+            "from ..i.j import k",
+        ]
+        names = imported_modules("\n".join(lines))
+        self.assertEqual(names, ["a.b", "c", ".e", "..f", ".g", "..i.j"])
+
+
+class FormsPackageReExportsNothingTests(SimpleTestCase):
+    """Every import of a form names the module that defines it, as the
+    views do: the package file holds its docstring and nothing else."""
+
+    def test_the_package_file_is_only_its_docstring(self):
+        path = Path(settings.BASE_DIR) / "finance" / "forms" / "__init__.py"
+        body = ast.parse(path.read_text(encoding="utf-8")).body
+        self.assertEqual(len(body), 1)
+        self.assertIsInstance(body[0], ast.Expr)

@@ -70,6 +70,16 @@ def _stash_dirs():
     return stash_folders(ROOT / "stashes")
 
 
+def _db_file(stash_dir):
+    """A stash's database file, named by the app's own layout."""
+    _make_project_importable()
+    # Imported here: it needs the project folder on the path (above);
+    # see _stash_dirs().
+    from finance.stashes.folder_names import DB_FILE_NAME
+
+    return stash_dir / DB_FILE_NAME
+
+
 class SetupError(Exception):
     pass
 
@@ -173,7 +183,7 @@ def migrate_database():
 
     for stash_dir in _stash_dirs():
         name = stash_dir.name
-        db_file = stash_dir / "db.sqlite3"
+        db_file = _db_file(stash_dir)
         pending = run_python(
             "manage.py", "migrate", "--database", name, "--check", capture_output=True
         )
@@ -210,7 +220,7 @@ def run_quarterly_backup():
     from finance.backup import quarterly_backup_if_due
 
     for stash_dir in stash_dirs:
-        backup = quarterly_backup_if_due(stash_dir / "db.sqlite3", stash_dir)
+        backup = quarterly_backup_if_due(_db_file(stash_dir), stash_dir)
         if backup:
             print(
                 f"   Quarterly backup for '{stash_dir.name}' saved to {backup.relative_to(ROOT)}"

@@ -215,6 +215,36 @@ class StashFolderScanTests(TemporaryStashesMixin, SimpleTestCase):
         self.assertFalse(registry.is_stash("Default"))
 
 
+class StashFolderLayoutNamesTests(TemporaryStashesMixin, SimpleTestCase):
+    """The name of a stash's database file lives in `folder_names` and
+    the name of its backups folder in `backup`, each written once. A
+    fixed name in the tests would pass even if a module spelled the name
+    itself, so these rename it and look at who follows."""
+
+    def test_every_path_to_the_database_follows_the_file_name(self):
+        self.make_stashes("alex")
+        with mock.patch.object(folder_names, "DB_FILE_NAME", "renamed.sqlite3"):
+            self.assertEqual(registry.stash_db_path("alex").name, "renamed.sqlite3")
+            self.assertFalse(registry.stash_exists("alex"))
+            self.assertEqual(registry.list_stashes(), [])  # alex holds the old name only
+            registry.stash_db_path("alex").touch()
+            self.assertTrue(registry.stash_exists("alex"))
+            self.assertEqual(registry.list_stashes(), ["alex"])
+
+    def test_every_path_to_the_backups_follows_the_folder_name(self):
+        self.make_stashes("alex")
+        with closing(sqlite3.connect(registry.stash_db_path("alex"))) as database:
+            database.execute("CREATE TABLE note (text)")
+        with mock.patch.object(finance_backup, "BACKUP_DIR_NAME", "saved"):
+            self.assertEqual(registry.stash_backups_dir("alex").name, "saved")
+            made = finance_backup.backup_now(
+                registry.stash_db_path("alex"), registry.stash_path("alex")
+            )
+            self.assertEqual(made.parent, registry.stash_backups_dir("alex"))
+            self.assertEqual(finance_backup.list_backups(registry.stash_path("alex")), [made])
+        self.assertFalse((registry.stash_path("alex") / "backups").exists())
+
+
 class ResetPinCommandTests(TemporaryStashesMixin, SimpleTestCase):
     """manage.py reset_pin on a real temporary stash: Alex's, in the
     folder "alex". Building and migrating a stash takes a while, so it

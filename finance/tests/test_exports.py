@@ -1,10 +1,12 @@
 """Exports: CSV and Excel files of the transactions, the lists and every
 report, and their file names."""
 
+import codecs
 import io
 import re
 from datetime import date, datetime
 from decimal import Decimal
+from unittest import mock
 
 from django.test import SimpleTestCase
 from django.urls import reverse
@@ -14,7 +16,12 @@ from openpyxl import load_workbook
 
 from ..models import Account, Category, Payee, Profile, Transaction
 from ..views.exports import REPORT_EXPORTS, _csv_cell
-from .base import LoggedInWithAccountTestCase, create_accounts_with_a_transaction, csv_rows
+from .base import (
+    TODAY_13_SEPT,
+    LoggedInWithAccountTestCase,
+    create_accounts_with_a_transaction,
+    csv_rows,
+)
 
 
 class ExportTransactionsTests(LoggedInWithAccountTestCase):
@@ -97,6 +104,50 @@ class ExportTransactionsTests(LoggedInWithAccountTestCase):
         )
         rows = csv_rows(response)
         self.assertEqual(len(rows), 1 + 1002)  # the header, the rent row and the 1,001 new ones
+
+
+@mock.patch("django.utils.timezone.localdate", return_value=TODAY_13_SEPT)
+class ExportReadsTheFiltersLikeThePageTests(LoggedInWithAccountTestCase):
+    """The export and the list read the address with the same function,
+    so a range the page doesn't know (an old or hand-typed link) gives
+    the same rows in the file as on the screen."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        for memo, on in (("last year", date(2025, 12, 31)), ("this year", date(2026, 3, 1))):
+            Transaction.objects.create(
+                account=cls.account, date=on, memo=memo, amount=Decimal("-1.00")
+            )
+
+    def on_the_page(self, **params):
+        response = self.client.get(reverse("finance:transaction_list"), params)
+        return sorted(t.memo for t in response.context["transactions"])
+
+    def in_the_csv(self, **params):
+        response = self.client.get(reverse("finance:export_transactions"), params)
+        return sorted(row[5] for row in csv_rows(response)[1:])
+
+    def test_an_unknown_range_exports_this_year_like_the_page_shows_it(self, _today):
+        params = {"range": "not_a_range"}
+        self.assertEqual(self.on_the_page(**params), ["this year"])
+        self.assertEqual(self.in_the_csv(**params), ["this year"])
+
+    def test_typed_dates_do_not_rescue_an_unknown_range_in_the_file_either(self, _today):
+        params = {"range": "not_a_range", "start": "2025-01-01", "end": "2025-12-31"}
+        self.assertEqual(self.on_the_page(**params), ["this year"])
+        self.assertEqual(self.in_the_csv(**params), ["this year"])
+
+    def test_an_unknown_range_gives_the_excel_file_the_same_rows(self, _today):
+        response = self.client.get(
+            reverse("finance:export_transactions"), {"format": "xlsx", "range": "not_a_range"}
+        )
+        sheet = load_workbook(io.BytesIO(response.content)).active
+        self.assertEqual([row[5].value for row in sheet.iter_rows(min_row=2)], ["this year"])
+
+    def test_all_dates_and_no_range_still_differ(self, _today):
+        self.assertEqual(self.in_the_csv(range=""), ["last year", "this year"])
+        self.assertEqual(self.in_the_csv(), ["this year"])
 
 
 class ExportOtherListsTests(LoggedInWithAccountTestCase):
@@ -183,6 +234,29 @@ class ExportTests(LoggedInWithAccountTestCase):
         self.assertEqual(row[3], "Магазин")
         self.assertEqual(row[5], '\'=HYPERLINK("http://evil.example")')
         self.assertEqual(row[6], "-500.00")
+
+    def test_every_csv_file_starts_with_one_byte_order_mark_and_no_more(self):
+        """The BOM is written once by the one CSV writer, so every list
+        and report file has it, and none has it twice (which would show
+        as a stray character in the first header)."""
+        urls = [
+            reverse("finance:export_transactions"),
+            reverse("finance:export_accounts"),
+            reverse("finance:export_categories"),
+            reverse("finance:export_payees"),
+            reverse("finance:export_report", args=["spending"]),
+        ]
+        for url in urls:
+            with self.subTest(url=url):
+                content = self.client.get(url, {"format": "csv"}).content
+                self.assertTrue(content.startswith(codecs.BOM_UTF8))
+                self.assertFalse(content[len(codecs.BOM_UTF8) :].startswith(codecs.BOM_UTF8))
+                self.assertEqual(content.count(codecs.BOM_UTF8), 1)
+
+    def test_an_excel_file_has_no_byte_order_mark(self):
+        content = self.export("xlsx").content
+        self.assertTrue(content.startswith(b"PK"))  # a zip file, which is what .xlsx is
+        self.assertNotIn(codecs.BOM_UTF8, content[:3])
 
     def test_xlsx_has_real_numbers_and_dates_and_formulas_stay_text(self):
         sheet = load_workbook(io.BytesIO(self.export("xlsx").content)).active

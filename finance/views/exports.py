@@ -6,6 +6,7 @@ Every export builds rows of real values (Decimal, date, None) and hands
 them to _export_response(), which formats them for the chosen file type.
 """
 
+import codecs
 import csv
 import re
 from collections.abc import Callable
@@ -81,7 +82,7 @@ def _csv_response(filename, headers, rows):
     response["Content-Disposition"] = f'attachment; filename="{filename}.csv"'
     # A BOM first, or Excel guesses the wrong encoding and shows
     # Cyrillic as garbage.
-    response.write("﻿")
+    response.write(codecs.BOM_UTF8)
     writer = csv.writer(response)
     writer.writerow(headers)
     writer.writerows([_csv_cell(value) for value in row] for row in rows)

@@ -230,7 +230,7 @@ def _import_rows(fieldnames, rows, account, batch, date_format="auto"):
     if date_format == "auto" or not date_format:
         detected = _detect_date_format(get(row, "date", "transaction date") for row in rows)
         date_format = detected or regional.current().date_format
-    date_formats = regional.Preferences(date_format=date_format).date_input_formats
+    preferences = regional.Preferences(date_format=date_format)
 
     accounts_by_name = {a.name.lower(): a for a in Account.objects.all()}
     known = _known_fingerprints()
@@ -248,7 +248,7 @@ def _import_rows(fieldnames, rows, account, batch, date_format="auto"):
         raw_category = get(row, "category")
         raw_reconciled = get(row, "reconciled", "cleared", "status")
 
-        txn_date = _parse_date(raw_date, date_formats) if raw_date else None
+        txn_date = regional.parse_date(raw_date, preferences)
         amount = parse_amount(raw_amount) if raw_amount else None
         if txn_date is None or amount is None or not is_plausible_date(txn_date):
             result.unreadable += 1
@@ -410,15 +410,6 @@ def _detect_date_format(raw_dates):
             return "dmy"
         if int(b) > 12:
             return "mdy"
-    return None
-
-
-def _parse_date(raw, formats):
-    for fmt in formats:
-        try:
-            return datetime.strptime(raw, fmt).date()
-        except ValueError:
-            continue
     return None
 
 

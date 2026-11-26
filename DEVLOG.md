@@ -6726,3 +6726,98 @@ correctly, whoever calls it.
 `test_project`, `test_welcome`, `test_exports`, `test_transactions`, `test_reports`,
 `test_reporting`, `test_settings`, `test_pages`, `test_rates`); `CLAUDE.md`, `README.md`,
 `plans/03_structure_review.md`, `plans/README.md`, this log. No migration.
+
+## 26/11/2026 — Plan 03, Phase 3, part C: the forms package, shared helpers and small habits (S48, S18, S20)
+
+**What changed:** three items. 1,344 tests (1,230 before; 114 new, about 75 of them from the QA tester),
+ruff clean, no migration (`makemigrations --check` says no changes), no data touched. No
+template, static file or URL changed.
+- **3.9, `finance/forms/`.** `forms.py` and `auth_forms.py` became one module per area, like
+  `views/`: `accounts`, `categories`, `payees`, `transactions`, `reminders`, `imports`,
+  `filters` (the date-range form Transactions and Reports share), `settings` and `auth`, with
+  what they share in `_base`. `forms/__init__.py` re-exports nothing, so every import names the
+  real module.
+- **3.4, one fact in one place.** A Reminder's copy of its shared fields is `_series_values()`
+  and its "who is it for" label is `_who_for()`; the category type order is one dict that both
+  the database sort and the Python sort read; a stash's backups folder is `backup.backups_folder()`
+  and its database file `folder_names.DB_FILE_NAME`; `plural()` takes an irregular plural and
+  `next_sort_keys()` is the one place a header's next sort is worked out; the importer reads dates
+  through `regional.parse_date()`; the dashboard builds one `RateTable`; the tests share one
+  `imported_modules()` and one `ofx_file()`; and `BootstrapFormMixin` now styles the plain forms too.
+- **3.5, small habits.** Reminder Skip is POST only; the category guard reads the category once;
+  the admin's Transactions, Reminders and Reconciliations lists read each row's payee and category
+  with the page; every sum goes through `to_cent()`; `initial_from_reminder()` and
+  `Payee.remembered_memo()` came out of `transaction_form_view`; an unknown `?range=` is "This
+  year"; the CSV's byte order mark has a name (`codecs.BOM_UTF8`).
+
+**Behaviour that is not the same as before** (everything else reads the same):
+- A GET to a reminder's Skip address answers 405 (it redirected). The Skip button posts.
+- A hand-typed or old `?range=` value on Transactions shows This year, and the Date range box says
+  so. It showed Last 12 months, with the box blank.
+- A balance or total that should be zero shows 0.00. Three amounts of -0.10, -0.20 and +0.30 used to
+  add up, in SQLite's floating point, to a tiny negative number: the Payees page printed 0.00 but
+  painted the total red (S127), and a balance could read -0.00.
+
+**Why the code looks like this:**
+- **A move is proved by comparing what comes out, not by reading the diff.** A script cut each
+  class out of the old files byte for byte. A throwaway test then rendered 27 forms (bound and
+  unbound) before and after and compared the HTML: identical, after the split and again after the
+  styling work. That is the evidence that "every page reads the same".
+- **Shared pieces go in `_base.py`.** `PlausibleDateField` and `SafeModelMultipleChoiceField` joined
+  the two pieces S48 named, and `_use_regional_dates` lost its underscore because other modules
+  import it (the same rule as `views/_helpers.py`).
+- **`ReconcileStartForm` stays hand-styled.** The mixin would give its date box Bootstrap's
+  `form-control` class, which changes how that box looks. A comment says so; S135 files it for the
+  reconcile layout work.
+- **The backups folder is named in `backup.py`, not `folder_names.py`.** Both are standard library
+  only, because the launch script imports them before Django exists, and the test that guards that
+  counts even a relative import as "something else", so `backup.py` can't import `folder_names`.
+  The module that makes the backups owns the name. A function, `backups_folder()`, replaced four
+  copies of "folder / name", so the name can't be typed a fifth time.
+- **`to_cent()`, not `.quantize(CENT)`.** The plain call rounds half-even and keeps a `-0.00`;
+  `to_cent()` rounds half-up and drops the sign of a tiny negative, so it is the single rule for any
+  sum SQLite adds. `reconcile()`'s gap stays on `.quantize(CENT)`: it subtracts figures that already
+  have two decimals, so nothing is rounded there.
+- **The guard caches in `get_object()`.** The guard needs the category before the view does, and the
+  view then asked for it again. Django makes a new view object for every request, which is what
+  makes keeping it on the object safe. A test counts the calls, for GET and for POST.
+- **`list_select_related` names what a row reads.** With it unset, Django's default join leaves out a
+  row's payee and its category's parent, so each cost a query per row. The query-count test would have caught
+  it for any of the three lists. It also showed a different leftover: the Category filter in the
+  sidebar reads each subcategory's parent (filed, S134).
+- **Where a guard is in doubt, test the thing it guards.** The category guard is there to stop an
+  edit or delete, which are POSTs, so its tests POST, and one proves an ordinary category still
+  changes.
+- **A new test must fail on the old code.** A scratch script put the old behaviour back in seven
+  files, ran the 12 new behaviour tests and restored the files; all 12 failed, and four of them
+  first errored for a silly reason (a name my revert had lost), which is why the first run isn't
+  proof, only the second.
+
+**What the reviews changed.** Code, database, security and QA. Nothing Critical. Done from them:
+the guard's dead line and docstring, `rates is None`, `backups_folder()`, a one-row
+`remembered_memo()`, three module docstrings that say what the module must not do, POST tests for
+the guard, `imported_modules()` keeping both dots of `from .. import x`, a guard that the
+date-limit test found any forms at all, one constant for the amounts that cancel out, and a test
+that `forms/__init__.py` re-exports nothing. Filed (plan 03, S133–S135): ruff has never looked
+inside `finance/stashes/`, because `extend-exclude = ["stashes"]` matches that name at any depth
+(seven errors were hiding there); the admin's Category filter query per subcategory; the reconcile
+date box's class. The QA tester also found a bug the part did not cause, filed as plan 04's R35: an
+import file with dotted year-first or month-first dates (`2026.01.25`) is skipped row by row.
+
+**Teaching note — one fact, one name; and a refactor needs a proof that isn't "it looks right".**
+When "backups" is typed in four places, the fifth place gets a typo and nothing notices until a
+restore fails; a constant is better, and a function that builds the whole path is better still,
+because then there is nothing left to type. The second half is about trust. A refactor that moves
+code is the easiest kind to get subtly wrong (a lost class, a changed default) and the hardest to
+see in a diff, so measure it: render before and after and compare. And a test that has never been
+seen to fail proves nothing, so put the old behaviour back for a minute and watch it fail.
+
+**Files touched:** new `finance/forms/` (11 modules), `finance/tests/test_forms.py`,
+`finance/tests/test_view_helpers.py`; deleted `finance/forms.py` and `finance/auth_forms.py`;
+changed `finance/admin.py`, `backup.py`, `filters.py`, `models.py`, `services/` (`importing`,
+`rates`), `stashes/` (`folder_names`, `registry`), `views/` (`_helpers`, `accounts`, `auth`,
+`categories`, `dashboard`, `exports`, `imports`, `payees`, `reminders`, `settings`,
+`transactions`, `welcome`), `audit/admin.py`, `scripts/bootstrap.py`, `stashy/settings/test.py`,
+the tests (`base` and 20 modules, `audit/tests.py`); `CLAUDE.md`, `README.md`,
+`plans/03_structure_review.md`, `plans/04_fixes_and_changes_plan.md`, `plans/README.md`, this log.
+No migration.

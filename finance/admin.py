@@ -143,6 +143,9 @@ class TransactionAdmin(StashyModelAdmin):
     search_fields = ("payee__name", "memo")
     date_hierarchy = "date"
     autocomplete_fields = ("payee", "category", "account")
+    # A row shows its payee and its category's full name, which reads
+    # the category's parent: one query for the page, not one per row.
+    list_select_related = ("account", "payee", "category__parent")
 
 
 @admin.register(ImportBatch)
@@ -162,6 +165,8 @@ class ReminderAdmin(StashyModelAdmin):
         "status",
     )
     list_filter = ("reminder_type", "frequency")
+    # A row's name is its payee, else its category's full name.
+    list_select_related = ("account", "payee", "category__parent")
 
 
 @admin.register(Reconciliation)
@@ -176,3 +181,5 @@ class ReconciliationAdmin(StashyModelAdmin):
     )
     list_filter = ("account",)
     date_hierarchy = "statement_date"
+    # The adjustment shows as a transaction, which names its payee.
+    list_select_related = ("account", "adjustment_transaction__payee")

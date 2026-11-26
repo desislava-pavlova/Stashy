@@ -10,10 +10,16 @@ from unittest import mock
 from django.urls import reverse
 from django.utils import timezone
 
-from ..forms import AccountCreateForm, AccountForm, CategoryForm, TransferForm
+from ..forms.accounts import AccountCreateForm, AccountForm, TransferForm
+from ..forms.categories import CategoryForm
 from ..models import Account, Category, Payee, Profile, Reminder, Transaction, grouped_accounts
 from ..services.accounts import open_account, transfer
-from .base import LoggedInTestCase, LoggedInWithAccountTestCase, StashTestCase
+from .base import (
+    AMOUNTS_THAT_CANCEL_OUT,
+    LoggedInTestCase,
+    LoggedInWithAccountTestCase,
+    StashTestCase,
+)
 
 
 class OpeningBalanceTests(LoggedInTestCase):
@@ -617,3 +623,39 @@ class AccountSaveTests(StashTestCase):
         with mock.patch.object(Account, "ensure_transfer_category") as ensure:
             self.account.save()
         ensure.assert_not_called()
+
+
+class BalanceRoundingTests(LoggedInWithAccountTestCase):
+    """SQLite adds decimals as floats, so -0.10, -0.20 and 0.30 come
+    back as a tiny negative number. A balance shows exactly 0.00, never
+    -0.00."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        for amount in AMOUNTS_THAT_CANCEL_OUT:
+            Transaction.objects.create(
+                account=cls.account, date=date(2026, 1, 5), amount=Decimal(amount)
+            )
+
+    def test_amounts_that_cancel_out_give_a_plain_zero(self):
+        self.assertEqual(str(self.account.balance), "0.00")
+
+    def test_so_does_a_balance_computed_with_the_account_list(self):
+        account = Account.objects.with_balances().get(pk=self.account.pk)
+        self.assertEqual(str(account.balance), "0.00")
+
+    def test_a_balance_that_is_not_zero_has_exactly_two_decimals(self):
+        # Added as floats these come to 0.6000000000000001.
+        other = Account.objects.create(name="Savings")
+        for amount in ("0.10", "0.20", "0.30"):
+            Transaction.objects.create(
+                account=other, date=date(2026, 1, 5), amount=Decimal(amount)
+            )
+        self.assertEqual(str(other.balance), "0.60")
+        self.assertEqual(str(Account.objects.with_balances().get(pk=other.pk).balance), "0.60")
+
+    def test_an_account_with_no_transactions_has_a_balance_of_0_00_both_ways(self):
+        empty = Account.objects.create(name="Empty")
+        self.assertEqual(str(empty.balance), "0.00")
+        self.assertEqual(str(Account.objects.with_balances().get(pk=empty.pk).balance), "0.00")

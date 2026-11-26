@@ -30,7 +30,6 @@ from .. import backup, db_router, regional
 from ..models import Profile, name_key
 from . import StashError, folder_names, security
 
-BACKUPS_DIR_NAME = "backups"
 
 # What a refused restore says. Each ends with the reassurance: the
 # refusal comes before anything is replaced.
@@ -64,11 +63,11 @@ def stash_path(name):
 
 
 def stash_db_path(name):
-    return stash_path(name) / "db.sqlite3"
+    return stash_path(name) / folder_names.DB_FILE_NAME
 
 
 def stash_backups_dir(name):
-    return stash_path(name) / BACKUPS_DIR_NAME
+    return backup.backups_folder(stash_path(name))
 
 
 def stash_exists(name):

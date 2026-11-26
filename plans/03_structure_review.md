@@ -39,6 +39,9 @@ S104), on the same day.
 *25/11/2026:* Phase 3 part B (code moves into new modules: S15, S16,
 S17, S47, S66) is done; its reviews added S127–S132 (section R).
 Phase 2 finished on 19/11/2026 and Phase 3's part A on 20/11/2026.
+*26/11/2026:* Phase 3 part C (the forms package, the shared helpers and the
+small habits: S48, S18's Python parts, S20) is done; its reviews added
+S133–S135 (section S).
 
 **Baseline (10/10/2026):** 723 tests green. `ruff check .` and
 `ruff format --check .` are clean, `manage.py check` finds nothing, and
@@ -393,6 +396,8 @@ Checked, so nobody has to check again:
     set their CSS classes by hand.
   - **Dates in imports:** `importing._parse_date()` repeats
     `regional.parse_date()`.
+  - *The Python parts were done 25/11/2026 (item 3.4); the category totals
+    are S96 (4.4) and the JavaScript is Phase 5.*
 - **S19 — Templates repeat themselves, and the generic form isn't
   generic.**
   - **Shared page frame:** seven pages (the 5 picker and PIN pages, the
@@ -455,6 +460,8 @@ Checked, so nobody has to check again:
   - An unknown `?range=` value on Transactions silently becomes "Last 12
     months" (Reports' fallback). **Claude's call:** treat it as the
     page's own default, "This year".
+  - *Done 25/11/2026 (item 3.5), apart from the second initial-value block of
+    `transaction_form_view` (3.7, S45).*
 
 ### E. Documentation
 
@@ -517,7 +524,7 @@ Stashy.
 | S45 | 13/11/2026 | 19 files of app code (tests not counted); the worst listed below | You see places where a lot of code sits in one block, with no blank line between its steps. **Not overstated (Claude measured, 13/11/2026):** 47 stretches of 15 or more lines holding 8 or more statements with no blank line, in 19 files. PEP 8: "Use blank lines in functions, sparingly, to indicate logical sections." Rule (Claude's call): one blank line between a function's steps (read the request, query, build, respond), none inside one step. So an `if`/`elif` chain that makes one decision stays together: `resolve_range()`, `period_bucket()` and `_zone_table()` look dense but are lookup tables, and blank lines would only break them up. The ones that need it: `transaction_form_view` (about 90 lines with one blank line; it needs more than blank lines: the initial values for a reminder's Enter and for a new transaction each become a small helper, by your rule of one job per function), `account_reconcile` (40 lines; S42's start-page helper shortens it too), `reminder_list` (30 lines, its comments also trimmed by S44's rule), `audit/signals.py`'s `log_save` and `log_m2m`, `Reminder.regenerate_occurrences()`, `Category.clean()` (to check: it may be one chain of rules), `_report_filters`, `_import_ofx_rows`, the welcome steps, `stash_create`, `forgot_pin`, `category_usage`, `transaction_quick_edit`, `fetch_latest_rates`, and the rest of the 47 by the same rule. `reporting.py`'s (`category_vs_average_report_rows` and seven more) and `reports_view` wait for S14, which rewrites them in Phase 4, so they're touched once. Nothing changes on screen. Proposed phase: 3, item 3.7, in the same pass as S42, which already opens every function view. | open (decided 13/11/2026) |
 | S46 | 13/11/2026 | `finance/models.py` (`Profile.watched_expenses_title`), `finance/views/welcome.py` (`_step_watched_expenses`), a migration, `test_reports.py`, `test_welcome.py` | The Watched expenses title's default becomes **"Watched expenses"** instead of "Bills & Utilities" (your call, 13/11/2026). Why: the old default dates from Phase 13 (September 2026), when Watched expenses replaced a fixed "Bills & Utilities" report and the matching title meant "nothing looks different on day one" for the stashes that existed then. That reason has passed. Today a new stash that skips the welcome step gets a "Bills & Utilities" title on Settings and on Reports' card that nobody chose. Existing stashes keep the title they have saved (no data change): one showing "Bills & Utilities" may have kept it on purpose, and it can be renamed in Settings. **Claude's call:** the welcome step stops emptying the Title box on a first visit. It did that only to hide the old default; a neutral "Watched expenses" is a sensible starting title, so the box shows it and you can keep it or type over it. That line and its comment go, so S44's note about rewording that comment falls away. Tests: `test_default_title_is_bills_and_utilities` becomes the new default, and `test_title_starts_empty_…` becomes "starts with Watched expenses". A small migration records the new default; nothing in the data changes, but it is a migration, so the real stash is backed up first (`Stashy.bat` does that before it migrates). Proposed phase: 1. | done 15/11/2026 (item 1.17) |
 | S47 | 13/11/2026 | `finance/content.py` → `finance/tips.py`; the six views that import it; `test_pages.py`, `CLAUDE.md`, `README.md` | You'd like the module's name to say what's in it. `content.py` holds only the six `*_TIPS` lists (the "Stashy tips" beside the forms), 42 lines, nothing else, so `tips.py` (Claude's call: plain and short; `from ..tips import ACCOUNT_TIPS` reads well). The six imports in `views/` (accounts, categories, imports, payees, reminders, transactions), `TipsMovedOutOfTheViewsTests`' docstring in `test_pages.py`, CLAUDE.md's architecture map and README's folder tree follow. Nothing changes on screen. The tips' wording is yours to review and maybe change, another day; that's separate from the rename. Proposed phase: 3, item 3.8 (with 3.2's other moves and renames). | **done 25/11/2026** (item 3.8) |
-| S48 | 13/11/2026 | `finance/forms.py` (542 lines) and `finance/auth_forms.py` (116) → a `finance/forms/` package; the 21 import lines that name them (views, admin, tests) | One `forms.py` per app is Django's default and normal, but in Stashy it's the odd one out: views are split by area (`views/`), tests are one module per area, and templates get folders per area (S28). Your call (13/11/2026): split forms the same way. `forms/_base.py`: `DateInput`, `BootstrapFormMixin` (shared by all). `forms/accounts.py`: `AccountForm`, `AccountCreateForm`, `TransferForm`, `ReconcileStartForm`, `ReconcileFinishForm`. `forms/categories.py`: `CategoryForm`, `CategoryParentSelect`. `forms/payees.py`, `forms/transactions.py`, `forms/reminders.py`, `forms/imports.py`: one form each. `forms/settings.py`: `ProfileForm`, `CheckRatesForm`, `WatchedExpensesForm`. `forms/auth.py`: everything in today's `auth_forms.py` (`PinField`, `PinConfirmMixin` and the PIN forms), so its odd name goes too. Claude's call: `DateRangeFilterForm` goes to `forms/filters.py`, since both Transactions and Reports use it, matching S16's `finance/filters.py`, which turns its answers into dates. As with `views/`, `forms/__init__.py` re-exports nothing, so every import names the real module (`from ..forms.accounts import AccountForm`). The tests stay as they are: each form is already tested in its area's module, so only their imports change. Nothing changes on screen. CLAUDE.md's architecture map follows. Proposed phase: 3, item 3.9, after 3.2 (S16 moves the two non-form helpers out of `forms.py` first). | open (decided 13/11/2026) |
+| S48 | 13/11/2026 | `finance/forms.py` (542 lines) and `finance/auth_forms.py` (116) → a `finance/forms/` package; the 21 import lines that name them (views, admin, tests) | One `forms.py` per app is Django's default and normal, but in Stashy it's the odd one out: views are split by area (`views/`), tests are one module per area, and templates get folders per area (S28). Your call (13/11/2026): split forms the same way. `forms/_base.py`: `DateInput`, `BootstrapFormMixin` (shared by all). `forms/accounts.py`: `AccountForm`, `AccountCreateForm`, `TransferForm`, `ReconcileStartForm`, `ReconcileFinishForm`. `forms/categories.py`: `CategoryForm`, `CategoryParentSelect`. `forms/payees.py`, `forms/transactions.py`, `forms/reminders.py`, `forms/imports.py`: one form each. `forms/settings.py`: `ProfileForm`, `CheckRatesForm`, `WatchedExpensesForm`. `forms/auth.py`: everything in today's `auth_forms.py` (`PinField`, `PinConfirmMixin` and the PIN forms), so its odd name goes too. Claude's call: `DateRangeFilterForm` goes to `forms/filters.py`, since both Transactions and Reports use it, matching S16's `finance/filters.py`, which turns its answers into dates. As with `views/`, `forms/__init__.py` re-exports nothing, so every import names the real module (`from ..forms.accounts import AccountForm`). The tests stay as they are: each form is already tested in its area's module, so only their imports change. Nothing changes on screen. CLAUDE.md's architecture map follows. Proposed phase: 3, item 3.9, after 3.2 (S16 moves the two non-form helpers out of `forms.py` first). | done 25/11/2026 (item 3.9) |
 | S49 | 13/11/2026 | `finance/models.py` (1,000 lines) | You don't like one file for every model. Claude advised against splitting it: one `models.py` is Django's default, and the models refer to each other a lot (a transfer category belongs to an account, a reminder fills in a transaction), so a `models/` package would invite import loops for little gain. It would also be the one package that must re-export everything (Django finds models through `models`). Your call (13/11/2026): one file, with visual sections. A section banner before each group, in the style `views/exports.py`, `views/_helpers.py` and `services/importing.py` already use (a `# ----` line, the name, a `# ----` line). The file's order already matches, so nothing moves: Names (`name_key()` and its helper), Profile, Accounts (`AccountType`, the groups, `AccountQuerySet`, `Account`, `grouped_accounts()`), Categories (`CategoryQuerySet`, `Category`, `categories_alphabetical()`, `grouped_categories()`), Payees, Transactions, Imports (`ImportBatch`), Reminders, Exchange rates, Reconciliations. The same rule for `reporting.py`, the other long module, when S14 rewrites it (Phase 4). Nothing changes on screen. Proposed phase: 3, item 3.14 (numbered 3.10 when filed; moved to the end on 13/11/2026 when the whole-code review's items joined the phase), last, after any item that moves code in or out of `models.py`. | open (decided 13/11/2026) |
 
 Also from that review, 12/11/2026: you settled the date rule (complete dates always go through `sdate`/`regional`; short decorative dates such as the dashboard's "Thursday, 12 November" and Reports' "28 Sep" may keep a fixed style), now written in CLAUDE.md, so nothing to fix there. The last two items from the review are S38 and S39 above.
@@ -1533,7 +1540,9 @@ wrap at 99" in `CLAUDE.md` has no exception; `_import_summary()` and
   category's full name, else 'Reminder'" expression: one small method.
   (3) The OFX skeleton is copied in `test_limits.py`'s `ofx()` helper and
   in `OFX_FILE` in `test_imports.py`, while `CLAUDE.md` says a shared test
-  helper lives in `tests/base.py`.
+  helper lives in `tests/base.py`. *Done 25/11/2026 (item 3.5): (1) is
+  `audit_list_url()`, (2) went in with item 3.4 as `_who_for()`, and (3) is
+  `ofx_file()` in `tests/base.py`, byte for byte the old `OFX_FILE`.*
 - **S126 — The restructured texts have no test that pins them** (code
   reviewer; Phase 3, 3.5 with S20). The syntax-tree comparison proved the
   S43 edits safe, but a later edit to these lines would go unnoticed:
@@ -1543,7 +1552,8 @@ wrap at 99" in `CLAUDE.md` has no exception; `_import_summary()` and
   (`test_welcome.py`), the unknown-account sentence of the import summary
   (`test_imports.py`), the "Same operation" link in `AuditAdminTests`, and
   the two figures inside the "more than Stashy can store" message
-  (`test_reconciliation.py` checks only the phrase).
+  (`test_reconciliation.py` checks only the phrase). *Done 25/11/2026 (item
+  3.5): a test for each.*
 - The same review's grammar slip ("1 duplicates skipped" in the import
   summary) changes what you read, so it is plan 04's R34.
 
@@ -1574,7 +1584,9 @@ Not done, filed here, because they are in code that was only moved:
   `{% if total < 0 %}` paints the total red, and the amount sort sees a
   real negative. **Fix:** `to_cent(row["total"])`, with a test of exactly
   that example. Not fixed in part B, whose rule is that every page reads the
-  same as before.
+  same as before. *Done 25/11/2026 with item 3.5 (S20's money rule names the
+  payee totals), with a test of exactly that example; the other S64 slips
+  are still item 3.11.*
 - **S128 — A cut-off Frankfurter reply is a 500 page** (security reviewer;
   Phase 3, 3.11 with S64). `fetch_latest_rates()` catches `OSError`,
   `ValueError` and friends, but not `http.client.HTTPException`
@@ -1589,7 +1601,9 @@ Not done, filed here, because they are in code that was only moved:
   but the cause is hard to see, and an editor that tidies invisible
   characters could drop it. **Fix:** `codecs.BOM_UTF8` (the response takes
   bytes; the file is byte for byte the same), done with
-  `scripts/dev/apply_edits.py` and a check of the bytes.
+  `scripts/dev/apply_edits.py` and a check of the bytes. *Done 25/11/2026
+  (item 3.5); the new line has no invisible character and the file starts
+  with the same three bytes.*
 - **S130 — Small things in `payee_summaries()`** (database reviewer; Phase 3,
   3.20 with S109 for the first). (1) `sorted(labels)` is case-sensitive
   ("zebra" sorts after "Zara"); 3.20's rule is `name_key`. (2)
@@ -1621,7 +1635,8 @@ Not done, filed here, because they are in code that was only moved:
   `rates=`, which the function already takes. (4) `services/rates.py` writes
   `from django.db import transaction as db_transaction`, while the other
   services import `transaction`. (5) `test_project.py` has three
-  hand-written import walkers; one helper in `tests/base.py`.
+  hand-written import walkers; one helper in `tests/base.py`. *All five done
+  25/11/2026 (item 3.4).*
 - Judged not worth planning: `open_account()` doesn't check that the account
   is new (nothing passes a saved one), `transfer()` doesn't check the
   stored-amount limit (the form's `max_digits` does), and
@@ -1631,7 +1646,67 @@ Not done, filed here, because they are in code that was only moved:
   item 6.2. `S126` names `test_currency.py` for `ExchangeRate.__str__`: the
   rate tests are in `test_rates.py` since 25/11/2026.
 
-<!-- Next number: S133 -->
+### S. Found by the reviews of Phase 3, part C (26/11/2026)
+
+The code, database and security reviewers and the QA tester read part C
+(you stopped the QA tester before it reported; it had added about 75 tests,
+which all pass). Nothing Critical. Done the same day, because the code was
+written in this part: the category guard lost a dead line and its docstring
+says why keeping the category on the object is safe; `convert_balances()`
+asks `rates is None`; a stash's backups folder is one function,
+`backup.backups_folder()`, in place of four copies of "folder / name";
+`Payee.remembered_memo()` asks for one row instead of the payee's whole
+history; `regenerate_occurrences()` works the shared values out once; three
+form modules' docstrings say what they must not do; a docstring that was one
+column too wide; and in the tests: POSTs to the category guard, an edit and a
+delete that really change something, `imported_modules()` keeps both dots of
+`from .. import x`, the guard on every plain form's date box checks that it
+found the forms, the three amounts that cancel out are one constant in
+`tests/base.py`, and a test that `forms/__init__.py` re-exports nothing. The
+QA tester also found a bug that part C did not cause: plan 04's R35.
+Filed here:
+- **S133 — Ruff never looks inside `finance/stashes/`** (database reviewer;
+  Phase 3, 3.22). `extend-exclude = ["stashes"]` in `pyproject.toml` skips a
+  folder of that name at any depth, not only the data folder at the top, so
+  "`ruff check .` is clean" has been true for those files only because they
+  are not read: `folder_names.py` (an import block), `security.py` (an
+  import block) and `registry.py` (five lines over 99 columns), found by
+  running ruff on the folder by path. Part C's own docstring there was caught
+  the same way and fixed. **Fix:** the pattern `"/stashes"`, then
+  `ruff check --fix` and `ruff format` on the folder, and a look at whether
+  `scripts/dev`'s tools skip it the same way (their own skip list is the
+  top-level folder only).
+- **S134 — The admin's Category filter reads each subcategory's parent**
+  (found while writing part C's admin test; Phase 3, 3.23). The Transactions
+  list's sidebar labels each category with `Category.__str__`, which is
+  `full_name`, which reads `parent`: one query per subcategory on every
+  visit of that list. `list_select_related` doesn't reach a filter. **Fix:**
+  a small `RelatedFieldListFilter` subclass for that one filter whose choices
+  come from `select_related("parent")`, with a query-count test like
+  `AdminListQueryTests`.
+- **S135 — The reconcile page's date box has no `form-control` class**
+  (found by the form-styling work; Phase 5, 5.5 with S27). Only the amount
+  box on the first step is styled by `ReconcileStartForm`; the date box is
+  plain. Part C left it so that no page changes, and says why in a comment.
+  S27 redoes that layout and should decide it.
+- Already planned: `grouped_categories()` and the two sorts in
+  `views/categories.py` still sort on `name.lower()` and not `name_key`
+  (two reviewers; that is S109, item 3.20). An upload size limit and
+  `pip-audit` are in "Noticed, not planned" below.
+- Judged not worth planning: `reconcile()`'s `gap.quantize(CENT)` (the
+  figures already have two decimals, so nothing is rounded, see 3.5);
+  `forms/filters.py` shares a name with `finance/filters.py` (kept, as S48
+  named it; each docstring says what the other is); `_series_values()` reads
+  `account`, `payee` and `category` as objects and could read their ids (it
+  did before); `initial_from_reminder()` could live on `Reminder`; the older
+  `safe_next()` and `watched_expenses_picker_context()` tests could move into
+  `test_view_helpers.py`; and `_db_file()` repeats the preamble of
+  `_stash_dirs()` in `scripts/bootstrap.py`.
+- Your own steps from the security review, already in "Noticed, not
+  planned": the git history checks, and `git rm -r --cached staticfiles
+  .idea` (Phase 6).
+
+<!-- Next number: S136 -->
 
 ---
 
@@ -2059,14 +2134,18 @@ order because the notes on the items below say which must come after which:
   S17, S47, S66). 3.8 and 3.13 ride with 3.2, as their notes say.
 - **C, the forms package and the shared helpers:** 3.9, 3.4, 3.5 (S48, S18's
   Python parts, S20). 3.9 needs 3.2 done first.
-- **D, the small fixes:** 3.10, 3.11, 3.12, 3.15 to 3.21 (S63, S64, S65, S71,
-  S82, S89, S88's edges, S101, S109, S116, S124). After C, so the PIN and id
+- **D, the small fixes:** 3.10, 3.11, 3.12, 3.15 to 3.23 (S63, S64, S65, S71,
+  S82, S89, S88's edges, S101, S109, S116, S124, S133, S134). After C, so the PIN and id
   helpers are written in the forms' final places.
 - **E, the views pass, and the banners last:** 3.6, 3.7, 3.14 (S42, S45,
   S49). The views are touched once, in their final places.
 
 *Part B done 25/11/2026 (items 3.1, 3.2, 3.3, 3.8 and 3.13), with
 section R's S127–S132 from its reviews.*
+
+*Part C built 25/11/2026 and closed 26/11/2026 (items 3.9, 3.4 and 3.5; S125,
+S126, S127, S129 and S132 closed on the way), with section S's S133–S135 from
+its reviews.*
 
 - [x] **3.0** First, the two tool settings, each as its own commit:
   S40, Django gets its own import group and `lines-after-imports = 2` in
@@ -2112,9 +2191,44 @@ section R's S127–S132 from its reviews.*
   with the fetch. `test_currency.py` became `test_rates.py`, named after
   the code it tests, and a test keeps `currency.py` free of models,
   services and Django, so the cycle can't come back.*
-- [ ] **3.4** S18: the shared helpers (Python parts; the JavaScript waits
-  for Phase 5).
-- [ ] **3.5** S20: the small habits and rule slips.
+- [x] **3.4** S18: the shared helpers (Python parts; the JavaScript waits
+  for Phase 5). *Done 25/11/2026, with S132's five items. A Reminder's
+  copy of its shared fields is `_series_values()` and its "who is it
+  for" label is `_who_for()`; the category type order is one dict that
+  the `Case/When` and the Python sort both read; the stash folder
+  layout is named once; `plural()` takes the plural of an irregular
+  word and `next_sort_keys()` is the one place the "next click" sort is
+  worked out; `BootstrapFormMixin` styles the plain forms too
+  (`control_size = "sm"` for the filter bar); the importer reads dates
+  through `regional.parse_date()`; the dashboard builds one `RateTable`;
+  `services/rates.py` imports `transaction` like the other services; and
+  the tests share one `imported_modules()` instead of three import
+  walkers. Claude's calls: (1) a stash's backups folder is named by
+  `backup.backups_folder()` (backup.py makes the backups) and its
+  database file by `folder_names.DB_FILE_NAME`, not both in
+  `folder_names.py`: `backup.py` must stay standard-library only, and
+  the test that checks it counts even a relative import as something
+  else, so it can't import `folder_names`; bootstrap got a `_db_file()`
+  helper for its one in-function import. (2) `ReconcileStartForm` stays
+  hand-styled: its date box has no `form-control` class today, and the
+  mixin would add one, which changes how the page looks. Not here: the
+  category totals in `reporting.py` are S96 (4.4, with S14).*
+- [x] **3.5** S20: the small habits and rule slips. *Done 25/11/2026,
+  with S125, S126 and S129. Reminder Skip is `@require_POST` like every
+  other action, so a GET now answers 405 (the test that expected a
+  redirect says 405); the category guard reads the category once; the
+  admin's Transactions, Reminders and Reconciliations lists read each
+  row's payee and category with the page (`list_select_related`); every
+  sum goes through `to_cent()`: `Account.balance`,
+  `reconciled_balance()`, the Transactions total and each payee total,
+  which is also S127; the reminder pre-fill of `transaction_form_view` is
+  `initial_from_reminder()` and "the memo used last time" is
+  `Payee.remembered_memo()` (the other initial-value block waits for 3.7);
+  an unknown `?range=` on Transactions is "This year". Claude's call: the
+  payee totals went in here because S20 names them, which closes S127 in
+  the same step. `reconcile()`'s gap is left on `.quantize(CENT)`: it
+  subtracts figures that already have two decimals, so nothing is
+  rounded.*
 - [ ] **3.6** S42: every function view builds `context` first and ends
   with `return render(request, "<template>", context)`; calculations go
   in named variables above it; one helper for reconcile's start page.
@@ -2126,9 +2240,20 @@ section R's S127–S132 from its reviews.*
 - [x] **3.8** S47: `content.py` becomes `tips.py` (six imports, a test
   docstring, CLAUDE.md, README). Best done with 3.2's moves. *Done
   25/11/2026.*
-- [ ] **3.9** S48: `forms.py` and `auth_forms.py` become a `forms/`
+- [x] **3.9** S48: `forms.py` and `auth_forms.py` become a `forms/`
   package split by area, like `views/`, with no re-exports; the 21
-  import lines follow. After 3.2.
+  import lines follow. After 3.2. *Done 25/11/2026: `_base`, `accounts`,
+  `categories`, `payees`, `transactions`, `reminders`, `imports`, `filters`,
+  `settings` and `auth`, cut out of the old files byte for byte by a script,
+  and the HTML of 27 form renders (bound and unbound) is identical before
+  and after. Claude's calls: `PlausibleDateField` and
+  `SafeModelMultipleChoiceField` sit in `_base.py` with the two pieces S48
+  named, and `_use_regional_dates` lost its underscore because other
+  modules import it; `ProfileColumnsOnlyMixin` went with the settings
+  forms; the reminder form imports `CategoryParentSelect` from
+  `forms/categories.py`, as S48 put it there. `CheckRatesForm` no longer
+  exists. One test changed beyond its imports: the guard that every plain
+  form's date box carries the limits now walks every module of the package.*
 - [ ] **3.10** S63: `bootstrap.py`'s in-function imports get their
   comment, and the guard test checks `scripts/` and nested imports. (The
   comments were written on 16/11/2026 with S110, which added a third import
@@ -2170,6 +2295,11 @@ section R's S127–S132 from its reviews.*
   S124: `max_digits=12, decimal_places=2` is written in about eight
   places, and `MAX_AMOUNT` is a ninth copy of the same fact; constants in
   `limits.py` that the columns and `MAX_AMOUNT` both read.
+- [ ] **3.22** S133: ruff looks inside `finance/stashes/`: the pattern
+  becomes `"/stashes"` (the data folder at the top only), and the seven
+  errors that were hidden there are fixed.
+- [ ] **3.23** S134: the admin Transactions list's Category filter reads
+  each subcategory's parent in one query, not one per subcategory.
 
 **Done when:** the suite is green with no test edited except for moved
 imports, and every page renders the same as before.
@@ -2203,7 +2333,8 @@ rows, which Phase 1 already added.
   loads only on pages with charts.
 - [ ] **5.5** S26 and S27: the two reconcile steps' layout (Mark all on
   the left, the buttons on the right; labels on the left, values lined up
-  on the right).
+  on the right). With S135: the first step's date box gets the same
+  `form-control` class as the amount box, or says why not.
 - [ ] **5.6** S29 and S35: labels linked to their boxes, names for the
   controls a screen reader can't name, page headings, charts described,
   and `.usage-empty` readable (G's note).

@@ -255,3 +255,23 @@ class FetchLatestRatesTests(StashTestCase):
             fetch_latest_rates("EUR", ["USD"])
 
         self.assertFalse(ExchangeRate.objects.exists())
+
+
+class ExchangeRateLabelTests(StashTestCase):
+    def test_str_reads_as_a_sentence_with_the_rate_trimmed_and_the_date(self):
+        rate = ExchangeRate(
+            base_currency="EUR",
+            quote_currency="USD",
+            rate=Decimal("1.1600000000"),
+            date=date(2026, 9, 12),
+        )
+        self.assertEqual(str(rate), "1 EUR = 1.16 USD (12/09/2026)")
+
+    def test_a_round_rate_has_no_exponent(self):
+        rate = ExchangeRate(
+            base_currency="EUR",
+            quote_currency="JPY",
+            rate=Decimal("100.0000000000"),
+            date=date(2026, 9, 12),
+        )
+        self.assertEqual(str(rate), "1 EUR = 100 JPY (12/09/2026)")

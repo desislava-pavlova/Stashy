@@ -9,7 +9,9 @@ from unittest import mock
 from django.urls import reverse
 from django.utils import timezone
 
-from ..forms import ReminderForm
+from audit.models import AuditLogEntry
+
+from ..forms.reminders import ReminderForm
 from ..models import Account, Category, Payee, Reminder, Transaction
 from .base import TODAY_13_SEPT, TODAY_14_SEPT, LoggedInWithAccountTestCase, StashTestCase
 
@@ -777,6 +779,36 @@ class ReminderIntervalTests(LoggedInWithAccountTestCase):
 
 
 class ReminderLabelTests(StashTestCase):
+    def test_str_is_the_due_date_who_and_how_much(self):
+        account = Account.objects.create(name="Checking")
+        payee = Payee.objects.create(name="Landlord")
+        due = date(2026, 10, 1)
+        expense = Reminder.objects.create(
+            account=account, payee=payee, amount=Decimal("500.00"), next_due_date=due
+        )
+        income = Reminder.objects.create(
+            account=account,
+            payee=payee,
+            amount=Decimal("20.00"),
+            reminder_type=Category.CategoryType.INCOME,
+            next_due_date=due,
+        )
+        no_amount = Reminder.objects.create(account=account, payee=payee, next_due_date=due)
+        self.assertEqual(str(expense), "01/10/2026 | Landlord | -500.00")
+        self.assertEqual(str(income), "01/10/2026 | Landlord | 20.00")
+        self.assertEqual(str(no_amount), "01/10/2026 | Landlord | varies")
+
+    def test_a_subcategory_is_named_with_its_parent(self):
+        account = Account.objects.create(name="Checking")
+        home = Category.objects.create(name="Home", category_type=Category.CategoryType.EXPENSE)
+        reminder = Reminder.objects.create(
+            account=account,
+            category=home.create_subcategory("Rent"),
+            amount=Decimal("500.00"),
+            next_due_date=date(2026, 10, 1),
+        )
+        self.assertEqual(str(reminder), "01/10/2026 | Home > Rent | -500.00")
+
     def test_str_uses_payee_when_present(self):
         account = Account.objects.create(name="Checking")
         payee = Payee.objects.create(name="Landlord")
@@ -787,6 +819,48 @@ class ReminderLabelTests(StashTestCase):
             next_due_date=date(2026, 10, 1),
         )
         self.assertIn("Landlord", str(reminder))
+
+    def test_a_payee_beats_a_category_in_the_name(self):
+        account = Account.objects.create(name="Checking")
+        reminder = Reminder.objects.create(
+            account=account,
+            payee=Payee.objects.create(name="Landlord"),
+            category=Category.objects.create(
+                name="Rent", category_type=Category.CategoryType.EXPENSE
+            ),
+            amount=Decimal("500.00"),
+            next_due_date=date(2026, 10, 1),
+        )
+        self.assertEqual(str(reminder), "01/10/2026 | Landlord | -500.00")
+
+    def test_moving_the_due_date_names_who_the_reminder_is_for_in_the_audit_log(self):
+        account = Account.objects.create(name="Checking")
+        home = Category.objects.create(name="Home", category_type=Category.CategoryType.EXPENSE)
+        cases = {
+            "Landlord": {"payee": Payee.objects.create(name="Landlord")},
+            "Home > Rent": {"category": home.create_subcategory("Rent")},
+            "Reminder": {},
+        }
+        for who, fields in cases.items():
+            with self.subTest(who=who):
+                reminder = Reminder.objects.create(
+                    account=account,
+                    amount=Decimal("5.00"),
+                    next_due_date=date(2026, 10, 1),
+                    frequency="monthly",
+                    **fields,
+                )
+                reminder.advance_due_date()
+                reason = (
+                    AuditLogEntry.objects.filter(
+                        table="finance_reminder", row_id=str(reminder.pk), column="next_due_date"
+                    )
+                    .values_list("reason", flat=True)
+                    .get()
+                )
+                self.assertEqual(
+                    reason, f"Next due date moved forward one period for reminder ({who})"
+                )
 
     def test_str_falls_back_to_category_then_a_generic_label(self):
         account = Account.objects.create(name="Checking")
@@ -926,3 +1000,46 @@ class ReminderSaveTests(StashTestCase):
         with mock.patch.object(Reminder, "regenerate_occurrences") as regenerate:
             new.save()
         regenerate.assert_called_once_with(previous_due_date=None)
+
+
+class SeriesCopyTests(StashTestCase):
+    """A new occurrence, and the record of a period just dealt with,
+    carry every field the series shares (`Reminder.SERIES_FIELDS`), so a
+    field added there reaches both."""
+
+    def test_both_carry_every_series_field(self):
+        account = Account.objects.create(name="Checking")
+        category = Category.objects.create(name="Rent", category_type=Category.CategoryType.INCOME)
+        head = Reminder.objects.create(
+            account=account,
+            payee=Payee.objects.create(name="Tenant"),
+            category=category,
+            amount=Decimal("500.00"),
+            reminder_type=Category.CategoryType.INCOME,
+            notes="flat 2",
+            frequency="monthly",
+            next_due_date=timezone.localdate(),
+        )
+        copies = {"occurrence": head.occurrences.first(), "period record": head.record_period()}
+        for kind, copy in copies.items():
+            for field in Reminder.SERIES_FIELDS:
+                with self.subTest(copy=kind, field=field):
+                    self.assertEqual(getattr(copy, field), getattr(head, field))
+
+    def test_a_series_with_nothing_filled_in_copies_the_blanks_too(self):
+        """No payee, category, amount or notes: the copies carry those
+        blanks, not made-up values, and are one-time reminders tied to
+        the series."""
+        account = Account.objects.create(name="Checking")
+        head = Reminder.objects.create(
+            account=account, frequency="monthly", next_due_date=timezone.localdate()
+        )
+        copies = {"occurrence": head.occurrences.first(), "period record": head.record_period()}
+        for kind, copy in copies.items():
+            with self.subTest(copy=kind):
+                self.assertEqual(
+                    (copy.payee, copy.category, copy.amount, copy.notes), (None, None, None, "")
+                )
+                self.assertEqual(
+                    (copy.series, copy.frequency), (head, Reminder.Frequency.ONE_TIME)
+                )

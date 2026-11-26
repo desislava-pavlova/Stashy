@@ -12,9 +12,10 @@ from django.urls import reverse
 
 from audit.models import AuditLogEntry
 
-from ..forms import PayeeForm
+from ..forms.payees import PayeeForm
 from ..models import Account, Category, Payee, Transaction, name_key, payee_summaries
 from .base import (
+    AMOUNTS_THAT_CANCEL_OUT,
     LoggedInTestCase,
     LoggedInWithAccountTestCase,
     StashTestCase,
@@ -339,6 +340,27 @@ class PayeeListFilterAndSortTests(LoggedInWithAccountTestCase):
                 )
                 self.assertRegex(response.content.decode(), r"Payee\s*<i [^>]*caret-up-fill")
 
+    def test_each_header_asks_for_the_opposite_of_the_sort_in_use(self):
+        # No ?sort= at all is a sort by name, so Payee's link flips it.
+        for current, name_next in (
+            ("", "-name"),
+            ("name", "-name"),
+            ("-name", "name"),
+            ("usage", "name"),
+        ):
+            with self.subTest(sort=current):
+                params = {"sort": current} if current else {}
+                response = self.client.get(reverse("finance:payee_list"), params)
+                self.assertEqual(
+                    response.context["sort_next"],
+                    {
+                        "name": name_next,
+                        "category": "category",
+                        "amount": "amount",
+                        "usage": "-usage" if current == "usage" else "usage",
+                    },
+                )
+
     def test_a_category_filter_that_is_not_a_number_is_ignored(self):
         # S2's family: "²" passes str.isdigit() but int() refuses it,
         # which used to be a 500 page.
@@ -556,3 +578,135 @@ class PayeeListCategoryOrderTests(LoggedInTestCase):
         body = response.content.decode().replace("&nbsp;", " ")
         self.assertLess(body.index("Bakery"), body.index(">Groceries<"))
         self.assertLess(body.index(">Groceries<"), body.index(">    Supermarket<"))
+
+
+class PayeeTotalRoundingTests(StashTestCase):
+    def test_amounts_that_cancel_out_total_exactly_zero(self):
+        account = Account.objects.create(name="Checking")
+        payee = Payee.objects.create(name="Lidl")
+        for amount in AMOUNTS_THAT_CANCEL_OUT:
+            Transaction.objects.create(
+                account=account, date=date(2026, 1, 5), amount=Decimal(amount), payee=payee
+            )
+        [summary] = payee_summaries([payee])
+        self.assertEqual(
+            [(currency, str(total)) for currency, total in summary["totals"]],
+            [(account.currency, "0.00")],
+        )
+
+    def test_a_total_that_is_not_zero_has_exactly_two_decimals(self):
+        # Added as floats these come to 0.6000000000000001.
+        account = Account.objects.create(name="Checking")
+        payee = Payee.objects.create(name="Lidl")
+        for amount in ("0.10", "0.20", "0.30"):
+            Transaction.objects.create(
+                account=account, date=date(2026, 1, 5), amount=Decimal(amount), payee=payee
+            )
+        [summary] = payee_summaries([payee])
+        self.assertEqual(
+            [(currency, str(total)) for currency, total in summary["totals"]],
+            [(account.currency, "0.60")],
+        )
+
+    def test_each_currency_is_rounded_on_its_own(self):
+        euro = Account.objects.create(name="Checking")
+        dollar = Account.objects.create(name="US card", currency="USD")
+        payee = Payee.objects.create(name="Lidl")
+        for account, amount in (
+            (euro, "-0.10"),
+            (euro, "-0.20"),
+            (euro, "0.30"),
+            (dollar, "-1.10"),
+            (dollar, "-2.20"),
+        ):
+            Transaction.objects.create(
+                account=account, date=date(2026, 1, 5), amount=Decimal(amount), payee=payee
+            )
+        [summary] = payee_summaries([payee])
+        self.assertEqual(
+            [(currency, str(total)) for currency, total in summary["totals"]],
+            [("EUR", "0.00"), ("USD", "-3.30")],
+        )
+
+    def test_a_payee_with_no_transactions_has_no_totals(self):
+        [summary] = payee_summaries([Payee.objects.create(name="Unused")])
+        self.assertEqual(summary["totals"], [])
+
+
+class RememberedMemoTests(StashTestCase):
+    """The memo a payee had the last time it was filed under a
+    category: what entering a reminder starts the memo with."""
+
+    @classmethod
+    def setUpTestData(cls):
+        account = Account.objects.create(name="Checking")
+        cls.payee = Payee.objects.create(name="Lidl")
+        cls.food = Category.objects.create(name="Food", category_type="expense")
+        cls.fuel = Category.objects.create(name="Fuel", category_type="expense")
+        cls.other = Category.objects.create(name="Other", category_type="expense")
+        for on, category, memo in (
+            (date(2026, 1, 5), cls.food, "old shop"),
+            (date(2026, 2, 5), cls.food, "new shop"),
+            (date(2026, 3, 1), cls.fuel, "diesel"),
+        ):
+            Transaction.objects.create(
+                account=account,
+                date=on,
+                amount=Decimal("-5.00"),
+                payee=cls.payee,
+                category=category,
+                memo=memo,
+            )
+
+    def test_the_latest_memo_in_that_category_wins(self):
+        self.assertEqual(self.payee.remembered_memo(self.food.pk), "new shop")
+
+    def test_each_category_has_its_own(self):
+        self.assertEqual(self.payee.remembered_memo(self.fuel.pk), "diesel")
+
+    def test_a_category_never_used_with_the_payee_has_none(self):
+        self.assertEqual(self.payee.remembered_memo(self.other.pk), "")
+
+    def test_a_payee_with_no_transactions_remembers_nothing(self):
+        self.assertEqual(Payee.objects.create(name="New").remembered_memo(self.food.pk), "")
+
+    def test_a_memo_belongs_to_the_payee_it_was_written_for(self):
+        other_payee = Payee.objects.create(name="Aldi")
+        self.assertEqual(other_payee.remembered_memo(self.food.pk), "")
+
+    def test_no_category_means_the_payees_uncategorized_transactions(self):
+        # None is not "any category": it is the group of transactions
+        # with none (what category_history() groups under None too).
+        self.assertEqual(self.payee.remembered_memo(None), "")
+        Transaction.objects.create(
+            account=Account.objects.get(),
+            date=date(2026, 4, 1),
+            amount=Decimal("-5.00"),
+            payee=self.payee,
+            memo="no category",
+        )
+        self.assertEqual(self.payee.remembered_memo(None), "no category")
+        self.assertEqual(self.payee.remembered_memo(self.food.pk), "new shop")
+
+    def test_the_latest_date_wins_not_the_one_entered_last(self):
+        Transaction.objects.create(
+            account=Account.objects.get(),
+            date=date(2025, 6, 1),
+            amount=Decimal("-5.00"),
+            payee=self.payee,
+            category=self.fuel,
+            memo="entered late, dated early",
+        )
+        self.assertEqual(self.payee.remembered_memo(self.fuel.pk), "diesel")
+
+    def test_a_blank_latest_memo_is_what_is_remembered(self):
+        # Not the last memo that had words in it.
+        Transaction.objects.create(
+            account=Account.objects.get(),
+            date=date(2026, 5, 1),
+            amount=Decimal("-5.00"),
+            payee=self.payee,
+            category=self.food,
+            memo="",
+        )
+        self.assertEqual(self.payee.remembered_memo(self.food.pk), "")

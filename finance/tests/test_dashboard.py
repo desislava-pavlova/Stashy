@@ -7,7 +7,10 @@ from datetime import date
 from decimal import Decimal
 from unittest import mock
 
+from django.conf import settings
+from django.db import connections
 from django.test import SimpleTestCase
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 
@@ -313,6 +316,32 @@ class DashboardCurrencyTests(LoggedInWithAccountTestCase):
         self.assertEqual(response.context["main_currency"], "EUR")
         self.assertEqual(response.context["month_spending"], Decimal("60.00"))
         self.assertEqual(response.context["spending_tree"][0]["total"], 60.0)
+
+
+class DashboardReadsTheRatesOnceTests(LoggedInWithAccountTestCase):
+    """Net worth and the month's tiles convert through one rate table,
+    so the rates are read once, not once for each."""
+
+    def test_the_exchange_rates_are_read_once_for_the_whole_page(self):
+        today = timezone.localdate()
+        groceries = Category.objects.create(
+            name="Groceries", category_type=Category.CategoryType.EXPENSE
+        )
+        usd = Account.objects.create(name="US card", currency="USD")
+        ExchangeRate.objects.create(
+            base_currency="USD", quote_currency="EUR", rate=Decimal("0.5"), date=today
+        )
+        # Both a balance and a month's spending need a USD rate.
+        Transaction.objects.create(
+            account=usd, date=today, category=groceries, amount=Decimal("-100.00")
+        )
+        self.client.get(reverse("finance:dashboard"))  # the session's first visit
+
+        with CaptureQueriesContext(connections[settings.TEST_STASH]) as queries:
+            self.client.get(reverse("finance:dashboard"))
+
+        rate_reads = [query for query in queries if "finance_exchangerate" in query["sql"]]
+        self.assertEqual(len(rate_reads), 1)
 
 
 class DashboardMissingRateTests(LoggedInWithAccountTestCase):

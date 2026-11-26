@@ -29,7 +29,7 @@ from audit.context import system_action
 from . import regional
 from .currency import CURRENCY_CHOICES, DEFAULT_CURRENCY
 from .limits import MAX_REMINDER_INTERVAL, MAX_TRANSACTION_NUMBER, validate_plausible_date
-from .money import CENT, ZERO
+from .money import ZERO, to_cent
 from .text import possessive
 
 
@@ -289,14 +289,14 @@ class Account(models.Model):
             total = self.transactions.aggregate(total=Sum("amount"))["total"]
         # SQLite adds decimals as floating point, so round away results
         # like 9.66000000000000.
-        return (total or ZERO).quantize(CENT)
+        return to_cent(total)
 
     def reconciled_balance(self):
         """Sum of already-reconciled transactions - the opening balance
         a new reconciliation starts from, since everything reconciled so
         far is the settled starting point."""
         total = self.transactions.filter(reconciled=True).aggregate(total=Sum("amount"))["total"]
-        return (total or ZERO).quantize(CENT)
+        return to_cent(total)
 
     @property
     def group(self):
@@ -509,6 +509,8 @@ _CATEGORY_TYPE_ORDER = {
     Category.CategoryType.EXPENSE: 1,
     Category.CategoryType.TRANSFER: 2,
 }
+# Where a type this table doesn't know would sort: after all of them.
+_UNKNOWN_TYPE_RANK = 99
 
 
 def categories_alphabetical(queryset):
@@ -521,10 +523,11 @@ def categories_alphabetical(queryset):
     list page uses grouped_categories()."""
     return queryset.annotate(
         _sort_type=Case(
-            When(category_type=Category.CategoryType.INCOME, then=Value(0)),
-            When(category_type=Category.CategoryType.EXPENSE, then=Value(1)),
-            When(category_type=Category.CategoryType.TRANSFER, then=Value(2)),
-            default=Value(99),
+            *(
+                When(category_type=kind, then=Value(rank))
+                for kind, rank in _CATEGORY_TYPE_ORDER.items()
+            ),
+            default=Value(_UNKNOWN_TYPE_RANK),
         ),
         _sort_group=Coalesce("parent__name_key", "name_key"),
         _sort_child=Case(When(parent__isnull=True, then=Value("")), default=F("name_key")),
@@ -539,7 +542,7 @@ def grouped_categories(categories):
     def sort_key(category):
         parent_name = (category.parent.name if category.parent_id else category.name).lower()
         return (
-            _CATEGORY_TYPE_ORDER.get(category.category_type, 99),
+            _CATEGORY_TYPE_ORDER.get(category.category_type, _UNKNOWN_TYPE_RANK),
             parent_name,
             category.parent_id is not None,
             category.name.lower(),
@@ -643,6 +646,12 @@ class Payee(models.Model):
                 history.append(transaction)
         return history
 
+    def remembered_memo(self, category_id):
+        """The memo of this payee's most recent transaction in the
+        category `category_id`, or "" when there is none."""
+        memos = self.transactions.filter(category_id=category_id).values_list("memo", flat=True)
+        return memos.first() or ""
+
 
 def payee_summaries(payees):
     """One summary per payee in `payees`, for the Payees page: the
@@ -678,8 +687,10 @@ def payee_summaries(payees):
 
     totals_by_payee = {}
     for row in history.values("payee_id", "account__currency").annotate(total=Sum("amount")):
+        # SQLite adds decimals as floats, so -0.10, -0.20 and 0.30 come
+        # back as a tiny negative number, not zero.
         totals_by_payee.setdefault(row["payee_id"], []).append(
-            (row["account__currency"], row["total"])
+            (row["account__currency"], to_cent(row["total"]))
         )
 
     summaries = []
@@ -946,11 +957,7 @@ class Reminder(models.Model):
         # A reminder has no name of its own: it is identified like a
         # pending transaction, by who it's for and how much, the same
         # way Transaction.__str__ identifies a real one.
-        who = (
-            self.payee.name
-            if self.payee_id
-            else (self.category.full_name if self.category_id else "Reminder")
-        )
+        who = self._who_for()
         amount = self.signed_amount()
         due_date = regional.format_date(self.next_due_date)
         return f"{due_date} | {who} | {amount if amount is not None else 'varies'}"
@@ -1002,6 +1009,15 @@ class Reminder(models.Model):
         if self.amount is None:
             return None
         return self.amount if self.reminder_type == Category.CategoryType.INCOME else -self.amount
+
+    def _who_for(self):
+        """Who this reminder is for, in words: its payee's name, else
+        its category's full name, else "Reminder"."""
+        if self.payee_id:
+            return self.payee.name
+        if self.category_id:
+            return self.category.full_name
+        return "Reminder"
 
     def status(self, today=None):
         """One of "overdue", "due_soon", "paid", "skipped" or "" (=
@@ -1087,6 +1103,11 @@ class Reminder(models.Model):
         advanced = from_date + relativedelta(**{unit: count})
         return self._period_end(advanced) if self.end_of_period else advanced
 
+    def _series_values(self):
+        """This reminder's SERIES_FIELDS as {name: value}: what a new
+        occurrence, or the record of a finished period, copies."""
+        return {field: getattr(self, field) for field in self.SERIES_FIELDS}
+
     def record_period(self, transaction=None, skipped=False):
         """Leave a standing Paid/Skipped record of the period this
         recurring reminder is about to move past. Entering or skipping
@@ -1097,23 +1118,14 @@ class Reminder(models.Model):
                 series=self,
                 frequency=self.Frequency.ONE_TIME,
                 next_due_date=self.next_due_date,
-                account=self.account,
-                payee=self.payee,
-                category=self.category,
-                amount=self.amount,
-                reminder_type=self.reminder_type,
-                notes=self.notes,
                 last_entered_transaction=transaction,
                 skipped=skipped,
+                **self._series_values(),
             )
 
     def advance_due_date(self):
         self.next_due_date = self._advance(self.next_due_date)
-        who = (
-            self.payee.name
-            if self.payee_id
-            else (self.category.full_name if self.category_id else "Reminder")
-        )
+        who = self._who_for()
         with system_action(f"Next due date moved forward one period for reminder ({who})"):
             self.save(update_fields=["next_due_date"])  # save() -> regenerate_occurrences()
 
@@ -1199,6 +1211,7 @@ class Reminder(models.Model):
             if cursor > horizon:
                 break
             wanted_dates.append(cursor)
+        series_values = self._series_values()
         existing = {o.next_due_date: o for o in self.occurrences.all()}
         with system_action(f"Auto-generated occurrences updated for recurring reminder ({self})"):
             for occ_date, occ in existing.items():
@@ -1212,12 +1225,7 @@ class Reminder(models.Model):
                         series=self,
                         frequency=self.Frequency.ONE_TIME,
                         next_due_date=occ_date,
-                        account=self.account,
-                        payee=self.payee,
-                        category=self.category,
-                        amount=self.amount,
-                        reminder_type=self.reminder_type,
-                        notes=self.notes,
+                        **series_values,
                     )
 
 

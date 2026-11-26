@@ -19,12 +19,12 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST
 
 from .. import backup as finance_backup
-from ..auth_forms import ChangePinForm, CurrentPinForm
-from ..forms import ProfileForm, WatchedExpensesForm
+from ..forms.auth import ChangePinForm, CurrentPinForm
+from ..forms.settings import ProfileForm, WatchedExpensesForm
 from ..models import Account
 from ..services.rates import RateFetchError, RateTable, fetch_latest_rates
 from ..stashes import StashError, registry, security
-from ._helpers import watched_expenses_picker_context
+from ._helpers import plural, watched_expenses_picker_context
 
 
 def _stash_backup_root(request):
@@ -101,9 +101,7 @@ def check_rates(request):
         messages.error(request, str(error))
     else:
         if stored:
-            messages.success(
-                request, f"Updated {len(stored)} exchange rate{'s' if len(stored) != 1 else ''}."
-            )
+            messages.success(request, f"Updated {plural(len(stored), 'exchange rate')}.")
         if unavailable:
             messages.warning(
                 request,
@@ -219,7 +217,7 @@ def _backup_path_or_404(request, name):
     this guards against it smuggling in a path (e.g.
     "../../other-stash/db.sqlite3")."""
     backup_root = _stash_backup_root(request)
-    candidate = backup_root / "backups" / Path(name).name
+    candidate = finance_backup.backups_folder(backup_root) / Path(name).name
     if candidate not in finance_backup.list_backups(backup_root):
         raise Http404("No such backup.")
     return candidate

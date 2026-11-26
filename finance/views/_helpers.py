@@ -36,6 +36,13 @@ def _order_by(sort_fields, descending):
     return terms
 
 
+def next_sort_keys(sortable_columns, current_sort):
+    """{column: the sort a click on its header asks for}: a column that
+    is the current sort flips to descending, any other starts
+    ascending."""
+    return {name: (f"-{name}" if current_sort == name else name) for name in sortable_columns}
+
+
 def apply_sort(request, queryset, sortable_columns):
     """Apply ?sort=field / ?sort=-field (toggling ascending/descending)
     to a queryset.
@@ -51,8 +58,7 @@ def apply_sort(request, queryset, sortable_columns):
         queryset = queryset.order_by(*_order_by(sortable_columns[column], sort.startswith("-")))
     else:
         sort = ""
-    sort_next = {name: (f"-{name}" if sort == name else name) for name in sortable_columns}
-    return queryset, sort, sort_next
+    return queryset, sort, next_sort_keys(sortable_columns, sort)
 
 
 # Rows per page on a long list of transactions. A year of real use stays
@@ -97,8 +103,10 @@ def safe_next(request, url):
     return url if allowed else ""
 
 
-def plural(count, word):
-    return f"{count} {word}{'' if count == 1 else 's'}"
+def plural(count, word, many=None):
+    """The count and its word: "1 row", "2 rows". `many` is the plural
+    of a word that doesn't just add an s ("category", "categories")."""
+    return f"{count} {word if count == 1 else many or word + 's'}"
 
 
 def watched_expenses_picker_context(profile):

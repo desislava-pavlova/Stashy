@@ -17,6 +17,10 @@ device and can't open, copy or delete it.
 
 from pathlib import Path
 
+# The file that makes a folder a stash. Where the backups go is
+# backup.backups_folder(), which backup.py owns because it makes them.
+DB_FILE_NAME = "db.sqlite3"
+
 # "default" is Django's DEFAULT_DB_ALIAS, written out because this
 # module can't import Django; a test checks that the two match.
 RESERVED_FOLDER_NAMES = frozenset(
@@ -39,6 +43,16 @@ def is_reserved_folder_name(name):
     return name.lower() in RESERVED_FOLDER_NAMES
 
 
+def _is_stash_folder(folder):
+    """Whether `folder` is a stash: a real folder with a database file
+    in it and a name that isn't reserved."""
+    return (
+        folder.is_dir()
+        and not is_reserved_folder_name(folder.name)
+        and (folder / DB_FILE_NAME).exists()
+    )
+
+
 def stash_folders(directory):
     """The stashes' folders inside `directory`, sorted by name: a real
     folder that holds a db.sqlite3 and doesn't have a reserved name. A
@@ -48,10 +62,6 @@ def stash_folders(directory):
     if not directory.exists():
         return []
     return sorted(
-        (
-            folder
-            for folder in directory.iterdir()
-            if folder.is_dir() and not is_reserved_folder_name(folder.name) and (folder / "db.sqlite3").exists()
-        ),
+        (folder for folder in directory.iterdir() if _is_stash_folder(folder)),
         key=lambda folder: folder.name,
     )

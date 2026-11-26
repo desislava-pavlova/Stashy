@@ -17,7 +17,8 @@ from django.utils import timezone
 from dateutil.relativedelta import relativedelta
 
 from .. import reporting
-from ..forms import DateRangeFilterForm, WatchedExpensesForm
+from ..forms.filters import DateRangeFilterForm
+from ..forms.settings import WatchedExpensesForm
 from ..models import Account, Category, Profile, Transaction
 from ..regional import NBSP
 from ..templatetags.stashy_format import diff_tint

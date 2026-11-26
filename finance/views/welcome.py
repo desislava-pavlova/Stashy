@@ -10,9 +10,10 @@ from django.contrib import messages
 from django.shortcuts import redirect, render
 
 from .. import starter_categories
-from ..forms import AccountCreateForm, ProfileForm, WatchedExpensesForm
+from ..forms.accounts import AccountCreateForm
+from ..forms.settings import ProfileForm, WatchedExpensesForm
 from ..models import Profile
-from ._helpers import watched_expenses_picker_context
+from ._helpers import plural, watched_expenses_picker_context
 
 
 STEP_COUNT = Profile.WELCOME_STEPS_DONE
@@ -73,8 +74,8 @@ def _step_categories(request, profile, step):
             if sheet in available:
                 created = starter_categories.add_starter_categories(sheet)
                 if created:
-                    noun = "category" if len(created) == 1 else "categories"
-                    messages.success(request, f"Added {len(created)} {noun} from {sheet}.")
+                    added = plural(len(created), "category", "categories")
+                    messages.success(request, f"Added {added} from {sheet}.")
             _advance(profile, step)
             return _to_step(step + 1)
     return render(

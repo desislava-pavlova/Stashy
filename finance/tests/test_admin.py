@@ -27,8 +27,8 @@ from django.utils import timezone
 from stashy.admin_mixins import HandMadeRequestMixin, key_fits, names_for_log
 
 from ..admin import TransactionAdmin
-from ..forms import ReminderForm
-from ..models import Account, Category, Payee, Reminder, Transaction
+from ..forms.reminders import ReminderForm
+from ..models import Account, Category, Payee, Reconciliation, Reminder, Transaction
 from .base import LoggedInAsSuperuserTestCase, StashTestCase, create_accounts_with_a_transaction
 
 
@@ -856,3 +856,82 @@ class AdminAccountListTests(LoggedInAsSuperuserTestCase):
         )
         self.assertEqual(response.status_code, 302)
         self.assertFalse(Account.objects.filter(pk=account.pk).exists())
+
+
+class AdminListQueryTests(LoggedInAsSuperuserTestCase):
+    """The Transactions, Reminders and Reconciliations lists name each
+    row's payee and category, so they read them with the page and not
+    one row at a time. The Categories list does the same for its parent
+    and account."""
+
+    def setUp(self):
+        super().setUp()
+        self.batch = 0
+
+    def add_rows(self, count):
+        self.batch += 1
+        account = Account.objects.create(name=f"Account {self.batch}")
+        food = Category.objects.get_or_create(name="Food", category_type=EXPENSE)[0]
+        # One subcategory for every row: the Transactions list's
+        # Category filter reads each subcategory's parent for its label,
+        # which is not what is checked here.
+        category = Category.objects.get_or_create(
+            name="Groceries", parent=food, defaults={"category_type": EXPENSE}
+        )[0]
+        for i in range(count):
+            name = f"{self.batch}-{i}"
+            payee = Payee.objects.create(name=f"Shop {name}")
+            sale = Transaction.objects.create(
+                account=account,
+                date=date(2026, 1, 5),
+                amount=Decimal("-10.00"),
+                payee=payee,
+                category=category,
+            )
+            Reminder.objects.create(
+                account=account,
+                payee=payee,
+                category=category,
+                amount=Decimal("10.00"),
+                next_due_date=date(2026, 9, 14),
+            )
+            Reconciliation.objects.create(
+                account=account,
+                statement_date=date(2026, 1, 31),
+                statement_balance=Decimal("1.00"),
+                opening_balance=Decimal("0.00"),
+                adjustment_transaction=sale,
+            )
+
+    def test_more_rows_need_no_more_queries(self):
+        for model in ("transaction", "reminder", "reconciliation"):
+            url = reverse(f"admin:finance_{model}_changelist")
+            self.add_rows(1)
+            _, few = self.get_and_count_queries(url)
+            self.add_rows(4)
+            _, many = self.get_and_count_queries(url)
+            with self.subTest(list=model):
+                self.assertEqual(few, many)
+
+    def add_categories(self, count):
+        """`count` subcategories, each under a main category of its own,
+        and `count` accounts (each brings a transfer category with its
+        account): every row of the list has a parent or an account to
+        name."""
+        self.batch += 1
+        for i in range(count):
+            name = f"{self.batch}-{i}"
+            Category.objects.create(name=f"Main {name}", category_type=EXPENSE).create_subcategory(
+                f"Sub {name}"
+            )
+            Account.objects.create(name=f"Account {name}")
+
+    def test_more_categories_need_no_more_queries(self):
+        # CategoryAdmin sets no list_select_related: Django joins the
+        # Parent and Account columns itself. This keeps it so.
+        url = reverse("admin:finance_category_changelist")
+        self.add_categories(1)
+        _, few = self.get_and_count_queries(url)
+        self.add_categories(4)
+        _, many = self.get_and_count_queries(url)
+        self.assertEqual(few, many)

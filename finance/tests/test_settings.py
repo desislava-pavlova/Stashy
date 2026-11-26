@@ -13,7 +13,8 @@ from django.utils import timezone
 
 from audit.models import AuditLogEntry
 
-from ..forms import ProfileForm, SafeModelMultipleChoiceField, WatchedExpensesForm
+from ..forms._base import SafeModelMultipleChoiceField
+from ..forms.settings import ProfileForm, WatchedExpensesForm
 from ..models import Account, Category, ExchangeRate, Profile
 from ..services.rates import RateFetchError
 from ..stashes import security
@@ -158,6 +159,20 @@ class SettingsEndpointsTests(LoggedInWithAccountTestCase):
             response = self.client.post(reverse("finance:check_rates"), follow=True)
         self.assertRedirects(response, reverse("finance:settings"))
         self.assertContains(response, "Updated 1 exchange rate.")
+        self.assertContains(response, "No rate available for: XYZ")
+
+    def test_check_rates_counts_several_rates_in_the_plural(self):
+        with mock.patch(
+            "finance.views.settings.fetch_latest_rates", return_value=(["USD", "GBP"], [])
+        ):
+            response = self.client.post(reverse("finance:check_rates"), follow=True)
+        self.assertContains(response, "Updated 2 exchange rates.")
+        self.assertNotContains(response, "No rate available")
+
+    def test_check_rates_with_nothing_stored_says_nothing_was_updated(self):
+        with mock.patch("finance.views.settings.fetch_latest_rates", return_value=([], ["XYZ"])):
+            response = self.client.post(reverse("finance:check_rates"), follow=True)
+        self.assertNotContains(response, "Updated")
         self.assertContains(response, "No rate available for: XYZ")
 
     def test_check_rates_offline_shows_the_error(self):

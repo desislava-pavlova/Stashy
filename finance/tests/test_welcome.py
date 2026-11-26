@@ -149,6 +149,19 @@ class WelcomeStepTwoTests(StarterCategoriesFileMixin, WelcomeWizardTestCase):
         self.assertEqual(self.profile.welcome_step, 2)
         self.assertTrue(Category.objects.filter(name="Groceries", parent__isnull=True).exists())
 
+    def messages_after_picking_basic(self):
+        response = self.client.post(reverse("finance:welcome_step", args=[2]), {"sheet": "Basic"})
+        return [str(message) for message in get_messages(response.wsgi_request)]
+
+    def test_one_new_category_is_called_a_category(self):
+        self.assertEqual(self.messages_after_picking_basic(), ["Added 1 category from Basic."])
+
+    def test_several_new_categories_are_called_categories(self):
+        self.write_starter_categories(
+            {"Basic": [("Expense", "Groceries", None), ("Expense", "Rent", None)]}
+        )
+        self.assertEqual(self.messages_after_picking_basic(), ["Added 2 categories from Basic."])
+
     def test_an_unavailable_sheet_name_is_rejected(self):
         with mock.patch.object(starter_categories, "available_sheets", return_value=["Basic"]):
             response = self.client.post(

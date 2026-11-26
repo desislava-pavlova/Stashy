@@ -11,12 +11,13 @@ from django.contrib import messages
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse_lazy
 from django.utils import timezone
+from django.views.decorators.http import require_POST
 from django.views.generic import CreateView, DeleteView
 
 from dateutil.relativedelta import relativedelta
 
 from .. import regional
-from ..forms import ReminderForm
+from ..forms.reminders import ReminderForm
 from ..models import Reminder
 from ..tips import REMINDER_TIPS
 
@@ -136,11 +137,10 @@ class ReminderDeleteView(DeleteView):
         return ctx
 
 
+@require_POST
 def reminder_skip(request, pk):
     """Move a reminder past its current occurrence without creating a
     transaction (D6)."""
-    if request.method != "POST":
-        return redirect("finance:reminder_list")
     reminder = get_object_or_404(Reminder, pk=pk)
     label = str(reminder)
     reminder.skip()

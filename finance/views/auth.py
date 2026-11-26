@@ -17,7 +17,7 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST
 
-from ..auth_forms import ForgotPinForm, StashCreateForm, StashLoginForm
+from ..forms.auth import ForgotPinForm, StashCreateForm, StashLoginForm
 from ..stashes import StashError, registry, security
 from ..stashes.registry import LAST_STASH_COOKIE, LAST_STASH_COOKIE_AGE
 from ..text import possessive

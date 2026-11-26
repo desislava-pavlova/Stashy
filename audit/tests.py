@@ -253,6 +253,38 @@ class AuditAdminTests(AuditTestCase):
         expected = f"{changelist}?table=finance_account&row_id={account.pk}"
         self.assertRedirects(response, expected, fetch_redirect_response=False)
 
+    def test_history_button_encodes_the_id_so_it_cannot_add_a_filter_of_its_own(self):
+        """The id comes from the address. A hand-made one holding "&" or
+        "=" must stay one value of row_id, never become a second filter
+        (another table, say) on the audit list."""
+        account = Account.objects.create(name="Cash")
+        changelist = reverse("admin:audit_auditlogentry_changelist")
+        url = reverse("admin:finance_account_history", args=[f"{account.pk}&table=finance_payee"])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            response["Location"],
+            f"{changelist}?table=finance_account&row_id={account.pk}%26table%3Dfinance_payee",
+        )
+
+    def test_history_button_names_each_models_own_table(self):
+        for model_name in ("category", "payee", "reminder", "transaction"):
+            with self.subTest(model=model_name):
+                url = reverse(f"admin:finance_{model_name}_history", args=[1])
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 302)
+                self.assertTrue(
+                    response["Location"].endswith(f"?table=finance_{model_name}&row_id=1")
+                )
+
+    def test_the_same_operation_link_lists_every_row_of_that_action(self):
+        Account.objects.create(name="Cash")
+        entry = self.entries(Account).first()
+        response = self.client.get(reverse("admin:audit_auditlogentry_change", args=[entry.pk]))
+        changelist = reverse("admin:audit_auditlogentry_changelist")
+        link = f'<a href="{changelist}?operation={entry.operation}">'
+        self.assertContains(response, f"{link}show all rows from this action</a>")
+
     def test_users_and_groups_are_hidden_and_profile_is_view_only(self):
         response = self.client.get(reverse("admin:index"))
         self.assertNotContains(response, "Users")

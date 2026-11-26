@@ -6,8 +6,10 @@ stored is not checked, and stays as it is until someone saves it again.
 """
 
 import ast
+import importlib
 import inspect
 import io
+import pkgutil
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -27,14 +29,14 @@ from openpyxl import Workbook
 from .. import forms as finance_forms
 from .. import limits as limits_module
 from .. import regional
-from ..forms import (
+from ..forms.accounts import (
     AccountCreateForm,
     ReconcileFinishForm,
     ReconcileStartForm,
-    ReminderForm,
-    TransactionForm,
     TransferForm,
 )
+from ..forms.reminders import ReminderForm
+from ..forms.transactions import TransactionForm
 from ..limits import (
     DATE_OUT_OF_RANGE_MESSAGE,
     MAX_AMOUNT,
@@ -62,6 +64,7 @@ from .base import (
     StashTestCase,
     csv_upload,
     leaked_syntax_in,
+    ofx_file,
 )
 
 
@@ -125,6 +128,16 @@ class LimitsModuleTests(SimpleTestCase):
                 self.assertFalse(is_plausible_rate(Decimal(text)))
 
 
+def every_form_class():
+    """(name, class) of each form class defined in a module of the
+    forms package."""
+    for module_info in pkgutil.iter_modules(finance_forms.__path__):
+        module = importlib.import_module(f"{finance_forms.__name__}.{module_info.name}")
+        for name, form_class in inspect.getmembers(module, inspect.isclass):
+            if issubclass(form_class, forms.BaseForm) and form_class.__module__ == module.__name__:
+                yield name, form_class
+
+
 class EveryDateHasTheLimitTests(SimpleTestCase):
     """A date column or box added later must not skip the rule without
     someone saying so."""
@@ -147,10 +160,12 @@ class EveryDateHasTheLimitTests(SimpleTestCase):
         isn't a column (the opening balance's date). The Reports
         filter, which has a rule of its own (a range of at most a
         century), says it in `clean()`."""
-        for name, form_class in inspect.getmembers(finance_forms, inspect.isclass):
-            if not issubclass(form_class, forms.BaseForm):
-                continue
-            if form_class.__module__ != finance_forms.__name__ or name == "DateRangeFilterForm":
+        # So that a change to how the forms are found can't leave the
+        # loop below with nothing to check.
+        found = {name for name, _ in every_form_class()}
+        self.assertLessEqual({"TransferForm", "ReconcileStartForm", "ReminderForm"}, found)
+        for name, form_class in every_form_class():
+            if name == "DateRangeFilterForm":
                 continue
             model = getattr(getattr(form_class, "_meta", None), "model", None)
             columns = {column.name for column in model._meta.get_fields()} if model else set()
@@ -763,19 +778,6 @@ class ImportLimitTests(LoggedInWithAccountTestCase):
         self.assertEqual((result.created, result.unreadable), (1, 3))
 
     def test_an_ofx_file_is_held_to_the_same_limits(self):
-        def ofx(posted, amount):
-            return (
-                "OFXHEADER:100\nDATA:OFXSGML\nVERSION:102\nSECURITY:NONE\nENCODING:USASCII\n"
-                "CHARSET:1252\nCOMPRESSION:NONE\nOLDFILEUID:NONE\nNEWFILEUID:NONE\n\n"
-                "<OFX><BANKMSGSRSV1><STMTTRNRS><TRNUID>1<STATUS><CODE>0<SEVERITY>INFO</STATUS>"
-                "<STMTRS><CURDEF>EUR<BANKACCTFROM><BANKID>1"
-                "<ACCTID>2<ACCTTYPE>CHECKING</BANKACCTFROM>"
-                "<BANKTRANLIST><DTSTART>20260101<DTEND>20260131"
-                f"<STMTTRN><TRNTYPE>DEBIT<DTPOSTED>{posted}<TRNAMT>{amount}"
-                "<FITID>1<NAME>Lidl</STMTTRN>"
-                "</BANKTRANLIST></STMTRS></STMTTRNRS></BANKMSGSRSV1></OFX>\n"
-            ).encode()
-
         for posted, amount, created, unreadable in (
             ("20260105", "-12.50", 1, 0),
             ("18991231", "-12.50", 0, 1),
@@ -785,7 +787,7 @@ class ImportLimitTests(LoggedInWithAccountTestCase):
             with self.subTest(posted=posted, amount=amount[:10]):
                 Transaction.objects.all().delete()
                 result = import_file(
-                    SimpleUploadedFile("bank.ofx", ofx(posted, amount)), self.account
+                    SimpleUploadedFile("bank.ofx", ofx_file(posted, amount)), self.account
                 )
                 self.assertEqual((result.created, result.unreadable), (created, unreadable))
 

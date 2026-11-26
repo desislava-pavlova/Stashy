@@ -32,8 +32,11 @@ def dashboard(request):
     last_month_start = last_month_end.replace(day=1)
 
     main_currency = request.stashy_profile.main_currency
+    # One table for the whole page, read once: Net worth and the tiles
+    # below convert through it.
+    rates = RateTable(main_currency)
     accounts = list(Account.objects.filter(is_active=True).with_balances())
-    net_worth, missing_rates = convert_balances(accounts, main_currency)
+    net_worth, missing_rates = convert_balances(accounts, main_currency, rates=rates)
     # Same grouping/order as the accounts page (Physical Liquid ->
     # Digital Liquid -> Illiquid) - inactive accounts never reach this
     # panel, since `accounts` above already excludes them.
@@ -42,7 +45,6 @@ def dashboard(request):
     # Converted into the main currency exactly like Reports, so the
     # tiles, the donut and the reports never disagree when accounts use
     # different currencies.
-    rates = RateTable(main_currency)
     this_month = income_and_spending(month_start, today, rates=rates)
     last_month = income_and_spending(last_month_start, last_month_end, rates=rates)
     rate = savings_rate(last_month["income"], last_month["spending"])

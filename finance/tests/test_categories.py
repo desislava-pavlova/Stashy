@@ -6,17 +6,20 @@ categories."""
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
+from unittest import mock
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.test import SimpleTestCase
 from django.urls import reverse
+from django.views.generic.detail import SingleObjectMixin
 
 from openpyxl import load_workbook
 
 from .. import starter_categories
-from ..forms import CategoryForm, TransactionForm
+from ..forms.categories import CategoryForm
+from ..forms.transactions import TransactionForm
 from ..models import (
     Account,
     Category,
@@ -278,6 +281,13 @@ class CategoryUsageAndRecategorizeTests(LoggedInTestCase):
         self.txns[0].refresh_from_db()
         self.assertEqual((elsewhere.category, self.txns[0].category), (travel, self.household))
 
+    def test_the_message_counts_the_moved_transactions_in_the_plural(self):
+        messages = self._move(
+            transaction_id=[self.txns[0].pk, self.txns[1].pk, self.txns[2].pk],
+            move_to=self.household.pk,
+        )
+        self.assertEqual(messages, ["Moved 3 transactions to Household."])
+
     def test_a_destination_that_is_the_category_itself_moves_nothing(self):
         messages = self._move(transaction_id=[self.txns[0].pk], move_to=self.groceries.pk)
         self.assertEqual(messages, ["Choose a category to move the selected transactions to."])
@@ -375,6 +385,31 @@ class CategoriesAlphabeticalOrderTests(StashTestCase):
             ["Car", "Fuel", "Car insurance"],
         )
 
+    def test_the_list_page_groups_the_types_in_the_same_order(self):
+        self.make("Zebra pay", kind=Type.INCOME)
+        self.make("apple")
+        Account.objects.create(name="Wallet")
+        groups = grouped_categories(Category.objects.select_related("parent"))
+        self.assertEqual(
+            [group["key"] for group in groups], [Type.INCOME, Type.EXPENSE, Type.TRANSFER]
+        )
+
+    def test_a_type_nobody_knows_comes_last_in_both_orders(self):
+        """Both orders read the one table of types. A category of a type
+        outside it (from a hand-edited database) sorts after every known
+        type in the dropdown order and in the list's groups alike,
+        instead of failing or jumping the queue."""
+        Account.objects.create(name="Wallet")
+        self.make("Zebra pay", kind=Type.INCOME)
+        self.make("apple")
+        Category.objects.create(name="Aardvark", category_type="mystery")
+        self.assertEqual(self.names(), ["Zebra pay", "apple", "[Wallet]", "Aardvark"])
+        groups = grouped_categories(Category.objects.select_related("parent"))
+        self.assertEqual(
+            [group["key"] for group in groups],
+            [Type.INCOME, Type.EXPENSE, Type.TRANSFER, "mystery"],
+        )
+
 
 class SystemManagedCategoryStillGuardedTests(LoggedInTestCase):
     def test_transfer_category_not_offered_in_its_own_usage_views_move_to_list(self):
@@ -384,6 +419,72 @@ class SystemManagedCategoryStillGuardedTests(LoggedInTestCase):
             reverse("finance:category_usage", args=[account.transfer_category.pk])
         )
         self.assertNotIn(other.transfer_category, response.context["other_categories"])
+
+    def test_an_accounts_own_category_cant_be_edited_or_deleted(self):
+        account = Account.objects.create(name="Checking")
+        for name in ("finance:category_edit", "finance:category_delete"):
+            with self.subTest(page=name):
+                response = self.client.get(reverse(name, args=[account.transfer_category.pk]))
+                self.assertRedirects(response, reverse("finance:category_list"))
+
+    def test_posting_to_an_accounts_own_category_changes_and_deletes_nothing(self):
+        # The guard runs before the form or the delete does, for a POST
+        # too, not only for the page that shows the form.
+        account = Account.objects.create(name="Checking")
+        category = account.transfer_category
+        for name, data in (
+            ("finance:category_edit", {"name": "Renamed", "category_type": "expense"}),
+            ("finance:category_delete", {}),
+        ):
+            with self.subTest(page=name):
+                response = self.client.post(reverse(name, args=[category.pk]), data)
+                self.assertRedirects(response, reverse("finance:category_list"))
+                self.assertEqual(Category.objects.get(pk=category.pk).name, "[Checking]")
+
+    def test_a_category_that_does_not_exist_is_a_404_on_every_guarded_page(self):
+        for method, name in (
+            ("get", "finance:category_edit"),
+            ("post", "finance:category_edit"),
+            ("get", "finance:category_delete"),
+            ("post", "finance:category_delete"),
+        ):
+            with self.subTest(method=method, page=name):
+                response = getattr(self.client, method)(reverse(name, args=[999999]))
+                self.assertEqual(response.status_code, 404)
+
+    def test_an_ordinary_category_is_still_edited_and_deleted(self):
+        category = Category.objects.create(name="Food", category_type=EXPENSE)
+        response = self.client.post(
+            reverse("finance:category_edit", args=[category.pk]),
+            {"name": "Meals", "category_type": EXPENSE},
+        )
+        self.assertRedirects(response, reverse("finance:category_list"))
+        category.refresh_from_db()
+        self.assertEqual(category.name, "Meals")
+        response = self.client.post(reverse("finance:category_delete", args=[category.pk]))
+        self.assertRedirects(response, reverse("finance:category_list"))
+        self.assertFalse(Category.objects.filter(pk=category.pk).exists())
+
+    def test_the_edit_and_delete_pages_read_the_category_once(self):
+        """The guard needs the category, and so does the view behind
+        it: the guard hands its copy on instead of asking twice."""
+        for method, name in (
+            ("get", "finance:category_edit"),
+            ("get", "finance:category_delete"),
+            ("post", "finance:category_delete"),
+        ):
+            category = Category.objects.create(name=f"Food {method} {name}", category_type=EXPENSE)
+            with (
+                self.subTest(method=method, page=name),
+                mock.patch.object(
+                    SingleObjectMixin,
+                    "get_object",
+                    autospec=True,
+                    side_effect=SingleObjectMixin.get_object,
+                ) as read,
+            ):
+                getattr(self.client, method)(reverse(name, args=[category.pk]))
+            self.assertEqual(read.call_count, 1)
 
 
 class CategoryUniquenessTests(StashTestCase):

@@ -46,7 +46,7 @@ terms.
 ## Commands
 
 ```
-.venv\Scripts\python.exe manage.py test                          # full suite, ~70 s (1,230 tests on 25/11/2026)
+.venv\Scripts\python.exe manage.py test                          # full suite, ~70 s (1,344 tests on 26/11/2026)
 .venv\Scripts\python.exe manage.py test finance.tests.test_reminders  # one module (audit: `test audit`)
 .venv\Scripts\python.exe manage.py migrate --database <stash>    # one stash (Stashy.bat does all, with backups)
 .venv\Scripts\python.exe manage.py reset_pin <owner name>        # real, visible action - ask first
@@ -129,7 +129,7 @@ check.bat                                                        # ruff check + 
     `payees`, `transactions`, `reminders`, `imports`, `exports`, `reports`,
     `settings`, `api`, `auth` for picker/login/forgot-PIN, `welcome` for the
     4-step wizard), plus `_helpers.py` (what several views share:
-    `apply_sort`, `paged`, `safe_next`, `plural`. They have no leading
+    `apply_sort`, `next_sort_keys`, `paged`, `safe_next`, `plural`. They have no leading
     underscore, since the module's name already says "internal"; a view
     never imports another view's private names). `finance/urls.py` imports
     the modules, not the views; there are no re-exports in
@@ -143,7 +143,7 @@ check.bat                                                        # ruff check + 
     `str.isdigit()` and never straight into a lookup: a bad id then answers
     like one that doesn't exist (404, a message, or the filter ignored). A
     lookup by None finds nothing. A multi-choice field uses
-    `SafeModelMultipleChoiceField` (`forms.py`), never Django's own: SQLite
+    `SafeModelMultipleChoiceField` (`forms/_base.py`), never Django's own: SQLite
     refuses an id over 2**63 - 1 in `pk__in`, and the subclass turns that into
     the usual "not a valid choice" error (plan 03, S106). A ModelForm's
     many-to-many field gets it through `Meta.field_classes`.
@@ -193,9 +193,20 @@ check.bat                                                        # ruff check + 
   - Settings: the page saves preferences; `check_rates`, `create_backup`
     and `save_watched_expenses` are their own POST URLs.
   - `tips.py`: the help-card tips (`*_TIPS`).
-  - `forms.py`, `auth_forms.py` (`PinField` and `PinConfirmMixin`: every
-    PIN box uses `stashes.security.pin_validator`). A page that asks for
-    the PIN again while logged in uses `CurrentPinForm`, which checks it
+  - `forms/`: one module per area, like `views/` (`accounts`, `categories`,
+    `payees`, `transactions`, `reminders`, `imports`, `filters` for the
+    date-range form Transactions and Reports share, `settings`, `auth`), and
+    `_base` for what they share (`BootstrapFormMixin`, `DateInput`,
+    `PlausibleDateField`, `SafeModelMultipleChoiceField`,
+    `use_regional_dates`). `forms/__init__.py` re-exports nothing: import the
+    real module (`from ..forms.accounts import AccountForm`). A plain `Form`
+    takes its Bootstrap classes from `BootstrapFormMixin` as a ModelForm does
+    (`control_size = "sm"` for a filter bar); only `ReconcileStartForm` styles
+    itself by hand, because its date box has no `form-control` class today
+    and the mixin would add one. In `forms/auth.py`: `PinField` and
+    `PinConfirmMixin`: every PIN box uses `stashes.security.pin_validator`.
+    A page that asks for the PIN again while logged in uses `CurrentPinForm`,
+    which checks it
     through `security.check_pin()`, so wrong PINs count toward the lockout;
     reaching it logs out (`views/settings.py`, `_log_out_after_lockout()`).
     `check_pin()` takes its own write lock and re-reads the lockout, PIN and
@@ -229,6 +240,9 @@ check.bat                                                        # ruff check + 
     `db_router.py`, `middleware.py`,
     `backup.py` (standard library only, since bootstrap imports it before
     Django; copies go through SQLite's backup API, never a file copy).
+    A stash's folder layout is named once: `backup.backups_folder()` for the
+    backups folder, `folder_names.DB_FILE_NAME` for the database file (never a
+    bare string).
   - `starter_categories.py` reads `starter_categories.xlsx`, which sits
     beside it in `finance/` (S70, 16/11/2026). A new
     subcategory always takes its main category's type: create it with
@@ -309,7 +323,8 @@ check.bat                                                        # ruff check + 
     `databases`, so a test's own `atomic()` needs `using=settings.TEST_STASH`.
     Shared test helpers live there too (`LEAKED_TEMPLATE_SYNTAX`,
     `leaked_syntax_in()`, `csv_rows()`, `csv_upload()`, `post_import()`,
-    `get_and_count_queries()`, `StarterCategoriesFileMixin`): a test module
+    `get_and_count_queries()`, `ofx_file()`, `imported_modules()`,
+    `StarterCategoriesFileMixin`): a test module
     never imports from another test module, so a second copy of anything goes
     here instead.
   - Build shared data in `setUpTestData`; log in (and anything about the
@@ -329,7 +344,9 @@ check.bat                                                        # ruff check + 
 ## Domain rules (settled with the user; don't change them silently)
 
 - Money is always `Decimal`. SQLite sums decimals as floats, so quantize
-  aggregates with `money.to_cent()`. Floats only at the JSON/chart boundary.
+  every aggregate with `money.to_cent()`: a balance, a page's total, a
+  payee's total (a plain `.quantize(CENT)` rounds half-even and keeps a
+  `-0.00`). Floats only at the JSON/chart boundary.
 - An opening balance is a real transaction (D1), so a balance is simply the
   sum of transactions. Every account owns one `[Account name]` Transfer
   category (D7).
@@ -434,7 +451,7 @@ check.bat                                                        # ruff check + 
   `date.today()`; only `backup.py` uses the computer's clock (a test
   checks).
 - **Each page keeps its own agreed filter defaults.**
-  - Transactions: "This year".
+  - Transactions: "This year" (also for a `?range=` it doesn't know).
   - Reports: This month · no subtotal · Last 3 periods · All accounts.
   - Reminders: "This month".
   Never change or harmonize them without agreement.

@@ -14,6 +14,9 @@ from pathlib import Path
 # wins over a key in .env.
 os.environ.setdefault("SECRET_KEY", "test-only-key-never-used-for-real-data")
 
+from finance.backup import backups_folder
+from finance.stashes.folder_names import DB_FILE_NAME
+
 from .base import *  # noqa: F403
 
 
@@ -30,8 +33,8 @@ _test_run_folder = tempfile.TemporaryDirectory(prefix="stashy-tests-", ignore_cl
 atexit.register(_test_run_folder.cleanup)
 STASHES_DIR = Path(_test_run_folder.name)
 TEST_STASH = "tester"
-(STASHES_DIR / TEST_STASH / "backups").mkdir(parents=True)
-(STASHES_DIR / TEST_STASH / "db.sqlite3").touch()
+backups_folder(STASHES_DIR / TEST_STASH).mkdir(parents=True)
+(STASHES_DIR / TEST_STASH / DB_FILE_NAME).touch()
 
 # Every stash's connection settings are a copy of `default`'s, the test
 # stash's included. By default Django creates an extra test database

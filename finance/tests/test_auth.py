@@ -11,7 +11,7 @@ from django.urls import NoReverseMatch, resolve, reverse
 from django.utils import timezone
 from django.views.generic import RedirectView
 
-from ..auth_forms import ChangePinForm, CurrentPinForm, ForgotPinForm, StashCreateForm
+from ..forms.auth import ChangePinForm, CurrentPinForm, ForgotPinForm, StashCreateForm
 from ..models import Profile
 from ..stashes import StashError, registry, security
 from .base import (

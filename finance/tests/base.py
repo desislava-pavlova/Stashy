@@ -8,6 +8,7 @@ on the picker - so every request goes through the real middleware, the
 way it does in Stashy itself.
 """
 
+import ast
 import csv
 import io
 import re
@@ -61,6 +62,25 @@ def leaked_syntax_in(page):
     ]
 
 
+def imported_modules(source):
+    """Every module an import in the Python `source` names, as a list:
+    relative ones with their dots, and `from . import x` as `.x`. For
+    the tests that keep a file's imports to a rule."""
+    names = []
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Import):
+            names += [alias.name for alias in node.names]
+        elif isinstance(node, ast.ImportFrom):
+            base = "." * node.level + (node.module or "")
+            names += [base if base.strip(".") else base + alias.name for alias in node.names]
+    return names
+
+
+# Three amounts that add up to zero. SQLite adds decimals as floats, so
+# their sum comes back as a tiny negative number and not 0: what the
+# tests of the money rule start from.
+AMOUNTS_THAT_CANCEL_OUT = ("-0.10", "-0.20", "0.30")
+
 # Values for the URL parameters other than <pk>, so every pattern in
 # finance/urls.py can be reversed.
 OTHER_URL_VALUES = {"step": 1, "report": "spending"}
@@ -96,6 +116,30 @@ def post_import(client, account, upload, *, follow=False, **form_data):
     to the form, say date_format="mdy"."""
     data = {"account": account.pk, "file": upload, **form_data}
     return client.post(reverse("finance:import_transactions"), data, follow=follow)
+
+
+def ofx_file(posted="20260105", amount="-12.50"):
+    """A small OFX file (bytes) with one transaction, Lidl's "weekly
+    shop". `posted` and `amount` are text, so a test can put in a date
+    or an amount that the importer has to refuse."""
+    return f"""OFXHEADER:100
+DATA:OFXSGML
+VERSION:102
+SECURITY:NONE
+ENCODING:USASCII
+CHARSET:1252
+COMPRESSION:NONE
+OLDFILEUID:NONE
+NEWFILEUID:NONE
+
+<OFX><BANKMSGSRSV1><STMTTRNRS><TRNUID>1<STATUS><CODE>0<SEVERITY>INFO</STATUS>
+<STMTRS><CURDEF>EUR<BANKACCTFROM><BANKID>1<ACCTID>2<ACCTTYPE>CHECKING</BANKACCTFROM>
+<BANKTRANLIST><DTSTART>20260101<DTEND>20260131
+<STMTTRN><TRNTYPE>DEBIT<DTPOSTED>{posted}<TRNAMT>{amount}<FITID>1
+<NAME>Lidl<MEMO>weekly shop</STMTTRN>
+</BANKTRANLIST><LEDGERBAL><BALAMT>100<DTASOF>20260131</LEDGERBAL>
+</STMTRS></STMTTRNRS></BANKMSGSRSV1></OFX>
+""".encode()
 
 
 def create_accounts_with_a_transaction(count):

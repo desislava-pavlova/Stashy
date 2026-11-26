@@ -16,6 +16,12 @@ from stashy.admin_mixins import HandMadeRequestMixin
 from .models import AuditLogEntry
 
 
+def audit_list_url(**filters):
+    """The audit list's address, narrowed by `filters`: the table, the
+    row's id or an operation."""
+    return f"{reverse('admin:audit_auditlogentry_changelist')}?{urlencode(filters)}"
+
+
 def _text(value):
     return "—" if value in (None, "") else str(value)
 
@@ -95,8 +101,7 @@ class AuditLogEntryAdmin(HandMadeRequestMixin, admin.ModelAdmin):
 
     @admin.display(description="Same operation")
     def same_operation(self, obj):
-        changelist = reverse("admin:audit_auditlogentry_changelist")
-        url = f"{changelist}?{urlencode({'operation': obj.operation})}"
+        url = audit_list_url(operation=obj.operation)
         return format_html('<a href="{}">show all rows from this action</a>', url)
 
     @admin.display(description="Full values")
@@ -116,5 +121,4 @@ class AuditHistoryAdminMixin:
     """Point the admin's History button at the object's audit trail."""
 
     def history_view(self, request, object_id, extra_context=None):
-        query = urlencode({"table": self.model._meta.db_table, "row_id": object_id})
-        return redirect(f"{reverse('admin:audit_auditlogentry_changelist')}?{query}")
+        return redirect(audit_list_url(table=self.model._meta.db_table, row_id=object_id))

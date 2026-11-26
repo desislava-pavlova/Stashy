@@ -78,6 +78,11 @@ def _stash_label(project_root):
     )
 
 
+def backups_folder(stash_dir):
+    """A stash's backups folder, which may not exist yet."""
+    return Path(stash_dir) / BACKUP_DIR_NAME
+
+
 def backup_now(db_path, project_root, tag="manual"):
     """Copy the database to
     backups/<stash>_backup_<tag>_<timestamp>.sqlite3. Returns the new
@@ -86,7 +91,7 @@ def backup_now(db_path, project_root, tag="manual"):
     db_path = Path(db_path)
     if not db_path.exists():
         return None
-    backups_dir = Path(project_root) / BACKUP_DIR_NAME
+    backups_dir = backups_folder(project_root)
     backups_dir.mkdir(exist_ok=True)
     destination = _claim_new_backup_name(backups_dir, _stash_label(project_root), tag)
     try:
@@ -133,7 +138,7 @@ def list_backups(project_root, limit=None):
     """Every backup of any tag, newest first (by the timestamp in its
     name, not filesystem order - the naming schemes don't sort the same
     way as plain strings)."""
-    backups_dir = Path(project_root) / BACKUP_DIR_NAME
+    backups_dir = backups_folder(project_root)
     if not backups_dir.exists():
         return []
     found = list(

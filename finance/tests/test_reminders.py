@@ -9,8 +9,9 @@ from unittest import mock
 from django.urls import reverse
 from django.utils import timezone
 
-from ..forms import ReminderForm
+from ..forms.reminders import ReminderForm
 from ..models import Category, Payee, Reminder, Transaction
+from ..views.transactions import initial_from_reminder
 from .base import TODAY_13_SEPT, TODAY_19_SEPT, LoggedInWithAccountTestCase, create_reminders
 
 
@@ -49,11 +50,56 @@ class ReminderSkipTests(LoggedInWithAccountTestCase):
             account=self.account, amount=Decimal("20.00"), next_due_date=date(2026, 10, 1)
         )
         response = self.client.get(reverse("finance:reminder_skip", args=[reminder.pk]))
-        self.assertRedirects(
-            response, reverse("finance:reminder_list")
-        )  # a GET only goes back to the list
+        self.assertEqual(response.status_code, 405)  # like every action that changes something
         reminder.refresh_from_db()
         self.assertEqual(reminder.next_due_date, date(2026, 10, 1))
+
+    def test_nothing_but_post_skips_a_one_time_or_a_recurring_reminder(self):
+        """A link, a prefetching browser or a web crawler only ever
+        sends a GET: it must neither skip a period nor leave the record
+        of one behind. The 405 names POST as the one way in."""
+        for frequency in ("one_time", "monthly"):
+            reminder = Reminder.objects.create(
+                account=self.account,
+                amount=Decimal("20.00"),
+                next_due_date=date(2026, 10, 1),
+                frequency=frequency,
+            )
+            url = reverse("finance:reminder_skip", args=[reminder.pk])
+            for method in ("get", "head", "put", "delete"):
+                with self.subTest(frequency=frequency, method=method):
+                    before = (
+                        Reminder.objects.count(),
+                        Reminder.objects.filter(skipped=True).count(),
+                    )
+                    response = getattr(self.client, method)(url)
+                    self.assertEqual(response.status_code, 405)
+                    self.assertEqual(response["Allow"], "POST")
+                    reminder.refresh_from_db()
+                    self.assertEqual(
+                        (reminder.next_due_date, reminder.skipped), (date(2026, 10, 1), False)
+                    )
+                    after = (
+                        Reminder.objects.count(),
+                        Reminder.objects.filter(skipped=True).count(),
+                    )
+                    self.assertEqual(after, before)
+
+    def test_skipping_a_reminder_that_does_not_exist_is_a_404(self):
+        response = self.client.post(reverse("finance:reminder_skip", args=[999999]))
+        self.assertEqual(response.status_code, 404)
+
+    def test_the_skip_button_on_the_list_is_a_post_form_with_the_csrf_token(self):
+        reminder = Reminder.objects.create(
+            account=self.account, amount=Decimal("20.00"), next_due_date=date(2026, 10, 1)
+        )
+        page = self.client.get(
+            reverse("finance:reminder_list"), {"window": "all"}
+        ).content.decode()
+        action = reverse("finance:reminder_skip", args=[reminder.pk])
+        form = page.split(f'<form method="post" action="{action}"', 1)[1].split("</form>", 1)[0]
+        self.assertIn("csrfmiddlewaretoken", form)
+        self.assertEqual(page.count(f'"{action}"'), 1)  # no second, plain link to it
 
 
 class EnterOpensAPrefilledFormTests(LoggedInWithAccountTestCase):
@@ -714,3 +760,123 @@ class ReminderListQueryTests(LoggedInWithAccountTestCase):
 
     def test_more_reminders_need_no_more_queries(self):
         self.assertEqual(self.queries_with(1), self.queries_with(4))
+
+
+class InitialFromReminderTests(LoggedInWithAccountTestCase):
+    """The starting values of the form that enters a reminder as a
+    transaction."""
+
+    def make_reminder(self, **fields):
+        return Reminder.objects.create(
+            account=self.account,
+            amount=Decimal("20.00"),
+            next_due_date=date(2026, 9, 14),
+            notes="from the reminder",
+            **fields,
+        )
+
+    def test_it_carries_the_reminders_own_values(self):
+        food = Category.objects.create(name="Food", category_type=Category.CategoryType.EXPENSE)
+        reminder = self.make_reminder(category=food, payee=Payee.objects.create(name="Lidl"))
+        self.assertEqual(
+            initial_from_reminder(reminder),
+            {
+                "account": self.account.pk,
+                "category": food.pk,
+                "amount": Decimal("-20.00"),
+                "memo": "from the reminder",
+                "date": date(2026, 9, 14),
+                "transaction_number": 1,
+                "payee_name": "Lidl",
+            },
+        )
+
+    def test_the_memo_used_last_time_beats_the_reminders_notes(self):
+        food = Category.objects.create(name="Food", category_type=Category.CategoryType.EXPENSE)
+        payee = Payee.objects.create(name="Lidl")
+        Transaction.objects.create(
+            account=self.account,
+            date=date(2026, 8, 1),
+            amount=Decimal("-5.00"),
+            payee=payee,
+            category=food,
+            memo="last time",
+        )
+        reminder = self.make_reminder(category=food, payee=payee)
+        self.assertEqual(initial_from_reminder(reminder)["memo"], "last time")
+
+    def test_a_reminder_without_a_payee_or_category_has_no_payee_name_and_keeps_its_notes(self):
+        initial = initial_from_reminder(self.make_reminder())
+        self.assertNotIn("payee_name", initial)
+        self.assertIsNone(initial["category"])
+        self.assertEqual(initial["memo"], "from the reminder")
+
+    def test_a_payee_without_a_category_gives_its_name_but_no_remembered_memo(self):
+        # The payee's older uncategorized transaction has a memo of its
+        # own: it must not stand in for "last time in this category".
+        payee = Payee.objects.create(name="Lidl")
+        Transaction.objects.create(
+            account=self.account,
+            date=date(2026, 8, 1),
+            amount=Decimal("-5.00"),
+            payee=payee,
+            memo="from an uncategorized one",
+        )
+        initial = initial_from_reminder(self.make_reminder(payee=payee))
+        self.assertEqual(initial["payee_name"], "Lidl")
+        self.assertIsNone(initial["category"])
+        self.assertEqual(initial["memo"], "from the reminder")
+
+    def test_a_category_without_a_payee_keeps_the_reminders_notes(self):
+        food = Category.objects.create(name="Food", category_type=Category.CategoryType.EXPENSE)
+        Transaction.objects.create(
+            account=self.account,
+            date=date(2026, 8, 1),
+            amount=Decimal("-5.00"),
+            payee=Payee.objects.create(name="Lidl"),
+            category=food,
+            memo="somebody else's memo",
+        )
+        initial = initial_from_reminder(self.make_reminder(category=food))
+        self.assertNotIn("payee_name", initial)
+        self.assertEqual(initial["category"], food.pk)
+        self.assertEqual(initial["memo"], "from the reminder")
+
+    def test_a_blank_memo_used_last_time_falls_back_to_the_reminders_notes(self):
+        food = Category.objects.create(name="Food", category_type=Category.CategoryType.EXPENSE)
+        payee = Payee.objects.create(name="Lidl")
+        Transaction.objects.create(
+            account=self.account,
+            date=date(2026, 8, 1),
+            amount=Decimal("-5.00"),
+            payee=payee,
+            category=food,
+            memo="",
+        )
+        reminder = self.make_reminder(category=food, payee=payee)
+        self.assertEqual(initial_from_reminder(reminder)["memo"], "from the reminder")
+
+    def test_an_income_reminder_starts_with_a_positive_amount(self):
+        reminder = self.make_reminder(reminder_type=Category.CategoryType.INCOME)
+        self.assertEqual(initial_from_reminder(reminder)["amount"], Decimal("20.00"))
+
+    def test_a_reminder_with_no_fixed_amount_starts_with_none(self):
+        reminder = Reminder.objects.create(account=self.account, next_due_date=date(2026, 9, 14))
+        initial = initial_from_reminder(reminder)
+        self.assertIsNone(initial["amount"])
+        self.assertEqual(initial["memo"], "")
+
+    def test_the_number_continues_the_due_dates_year(self):
+        Transaction.objects.create(
+            account=self.account,
+            date=date(2026, 1, 1),
+            amount=Decimal("-1.00"),
+            transaction_number=41,
+        )
+        Transaction.objects.create(
+            account=self.account,
+            date=date(2025, 1, 1),
+            amount=Decimal("-1.00"),
+            transaction_number=900,
+        )
+        self.assertEqual(initial_from_reminder(self.make_reminder())["transaction_number"], 42)
