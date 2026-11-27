@@ -108,6 +108,7 @@ def category_usage(request, pk):
             .exclude(Q(pk=category.pk) | Q(account__isnull=False))
             .first()
         )
+
         if not selected_ids:
             messages.error(request, "Select at least one transaction to move.")
         elif not target:
@@ -124,6 +125,7 @@ def category_usage(request, pk):
                 request,
                 f"Moved {plural(moved, 'transaction')} to {target.full_name}.",
             )
+
         return redirect("finance:category_usage", pk=category.pk)
 
     other_categories = sorted(
@@ -132,12 +134,10 @@ def category_usage(request, pk):
         ),
         key=category_name_order,
     )
-    return render(
-        request,
-        "finance/category_usage.html",
-        {
-            "category": category,
-            "transactions": transactions,
-            "other_categories": other_categories,
-        },
-    )
+
+    context = {
+        "category": category,
+        "transactions": transactions,
+        "other_categories": other_categories,
+    }
+    return render(request, "finance/category_usage.html", context)

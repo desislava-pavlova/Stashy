@@ -65,18 +65,16 @@ def account_detail(request, pk):
     # whole history - so it follows the Transactions page's rule for an
     # open range and splits into pages.
     rows, page_obj = paged(request, transactions, split=True)
-    return render(
-        request,
-        "finance/account_detail.html",
-        {
-            "account": account,
-            "transactions": rows,
-            "page_obj": page_obj,
-            "transaction_count": page_obj.paginator.count,
-            "sort": sort,
-            "sort_next": sort_next,
-        },
-    )
+
+    context = {
+        "account": account,
+        "transactions": rows,
+        "page_obj": page_obj,
+        "transaction_count": page_obj.paginator.count,
+        "sort": sort,
+        "sort_next": sort_next,
+    }
+    return render(request, "finance/account_detail.html", context)
 
 
 class AccountCreateView(CreateView):
@@ -113,6 +111,7 @@ def account_transfer(request, pk):
     """The account page's Transfer button (D7): moves money between two
     accounts as a paired transaction."""
     account = get_object_or_404(Account, pk=pk)
+
     if request.method == "POST":
         form = TransferForm(request.POST, from_account=account)
         if form.is_valid():
@@ -124,7 +123,9 @@ def account_transfer(request, pk):
             return redirect("finance:account_detail", pk=account.pk)
     else:
         form = TransferForm(from_account=account)
-    return render(request, "finance/transfer_form.html", {"form": form, "account": account})
+
+    context = {"form": form, "account": account}
+    return render(request, "finance/transfer_form.html", context)
 
 
 def _reconcile_review_context(account, statement_date, statement_balance, checked_ids=None):
@@ -134,6 +135,7 @@ def _reconcile_review_context(account, statement_date, statement_balance, checke
             "date", "transaction_number"
         )
     )
+
     if checked_ids is None:
         # First visit to the checklist starts with nothing checked - use
         # "Mark all" if the statement covers everything. A retry after
@@ -142,6 +144,7 @@ def _reconcile_review_context(account, statement_date, statement_balance, checke
         checked_ids = set()
     for txn in candidates:
         txn.was_checked = str(txn.pk) in checked_ids
+
     deposits = [t for t in candidates if t.amount > 0]
     payments = [t for t in candidates if t.amount < 0]
     return {
@@ -173,79 +176,77 @@ def _reconcile_refusal(error, account):
     )
 
 
+def _reconcile_start_context(account, form):
+    """The first step's page, where the statement's date and balance are
+    typed."""
+    return {
+        "account": account,
+        "form": form,
+        "opening_balance": account.reconciled_balance(),
+    }
+
+
+def _reconcile_finish(request, account):
+    """The second step's POST: reconcile what was checked, or say why it
+    can't be and show the checklist again."""
+    finish_form = ReconcileFinishForm(request.POST, account=account)
+    if not finish_form.is_valid():
+        # Only a tampered or half-sent page gets here (the fields
+        # are hidden), or one whose transactions were reconciled
+        # elsewhere meanwhile - start over from step 1.
+        messages.error(
+            request,
+            "Something in that reconciliation didn't come through. Please start it again.",
+        )
+        context = _reconcile_start_context(account, ReconcileStartForm())
+        return render(request, "finance/account_reconcile_start.html", context)
+
+    statement_date = finish_form.cleaned_data["statement_date"]
+    statement_balance = finish_form.cleaned_data["statement_balance"]
+    checked = list(finish_form.cleaned_data["transaction"])
+    try:
+        reconciliation.reconcile(
+            account,
+            statement_date,
+            statement_balance,
+            checked,
+            accept_difference=finish_form.cleaned_data["accept_difference"],
+        )
+    except (
+        reconciliation.UnacceptedDifferenceError,
+        reconciliation.AmountTooBigError,
+    ) as error:
+        messages.error(request, _reconcile_refusal(error, account))
+        checked_ids = {str(t.pk) for t in checked}
+        context = _reconcile_review_context(
+            account, statement_date, statement_balance, checked_ids
+        )
+        return render(request, "finance/account_reconcile_review.html", context)
+
+    messages.success(
+        request, f"{account.name} reconciled to {regional.format_date(statement_date)}."
+    )
+    return redirect("finance:account_detail", pk=account.pk)
+
+
 def account_reconcile(request, pk):
     """The account page's Reconcile button: a Quicken-style two-step
     flow - state the statement's ending balance and date, then check off
     the transactions it covers."""
     account = get_object_or_404(Account, pk=pk)
 
-    if request.method == "POST" and request.POST.get("stage") == "finish":
-        finish_form = ReconcileFinishForm(request.POST, account=account)
-        if not finish_form.is_valid():
-            # Only a tampered or half-sent page gets here (the fields
-            # are hidden), or one whose transactions were reconciled
-            # elsewhere meanwhile - start over from step 1.
-            messages.error(
-                request,
-                "Something in that reconciliation didn't come through. Please start it again.",
-            )
-            return render(
-                request,
-                "finance/account_reconcile_start.html",
-                {
-                    "account": account,
-                    "form": ReconcileStartForm(),
-                    "opening_balance": account.reconciled_balance(),
-                },
-            )
-        statement_date = finish_form.cleaned_data["statement_date"]
-        statement_balance = finish_form.cleaned_data["statement_balance"]
-        checked = list(finish_form.cleaned_data["transaction"])
-        try:
-            reconciliation.reconcile(
-                account,
-                statement_date,
-                statement_balance,
-                checked,
-                accept_difference=finish_form.cleaned_data["accept_difference"],
-            )
-        except (
-            reconciliation.UnacceptedDifferenceError,
-            reconciliation.AmountTooBigError,
-        ) as error:
-            messages.error(request, _reconcile_refusal(error, account))
-            checked_ids = {str(t.pk) for t in checked}
-            return render(
-                request,
-                "finance/account_reconcile_review.html",
-                _reconcile_review_context(account, statement_date, statement_balance, checked_ids),
-            )
-        messages.success(
-            request, f"{account.name} reconciled to {regional.format_date(statement_date)}."
-        )
-        return redirect("finance:account_detail", pk=account.pk)
-
     if request.method == "POST":
+        if request.POST.get("stage") == "finish":
+            return _reconcile_finish(request, account)
+
         start_form = ReconcileStartForm(request.POST)
         if start_form.is_valid():
-            return render(
-                request,
-                "finance/account_reconcile_review.html",
-                _reconcile_review_context(
-                    account,
-                    start_form.cleaned_data["statement_date"],
-                    start_form.cleaned_data["statement_balance"],
-                ),
-            )
+            statement_date = start_form.cleaned_data["statement_date"]
+            statement_balance = start_form.cleaned_data["statement_balance"]
+            context = _reconcile_review_context(account, statement_date, statement_balance)
+            return render(request, "finance/account_reconcile_review.html", context)
     else:
         start_form = ReconcileStartForm()
 
-    return render(
-        request,
-        "finance/account_reconcile_start.html",
-        {
-            "account": account,
-            "form": start_form,
-            "opening_balance": account.reconciled_balance(),
-        },
-    )
+    context = _reconcile_start_context(account, start_form)
+    return render(request, "finance/account_reconcile_start.html", context)

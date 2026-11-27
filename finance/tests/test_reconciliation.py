@@ -176,6 +176,23 @@ class ReconcileFinishTests(LoggedInWithAccountTestCase):
         self.assertFalse(t1.reconciled)
         self.assertEqual(Reconciliation.objects.count(), 0)
 
+    def test_a_refused_difference_keeps_the_ticks_and_says_how_big_it_is(self):
+        """The checklist comes back with the same rows ticked, so one
+        wrong statement balance doesn't cost the ticking."""
+        ticked = Transaction.objects.create(
+            account=self.account, date=date(2026, 1, 1), amount=Decimal("100.00")
+        )
+        not_ticked = Transaction.objects.create(
+            account=self.account, date=date(2026, 1, 2), amount=Decimal("5.00")
+        )
+
+        response = self._finish("2026-01-31", "90.00", [ticked])
+
+        by_pk = {t.pk: t.was_checked for t in response.context["deposits"]}
+        self.assertEqual(by_pk, {ticked.pk: True, not_ticked.pk: False})
+        messages = [str(message) for message in response.context["messages"]]
+        self.assertTrue(any(m.startswith("That leaves a difference of") for m in messages))
+
     def test_an_accepted_difference_creates_an_adjustment_transaction(self):
         t1 = Transaction.objects.create(
             account=self.account, date=date(2026, 1, 1), amount=Decimal("100.00")
@@ -289,6 +306,14 @@ class ReconcileFinishFormTests(LoggedInWithAccountTestCase):
                 self.assertContains(response, "didn&#x27;t come through")
         self.txn.refresh_from_db()
         self.assertFalse(self.txn.reconciled)
+
+    def test_a_garbled_finish_shows_the_first_step_again_with_a_fresh_form(self):
+        response = self.finish(statement_date="yesterday", statement_balance="lots")
+
+        self.assertTemplateUsed(response, "finance/account_reconcile_start.html")
+        self.assertTemplateNotUsed(response, "finance/account_reconcile_review.html")
+        self.assertFalse(response.context["form"].is_bound)
+        self.assertEqual(response.context["account"], self.account)
 
     def test_a_transaction_id_too_big_for_the_database_restarts_with_a_message(self):
         """S106: Django's multi-choice field put the number into the

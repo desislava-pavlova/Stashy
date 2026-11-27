@@ -18,7 +18,6 @@ from zipfile import BadZipFile
 
 from django.db import router, transaction
 
-from ofxparse import OfxParser
 from openpyxl import load_workbook
 from openpyxl.utils.exceptions import InvalidFileException
 
@@ -28,6 +27,7 @@ from .. import regional
 from ..limits import MAX_TRANSACTION_NUMBER, is_plausible_date
 from ..models import Account, Category, ImportBatch, Payee, Transaction, name_key
 from ..money import parse_amount
+from . import ofx
 
 
 SUPPORTED_EXTENSIONS = ("csv", "xlsx", "ofx", "qfx")
@@ -78,13 +78,16 @@ def import_file(upload, account: Account, date_format: str = "auto") -> ImportRe
         system_action(f"Imported from {upload.name}"),
     ):
         batch = ImportBatch.objects.create(account=account, source_filename=upload.name)
+
         if extension in ("csv", "xlsx"):
             result = _import_rows(fieldnames, rows, account, batch, date_format or "auto")
         else:
             result = _import_ofx_rows(ofx_rows, account, batch)
+
         batch.row_count = result.created
         batch.duplicate_count = result.duplicates
         batch.save(update_fields=["row_count", "duplicate_count"])
+
     result.encoding_note = encoding_note
     return result
 
@@ -103,6 +106,7 @@ def _read_csv(upload):
     Cyrillic letters in place of its accents.
     """
     raw = upload.read()
+
     try:
         text, note = raw.decode("utf-8-sig"), ""
     except UnicodeDecodeError:
@@ -116,6 +120,7 @@ def _read_csv(upload):
             "The file wasn't UTF-8, so it was read as Windows-1251 (Cyrillic) - if names look "
             'wrong, delete what was imported, save the file as "CSV UTF-8" and import it again.'
         )
+
     try:
         reader = csv.DictReader(io.StringIO(text, newline=""))
         rows = list(reader)
@@ -123,6 +128,7 @@ def _read_csv(upload):
         raise ImportFileError(
             f"This doesn't look like a CSV file Stashy can read ({error})."
         ) from None
+
     return reader.fieldnames or [], rows, note
 
 
@@ -163,18 +169,9 @@ def _read_ofx(upload):
     """Every transaction in an OFX/QFX file as (date, raw amount, payee
     name, memo)."""
     try:
-        ofx = OfxParser.parse(upload)
-        return [
-            (
-                txn.date.date(),
-                txn.amount,
-                (txn.payee or "").strip(),
-                getattr(txn, "memo", "") or "",
-            )
-            for ofx_account in ofx.accounts
-            for txn in ofx_account.statement.transactions
-        ]
-    except Exception:
+        upload.seek(0)
+        return ofx.read_transactions(upload.read())
+    except ValueError:  # OfxError and a file that isn't text
         raise ImportFileError(
             "Stashy couldn't read this OFX/QFX file - it may be damaged or in a different format."
         ) from None
@@ -290,17 +287,22 @@ def _import_rows(fieldnames, rows, account, batch, date_format="auto"):
 
 
 def _import_ofx_rows(ofx_rows, account, batch):
+    """The OFX rows, imported: unlike a CSV's, they carry no per-row
+    account text and no ambiguous textual dates to detect."""
     result = ImportResult()
     known = _known_fingerprints()
+
     for txn_date, raw_amount, payee_name, memo in ofx_rows:
         amount = parse_amount(raw_amount)
         if amount is None or not is_plausible_date(txn_date):
             result.unreadable += 1
             continue
+
         fp = _fingerprint(account.id, txn_date, amount, payee_name)
         if fp in known:
             result.duplicates += 1
             continue
+
         known.add(fp)
         payee = Payee.objects.resolve(payee_name, reason=None) if payee_name else None
         Transaction.objects.create(
@@ -314,8 +316,7 @@ def _import_ofx_rows(ofx_rows, account, batch):
             category=_guessed_category(payee),
         )
         result.created += 1
-    # OFX has no per-row account text field and no ambiguous textual
-    # dates to detect.
+
     return result
 
 
@@ -362,6 +363,7 @@ def _resolve_category(raw, amount):
     raw = (raw or "").strip()
     if not raw:
         return None
+
     parts = _CATEGORY_SEPARATOR_RE.split(raw, maxsplit=1)
     parent_name = parts[0].strip()
     child_name = parts[1].strip() if len(parts) > 1 else ""

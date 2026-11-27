@@ -150,9 +150,11 @@ def remember_old_values(sender, instance, raw=False, **kwargs):
 def log_save(sender, instance, created, raw=False, update_fields=None, **kwargs):
     if raw or not _logging(sender):
         return
+
     table = sender._meta.db_table
     row_id = str(instance.pk)
     row_label = describe(instance)
+
     if created:
         write_row(
             Action.INSERT,
@@ -162,9 +164,11 @@ def log_save(sender, instance, created, raw=False, update_fields=None, **kwargs)
             values=_snapshot(sender, instance),
         )
         return
+
     old = instance.__dict__.pop("_audit_old", None)
     if old is None:
         return
+
     now = timezone.now()
     context = _resolved_context()
     for field in _logged_fields(sender):
@@ -231,6 +235,7 @@ def _log_cleared_references_after_commit(instance):
         f"Cleared because {instance._meta.verbose_name} '{describe(instance)}' "
         f"(#{instance.pk}) was deleted"
     )
+
     for relation in instance._meta.get_fields(include_hidden=True):
         if not (
             relation.auto_created
@@ -240,6 +245,7 @@ def _log_cleared_references_after_commit(instance):
             continue
         if relation.on_delete is not models.SET_NULL or not is_tracked(relation.related_model):
             continue
+
         field = relation.field
         pks = list(
             relation.related_model._base_manager.filter(**{field.name: instance}).values_list(
@@ -295,11 +301,13 @@ def _m2m_field_name(through, instance):
 def log_m2m(sender, instance, action, model, pk_set, **kwargs):
     if not _logging(type(instance)) or action not in ("post_add", "post_remove", "pre_clear"):
         return
+
     name = _m2m_field_name(sender, instance)
     if action == "pre_clear":
         pk_set = set(getattr(instance, name).values_list("pk", flat=True))
     if not pk_set:
         return
+
     table = type(instance)._meta.db_table
     row_id = str(instance.pk)
     row_label = describe(instance)

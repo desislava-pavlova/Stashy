@@ -57,21 +57,21 @@ def _render_settings(request, profile, form=None, watched_form=None):
         for code in _rate_currencies(profile)
         if code != profile.main_currency
     ]
-    recent_backups = finance_backup.list_backups(_stash_backup_root(request), limit=5)
-    return render(
-        request,
-        "finance/settings.html",
-        {
-            "form": form or ProfileForm(instance=profile),
-            "watched_form": watched_form or WatchedExpensesForm(instance=profile),
-            **watched_expenses_picker_context(profile),
-            "profile": profile,
-            "known_rates": known_rates,
-            "recent_backups": [
-                {"name": p.name, "size_kb": p.stat().st_size // 1024} for p in recent_backups
-            ],
-        },
-    )
+
+    backup_files = finance_backup.list_backups(_stash_backup_root(request), limit=5)
+    recent_backups = [
+        {"name": path.name, "size_kb": path.stat().st_size // 1024} for path in backup_files
+    ]
+
+    context = {
+        "form": form or ProfileForm(instance=profile),
+        "watched_form": watched_form or WatchedExpensesForm(instance=profile),
+        **watched_expenses_picker_context(profile),
+        "profile": profile,
+        "known_rates": known_rates,
+        "recent_backups": recent_backups,
+    }
+    return render(request, "finance/settings.html", context)
 
 
 def settings_view(request):
@@ -95,6 +95,7 @@ def check_rates(request):
     stash's write lock while it waits on the internet.
     fetch_latest_rates() takes its own short one for the writes."""
     profile = request.stashy_profile
+
     try:
         stored, unavailable = fetch_latest_rates(profile.main_currency, _rate_currencies(profile))
     except RateFetchError as error:
@@ -108,6 +109,7 @@ def check_rates(request):
                 f"No rate available for: {', '.join(unavailable)}. "
                 "Enter it by hand in the admin if you need one.",
             )
+
     return redirect("finance:settings")
 
 
@@ -153,6 +155,7 @@ def change_pin_view(request):
     """Its own page, reached from Settings: current PIN, new PIN,
     confirm."""
     profile = request.stashy_profile
+
     if request.method == "POST":
         form = ChangePinForm(request.POST, profile=profile)
         if form.is_valid():
@@ -164,7 +167,9 @@ def change_pin_view(request):
             return _log_out_after_lockout(request)
     else:
         form = ChangePinForm(profile=profile)
-    return render(request, "finance/change_pin.html", {"form": form})
+
+    context = {"form": form}
+    return render(request, "finance/change_pin.html", context)
 
 
 RECOVERY_CODE_CACHE_SECONDS = 5 * 60
@@ -172,6 +177,19 @@ RECOVERY_CODE_CACHE_SECONDS = 5 * 60
 
 def _recovery_code_cache_key(token):
     return f"stashy:new-recovery-code:{token}"
+
+
+def _take_new_recovery_code(request):
+    """The code `recovery_code_view` made a moment ago, or None. It is
+    taken: read from the cache and deleted, so a reload shows none."""
+    token = request.session.pop("new_recovery_code_token", None)
+    if not token:
+        return None
+
+    key = _recovery_code_cache_key(token)
+    new_code = cache.get(key)
+    cache.delete(key)
+    return new_code
 
 
 @never_cache
@@ -186,6 +204,7 @@ def recovery_code_view(request):
     it. The page shows it once and deletes it. Stashy is one process, so
     the local-memory cache is shared by every request."""
     profile = request.stashy_profile
+
     if request.method == "POST":
         form = CurrentPinForm(request.POST, profile=profile)
         if form.is_valid():
@@ -197,15 +216,17 @@ def recovery_code_view(request):
             )
             request.session["new_recovery_code_token"] = token
             return redirect("finance:recovery_code")
+
         if security.is_locked_out(profile):
             return _log_out_after_lockout(request)
-        return render(request, "finance/recovery_code.html", {"form": form})
-    new_code = None
-    token = request.session.pop("new_recovery_code_token", None)
-    if token:
-        key = _recovery_code_cache_key(token)
-        new_code = cache.get(key)
-        cache.delete(key)
+
+        context = {"form": form}
+        return render(request, "finance/recovery_code.html", context)
+
+    # Taking the code changes the session and the cache, so it is done
+    # here, not inside the dictionary below.
+    new_code = _take_new_recovery_code(request)
+
     context = {"new_code": new_code, "form": CurrentPinForm(profile=profile)}
     return render(request, "finance/recovery_code.html", context)
 
@@ -237,6 +258,7 @@ def backup_restore(request):
 
     if request.method == "POST":
         form = CurrentPinForm(request.POST, profile=profile)
+
         # This view runs without the request's transaction, but the PIN
         # check takes its own lock (security.check_pin), so the wrong
         # try is counted either way.
@@ -252,6 +274,7 @@ def backup_restore(request):
                     "before is in backups/ too.",
                 )
             return redirect("finance:settings")
+
         if security.is_locked_out(profile):
             return _log_out_after_lockout(request)
     else:

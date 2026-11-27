@@ -21,22 +21,22 @@ def import_transactions(request):
         if form.is_valid():
             account = form.cleaned_data["account"]
             date_format = form.cleaned_data.get("date_format") or "auto"
+
             try:
                 result = importing.import_file(form.cleaned_data["file"], account, date_format)
             except importing.ImportFileError as error:
                 messages.error(request, str(error))
                 return redirect("finance:import_transactions")
+
             messages.success(request, _import_summary(result))
             return redirect("finance:account_detail", pk=account.pk)
     else:
         form = ImportUploadForm()
 
     recent_batches = ImportBatch.objects.select_related("account")[:15]
-    return render(
-        request,
-        "finance/import_form.html",
-        {"form": form, "recent_batches": recent_batches, "tips": IMPORT_TIPS},
-    )
+
+    context = {"form": form, "recent_batches": recent_batches, "tips": IMPORT_TIPS}
+    return render(request, "finance/import_form.html", context)
 
 
 def _import_summary(result):

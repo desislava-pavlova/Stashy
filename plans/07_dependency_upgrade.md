@@ -118,7 +118,9 @@ every library at its new version; only Python goes back.
   `Stashy.bat` line endings (S73):
   - ofxparse 0.21 hasn't had a release since 31/05/2021 and calls Beautiful
     Soup's deprecated `findAll` (plan 03): replace it, or keep a copy inside
-    Stashy.
+    Stashy. *Done 26/11/2026 (plan 03, item 3.15): an own reader,
+    `finance/services/ofx.py`. ofxparse, beautifulsoup4, soupsieve,
+    typing_extensions, lxml and six are no longer in `requirements.txt`.*
   - `stashy/settings/test.py` never cleans up its temporary folder
     explicitly, so every `-Wa` test run ends with a `ResourceWarning`
     (plan 03). `atexit.register(_test_run_folder.cleanup)` would end it.

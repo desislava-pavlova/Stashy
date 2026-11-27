@@ -127,13 +127,16 @@ def format_number(value, decimals=2, preferences=None):
     thousands, mark = _NUMBER_STYLES.get(
         (preferences or current()).number_format, _NUMBER_STYLES["space_dot"]
     )
+
     amount = Decimal(str(value)).quantize(Decimal(1).scaleb(-decimals), rounding=ROUND_HALF_UP)
     whole, _, fraction = f"{abs(amount):.{decimals}f}".partition(".")
+
     groups = []
     while len(whole) > 3:
         groups.insert(0, whole[-3:])
         whole = whole[:-3]
     groups.insert(0, whole)
+
     number = ("-" if amount < 0 else "") + thousands.join(groups)
     return f"{number}{mark}{fraction}" if fraction else number
 

@@ -58,9 +58,9 @@ class RateTable:
             Q(base_currency=self.target) | Q(quote_currency=self.target)
         ).exclude(base_currency=F("quote_currency"))
         manual = ExchangeRate.Source.MANUAL
-        for row in sorted(
-            rows, key=lambda r: (r.date, r.source == manual, r.pk)
-        ):  # later rows override earlier ones
+        # Later rows override earlier ones; a manual rate wins its own
+        # day.
+        for row in sorted(rows, key=lambda r: (r.date, r.source == manual, r.pk)):
             if row.quote_currency == self.target:
                 known[row.base_currency] = KnownRate(row.rate, row.date, row.source)
             else:
@@ -129,6 +129,7 @@ def fetch_latest_rates(main_currency, currencies):
 
     url = f"{FRANKFURTER_URL}?{urlencode({'base': main_currency, 'symbols': ','.join(wanted)})}"
     request = urllib.request.Request(url, headers={"User-Agent": "Stashy personal finance app"})
+
     try:
         with urllib.request.urlopen(request, timeout=10) as response:
             payload = json.load(response)
@@ -156,6 +157,7 @@ def fetch_latest_rates(main_currency, currencies):
             if rate is None or not is_plausible_rate(rate):
                 unavailable.append(code)
                 continue
+
             row, _ = ExchangeRate.objects.update_or_create(
                 base_currency=main_currency,
                 quote_currency=code,
@@ -164,4 +166,5 @@ def fetch_latest_rates(main_currency, currencies):
                 defaults={"rate": rate},
             )
             stored.append(row)
+
     return stored, sorted(unavailable)

@@ -29,6 +29,12 @@ def _to_step(step):
     return redirect("finance:welcome_step", step=step)
 
 
+def _step_context(step, **context):
+    """What every wizard page needs to draw its progress, plus the
+    step's own values."""
+    return {"step_number": step, "step_total": STEP_COUNT, **context}
+
+
 def welcome_step(request, step):
     profile = request.stashy_profile
     if profile.setup_finished:
@@ -52,19 +58,14 @@ def _step_money_region(request, profile, step):
             return _to_step(step + 1)
     else:
         form = ProfileForm(instance=profile)
-    return render(
-        request,
-        "finance/welcome_money_region.html",
-        {
-            "form": form,
-            "step_number": step,
-            "step_total": STEP_COUNT,
-        },
-    )
+
+    context = _step_context(step, form=form)
+    return render(request, "finance/welcome_money_region.html", context)
 
 
 def _step_categories(request, profile, step):
     available = starter_categories.available_sheets()
+
     if request.method == "POST":
         sheet = request.POST.get("sheet")
         # available is empty only when starter_categories.xlsx itself is
@@ -76,17 +77,12 @@ def _step_categories(request, profile, step):
                 if created:
                     added = plural(len(created), "category", "categories")
                     messages.success(request, f"Added {added} from {sheet}.")
+
             _advance(profile, step)
             return _to_step(step + 1)
-    return render(
-        request,
-        "finance/welcome_categories.html",
-        {
-            "available": available,
-            "step_number": step,
-            "step_total": STEP_COUNT,
-        },
-    )
+
+    context = _step_context(step, available=available)
+    return render(request, "finance/welcome_categories.html", context)
 
 
 def _step_watched_expenses(request, profile, step):
@@ -101,16 +97,9 @@ def _step_watched_expenses(request, profile, step):
             return _to_step(step + 1)
     else:
         form = WatchedExpensesForm(instance=profile)
-    return render(
-        request,
-        "finance/welcome_watched_expenses.html",
-        {
-            "form": form,
-            "step_number": step,
-            "step_total": STEP_COUNT,
-            **watched_expenses_picker_context(profile),
-        },
-    )
+
+    context = _step_context(step, form=form, **watched_expenses_picker_context(profile))
+    return render(request, "finance/welcome_watched_expenses.html", context)
 
 
 def _step_first_account(request, profile, step):
@@ -125,15 +114,9 @@ def _step_first_account(request, profile, step):
             return redirect("finance:dashboard")
     else:
         form = AccountCreateForm()
-    return render(
-        request,
-        "finance/welcome_first_account.html",
-        {
-            "form": form,
-            "step_number": step,
-            "step_total": STEP_COUNT,
-        },
-    )
+
+    context = _step_context(step, form=form)
+    return render(request, "finance/welcome_first_account.html", context)
 
 
 _STEP_HANDLERS = {

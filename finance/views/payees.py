@@ -50,30 +50,30 @@ def payee_list(request):
     rows.sort(key=PAYEE_SORT_KEYS[sort.removeprefix("-")], reverse=sort.startswith("-"))
     sort_next = next_sort_keys(PAYEE_SORT_KEYS, sort)
 
-    return render(
-        request,
-        "finance/payee_list.html",
-        {
-            "rows": rows,
-            "search": search,
-            "selected_category": category_id,
-            "memo_filter": memo_filter,
-            "categories": categories_alphabetical(
-                Category.objects.select_related("parent").exclude(account__isnull=False)
-            ),
-            "sort": sort,
-            "sort_next": sort_next,
-        },
+    categories = categories_alphabetical(
+        Category.objects.select_related("parent").exclude(account__isnull=False)
     )
+
+    context = {
+        "rows": rows,
+        "search": search,
+        "selected_category": category_id,
+        "memo_filter": memo_filter,
+        "categories": categories,
+        "sort": sort,
+        "sort_next": sort_next,
+    }
+    return render(request, "finance/payee_list.html", context)
 
 
 def payee_detail(request, pk):
     """Every category ever used with this payee, and the most recent
     memo/amount in each."""
     payee = get_object_or_404(Payee, pk=pk)
-    return render(
-        request, "finance/payee_detail.html", {"payee": payee, "history": payee.category_history()}
-    )
+    history = payee.category_history()
+
+    context = {"payee": payee, "history": history}
+    return render(request, "finance/payee_detail.html", context)
 
 
 class PayeeCreateView(CreateView):

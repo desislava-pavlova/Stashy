@@ -6,6 +6,7 @@ from decimal import Decimal
 from unittest import mock
 
 from django.conf import settings
+from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.test import override_settings
 from django.urls import resolve, reverse
@@ -18,6 +19,7 @@ from ..forms.settings import ProfileForm, WatchedExpensesForm
 from ..models import Account, Category, ExchangeRate, Profile
 from ..services.rates import RateFetchError
 from ..stashes import security
+from ..views.settings import _recovery_code_cache_key
 from .base import (
     LEAKED_TEMPLATE_SYNTAX,
     REHASHING_PASSWORD_HASHERS,
@@ -799,3 +801,51 @@ class RecoveryCodeNotInCookieTests(PinPageTestCase):
 
         self.assertContains(first, "ABCD-EFGH-JKLM")
         self.assertNotContains(second, "ABCD-EFGH-JKLM")
+
+
+class RecoveryCodeIsTakenOnceTests(PinPageTestCase):
+    """3.6 (S42): reading the new code is one function that pops the
+    session's token and deletes the cache entry. Sessions are signed
+    cookies, so popping the token only changes this browser's copy of
+    the cookie: it is the cache delete that makes the code show-once."""
+
+    CODE = "ABCD-EFGH-JKLM"
+
+    def generate_the_known_code(self):
+        with mock.patch.object(security, "regenerate_recovery_code", return_value=self.CODE):
+            self.client.post(reverse("finance:recovery_code"), {"current_pin": self.PIN})
+        return self.client.session["new_recovery_code_token"]
+
+    def put_token_in_session(self, token):
+        session = self.client.session
+        session["new_recovery_code_token"] = token
+        session.save()
+        self.client.cookies[settings.SESSION_COOKIE_NAME] = session.session_key
+
+    def test_the_cache_entry_is_deleted_as_soon_as_the_code_is_shown(self):
+        key = _recovery_code_cache_key(self.generate_the_known_code())
+        self.assertEqual(cache.get(key), self.CODE)
+
+        self.client.get(reverse("finance:recovery_code"))
+
+        self.assertIsNone(cache.get(key))
+        self.assertNotIn("new_recovery_code_token", self.client.session)
+
+    def test_an_older_copy_of_the_session_cannot_show_the_code_again(self):
+        token = self.generate_the_known_code()
+        self.client.get(reverse("finance:recovery_code"))
+        self.put_token_in_session(token)
+
+        replay = self.client.get(reverse("finance:recovery_code"))
+
+        self.assertNotContains(replay, self.CODE)
+        self.assertContains(replay, "This replaces your recovery code")
+
+    def test_a_token_with_nothing_behind_it_shows_no_code_and_is_dropped(self):
+        self.put_token_in_session("a-token-that-expired")
+
+        response = self.client.get(reverse("finance:recovery_code"))
+
+        self.assertNotContains(response, "Write this down now")
+        self.assertContains(response, "This replaces your recovery code")
+        self.assertNotIn("new_recovery_code_token", self.client.session)

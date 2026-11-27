@@ -633,6 +633,32 @@ class ImportFileTests(StashTestCase):
         )
         self.assertEqual(imported.memo, "weekly shop")
 
+    def test_a_posted_time_with_an_offset_is_dated_in_utc(self):
+        """11 pm on 5 January in New York is 6 January in UTC. The
+        rule stays as it is so that a file imported again is
+        recognised as already imported."""
+        data = ofx_file(posted="20260105230000[-5:EST]")
+
+        importing.import_file(SimpleUploadedFile("bank.ofx", data), self.account)
+
+        self.assertEqual(Transaction.objects.get().date, date(2026, 1, 6))
+        again = importing.import_file(SimpleUploadedFile("bank.ofx", data), self.account)
+        self.assertEqual((again.created, again.duplicates), (0, 1))
+
+    def test_a_utf_8_xml_file_with_a_cyrillic_payee_is_imported(self):
+        data = (
+            '<?xml version="1.0" encoding="UTF-8"?>\n<?OFX OFXHEADER="200" VERSION="211"?>\n'
+            "<OFX><BANKMSGSRSV1><STMTTRNRS><STMTRS><BANKTRANLIST><STMTTRN>"
+            "<DTPOSTED>20260105</DTPOSTED><TRNAMT>-12.50</TRNAMT><FITID>1</FITID>"
+            "<NAME>Кауфланд</NAME></STMTTRN></BANKTRANLIST></STMTRS></STMTTRNRS>"
+            "</BANKMSGSRSV1></OFX>"
+        ).encode()
+
+        result = importing.import_file(SimpleUploadedFile("bank.ofx", data), self.account)
+
+        self.assertEqual(result.created, 1)
+        self.assertEqual(Transaction.objects.get().payee.name, "Кауфланд")
+
 
 class ImportUploadFormTests(StashTestCase):
     @classmethod

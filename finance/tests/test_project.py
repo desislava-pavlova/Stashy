@@ -778,3 +778,48 @@ class FormsPackageReExportsNothingTests(SimpleTestCase):
         body = ast.parse(path.read_text(encoding="utf-8")).body
         self.assertEqual(len(body), 1)
         self.assertIsInstance(body[0], ast.Expr)
+
+
+class FunctionViewsBuildTheirContextFirstTests(SimpleTestCase):
+    """S42: a function view builds `context` and ends with
+    `render(request, "<template>", context)`, so the return line looks
+    the same everywhere and the context reads as its own block."""
+
+    def renders_without_context(self, source):
+        """(the line of every `render()` call that doesn't end with a
+        variable called `context`, how many calls there were)."""
+        calls = [
+            node
+            for node in ast.walk(ast.parse(source))
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "render"
+        ]
+        offenders = [
+            call.lineno
+            for call in calls
+            if not (
+                len(call.args) == 3
+                and isinstance(call.args[2], ast.Name)
+                and call.args[2].id == "context"
+            )
+        ]
+        return offenders, len(calls)
+
+    def test_every_render_call_in_the_views_passes_a_variable_called_context(self):
+        views = Path(settings.BASE_DIR) / "finance" / "views"
+        total = 0
+        for path in sorted(views.glob("*.py")):
+            offenders, count = self.renders_without_context(path.read_text(encoding="utf-8"))
+            total += count
+            with self.subTest(file=path.name):
+                self.assertEqual(offenders, [], "build `context` above the render() call")
+        self.assertGreater(total, 25, "the walk should have found the views' renders")
+
+    def test_the_check_accepts_a_context_variable(self):
+        source = 'def view(request):\n    return render(request, "a.html", context)\n'
+        self.assertEqual(self.renders_without_context(source), ([], 1))
+
+    def test_the_check_catches_a_dictionary_written_inside_the_call(self):
+        source = 'def view(request):\n    return render(request, "a.html", {"x": 1})\n'
+        self.assertEqual(self.renders_without_context(source), ([2], 1))

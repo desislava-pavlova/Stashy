@@ -42,6 +42,11 @@ from .money import ZERO, to_cent
 from .text import possessive
 
 
+# ----------------------------------------------------------------------
+# Names
+# ----------------------------------------------------------------------
+
+
 def name_key(name):
     """How Stashy compares payee, category and stash owner names: names
     that differ only in upper/lower case are the same one. Python's
@@ -57,6 +62,11 @@ def _with_name_key(update_fields):
     if update_fields is not None and "name" in update_fields and "name_key" not in update_fields:
         return [*update_fields, "name_key"]
     return update_fields
+
+
+# ----------------------------------------------------------------------
+# Profile
+# ----------------------------------------------------------------------
 
 
 class Profile(models.Model):
@@ -148,6 +158,11 @@ class Profile(models.Model):
             time_zone=self.time_zone,
             main_currency=self.main_currency,
         )
+
+
+# ----------------------------------------------------------------------
+# Accounts
+# ----------------------------------------------------------------------
 
 
 class AccountType(models.TextChoices):
@@ -324,6 +339,7 @@ class Account(models.Model):
         it (D7). Returns it."""
         name = f"[{self.name}]"
         category = Category.objects.filter(account=self).first()
+
         if category is None:
             with system_action(f"Transfer category created for account '{self.name}'"):
                 category = Category.objects.create(
@@ -333,6 +349,7 @@ class Account(models.Model):
             category.name = name
             with system_action(f"Transfer category renamed to match account '{self.name}'"):
                 category.save(update_fields=["name"])
+
         return category
 
 
@@ -346,6 +363,11 @@ def grouped_accounts(accounts):
             groups.append({"key": key, "name": name, "explainer": explainer, "accounts": []})
         groups[-1]["accounts"].append(account)
     return groups
+
+
+# ----------------------------------------------------------------------
+# Categories
+# ----------------------------------------------------------------------
 
 
 class CategoryQuerySet(models.QuerySet):
@@ -446,6 +468,7 @@ class Category(models.Model):
         super().clean()
         errors = {}
         parent = self.parent if self.parent_id else None
+
         if parent is not None:
             if parent.pk == self.pk:
                 errors["parent"] = "A category can't be placed under itself."
@@ -460,6 +483,7 @@ class Category(models.Model):
                     "This category already has its own subcategories, so it can't become one "
                     "itself — move or remove them first."
                 )
+
         is_transfer = self.category_type == self.CategoryType.TRANSFER
         if is_transfer and not self.account_id:
             errors["category_type"] = (
@@ -469,12 +493,14 @@ class Category(models.Model):
             errors["category_type"] = (
                 "This category belongs to an account, so its type stays Transfer."
             )
+
         if "parent" not in errors and not self.account_id:
             same_name = Category.objects.filter(name_key=name_key(self.name)).exclude(pk=self.pk)
             if parent is not None and same_name.filter(parent=parent).exists():
                 errors["name"] = f"'{parent.name}' already has a subcategory with this name."
             elif parent is None and same_name.main_categories().exists():
                 errors["name"] = "A category with this name already exists."
+
         if errors:
             raise ValidationError(errors)
 
@@ -569,6 +595,11 @@ def grouped_categories(categories):
             )
         groups[-1]["categories"].append(category)
     return groups
+
+
+# ----------------------------------------------------------------------
+# Payees
+# ----------------------------------------------------------------------
 
 
 class PayeeQuerySet(models.QuerySet):
@@ -734,6 +765,11 @@ def payee_summaries(payees):
     return summaries
 
 
+# ----------------------------------------------------------------------
+# Transactions
+# ----------------------------------------------------------------------
+
+
 class TransactionQuerySet(models.QuerySet):
     """The building blocks every report query is made of
     (finance/reporting.py)."""
@@ -846,6 +882,11 @@ class Transaction(models.Model):
         return min((highest or 0) + 1, MAX_TRANSACTION_NUMBER)
 
 
+# ----------------------------------------------------------------------
+# Imports
+# ----------------------------------------------------------------------
+
+
 class ImportBatch(models.Model):
     """Tracks a single CSV/OFX/QFX import run so it can be reviewed or
     undone."""
@@ -862,6 +903,11 @@ class ImportBatch(models.Model):
 
     def __str__(self):
         return f"{self.source_filename} ({regional.format_datetime(self.imported_at)})"
+
+
+# ----------------------------------------------------------------------
+# Reminders
+# ----------------------------------------------------------------------
 
 
 AMOUNT_NOT_NEGATIVE = (
@@ -1029,6 +1075,7 @@ class Reminder(models.Model):
             update_fields
         )
         regenerate = self.frequency != self.Frequency.ONE_TIME and schedule_saved
+
         # Read before the save overwrites it: regenerate_occurrences()
         # must know if the due date moved.
         with _reminder_transaction():
@@ -1213,6 +1260,7 @@ class Reminder(models.Model):
         # A head needs no copy of its own values.
         head = [root] if root.pk != self.pk else []
         open_occurrences = root.occurrences.unresolved().exclude(pk=self.pk)
+
         with (
             _reminder_transaction(),
             system_action(f"Series-wide edit applied from reminder ({self})"),
@@ -1271,10 +1319,12 @@ class Reminder(models.Model):
         """
         if self.frequency == self.Frequency.ONE_TIME:
             return
+
         first_preview_date = min(previous_due_date or self.next_due_date, self.next_due_date)
         wanted_dates = self._wanted_dates()
         wanted = set(wanted_dates)
         series_values = self._series_values()
+
         # One unit, read and writes together, so a crash half way leaves
         # the occurrences as they were and no other writer slips in
         # between the reading and the writing.
@@ -1298,9 +1348,11 @@ class Reminder(models.Model):
                 if wanted_dates
                 else set()
             )
+
             for occurrence in previews:
                 if occurrence.next_due_date not in wanted:
                     occurrence.delete()
+
             for occ_date in wanted_dates:
                 if occ_date not in existing_dates:
                     Reminder.objects.create(
@@ -1309,6 +1361,11 @@ class Reminder(models.Model):
                         next_due_date=occ_date,
                         **series_values,
                     )
+
+
+# ----------------------------------------------------------------------
+# Exchange rates
+# ----------------------------------------------------------------------
 
 
 class ExchangeRate(models.Model):
@@ -1343,6 +1400,11 @@ class ExchangeRate(models.Model):
         rate = f"{self.rate.normalize():f}"
         rate_date = regional.format_date(self.date)
         return f"1 {self.base_currency} = {rate} {self.quote_currency} ({rate_date})"
+
+
+# ----------------------------------------------------------------------
+# Reconciliations
+# ----------------------------------------------------------------------
 
 
 class Reconciliation(models.Model):

@@ -57,6 +57,7 @@ def reconcile(
     opening_balance = account.reconciled_balance()
     checked_total = sum((txn.amount for txn in transactions), ZERO)
     gap = (statement_balance - (opening_balance + checked_total)).quantize(CENT)
+
     for figure in (opening_balance, gap):
         if abs(figure) > MAX_AMOUNT:
             raise AmountTooBigError(figure)
@@ -69,6 +70,7 @@ def reconcile(
         for txn in transactions:
             txn.reconciled = True
             txn.save(update_fields=["reconciled"])
+
         if gap != ZERO:
             # Not real income/spending - excluded from reports the same
             # way a transfer or opening balance is (D1/D7), since it's a
@@ -82,6 +84,7 @@ def reconcile(
                 amount=gap,
                 reconciled=True,
             )
+
         return Reconciliation.objects.create(
             account=account,
             statement_date=statement_date,

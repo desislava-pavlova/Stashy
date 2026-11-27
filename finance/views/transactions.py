@@ -30,7 +30,7 @@ from ..models import Account, Category, Reminder, Transaction, grouped_categorie
 from ..money import to_cent
 from ..reporting import EARLIEST_RANGE_KEY
 from ..tips import TRANSACTION_TIPS
-from ._helpers import AMOUNT_SORT_COLUMNS, apply_sort, paged, safe_next
+from ._helpers import TRANSACTION_LIST_SORT_FIELDS, apply_sort, paged, safe_next
 
 
 # Reports' date-range presets, plus "All dates": no date limits at all,
@@ -41,16 +41,6 @@ TRANSACTION_RANGE_CHOICES = [
     ("", "All dates"),
     *(choice for choice in DateRangeFilterForm.RANGE_CHOICES if choice[0] != EARLIEST_RANGE_KEY),
 ]
-
-TRANSACTION_LIST_SORT_FIELDS = {
-    "date": ["date", "transaction_number"],
-    "num": ["transaction_number"],
-    "account": ["account__name"],
-    "payee": ["payee__name_key"],
-    "category": ["category__name_key"],
-    "memo": ["memo"],
-    **AMOUNT_SORT_COLUMNS,
-}
 
 
 def _longer_than_a_year(start, end):
@@ -172,15 +162,69 @@ def initial_from_reminder(reminder):
     return initial
 
 
+def initial_for_new_transaction(query):
+    """The form's starting values for a brand-new transaction. `query`
+    is the address's parameters (`request.GET`): the account and date a
+    link or "Save and add another" hands over, and a preview of the
+    number."""
+    initial = {}
+    default_account = query.get("account")
+    if default_account:
+        initial["account"] = default_account
+
+    # "Save and add another" hands back the date just used; anything
+    # unparseable falls back to today.
+    try:
+        initial["date"] = date.fromisoformat(query.get("date", ""))
+    except ValueError:
+        initial["date"] = timezone.localdate()
+
+    # A preview of what Stashy would assign anyway - change the date and
+    # clear the number to have it recomputed for that date's year
+    # instead.
+    initial["transaction_number"] = Transaction.next_number(initial["date"])
+    return initial
+
+
+def _transaction_form_context(form, instance, next_url, reminder):
+    """What the Add/Edit transaction page needs: the form is the only
+    part that differs between its two renders."""
+    return {
+        "form": form,
+        "instance": instance,
+        "tips": TRANSACTION_TIPS,
+        "next": next_url,
+        "reminder": reminder,
+    }
+
+
+def _enter_reminder(request, reminder, txn):
+    """Link the reminder to the transaction just saved from it, say so,
+    and go back to the Reminders list."""
+    # Named before mark_entered(): it moves a recurring reminder's due
+    # date on, and the message must say which date was paid (the same
+    # order reminder_skip uses).
+    label = str(reminder)
+    reminder.mark_entered(txn)
+    if reminder.frequency == Reminder.Frequency.ONE_TIME:
+        messages.success(request, f"Entered {label}.")
+    else:
+        moved_to = regional.format_date(reminder.next_due_date)
+        messages.success(request, f"Entered {label} and moved it to {moved_to}.")
+    return redirect("finance:reminder_list")
+
+
 def transaction_form_view(request, pk=None):
     instance = get_object_or_404(Transaction, pk=pk) if pk else None
     next_url = safe_next(request, request.POST.get("next") or request.GET.get("next", ""))
+
     reminder = None
     reminder_id = request.POST.get("reminder") or request.GET.get("reminder")
     # Only for a brand-new transaction - editing an existing one never
     # carries a reminder link.
     if reminder_id and not instance:
         reminder = get_object_or_404(Reminder, pk=as_id(reminder_id))
+
     initial = {}
     if instance and instance.payee_id:
         initial["payee_name"] = instance.payee.name
@@ -188,19 +232,7 @@ def transaction_form_view(request, pk=None):
         if reminder:
             initial.update(initial_from_reminder(reminder))
         else:
-            default_account = request.GET.get("account")
-            if default_account:
-                initial["account"] = default_account
-            # "Save and add another" hands back the date just used;
-            # anything unparseable falls back to today.
-            try:
-                initial["date"] = date.fromisoformat(request.GET.get("date", ""))
-            except ValueError:
-                initial["date"] = timezone.localdate()
-            # A preview of what Stashy would assign anyway - change the
-            # date and clear the number to have it recomputed for that
-            # date's year instead.
-            initial["transaction_number"] = Transaction.next_number(initial["date"])
+            initial.update(initial_for_new_transaction(request.GET))
 
     if request.method == "POST":
         form = TransactionForm(request.POST, instance=instance, initial=initial)
@@ -210,37 +242,21 @@ def transaction_form_view(request, pk=None):
                 # Don't silently reactivate, or silently block, an
                 # inactive account someone is trying to use - ask, and
                 # only act once they say yes.
-                return render(
-                    request,
-                    "finance/transaction_form.html",
-                    {
-                        "form": form,
-                        "instance": instance,
-                        "tips": TRANSACTION_TIPS,
-                        "next": next_url,
-                        "reminder": reminder,
-                        "inactive_account_confirm": account,
-                    },
-                )
+                context = _transaction_form_context(form, instance, next_url, reminder)
+                context["inactive_account_confirm"] = account
+                return render(request, "finance/transaction_form.html", context)
+
             if not account.is_active:
                 with system_action(
                     f"Account '{account.name}' made active again by entering a transaction on it"
                 ):
                     account.is_active = True
                     account.save(update_fields=["is_active"])
+
             txn = form.save()
             if reminder:
-                # Named before mark_entered(): it moves a recurring
-                # reminder's due date on, and the message must say which
-                # date was paid (the same order reminder_skip uses).
-                label = str(reminder)
-                reminder.mark_entered(txn)
-                if reminder.frequency == Reminder.Frequency.ONE_TIME:
-                    messages.success(request, f"Entered {label}.")
-                else:
-                    moved_to = regional.format_date(reminder.next_due_date)
-                    messages.success(request, f"Entered {label} and moved it to {moved_to}.")
-                return redirect("finance:reminder_list")
+                return _enter_reminder(request, reminder, txn)
+
             messages.success(request, "Transaction saved.")
             if not instance:
                 if "save_and_add" in request.POST:
@@ -251,6 +267,7 @@ def transaction_form_view(request, pk=None):
                         query["next"] = next_url
                     return redirect(f"{reverse('finance:transaction_add')}?{urlencode(query)}")
                 return redirect("finance:transaction_list")
+
             # Editing: back to wherever you opened this from (the
             # account register or the all-accounts list) if we know it;
             # otherwise the transaction's own account.
@@ -260,17 +277,8 @@ def transaction_form_view(request, pk=None):
     else:
         form = TransactionForm(instance=instance, initial=initial)
 
-    return render(
-        request,
-        "finance/transaction_form.html",
-        {
-            "form": form,
-            "instance": instance,
-            "tips": TRANSACTION_TIPS,
-            "next": next_url,
-            "reminder": reminder,
-        },
-    )
+    context = _transaction_form_context(form, instance, next_url, reminder)
+    return render(request, "finance/transaction_form.html", context)
 
 
 def _quick_edit_row(txn):
@@ -304,6 +312,7 @@ def transaction_quick_edit(request, pk):
     if not form.is_valid():
         errors = {field: list(problems) for field, problems in form.errors.items()}
         return JsonResponse({"ok": False, "errors": errors}, status=400)
+
     account = form.cleaned_data["account"]
     if not account.is_active:
         # The full edit page offers a confirm-and-reactivate dialog for
@@ -321,6 +330,7 @@ def transaction_quick_edit(request, pk):
             },
             status=400,
         )
+
     txn = form.save()
     return JsonResponse({"ok": True, "row": _quick_edit_row(txn)})
 

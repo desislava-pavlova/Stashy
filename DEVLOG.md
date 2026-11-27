@@ -6926,3 +6926,148 @@ by someone who has never read this entry. Second lesson, from the cache that was
 `pyproject.toml`, the tests (`test_project`, `test_stashes`, `test_reminder_rules`, `test_auth`,
 `test_admin`, `test_categories`, `test_payees`, `test_imports`, `test_dashboard`, `test_formatting`);
 `CLAUDE.md`, `plans/03_structure_review.md`, this log. No migration.
+
+## 26/11/2026 — Plan 03, Phase 3, part D, afterwards: our own OFX reader (S71, item 3.15)
+
+**What changed:** the last item of part D. 1,416 tests (1,380 before; 36 new), ruff clean, no migration,
+no data touched. No template, static file or URL changed.
+- **`finance/services/ofx.py`** reads the bank and card transactions of an OFX or QFX file: date,
+  amount, payee name and memo. Standard library only (a test checks), so it can't touch the database.
+  `importing._read_ofx()` calls it in place of `ofxparse`.
+- **`ofxparse`, `beautifulsoup4`, `soupsieve`, `typing_extensions`, `lxml` and `six` left
+  `requirements.txt`.** Nothing else needed them. They stay installed in `.venv` until someone
+  uninstalls them; nothing imports them (a run with them made unimportable passes).
+
+**Behaviour that is not the same as before** (everything `ofxparse` could read gives the same rows):
+- A file the old reader refused is now read when it is only unusual: a transaction with an empty
+  payee name is a blank payee; a UTF-8 XML file (OFX version 2) with Cyrillic names is read (it was
+  refused, because the old reader decoded such a file as ASCII); a header that says `CHARSET:NONE`
+  is read as if it said nothing; a name wrapped in `<![CDATA[...]]>` is read.
+- A file with no encoding header is read as UTF-8, else as Windows-1252.
+- Investment statements are refused (a trade has no place in Stashy). Before, a statement of trades
+  failed with the same generic message, and one holding only bank transactions was read.
+
+**Why the code looks like this:**
+- **The time-zone shift is kept, odd as it is.** A posted time with an offset (`[-5:EST]`) is moved to
+  UTC and the day is the one it lands on, as `ofxparse` did it. So 11 pm on 5 January in New York is
+  6 January, and midnight on 5 January in Sofia (`[+2:EET]`) is 4 January. That is a questionable
+  rule, but the importer's duplicate check compares dates: change the rule and a file imported last
+  month would, imported again, look new and be added twice. Moving the day into the stash's own zone
+  instead is a one-line change if it is ever wanted; it should be weighed against files already
+  imported. A test imports one such file twice and expects the second to be skipped, and others pin
+  the odd cases (noon in New Zealand is the day before in UTC).
+- **Proved against the library before it went.** A scratch script generated 170 OFX files (every
+  date shape, every amount shape, entities, version 1 and 2, three encodings, credit cards, two
+  transactions, garbage) and compared the new reader with `ofxparse`. Every file the old one read gave
+  the same rows. All 13 differences were files the old one refused, listed above.
+- **The amount rules are copied, not improved.** `1.234,56`, `10,000.50`, `12,50`, `1 025,53` and a
+  bank's `null` read as the old reader read them, for the same reason as the dates.
+- **A value is the text up to the next `<`.** That reads a version 1 file (`<NAME>Lidl<MEMO>...`, no
+  closing tags) and a version 2 file the same way, so there is no XML parser to trick with an entity
+  (the security review checked this).
+- **A file is untrusted input.** It is read so that no pattern is quadratic on a huge file: a date or
+  amount over 100 characters is refused before any pattern runs over it, and the transactions are
+  cut out by splitting at each closing tag (one pass) instead of one lazy pattern from every opening
+  tag. The old library's own patterns were quadratic on a long line, which S121 had noted.
+- **A new test must fail on the old code.** The dotted-capital-I test fails on the first version
+  of the cut (`error: A transaction has no date or no amount`), which I put back for a minute.
+
+**What the review changed.** One security review of the reader, nothing Critical. Done: `lower()` makes
+a Turkish `İ` two characters, so a bank name with one before the first transaction moved the cut and
+made the file fail (the cut is now a split on the original text); a NUL byte in a `CHARSET` header
+escaped the catch, and `CHARSET:NONE` was refused (both are now "read as if none was named"); a huge
+time-zone offset raised `OverflowError` instead of the module's own error; a CDATA-wrapped name came
+out empty without an error; and the importer catches `ValueError` (the reader's errors and a file that
+isn't text) instead of every exception, so a real bug shows up in the log. Filed as plan 03's S138,
+not fixed: a payee or memo of megabytes is stored whole and control characters are kept, on CSV and
+XLSX as much as OFX, and an upload has no size limit; both are self-inflicted on a local-only server.
+
+**Teaching note — if you must keep an odd rule, keep it on purpose.** The easy way to replace a library
+is to write what "should" happen. The safe way is to ask what the old one did, copy it where other code
+depends on it (here, the dates and amounts the duplicate check compares) and then measure the copy
+against the original on files you made up to be awkward. Where the old behaviour was plainly a
+limitation (refusing a UTF-8 file), improve it, and say so. And when you write a parser for files from
+outside, read it as an attacker would: what is the longest value, the most tags, the oddest character?
+
+**Files touched:** new `finance/services/ofx.py`, `finance/tests/test_ofx.py`; changed
+`finance/services/importing.py`, `finance/tests/test_imports.py`, `requirements.txt`; `CLAUDE.md`,
+`plans/03_structure_review.md`, `plans/07_dependency_upgrade.md`, `plans/README.md`, this log.
+No migration.
+
+## 27/11/2026 — Plan 03, Phase 3, part E: `context` first in every view, blank lines between steps, sections in `models.py` (S42, S45, S49, S131)
+
+**What changed:** the last part of Phase 3 (items 3.6, 3.7 and 3.14, with S131 from part B's review).
+1,451 tests (1,416 before; 35 new), ruff clean, no migration (`makemigrations --check` says no changes), no data touched.
+No template, static file or URL changed, and no existing test was edited: nothing changes on screen.
+- **3.6, `context` first.** All 32 `render()` calls in `views/` now pass a variable called `context`, built just above the call.
+  Four small helpers came out of the views that needed them: `_reconcile_start_context()` and `_reconcile_finish()` in
+  `accounts.py`, `_step_context()` in `welcome.py`, `_take_new_recovery_code()` in `settings.py`.
+- **3.7, a blank line between a function's steps.** Dozens of places in 27 files (views, `models.py`, `audit/signals.py`,
+  `backup.py`, the services, two forms, a few small modules). `transaction_form_view` also lost its two initial-value blocks:
+  `initial_for_new_transaction(query)` for a blank form and `_enter_reminder()` for a reminder's Enter (99 lines became 65), and the
+  dictionary both its renders needed is `_transaction_form_context()`.
+- **3.14, sections in `models.py`.** Ten banner comments (Names, Profile, Accounts, Categories, Payees, Transactions, Imports,
+  Reminders, Exchange rates, Reconciliations), in the style `views/exports.py` already used. Nothing moved.
+- **S131, `filtered_transactions()`.** Its date range is `_transaction_date_range()` and its category rule `_category_filter()`;
+  `TRANSACTION_LIST_SORT_FIELDS` moved from `views/transactions.py` to `views/_helpers.py`, which the export already depended on
+  through the page's module. A new `finance/tests/test_filters.py` (18 tests) names every branch.
+
+**Behaviour that is not the same as before:** none. Part E is only structure, and the 1,416 tests that existed before ran unchanged.
+
+**Why the code looks like this:**
+- **One shape for every view, and a test that keeps it.** `context = {...}` then `return render(request, "…", context)` makes the
+  return line look the same everywhere, lets a key that only sometimes belongs be a plain `if`, and keeps the line short. A rule
+  written only in CLAUDE.md would drift the day someone hurried, so `FunctionViewsBuildTheirContextFirstTests` reads the views'
+  syntax trees and fails for a `render()` whose third argument is anything but `context`. A second test shows the check can fail:
+  it feeds the checker a dictionary written inside the call.
+- **One function, one job: the reconcile view.** `account_reconcile` ran both steps of the flow in one body (the
+  statement's date and balance, then the checklist and its outcome). The second step is now `_reconcile_finish()`, so the view reads "which step is this?" and each step is short.
+  The same cut took the "show it once" half out of `recovery_code_view` (`_take_new_recovery_code()`): it reads the cache, deletes the
+  entry and pops the session's token, in the order the view had them.
+- **Early returns instead of a `pass`.** The old date-range code was an `if/elif` chain whose first branch was `pass`, because
+  "custom" means "keep the dates as typed". As a function with an early return for each case, every branch says what it answers,
+  and the chain reads top to bottom. The new tests pin all of them (custom, an unknown range, All dates, the old "Earliest to date"
+  bookmark, dates with no range), and I broke three of them on purpose in a scratch copy: three tests failed, and the restore passed.
+- **Blank lines are punctuation, so they go between steps.** The rule is a blank line between the steps of a function (read the
+  request, query, build, respond), and none inside one decision. That is why about twenty dense stretches were left alone: a lookup
+  by frequency (`_period_end()`), a chain of type checks (`_csv_cell()`), a parser's helpers (`ofx.py`), a loop with one body
+  (`log_save()`). A blank line in the middle of those would cut one idea in two. `reporting.py` and `reports_view` wait for S14,
+  which rewrites them, so they are touched once.
+- **Banners, not a `models/` package.** The models refer to each other (a transfer category belongs to an account, a reminder
+  fills in a transaction), so splitting the file would invite import loops for little gain, and it would be the one package that
+  has to re-export everything. Ten banners make the long file easy to scan, and nothing moved, so no import changed.
+- **`AMOUNT_NOT_NEGATIVE` and `_reminder_transaction()` sit under Reminders.** They stand between `ImportBatch` and
+  `ReminderQuerySet`, so the Reminders banner goes above them and not above `ReminderQuerySet`; only `Reminder` uses them.
+- **Tools: the project's own edit script.** Every file here has Windows line endings. The edits went through
+  `scripts/dev/apply_edits.py`, which keeps each file's endings and writes nothing in a file unless every edit matched exactly once.
+- **"Whitespace only" was checked, not assumed.** A scratch script read the list of every edit and compared its old and new text
+  with blank lines and banner comments left out: for all 20 files meant to change only that, the two are identical. The files
+  that did change code are the views, `filters.py` and the sort fields' move, as intended.
+
+**What the reviews changed.** Code and security reviews (no database review: `models.py` only gained comments and blank lines; no
+front-end review: no template, static file or URL changed). Nothing Critical, and the security reviewer found no property that
+moved: the recovery code's one-time guard, the PIN lockout, the restore's PIN check, `safe_next()` and `as_id()` all hold. Done from
+them: the new-code read in `recovery_code_view` is a named variable above the context (it changes the session and the cache, so a
+reader should see it); `forgot_pin` computes `locked_out` before `lockout_minutes` again, the order it always had; `account_reconcile`
+asks "is it a POST?" once; three comments that the line-length change had left hanging in odd places sit where they read
+(`_import_ofx_rows`, `RateTable._load`, `ReportExport.amount_label`); and the tests the code reviewer found missing or weak: three
+for the recovery code's cache delete, two for the reconcile refusals (a refused difference keeps the ticks and says how big it is; a
+garbled finish shows the first step again with a fresh form), four more date-range cases (a known or unknown range beats typed
+dates, a custom range with no dates, month-first dates), an empty `account=` for a blank Add form, and the guard test now runs its
+rule on a good and a bad sample. Filed, not done: plan 03's S139 (what `transaction_form_view` still does itself), S140 (three
+calculations still inside a context) and S141 (the range key "custom" typed in five places).
+
+**Teaching note — a deleted line that no test notices is a missing test.** The code reviewer asked what protects
+`cache.delete(key)`, the line that makes a new recovery code show only once. The session's token is popped too, but a session is a
+signed cookie, so a copy kept by a browser still holds the token; only the cache delete stops it being used again. Deleting that
+line left all 1,440 tests green. The fix is to write the test that would have caught it, and then to prove it by breaking the line
+on purpose: two of the three new tests fail without it. A refactor is the safest kind of change because the old tests are the ruler,
+but they only measure what they were written to measure; when a reviewer reads code you moved, ask of each line "what fails if I
+delete this?", and where the answer is "nothing", you have found a gap that was there before you touched it.
+
+**Files touched:** new `finance/tests/test_filters.py`; changed `finance/views/` (every module but `dashboard` and `reports`),
+`finance/models.py`, `finance/filters.py`, `audit/signals.py`, `finance/backup.py`, `finance/services/` (`importing`, `accounts`,
+`rates`, `reconciliation`), `finance/forms/` (`reminders`, `transactions`), `finance/middleware.py`, `finance/money.py`,
+`finance/regional.py`, `finance/starter_categories.py`, `finance/management/commands/reset_pin.py`, the tests (`test_transactions`,
+`test_project`, `test_settings`, `test_reconciliation`); `CLAUDE.md`, `plans/03_structure_review.md`, `plans/README.md`, this log.
+No migration, no template, no static file.

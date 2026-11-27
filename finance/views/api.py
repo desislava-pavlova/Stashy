@@ -18,6 +18,7 @@ def api_payee_autofill(request):
     payee = Payee.objects.named(name).first()
     if not payee:
         return JsonResponse({"combos": []})
+
     combos = [
         {
             "category_id": txn.category_id,

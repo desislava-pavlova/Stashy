@@ -37,6 +37,7 @@ def _reminder_window_cutoff(window, today):
 
 def reminder_list(request):
     today = timezone.localdate()
+
     # A fresh visit (no "window" param at all) defaults to this calendar
     # month; once anything's been picked - including "All"
     # (window=all) - that stays sticky rather than snapping back, same
@@ -45,11 +46,13 @@ def reminder_list(request):
     window = request.GET.get("window")
     if window is None:
         window = "month"
+
     # Paid/skipped rows show by default on "This month" (the whole
     # month's picture) and stay hidden by default elsewhere; the form
     # always sends an explicit 0/1 once it's used.
     show_done_param = request.GET.get("show_done")
     show_done = (window == "month") if show_done_param is None else show_done_param == "1"
+
     reminders = Reminder.objects.select_related("account", "payee", "category__parent")
     cutoff = _reminder_window_cutoff(window, today)
     if cutoff is not None:
@@ -59,16 +62,14 @@ def reminder_list(request):
     if not show_done:
         reminders = reminders.not_done()
     reminders = list(reminders)
-    return render(
-        request,
-        "finance/reminder_list.html",
-        {
-            "reminders": reminders,
-            "window": window,
-            "show_done": show_done,
-            "today": today,
-        },
-    )
+
+    context = {
+        "reminders": reminders,
+        "window": window,
+        "show_done": show_done,
+        "today": today,
+    }
+    return render(request, "finance/reminder_list.html", context)
 
 
 REMINDER_FORM_EXTRA_CONTEXT = {
@@ -96,7 +97,8 @@ def reminder_edit(request, pk):
     has_connection = bool(reminder.series_id) or root.occurrences.exists()
     scope = request.POST.get("scope") or request.GET.get("scope")
     if has_connection and scope not in ("this", "series"):
-        return render(request, "finance/reminder_edit_scope.html", {"reminder": reminder})
+        context = {"reminder": reminder}
+        return render(request, "finance/reminder_edit_scope.html", context)
 
     if request.method == "POST":
         form = ReminderForm(request.POST, instance=reminder)
@@ -109,16 +111,13 @@ def reminder_edit(request, pk):
     else:
         form = ReminderForm(instance=reminder)
 
-    return render(
-        request,
-        "finance/generic_form.html",
-        {
-            "form": form,
-            "title": "Edit reminder",
-            "scope": scope if has_connection else None,
-            **REMINDER_FORM_EXTRA_CONTEXT,
-        },
-    )
+    context = {
+        "form": form,
+        "title": "Edit reminder",
+        "scope": scope if has_connection else None,
+        **REMINDER_FORM_EXTRA_CONTEXT,
+    }
+    return render(request, "finance/generic_form.html", context)
 
 
 class ReminderDeleteView(DeleteView):

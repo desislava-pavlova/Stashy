@@ -42,6 +42,7 @@ def report_filters(request):
     invalid = bool(request.GET) and not submitted.is_valid()
     filters = submitted.cleaned_data if submitted.is_valid() else {}
     account = filters.get("account")
+
     start, end, interval = resolve_range(filters, account=account)
     # "Average interval" is how many earlier periods to average over -
     # see reporting.vs_average_periods() for what an earlier period is.
@@ -51,6 +52,7 @@ def report_filters(request):
         lookback = DEFAULT_LOOKBACK_PERIODS
     range_key = filters.get("range") or DEFAULT_RANGE_KEY
     periods = trimmed_average_periods(start, end, lookback, account=account, range_key=range_key)
+
     return {
         "form": DateRangeFilterForm() if invalid else submitted,
         "form_errors": submitted.errors if invalid else None,
@@ -66,6 +68,61 @@ def report_filters(request):
         "subtotal": filters.get("subtotal") or "",
         "account": account,
     }
+
+
+def _transaction_date_range(request):
+    """(range key, start, end) for the Transactions list, read from its
+    address. The key is "" for All dates and "custom" for typed dates
+    (or dates with no range); otherwise it is one of the Date range
+    box's keys, and an unknown one becomes the page's own default."""
+    range_key = request.GET.get("range", "")
+    if range_key == EARLIEST_RANGE_KEY:
+        range_key = ""  # a bookmark from before "Earliest to date" became "All dates"
+    elif range_key and range_key not in _RANGE_KEYS:
+        # Not Reports' fallback, Last 12 months: this page has its own
+        # default, and the Date range box then shows it.
+        range_key = TRANSACTIONS_DEFAULT_RANGE
+    start = regional.parse_date(request.GET.get("start"))
+    end = regional.parse_date(request.GET.get("end"))
+
+    if range_key == "custom":
+        return range_key, start, end
+
+    if range_key:
+        start, end, _ = resolve_range({"range": range_key})
+        return range_key, start, end
+
+    if "range" in request.GET:
+        # "All dates". The form still sends its date boxes, holding the
+        # previous range's dates.
+        return range_key, None, None
+
+    if start is None and end is None:
+        # Default view: this year, until you explicitly ask for
+        # something else.
+        start, end, _ = resolve_range({"range": TRANSACTIONS_DEFAULT_RANGE})
+        return TRANSACTIONS_DEFAULT_RANGE, start, end
+
+    # Dates without a range: the dashboard's links.
+    return "custom", start, end
+
+
+def _category_filter(selected_categories, include_uncategorized, with_subcategories):
+    """The Q that keeps the transactions in the picked categories, plus
+    the uncategorized ones when asked for, or None when nothing was
+    picked (a hand-typed id nobody has picks nothing)."""
+    if not (selected_categories or include_uncategorized):
+        return None
+
+    category_ids = {c.pk for c in selected_categories}
+    if with_subcategories:
+        for category in selected_categories:
+            category_ids.update(sub.pk for sub in category.descendants())
+
+    category_filter = Q(category_id__in=category_ids) if category_ids else Q(pk__in=[])
+    if include_uncategorized:
+        category_filter |= Q(category__isnull=True)
+    return category_filter
 
 
 def filtered_transactions(request):
@@ -87,50 +144,27 @@ def filtered_transactions(request):
         Category.objects.filter(pk__in=as_ids(category_values)).select_related("parent")
     )
 
-    range_key = request.GET.get("range", "")
-    if range_key == EARLIEST_RANGE_KEY:
-        range_key = ""  # a bookmark from before "Earliest to date" became "All dates"
-    elif range_key and range_key not in _RANGE_KEYS:
-        # Not Reports' fallback, Last 12 months: this page has its own
-        # default, and the Date range box then shows it.
-        range_key = TRANSACTIONS_DEFAULT_RANGE
-    start = regional.parse_date(request.GET.get("start"))
-    end = regional.parse_date(request.GET.get("end"))
-    if range_key == "custom":
-        pass
-    elif range_key:
-        start, end, _ = resolve_range({"range": range_key})
-    elif "range" in request.GET:
-        # "All dates". The form still sends its date boxes, holding the
-        # previous range's dates.
-        start = end = None
-    elif start is None and end is None:
-        # Default view: this year, until you explicitly ask for
-        # something else.
-        start, end, _ = resolve_range({"range": TRANSACTIONS_DEFAULT_RANGE})
-        range_key = TRANSACTIONS_DEFAULT_RANGE
-    else:
-        range_key = "custom"  # dates without a range: the dashboard's links
+    range_key, start, end = _transaction_date_range(request)
 
     if (account_pk := as_id(account_id)) is not None:
         transactions = transactions.filter(account_id=account_pk)
-    if selected_categories or include_uncategorized:
-        category_ids = {c.pk for c in selected_categories}
-        if with_subcategories:
-            for category in selected_categories:
-                category_ids.update(sub.pk for sub in category.descendants())
-        category_filter = Q(category_id__in=category_ids) if category_ids else Q(pk__in=[])
-        if include_uncategorized:
-            category_filter |= Q(category__isnull=True)
+
+    category_filter = _category_filter(
+        selected_categories, include_uncategorized, with_subcategories
+    )
+    if category_filter is not None:
         transactions = transactions.filter(category_filter)
+
     if start:
         transactions = transactions.filter(date__gte=start)
     if end:
         transactions = transactions.filter(date__lte=end)
+
     if status == "reconciled":
         transactions = transactions.filter(reconciled=True)
     elif status == "unreconciled":
         transactions = transactions.filter(reconciled=False)
+
     if search:
         transactions = transactions.filter(
             Q(payee__name__icontains=search) | Q(memo__icontains=search)

@@ -93,6 +93,7 @@ class StashSelectionMiddleware:
                 # than routing queries at a dead or foreign alias.
                 alias = None
                 request.session.pop("stash", None)
+
         with db_router.use_stash(alias):
             return self.get_response(request)
 

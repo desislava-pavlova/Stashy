@@ -78,15 +78,18 @@ def add_starter_categories(sheet_name):
             if type_name.lower() == "income"
             else Category.CategoryType.EXPENSE
         )
+
         parent = top_level.get(name_key(category_name))
         if parent is None:
             parent = Category.objects.create(name=category_name, category_type=category_type)
             top_level[parent.name_key] = parent
             created.append(category_name)
+
         if (
             subcategory_name
             and not parent.subcategories.filter(name_key=name_key(subcategory_name)).exists()
         ):
             parent.create_subcategory(subcategory_name)
             created.append(f"{category_name}: {subcategory_name}")
+
     return created

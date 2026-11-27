@@ -59,6 +59,7 @@ class Command(BaseCommand):
             folder, owner_name = registry.reset_pin_directly(name, pin)
         except StashError as error:
             raise CommandError(str(error)) from error
+
         # Which stash changed, not just the name that was typed: a name
         # could match one stash's folder and another stash's owner.
         self.stdout.write(

@@ -45,7 +45,8 @@ def stash_picker(request):
             return redirect("login")
         messages.error(request, "Pick a stash from the list.")
 
-    return render(request, "registration/stash_picker.html", {"choices": choices})
+    context = {"choices": choices}
+    return render(request, "registration/stash_picker.html", context)
 
 
 @login_not_required
@@ -68,18 +69,17 @@ def stash_create(request):
                 form.add_error(None, str(error))
             else:
                 request.session["stash"] = folder_name
-                owner_name = form.cleaned_data["owner_name"]
-                return render(
-                    request,
-                    "registration/stash_recovery_code.html",
-                    {
-                        "owner_name": owner_name,
-                        "owner_possessive": possessive(owner_name),
-                        "recovery_code": recovery_code,
-                    },
-                )
 
-    return render(request, "registration/stash_create.html", {"form": form})
+                owner_name = form.cleaned_data["owner_name"]
+                context = {
+                    "owner_name": owner_name,
+                    "owner_possessive": possessive(owner_name),
+                    "recovery_code": recovery_code,
+                }
+                return render(request, "registration/stash_recovery_code.html", context)
+
+    context = {"form": form}
+    return render(request, "registration/stash_create.html", context)
 
 
 @login_not_required
@@ -183,30 +183,27 @@ def forgot_pin(request):
             ok, new_recovery_code = security.reset_pin_with_recovery_code(
                 profile, form.cleaned_data["recovery_code"], form.cleaned_data["new_pin"]
             )
+
             if ok:
-                return render(
-                    request,
-                    "registration/stash_recovery_code.html",
-                    {
-                        "owner_name": profile.owner_name,
-                        "owner_possessive": profile.owner_possessive,
-                        "recovery_code": new_recovery_code,
-                        "pin_was_reset": True,
-                    },
-                )
+                context = {
+                    "owner_name": profile.owner_name,
+                    "owner_possessive": profile.owner_possessive,
+                    "recovery_code": new_recovery_code,
+                    "pin_was_reset": True,
+                }
+                return render(request, "registration/stash_recovery_code.html", context)
             form.add_error("recovery_code", "That recovery code isn't right.")
 
     # After the try above, so the last wrong code shows the lockout at
     # once. The form stays: a right recovery code still works during
     # one.
-    return render(
-        request,
-        "registration/forgot_pin.html",
-        {
-            "owner_name": profile.owner_name,
-            "owner_possessive": profile.owner_possessive,
-            "form": form,
-            "locked_out": security.is_locked_out(profile),
-            "lockout_minutes": security.lockout_minutes_remaining(profile),
-        },
-    )
+    locked_out = security.is_locked_out(profile)
+    lockout_minutes = security.lockout_minutes_remaining(profile)
+    context = {
+        "owner_name": profile.owner_name,
+        "owner_possessive": profile.owner_possessive,
+        "form": form,
+        "locked_out": locked_out,
+        "lockout_minutes": lockout_minutes,
+    }
+    return render(request, "registration/forgot_pin.html", context)

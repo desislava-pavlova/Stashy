@@ -46,7 +46,7 @@ terms.
 ## Commands
 
 ```
-.venv\Scripts\python.exe manage.py test                          # full suite, ~70 s (1,380 tests on 26/11/2026)
+.venv\Scripts\python.exe manage.py test                          # full suite, ~85 s (1,451 tests on 27/11/2026)
 .venv\Scripts\python.exe manage.py test finance.tests.test_reminders  # one module (audit: `test audit`)
 .venv\Scripts\python.exe manage.py migrate --database <stash>    # one stash (Stashy.bat does all, with backups)
 .venv\Scripts\python.exe manage.py reset_pin <owner name>        # real, visible action - ask first
@@ -107,7 +107,12 @@ check.bat                                                        # ruff check + 
   plain links.
 - `finance/`: the whole app.
   - `models.py`: Profile, Account, Category, Payee, Transaction,
-    ImportBatch, Reminder, ExchangeRate, Reconciliation.
+    ImportBatch, Reminder, ExchangeRate, Reconciliation. One file, in
+    sections with banner comments (Names, Profile, Accounts, Categories,
+    Payees, Transactions, Imports, Reminders, Exchange rates,
+    Reconciliations): a new model or helper goes in its section. It is not a
+    `models/` package (the user's call, 13/11/2026): the models refer to
+    each other, and a package would invite import loops.
     `TransactionQuerySet` (`in_range`, `reportable`, `of_kind`,
     `for_account`) is what every report query is built from. The reminder
     rules live on the model: `mark_entered()`, `skip()`,
@@ -120,7 +125,11 @@ check.bat                                                        # ruff check + 
     currencies: the Add account form, the welcome wizard, the admin's
     Add account and the Transfer form all go through them),
     `importing.py` (`import_file()` → `ImportResult`, raises
-    `ImportFileError`), `reconciliation.py` (`reconcile()`, raises
+    `ImportFileError`), `ofx.py` (`read_transactions()`: an OFX or QFX
+    file's bank and card transactions, standard library only. A date with
+    an offset is moved to UTC and the day is the one it lands on: that rule
+    and the amount rule must not change, because the importer's duplicate
+    check compares dates and amounts), `reconciliation.py` (`reconcile()`, raises
     `UnacceptedDifferenceError`, or `AmountTooBigError` for a gap or an
     opening balance over the limit) and `rates.py` (`RateTable`,
     `convert_balances()`, `fetch_latest_rates()`). Plain functions, no
@@ -132,13 +141,21 @@ check.bat                                                        # ruff check + 
     `payees`, `transactions`, `reminders`, `imports`, `exports`, `reports`,
     `settings`, `api`, `auth` for picker/login/forgot-PIN, `welcome` for the
     4-step wizard), plus `_helpers.py` (what several views share:
-    `apply_sort`, `next_sort_keys`, `paged`, `safe_next`, `plural`. They have no leading
+    `apply_sort`, `next_sort_keys`, `paged`, `safe_next`, `plural`, and the
+    Transactions sort columns that the page and its export share. They have no leading
     underscore, since the module's name already says "internal"; a view
     never imports another view's private names). `finance/urls.py` imports
     the modules, not the views; there are no re-exports in
     `views/__init__.py`.
+  - **A function view builds `context` first and ends with
+    `return render(request, "<template>", context)`.** A value that is a
+    calculation is worked out in a named variable above the context, and a
+    key that only sometimes belongs is a plain `if` (or the page's own
+    helper, like `_step_context()` in the welcome wizard). A test checks
+    every `render()` call in `views/` (S42).
   - `filters.py` reads a page's filters from its address, once for the
-    page and its export: `filtered_transactions()` (Transactions) and
+    page and its export: `filtered_transactions()` (Transactions, built
+    from `_transaction_date_range()` and `_category_filter()`) and
     `report_filters()` (Reports). A view or an export never reads those
     filters itself, so a downloaded file always matches the page.
   - Ids read from a URL or a form go through `as_id()` / `as_ids()`
@@ -315,7 +332,7 @@ check.bat                                                        # ruff check + 
   of Django's `url_has_allowed_host_and_scheme`.
 - Tests: `finance/tests/test_<area>.py`, one module per area, named after the
   code they test (`views/<area>.py`; `reporting.py` → `test_reporting.py`,
-  while the Reports page is `test_reports.py`; the reminder rules on the
+  `filters.py` → `test_filters.py`, while the Reports page is `test_reports.py`; the reminder rules on the
   model → `test_reminder_rules.py`, while the Reminders pages are
   `test_reminders.py`; Django settings, logging and code-wide rules →
   `test_project.py`), plus `audit/tests.py`.
@@ -498,7 +515,8 @@ check.bat                                                        # ruff check + 
     (05/10/2026). Item 3.6 closed as saved for later and moved to plan 03's
     last phase (10/10/2026).
   - **03, structure review** (the developer's side, making the code fit):
-    S1–S21 in 6 phases, planned only. Start a phase when the user names it.
+    S1–S141 in 6 phases: Phases 1 to 3 are done (27/11/2026), 4 to 6 are
+    planned only. Start a phase when the user names it.
     Q1 (S7) is answered yes; Q2 (S9, Content-Security-Policy) is open, and
     the user asked for more detail first. "Add to 03: …" (something odd in
     the code) means file it as the next S number, check it against the code

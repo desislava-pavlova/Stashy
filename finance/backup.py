@@ -91,14 +91,17 @@ def backup_now(db_path, project_root, tag="manual"):
     db_path = Path(db_path)
     if not db_path.exists():
         return None
+
     backups_dir = backups_folder(project_root)
     backups_dir.mkdir(exist_ok=True)
     destination = _claim_new_backup_name(backups_dir, _stash_label(project_root), tag)
+
     try:
         _sqlite_copy(db_path, destination)
     except BaseException:
         destination.unlink(missing_ok=True)  # an empty file must not pass for a backup
         raise
+
     return destination
 
 
@@ -110,6 +113,7 @@ def _claim_new_backup_name(backups_dir, label, tag):
     created exclusively ("x"): one of two requests at the same moment
     gets FileExistsError and takes the next second's name instead."""
     moment = datetime.now()
+
     while True:
         stamp = moment.strftime(_TIMESTAMP_FORMAT)
         destination = backups_dir / f"{label}_backup_{tag}_{stamp}.sqlite3"
@@ -141,6 +145,7 @@ def list_backups(project_root, limit=None):
     backups_dir = backups_folder(project_root)
     if not backups_dir.exists():
         return []
+
     found = list(
         {
             *backups_dir.glob("*_backup_*.sqlite3"),

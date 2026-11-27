@@ -31,8 +31,7 @@ from ..reporting import (
     watched_expenses_category_ids,
 )
 from ..services.rates import RateTable
-from ._helpers import apply_sort, ordered_with_ties_broken
-from .transactions import TRANSACTION_LIST_SORT_FIELDS
+from ._helpers import TRANSACTION_LIST_SORT_FIELDS, apply_sort, ordered_with_ties_broken
 
 
 def _filename(stem):
@@ -111,6 +110,7 @@ def _xlsx_response(filename, headers, rows):
     workbook = Workbook()
     sheet = workbook.active
     sheet.append(headers)
+
     for row_index, row in enumerate(rows, start=2):
         for column_index, value in enumerate(row, start=1):
             cell = sheet.cell(row=row_index, column=column_index)
@@ -125,6 +125,7 @@ def _xlsx_response(filename, headers, rows):
                 cell.number_format = "0.00"
             elif isinstance(value, date):
                 cell.number_format = date_format
+
     response = HttpResponse(
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
@@ -155,6 +156,7 @@ def export_transactions(request):
         request, transactions, TRANSACTION_LIST_SORT_FIELDS
     )
     transactions = ordered_with_ties_broken(transactions)
+
     headers = [
         "Date",
         "Number",
@@ -166,6 +168,7 @@ def export_transactions(request):
         "Currency",
         "Reconciled",
     ]
+
     rows = [
         [
             t.date,
@@ -180,6 +183,7 @@ def export_transactions(request):
         ]
         for t in transactions
     ]
+
     return _export_response(_requested_format(request), _filename("transactions"), headers, rows)
 
 
@@ -321,17 +325,20 @@ def _category_layout(table, amount_label):
     indented by two spaces."""
     periods = table["periods"]
     headers = ["Category", *([*periods, "Total"] if periods else [amount_label])]
+
     rows = []
     for group in table["groups"]:
         for row in group["rows"]:
             name = ("  " if row["is_child"] else "") + row["name"]
             rows.append([name] + list(row["values"]) + ([row["total"]] if periods else []))
+
     if table["totals"]:
         rows.append(
             ["Total"]
             + list(table["totals"]["values"])
             + ([table["totals"]["total"]] if periods else [])
         )
+
     return headers, rows
 
 
@@ -370,9 +377,9 @@ class ReportExport(NamedTuple):
     build: Callable  # (filters, rates, profile) -> table, or None when there's nothing to export
     layout: Callable  # (table, amount_label) -> (headers, rows)
     filename: str  # the file is named stashy-<filename>-<date and time> (see _filename())
-    amount_label: str = (
-        ""  # the single amount column's header when a category report has no subtotal
-    )
+    # The single amount column's header when a category report has no
+    # subtotal.
+    amount_label: str = ""
     empty_message: str = ""  # shown with a 404 when build() returns None
 
 

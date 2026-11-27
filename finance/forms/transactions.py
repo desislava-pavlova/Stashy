@@ -60,11 +60,13 @@ class TransactionForm(BootstrapFormMixin, forms.ModelForm):
         # Names that differ only in case are one payee, and the spelling
         # already saved wins.
         instance.payee = Payee.objects.resolve(name) if name else None
+
         if instance.transaction_number is None:
             # Transaction.save() only auto-assigns on create; clearing
             # the field on an edit (e.g. after moving a transaction to a
             # different account) should renumber it too.
             instance.transaction_number = Transaction.next_number(instance.date)
+
         if commit:
             instance.save()
             self.save_m2m()

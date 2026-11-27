@@ -70,10 +70,12 @@ def parse_amount(raw):
         return None
     if not value.is_finite():
         return None
+
     # copy_abs() and copy_negate() never round. abs() and - do, to 28
     # digits, and raise Overflow for a number of a million digits.
     if negative:
         value = value.copy_abs().copy_negate()
+
     # Checked before rounding, because quantizing a very long number is
     # itself an InvalidOperation. Half a cent past the largest amount
     # would round up out of range; anything below it rounds into it.

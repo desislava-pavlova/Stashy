@@ -21,6 +21,17 @@ DEPOSIT_SORT = Case(When(amount__gt=0, then=-F("amount")), output_field=DecimalF
 # The same two columns on the Transactions page and on an account's
 # register.
 AMOUNT_SORT_COLUMNS = {"payment": [PAYMENT_SORT], "deposit": [DEPOSIT_SORT]}
+# The Transactions list's sortable columns. Its export sorts by the same
+# ones, so they live here and not in either view.
+TRANSACTION_LIST_SORT_FIELDS = {
+    "date": ["date", "transaction_number"],
+    "num": ["transaction_number"],
+    "account": ["account__name"],
+    "payee": ["payee__name_key"],
+    "category": ["category__name_key"],
+    "memo": ["memo"],
+    **AMOUNT_SORT_COLUMNS,
+}
 
 
 def _order_by(sort_fields, descending):
@@ -109,12 +120,14 @@ def watched_expenses_picker_context(profile):
     in the welcome wizard: the expense categories in groups, the ones
     already chosen, and the button's label."""
     chosen = list(profile.watched_expenses_categories.select_related("parent"))
+
     if not chosen:
         button_label = "No categories chosen"
     elif len(chosen) == 1:
         button_label = chosen[0].full_name
     else:
         button_label = f"{len(chosen)} categories selected"
+
     return {
         "watched_category_groups": grouped_categories(
             Category.objects.filter(

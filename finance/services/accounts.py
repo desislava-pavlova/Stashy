@@ -60,6 +60,7 @@ def transfer(from_account, to_account, amount, on):
             f"Can't transfer from {from_account.currency} to {to_account.currency}: "
             "no conversion happens, so both accounts need the same currency."
         )
+
     reason = f"Transfer from '{from_account.name}' to '{to_account.name}'"
     with transaction.atomic(using=router.db_for_write(Transaction)):
         payee = Payee.system(Payee.TRANSFER_MONEY)
@@ -80,4 +81,5 @@ def transfer(from_account, to_account, amount, on):
                 memo=f"Transfer from {from_account.name}",
                 amount=amount,
             )
+
     return payment, deposit

@@ -22,7 +22,7 @@ from .. import models
 from ..forms.transactions import TransactionForm
 from ..models import Account, Category, Payee, Profile, Transaction
 from ..views._helpers import safe_next
-from ..views.transactions import _longer_than_a_year
+from ..views.transactions import _longer_than_a_year, initial_for_new_transaction
 from .base import (
     AMOUNTS_THAT_CANCEL_OUT,
     LEAKED_TEMPLATE_SYNTAX,
@@ -1701,3 +1701,42 @@ class TransactionsTotalRoundingTests(LoggedInWithAccountTestCase):
         response = self.client.get(reverse("finance:transaction_list"), {"range": ""})
         self.assertEqual(response.context["transaction_count"], 1001)
         self.assertEqual(str(response.context["total_amount"]), "100.10")
+
+
+class InitialForNewTransactionTests(StashTestCase):
+    """3.7 (S45): a blank Add transaction form's starting values are
+    worked out in one function, from the address's parameters."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.account = Account.objects.create(name="Checking")
+
+    def test_an_empty_address_is_today_with_its_number_and_no_account(self):
+        today = timezone.localdate()
+        initial = initial_for_new_transaction({})
+        self.assertEqual(initial["date"], today)
+        self.assertEqual(initial["transaction_number"], Transaction.next_number(today))
+        self.assertNotIn("account", initial)
+
+    def test_an_empty_account_in_the_address_is_left_out(self):
+        self.assertNotIn("account", initial_for_new_transaction({"account": ""}))
+
+    def test_the_account_and_date_in_the_address_are_used(self):
+        initial = initial_for_new_transaction({"account": "7", "date": "2026-03-01"})
+        self.assertEqual(initial["account"], "7")
+        self.assertEqual(initial["date"], date(2026, 3, 1))
+
+    def test_an_unreadable_date_is_today(self):
+        for text in ("", "garbage", "2026-13-45", "01/03/2026"):
+            with self.subTest(date=text):
+                initial = initial_for_new_transaction({"date": text})
+                self.assertEqual(initial["date"], timezone.localdate())
+
+    def test_the_number_is_the_next_one_of_the_dates_own_year(self):
+        Transaction.objects.create(account=self.account, date=date(2026, 3, 1), amount=-5)
+        self.assertEqual(
+            initial_for_new_transaction({"date": "2026-06-01"})["transaction_number"], 2
+        )
+        self.assertEqual(
+            initial_for_new_transaction({"date": "2027-01-05"})["transaction_number"], 1
+        )

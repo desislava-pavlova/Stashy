@@ -46,6 +46,7 @@ class ReminderForm(BootstrapFormMixin, forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields["amount"].required = False
         self.fields["interval"].required = False
+
         category_field = self.fields["category"]
         categories = categories_alphabetical(
             Category.objects.filter(Q(account__isnull=True) | Q(pk=self.instance.category_id))
@@ -58,12 +59,14 @@ class ReminderForm(BootstrapFormMixin, forms.ModelForm):
         )
         category_field.queryset = categories
         category_field.label_from_instance = lambda category: category.indented_name
+
         self.fields["no_end_date"].initial = (
             not self.instance.end_date if self.instance.pk else True
         )
 
     def clean(self):
         cleaned = super().clean()
+
         if cleaned.get("no_end_date"):
             cleaned["end_date"] = None
         if cleaned.get("frequency") == Reminder.Frequency.ONE_TIME:
@@ -75,6 +78,7 @@ class ReminderForm(BootstrapFormMixin, forms.ModelForm):
             cleaned["end_date"] = None
         if not cleaned.get("interval"):
             cleaned["interval"] = 1
+
         # An auto-generated occurrence (series is set) can't become its
         # own new recurring series head - it exists to represent one
         # specific future date.
@@ -83,4 +87,5 @@ class ReminderForm(BootstrapFormMixin, forms.ModelForm):
                 "This reminder was auto-generated from a recurring one, so it can't have its "
                 "own frequency - edit the original recurring reminder instead."
             )
+
         return cleaned
