@@ -1212,6 +1212,19 @@ class SubtotalOverflowTests(SimpleTestCase):
         )
         self.assertNotRegex(message, r"\d")
 
+    def test_exactly_the_limit_fits_and_one_column_more_does_not(self):
+        start, last_fitting_day = date(2026, 1, 1), date(2028, 12, 31)  # 36 months
+        one_column_more = date(2029, 1, 1)
+
+        columns = reporting._period_columns(start, last_fitting_day, "month")
+
+        self.assertEqual(len(columns), reporting.SUBTOTAL_LIMIT)
+        self.assertIsNone(reporting.subtotal_overflow_message(start, last_fitting_day, "month"))
+        self.assertIn(
+            "Too many months",
+            reporting.subtotal_overflow_message(start, one_column_more, "month"),
+        )
+
     def test_years_has_no_next_step(self):
         message = reporting.subtotal_overflow_message(date(1900, 1, 1), date(2026, 1, 1), "year")
         self.assertEqual(message, "Too many years to show here. Try a shorter date range.")
@@ -1447,3 +1460,272 @@ class RollupToParentsTests(StashTestCase):
         self.assertEqual(rolled[food.pk], [Decimal("3"), Decimal("3")])
         self.assertEqual(rolled[groceries.pk], [Decimal("2"), Decimal("3")])
         self.assertEqual(totals[food.pk], [Decimal("1"), Decimal("0")])  # the input is left alone
+
+
+class ChildIdsByParentTests(StashTestCase):
+    def test_a_parent_lists_the_subcategories_among_the_given_categories(self):
+        food = Category.objects.create(name="Food", category_type=EXPENSE)
+        groceries = Category.objects.create(name="Groceries", category_type=EXPENSE, parent=food)
+        cafe = Category.objects.create(name="Cafe", category_type=EXPENSE, parent=food)
+        rent = Category.objects.create(name="Rent", category_type=EXPENSE)
+        categories = {c.pk: c for c in (food, groceries, cafe, rent)}
+
+        self.assertEqual(
+            reporting._child_ids_by_parent(categories), {food.pk: [groceries.pk, cafe.pk]}
+        )
+
+    def test_no_subcategories_means_no_entries(self):
+        rent = Category.objects.create(name="Rent", category_type=EXPENSE)
+
+        self.assertEqual(reporting._child_ids_by_parent({rent.pk: rent}), {})
+
+
+class TotalsByCategoryTests(LoggedInWithAccountTestCase):
+    """S96: the one place report maths adds amounts up per category,
+    so a change to the sign or currency rule is made once."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.groceries = Category.objects.create(name="Groceries", category_type=EXPENSE)
+        cls.salary = Category.objects.create(name="Salary", category_type=INCOME)
+
+    def add(self, category, amount, on=date(2026, 1, 5), account=None):
+        Transaction.objects.create(
+            account=account or self.account, date=on, category=category, amount=Decimal(amount)
+        )
+
+    def totals(self, rates=None, **columns):
+        return reporting._totals_by_category(Transaction.objects.all(), rates, **columns)
+
+    def test_amounts_add_up_signed_so_a_refund_shrinks_its_category(self):
+        self.add(self.groceries, "-30.00")
+        self.add(self.groceries, "-20.00")
+        self.add(self.groceries, "5.00")  # a refund
+        self.add(self.salary, "100.00")
+
+        self.assertEqual(
+            self.totals(),
+            {self.groceries.pk: [Decimal("-45.00")], self.salary.pk: [Decimal("100.00")]},
+        )
+
+    def test_a_category_with_no_transactions_has_no_entry(self):
+        self.add(self.groceries, "-30.00")
+
+        self.assertEqual(set(self.totals()), {self.groceries.pk})
+
+    def test_amounts_are_converted_through_the_rates(self):
+        dollars = Account.objects.create(name="Dollars", currency="USD")
+        ExchangeRate.objects.create(
+            base_currency="USD", quote_currency="EUR", rate=Decimal("0.9"), date=date(2026, 1, 1)
+        )
+        self.add(self.groceries, "-10.00")
+        self.add(self.groceries, "-100.00", account=dollars)
+
+        self.assertEqual(self.totals(RateTable("EUR")), {self.groceries.pk: [Decimal("-100.00")]})
+
+    def test_an_amount_with_no_known_rate_counts_as_zero(self):
+        francs = Account.objects.create(name="Francs", currency="CHF")
+        self.add(self.groceries, "-10.00")
+        self.add(self.groceries, "-500.00", account=francs)
+
+        self.assertEqual(self.totals(RateTable("EUR")), {self.groceries.pk: [Decimal("-10.00")]})
+
+    def test_without_rates_nothing_is_converted(self):
+        dollars = Account.objects.create(name="Dollars", currency="USD")
+        self.add(self.groceries, "-10.00")
+        self.add(self.groceries, "-100.00", account=dollars)
+
+        self.assertEqual(self.totals(), {self.groceries.pk: [Decimal("-110.00")]})
+
+    def test_with_columns_each_date_lands_in_its_own(self):
+        self.add(self.groceries, "-10.00", on=date(2026, 1, 5))
+        self.add(self.groceries, "-20.00", on=date(2026, 2, 5))
+        self.add(self.groceries, "-5.00", on=date(2026, 1, 20))
+        self.add(self.salary, "100.00", on=date(2026, 2, 1))
+
+        totals = self.totals(column_of=lambda when: when.month - 1, width=2)
+
+        self.assertEqual(totals[self.groceries.pk], [Decimal("-15.00"), Decimal("-20.00")])
+        self.assertEqual(totals[self.salary.pk], [Decimal("0"), Decimal("100.00")])
+
+
+class ColumnFinderTests(SimpleTestCase):
+    def test_it_says_which_period_column_a_date_falls_in(self):
+        periods = reporting._period_columns(date(2026, 1, 1), date(2026, 3, 31), "month")
+        column_of = reporting._column_finder(periods, "month")
+
+        self.assertEqual(
+            [
+                column_of(date(2026, 1, 1)),
+                column_of(date(2026, 2, 28)),
+                column_of(date(2026, 3, 31)),
+            ],
+            [0, 1, 2],
+        )
+
+    def test_a_quarter_is_a_single_column(self):
+        periods = reporting._period_columns(date(2026, 1, 1), date(2026, 3, 31), "quarter")
+        column_of = reporting._column_finder(periods, "quarter")
+
+        self.assertEqual(column_of(date(2026, 2, 10)), 0)
+
+
+class ForeignCurrenciesInEveryReportTests(LoggedInWithAccountTestCase):
+    """_totals_by_category() converts for every report that uses it,
+    not only the plain totals: the vs-average reports, the Subtotal
+    columns and the Watched expenses lines too. Groceries, in euro: 20
+    now and 10 before; on the US card 100 and 60 dollars (rate 0.5); on
+    the UK card 999 and 500 pounds, which have no known rate and so
+    count as nothing.
+    """
+
+    JANUARY = (date(2026, 1, 1), date(2026, 1, 31))
+    DECEMBER = [(date(2025, 12, 1), date(2025, 12, 31))]
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.groceries = Category.objects.create(name="Groceries", category_type=EXPENSE)
+        cls.fuel = Category.objects.create(name="Fuel", category_type=EXPENSE)
+        us_card = Account.objects.create(name="US card", currency="USD")
+        uk_card = Account.objects.create(name="UK card", currency="GBP")
+        ExchangeRate.objects.create(
+            base_currency="USD", quote_currency="EUR", rate=Decimal("0.5"), date=date(2026, 1, 1)
+        )
+        spending = [
+            (date(2026, 1, 10), cls.account, cls.groceries, "-20.00"),
+            (date(2026, 1, 11), us_card, cls.groceries, "-100.00"),
+            (date(2026, 1, 12), uk_card, cls.groceries, "-999.00"),
+            (date(2025, 12, 10), cls.account, cls.groceries, "-10.00"),
+            (date(2025, 12, 11), us_card, cls.groceries, "-60.00"),
+            (date(2025, 12, 12), uk_card, cls.groceries, "-500.00"),
+            # Fuel is only ever paid for in pounds.
+            (date(2026, 1, 13), uk_card, cls.fuel, "-80.00"),
+            (date(2025, 12, 13), uk_card, cls.fuel, "-70.00"),
+        ]
+        for when, account, category, amount in spending:
+            Transaction.objects.create(
+                account=account, date=when, category=category, amount=Decimal(amount)
+            )
+
+    def test_the_vs_average_chart_converts_both_the_current_and_the_earlier_period(self):
+        for top_level in (False, True):
+            with self.subTest(top_level=top_level):
+                rows = reporting.category_totals_vs_average(
+                    *self.JANUARY,
+                    self.DECEMBER,
+                    expense_only=True,
+                    rates=RateTable("EUR"),
+                    top_level=top_level,
+                )
+
+                self.assertEqual(
+                    [(row["name"], row["current"], row["average"]) for row in rows],
+                    [
+                        ("Groceries", Decimal("70.00"), Decimal("40.00")),
+                        ("Fuel", Decimal("0.00"), Decimal("0.00")),
+                    ],
+                )
+
+    def test_the_vs_average_table_converts_them_too(self):
+        table = reporting.category_vs_average_report_rows(
+            *self.JANUARY, self.DECEMBER, expense_only=True, rates=RateTable("EUR")
+        )
+
+        rows = {row["name"]: row for group in table["groups"] for row in group["rows"]}
+        groceries = rows["Groceries"]
+        self.assertEqual(
+            (groceries["current"], groceries["average"], groceries["difference"]),
+            (Decimal("70.00"), Decimal("40.00"), Decimal("30.00")),
+        )
+        self.assertEqual((rows["Fuel"]["current"], rows["Fuel"]["average"]), (0, 0))
+        self.assertEqual((table["totals"]["current"], table["totals"]["average"]), (70, 40))
+
+    def test_each_subtotal_column_converts_its_own_amounts(self):
+        table = reporting.category_report_rows(
+            date(2025, 12, 1),
+            date(2026, 1, 31),
+            subtotal="month",
+            expense_only=True,
+            rates=RateTable("EUR"),
+        )
+
+        rows = {row["name"]: row for group in table["groups"] for row in group["rows"]}
+        self.assertEqual(table["periods"], ["Dec 2025", "Jan 2026"])
+        self.assertEqual(rows["Groceries"]["values"], [Decimal("40.00"), Decimal("70.00")])
+        self.assertEqual(rows["Groceries"]["total"], Decimal("110.00"))
+        self.assertEqual(rows["Fuel"]["values"], [0, 0])
+
+    def test_each_watched_expenses_point_converts_its_own_amounts(self):
+        series = reporting.watched_expenses_series(
+            date(2025, 12, 1),
+            date(2026, 1, 31),
+            [self.groceries.pk, self.fuel.pk],
+            rates=RateTable("EUR"),
+        )
+
+        points = {line["name"]: [p["total"] for p in line["points"]] for line in series}
+        self.assertEqual(points["Groceries"], [Decimal("40.00"), Decimal("70.00")])
+        self.assertEqual(points["Fuel"], [0, 0])
+
+
+class VsAverageChartMainCategoriesTests(LoggedInWithAccountTestCase):
+    """category_totals_vs_average(top_level=True) counts a subcategory
+    under its main category, also when the main category has no
+    transactions of its own."""
+
+    JANUARY = (date(2026, 1, 1), date(2026, 1, 31))
+    DECEMBER = [(date(2025, 12, 1), date(2025, 12, 31))]
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.food = Category.objects.create(name="Food", category_type=EXPENSE)
+        cls.groceries = cls.food.create_subcategory("Groceries")
+        cls.cafe = cls.food.create_subcategory("Cafe")
+
+    def spend(self, category, amount, on):
+        Transaction.objects.create(
+            account=self.account, date=on, category=category, amount=Decimal(amount)
+        )
+
+    def chart(self, top_level):
+        return reporting.category_totals_vs_average(
+            *self.JANUARY, self.DECEMBER, expense_only=True, top_level=top_level
+        )
+
+    def test_subcategories_add_up_under_a_main_category_with_no_rows_of_its_own(self):
+        self.spend(self.groceries, "-30.00", date(2026, 1, 5))
+        self.spend(self.cafe, "-20.00", date(2026, 1, 6))
+        self.spend(self.groceries, "-50.00", date(2025, 12, 5))
+
+        rows = self.chart(top_level=True)
+
+        self.assertEqual([row["name"] for row in rows], ["Food"])
+        self.assertEqual(
+            (rows[0]["category_id"], rows[0]["current"], rows[0]["average"]),
+            (self.food.pk, Decimal("50.00"), Decimal("50.00")),
+        )
+        self.assertFalse(rows[0]["no_earlier_activity"])
+
+    def test_without_top_level_each_subcategory_keeps_its_own_row(self):
+        self.spend(self.groceries, "-30.00", date(2026, 1, 5))
+        self.spend(self.cafe, "-20.00", date(2026, 1, 6))
+        self.spend(self.groceries, "-50.00", date(2025, 12, 5))
+
+        rows = {row["name"]: row for row in self.chart(top_level=False)}
+
+        self.assertEqual(set(rows), {"Groceries", "Cafe"})
+        self.assertEqual(rows["Cafe"]["current"], Decimal("20.00"))
+        self.assertTrue(rows["Cafe"]["no_earlier_activity"])
+
+    def test_a_main_category_only_its_subcategory_spent_on_before_shows_at_zero_now(self):
+        self.spend(self.groceries, "-50.00", date(2025, 12, 5))
+
+        rows = self.chart(top_level=True)
+
+        self.assertEqual(
+            [(row["name"], row["current"], row["average"]) for row in rows],
+            [("Food", 0, Decimal("50.00"))],
+        )

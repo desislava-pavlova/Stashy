@@ -11,7 +11,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import connections
 from django.template.loader import render_to_string
-from django.test import SimpleTestCase
+from django.test import RequestFactory, SimpleTestCase
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
@@ -19,13 +19,17 @@ from django.utils import timezone
 from dateutil.relativedelta import relativedelta
 
 from .. import reporting
+from ..filters import report_filters
 from ..forms.filters import DateRangeFilterForm
 from ..forms.settings import WatchedExpensesForm
-from ..models import Account, Category, Profile, Transaction
+from ..models import Account, Category, ExchangeRate, Profile, Transaction
 from ..regional import NBSP
+from ..report_tables import ReportInputs
+from ..services.rates import RateTable
 from ..templatetags.stashy_format import diff_tint
 from ..views._helpers import watched_expenses_picker_context
 from ..views.exports import REPORT_EXPORTS
+from ..views.reports import REPORT_CARDS, _page_keys
 from .base import LEAKED_TEMPLATE_SYNTAX, LoggedInWithAccountTestCase, StashTestCase, csv_rows
 
 
@@ -1186,3 +1190,201 @@ class NoEarlierActivityAveragesZeroTests(LoggedInWithAccountTestCase):
         response = self.client.get(reverse("finance:reports"))
         self.assertFalse(response.context["has_average"])
         self.assertContains(response, "No earlier data to compare with.")
+
+
+class ReportCardsTests(LoggedInWithAccountTestCase):
+    """S14: the page is a loop over one card per report. A card adds its
+    own context keys, and no two add the same one, nor one the page
+    itself sets (`start`, `form`, ...): the second would quietly replace
+    the first."""
+
+    def test_there_is_a_card_for_every_report_export(self):
+        self.assertEqual(len(REPORT_CARDS), len(REPORT_EXPORTS))
+
+    def test_no_card_adds_a_key_another_card_or_the_page_adds(self):
+        profile = Profile.for_user(self.user)
+        inputs = ReportInputs(
+            report_filters(RequestFactory().get("/")), RateTable(profile.main_currency), profile
+        )
+
+        added_by = dict.fromkeys(_page_keys(inputs), "the page")
+        for card in REPORT_CARDS:
+            for key in card(inputs):
+                with self.subTest(card=card.__name__, key=key):
+                    self.assertNotIn(key, added_by, f"also added by {added_by.get(key)}")
+                added_by[key] = card.__name__
+
+
+class SubtotalOverflowOnTheReportsPageTests(LoggedInWithAccountTestCase):
+    """More columns than the limit: a card says so instead of drawing
+    them."""
+
+    WEEKS_OF_2026 = {  # 53 columns
+        "range": "custom",
+        "start": "01/01/2026",
+        "end": "31/12/2026",
+        "subtotal": "week",
+    }
+    FOUR_YEARS = {"range": "custom", "start": "01/01/2023", "end": "31/12/2026"}  # 48 months
+    CHARTS = (
+        "spendingByCategoryChart",
+        "incomeByCategoryChart",
+        "incomeExpenseChart",
+        "netWorthChart",
+        "watchedExpensesChart",
+    )
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.bills = Category.objects.create(name="Bills", category_type=EXPENSE)
+        Transaction.objects.create(
+            account=cls.account, date=date(2026, 2, 1), category=cls.bills, amount=Decimal("-25")
+        )
+        Profile.for_user(cls.user).watched_expenses_categories.add(cls.bills)
+
+    def test_a_range_that_fits_draws_every_chart(self):
+        response = self.client.get(
+            reverse("finance:reports"), {**self.WEEKS_OF_2026, "end": "28/02/2026"}
+        )
+
+        self.assertNotContains(response, "Too many")
+        for chart in self.CHARTS:
+            with self.subTest(chart=chart):
+                self.assertContains(response, f'id="{chart}"')
+
+    def test_every_subtotaled_card_shows_the_notice_instead_of_its_chart(self):
+        response = self.client.get(reverse("finance:reports"), self.WEEKS_OF_2026)
+
+        notice = "Too many weeks to show here. Try subtotaling by month instead."
+        # Spending, Income, Income/Expense, Net worth and Watched.
+        self.assertContains(response, notice, count=5)
+        for chart in self.CHARTS:
+            with self.subTest(chart=chart):
+                self.assertNotContains(response, f'id="{chart}"')
+
+    def test_the_watched_chart_overflows_alone_when_months_are_counted_without_a_subtotal(self):
+        """Net worth and the Watched chart draw months when no Subtotal
+        is chosen; the Watched table has no columns then, so it
+        stays."""
+        response = self.client.get(reverse("finance:reports"), self.FOUR_YEARS)
+
+        notice = "Too many months to show here. Try subtotaling by quarter instead."
+        context = response.context
+        self.assertEqual(context["watched_chart_overflow"], notice)
+        self.assertEqual(context["watched_chart"], [])
+        self.assertIsNone(context["watched_table"]["overflow"])
+        self.assertEqual(
+            [row["name"] for group in context["watched_table"]["groups"] for row in group["rows"]],
+            ["Bills"],
+        )
+        self.assertContains(response, notice, count=2)  # Net worth's and the chart's
+        self.assertNotContains(response, 'id="watchedExpensesChart"')
+
+
+class WatchedCardWithNothingSpentTests(LoggedInWithAccountTestCase):
+    def test_a_chosen_category_nobody_spent_on_is_an_empty_table_and_a_chart_of_zeros(self):
+        """Categories are chosen, so the report is not "No categories
+        chosen": it holds no rows, and each line is a real zero."""
+        bills = Category.objects.create(name="Bills", category_type=EXPENSE)
+        Profile.for_user(self.user).watched_expenses_categories.add(bills)
+
+        response = self.client.get(
+            reverse("finance:reports"),
+            {"range": "custom", "start": "01/01/2026", "end": "31/03/2026"},
+        )
+
+        context = response.context
+        self.assertTrue(context["watched_has_categories"])
+        self.assertEqual(context["watched_totals"], [])
+        self.assertEqual(context["watched_table"]["groups"], [])
+        self.assertEqual(
+            context["watched_chart"],
+            [
+                {
+                    "category_id": bills.pk,
+                    "name": "Bills",
+                    "points": [
+                        {"period": "Jan 2026", "total": 0.0},
+                        {"period": "Feb 2026", "total": 0.0},
+                        {"period": "Mar 2026", "total": 0.0},
+                    ],
+                }
+            ],
+        )
+
+
+class MissingCurrenciesBannerTests(LoggedInWithAccountTestCase):
+    """The warning above the reports: accounts in a currency with no
+    known rate into the main one are left out of the totals."""
+
+    def test_it_names_each_currency_without_a_rate_once_in_alphabetical_order(self):
+        for name, currency in (
+            ("UK card", "GBP"),
+            ("UK savings", "GBP"),
+            ("Polish card", "PLN"),
+            ("Japanese card", "JPY"),
+            ("Swiss", "CHF"),
+            ("US card", "USD"),
+        ):
+            Account.objects.create(name=name, currency=currency)
+        ExchangeRate.objects.create(
+            base_currency="USD", quote_currency="EUR", rate=Decimal("0.5"), date=date(2026, 1, 1)
+        )
+
+        response = self.client.get(reverse("finance:reports"))
+
+        self.assertEqual(response.context["missing_currencies"], ["CHF", "GBP", "JPY", "PLN"])
+        self.assertContains(response, "No exchange rate known for: CHF, GBP, JPY, PLN")
+
+    def test_there_is_no_banner_when_every_currency_is_the_main_one_or_has_a_rate(self):
+        Account.objects.create(name="US card", currency="USD")
+        ExchangeRate.objects.create(
+            base_currency="USD", quote_currency="EUR", rate=Decimal("0.5"), date=date(2026, 1, 1)
+        )
+
+        response = self.client.get(reverse("finance:reports"))
+
+        self.assertEqual(response.context["missing_currencies"], [])
+        self.assertNotContains(response, "amounts in those currencies")
+
+    def test_it_is_worked_out_against_the_stashs_main_currency(self):
+        profile = Profile.for_user(self.user)
+        profile.main_currency = "USD"
+        profile.save(update_fields=["main_currency"])
+
+        response = self.client.get(reverse("finance:reports"))
+
+        self.assertEqual(response.context["missing_currencies"], ["EUR"])  # Checking's currency
+
+
+class CustomRangeKeyInTheBrowserTests(LoggedInWithAccountTestCase):
+    """The browser names the typed-dates range too: a script and a link
+    spell the key out, where the test for Python code cannot look."""
+
+    def test_the_script_switches_the_range_box_to_a_key_the_form_offers(self):
+        script = (
+            Path(settings.BASE_DIR) / "finance" / "static" / "finance" / "js" / "stashy.js"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn(f"range.value = '{reporting.CUSTOM_RANGE_KEY}'", script)
+        self.assertIn(reporting.CUSTOM_RANGE_KEY, dict(DateRangeFilterForm.RANGE_CHOICES))
+
+    def test_the_view_them_link_opens_the_transactions_list_on_the_same_dates(self):
+        Transaction.objects.create(
+            account=self.account, date=date(2026, 1, 5), amount=Decimal("-10.00")
+        )
+        page = self.client.get(
+            reverse("finance:reports"),
+            {"range": "custom", "start": "01/01/2026", "end": "31/01/2026"},
+        )
+        link = re.search(r'href="([^"]*category=none[^"]*)"', page.content.decode()).group(1)
+
+        listing = self.client.get(link.replace("&amp;", "&"))
+
+        self.assertEqual(listing.context["range"], reporting.CUSTOM_RANGE_KEY)
+        self.assertEqual(
+            (listing.context["start"], listing.context["end"]),
+            (date(2026, 1, 1), date(2026, 1, 31)),
+        )
+        self.assertEqual(len(listing.context["transactions"]), 1)

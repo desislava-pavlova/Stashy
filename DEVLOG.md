@@ -7071,3 +7071,69 @@ delete this?", and where the answer is "nothing", you have found a gap that was 
 `finance/regional.py`, `finance/starter_categories.py`, `finance/management/commands/reset_pin.py`, the tests (`test_transactions`,
 `test_project`, `test_settings`, `test_reconciliation`); `CLAUDE.md`, `plans/03_structure_review.md`, `plans/README.md`, this log.
 No migration, no template, no static file.
+
+## 27/11/2026 — Plan 03, Phase 4: one builder per report (S14, S94, S96, S141)
+
+**What changed:** Phase 4 of plan 03 (items 4.1 to 4.6, with S141 and the reports part of S140 added to it).
+1,525 tests (1,451 before; 74 new, and one marked an expected failure, see R38), ruff clean, no migration (`makemigrations --check` says no changes), no data touched.
+No template, static file or URL changed.
+- **4.1, one builder per report.** The new `finance/report_tables.py` holds `ReportInputs` and eight table builders (`spending_table()` ... `watched_expenses_table()`).
+  The Reports page and every entry of `REPORT_EXPORTS` call the same eight functions, so a downloaded file can't differ from the table on screen.
+- **4.2, `reports_view` is a loop.** `views/reports.py` has one small card function per report, which shapes that report's chart data and returns the context keys its card reads
+  (the old function was 231 lines). `reports_view` takes the page's own keys from `_page_keys()` and loops over `REPORT_CARDS`.
+- **4.3, S94.** The Income & expense vs average export now closes with "Net", the word the page uses, instead of "Total": `ReportExport.total_label`.
+- **4.4, S96.** `_totals_by_category()` is the one place amounts are added up per category (converted, signed, one column or one per period). It replaces five copies of the same loop
+  and the two per-period ones; `_child_ids_by_parent()` replaces two copies; `_column_finder()` says which period column a date falls in.
+- **4.5, S141.** `CUSTOM_RANGE_KEY` sits beside the other range keys; `filters.py` and the form use it, and a test fails for a second `"custom"` in app code.
+- **4.6, S45** for `reporting.py` and the cards: a blank line between the steps of eleven functions. Measured again with the recipe of part E: 37 stretches in 17 files, against 48 in 19.
+  `reporting.py` keeps 6 (one decision or one loop building one table each: `resolve_range()`, `vs_average_periods()`, `period_bucket()`, three table loops).
+- **README:** the export's closing row, and the new module in the file tree.
+
+**Behaviour that is not the same as before:** two things. The Income & expense vs average export's last row says "Net" (S94). And the Reports page makes one database query more
+when Watched expenses has categories chosen: the category names of its totals are now looked up with their own query, where they used to ride along on the join. The exports make the same number as before.
+Nothing else: a throwaway test recorded the page (HTML and every context value) and all eight exports, CSV and Excel, on a varied data set for 21 filter combinations, with Watched expenses chosen and not,
+before the work and compared after it. The only differences were S94's label in 80 files (see plan 03's Phase 4 for what the data set held).
+
+**Why the code looks like this:**
+- **One table, built once, in a module of its own.** S3 happened because the Income & expense vs average table's summary rows lived only in the view; the export had its own builder and lacked them.
+  When two places build "the same" thing, they drift. The builders take one `ReportInputs` and return the table, so the page and the export can't disagree about which function made it.
+  `report_tables.py` imports no view, form or Django (a test checks), because it is what both views share: if it imported one of them, the other would reach it through that one.
+- **`ReportInputs` remembers a few sums.** Spending by category feeds two cards (its own chart and Income & expense vs average's), the income side the same, and the vs-average totals feed both that card's stat row
+  and its table. With `functools.cached_property` each is worked out the first time and kept, so a page load asks once however many cards use it. It is an object per request, never a module-level cache:
+  a cache that outlived the request could show one stash's numbers in another. A test counts the calls on a page load, so a card that quietly asked for its own copy would be caught (deleting that line left every
+  other test green, which is how the review found it).
+- **The cards stay in the view module, the tables in their own.** A table is what both the page and the export show. Chart data (floats for Chart.js, the ▲▼ arrow and its colour in the stat row) is only the page's, and it is
+  presentation, so `reporting.py` stays plain numbers and dicts. Each card returns an explicit dictionary of keys (not keys built from a prefix), so searching the code for `"spending_chart"` still finds where it is made.
+  Because `context.update()` would silently let a second card overwrite the first, a test fails when two cards, or a card and the page's own keys, share a key.
+- **`_totals_by_category()` always returns lists.** One column is a list of one. That is the shape `_rollup_to_parents()` already takes, and it lets the per-period reports (`category_report_rows()`, the Watched chart) use the
+  same function with a `column_of(date)` instead of their own loops. The callers that want one number unpack it: `for cid, (amount,) in ...`. It always asks the database for the date too, a slightly wider SELECT
+  that costs nothing here.
+- **The missing-rate rule moved out of the view.** "Which accounts have no known rate" is domain logic (a query and a rule), so it is `reporting.currencies_without_a_rate()`; a view only shows it. It had no test at all until the QA pass.
+- **"Net" is written in two places, on purpose.** The page's template passes `total_label="Net"` and the export registry has `total_label="Net"`. Making one feed the other would mean touching the template, and Phase 4 changes no template.
+  A test reads the page and the file and fails if they disagree.
+- **Tools:** every edit went through `scripts/dev/apply_edits.py`, which keeps each file's endings. One slip is worth remembering: a small Python snippet that used `Path.write_text()` turned a file into CRLF,
+  because on Windows `write_text` writes `\r\n` for every `\n`. `write_bytes` doesn't.
+- **S45, kept honest.** The rule is a blank line between a function's steps and none inside one decision, so `resolve_range()` (a chain over the range key) and `period_bucket()` (a chain over the granularity) stay whole,
+  as plan 03 said, and so do the loops that build one table row by row.
+
+**What the reviews changed.** Code, security and QA reviews (no database review: no model, migration or query shape moved beyond what is described; no front-end review: no template, static file or URL changed).
+Nothing Critical in the code or security review, and the security reviewer ran hostile addresses and names through every export without a 500 page. Done from them: the missing-rate rule moved into `reporting.py`
+and got three tests; `views/_helpers.report_inputs()` builds the inputs once for the page and the export; `_page_keys()` and the overlap test over the page's keys; the watched card flattened into `_watched_chart_series()`;
+`ReportInputs.totals` and `.periods` became `range_totals` and `earlier_periods`; `_category_table()` got a real `category_ids` parameter; stale docstrings. The tests added from them (37 by the QA tester,
+two sweeps of mine): a page load works out each shared sum once; the Account filter through every builder and export; a Subtotal over the column limit; foreign currencies (with a rate and with none) in every report;
+empty ranges in every export; all eight exports checked for formula-like names in CSV and Excel (the old tests covered three); and `stashy.js` and the "View them" link spelling the same range key as the constant.
+Filed, not done: plan 03's S142 (more repeated shapes in `reporting.py`), S143 (equal totals sort in an accidental order) and S144 (the export's header row is not escaped, a few range keys still typed out), and
+plan 04's R37 (the "View them" link under the uncategorized notice drops the chosen Account), R38 and R39.
+**R38 is a real bug the QA pass found, older than this phase:** an export of a Subtotal with more than 36 columns (weeks over a year) is only its header row, because the page shows a "Too many weeks" notice for it
+and the export has nothing to put in its place; the file looks empty. It needs your call on the fix, so its test is marked an expected failure for now.
+
+**Teaching note — to prove a refactor changed nothing, record the output first and compare after.** "The tests pass" only means the tests still pass; a refactor can change what the page shows in a way no test looks at
+(this one could have moved a tie, a rounding, a column, and 1,451 tests would not have noticed). So before touching the code I wrote a throwaway test that built a varied data set and saved the real output, the HTML of the page
+and the rows of every export, for many filter combinations, to a file; I ran it a second time on the unchanged code to prove it gave the same answer both times (a recording that varies from run to run proves nothing);
+and after each stage I ran it again and diffed. The differences that came out were exactly the one I meant to make, in exactly the 80 files that have a closing row, and nothing else. This is called a "golden master" or
+characterization test: it doesn't say the old output was right, only that the new output is the same. It also showed the cost of a change honestly: one extra database query on one page, which no test would have mentioned.
+The same habit found the bug above: the QA tester wrote tests for how the exports behave at the edges, not for the lines I had touched, and one of them found that a download can silently look empty.
+
+**Files touched:** new `finance/report_tables.py`, `finance/tests/test_report_tables.py`; changed `finance/reporting.py`, `finance/views/reports.py`, `finance/views/exports.py`, `finance/views/_helpers.py`,
+`finance/filters.py`, `finance/forms/filters.py`, the tests (`test_reporting`, `test_reports`, `test_exports`, `test_project`); `CLAUDE.md`, `README.md`, `plans/03_structure_review.md`, `plans/04_fixes_and_changes_plan.md`,
+`plans/README.md`, this log. No migration, no template, no static file.

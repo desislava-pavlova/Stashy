@@ -46,6 +46,9 @@ S133–S135 (section S). Part D (the small fixes) is done, the OFX reader
 *27/11/2026:* Phase 3 part E (the views pass and the banners: S42, S45, S49,
 with S131 from part B's reviews) is done, which completes Phase 3; its
 reviews added S139 to S141 (section T).
+*27/11/2026 (later):* Phase 4 (one builder per report: S14, S94, S96, with
+S141 and the reports part of S140) is done; its reviews added S142 to S144
+(section U) and plan 04's R37 to R39. Phases 5 and 6 are still planned.
 
 **Baseline (10/10/2026):** 723 tests green. `ruff check .` and
 `ruff format --check .` are clean, `manage.py check` finds nothing, and
@@ -348,6 +351,7 @@ Checked, so nobody has to check again:
     builders.
   - **Behaviour:** identical, apart from S3. It also makes "only compute
     what's on screen" possible later, if Reports ever feels slow.
+  - *Done 27/11/2026 (items 4.1 and 4.2).*
 - **S15 — Domain rules live in forms.**
   - **What:** `AccountCreateForm.save()` creates the opening-balance
     transaction, and `TransferForm.save()` creates both transfer legs.
@@ -1080,6 +1084,7 @@ The rest:
   passes `total_label="Net"` to its table; `_vs_average_layout()` always
   writes "Total". Pass the label through `ReportExport`, with the
   builders. Checklist item 4.3.
+  *Done 27/11/2026.*
 - **S95 — `to_cent()` can return `-0.00`** (code reviewer; proposed:
   Phase 1, part D). Checked: `to_cent(Decimal("-0.0033"))` is
   `Decimal('-0.00')`, and the CSV writer prints it as `-0.00`. It shows
@@ -1095,6 +1100,7 @@ The rest:
   `child_ids_by_parent` block twice. One small helper for each, so the
   next change to a sign rule touches one place. It goes with S14's
   builders. Checklist item 4.4.
+  *Done 27/11/2026.*
 - **Noted, not filed as items:**
   - How refunds look on screen is yours to judge, so it went into plan 04
     as R32 (a fully refunded category stays listed at 0.00, the savings
@@ -1735,7 +1741,10 @@ Filed here:
   reviewer; part D). `60` and its message are in `registry.validate_owner_name()`,
   `Profile.owner_name` (`max_length=60`) and `forms/auth.py`. **Fix:** one
   `OWNER_NAME_MAX_LENGTH` constant that the three read, like S124's
-  amounts. Proposed: Phase 3, part E or Phase 2's leftovers.
+  amounts. Proposed: Phase 3, part E or Phase 2's leftovers. *Not done in
+  part E (27/11/2026): it is outside part E's three items (3.6, 3.7, 3.14),
+  so it still waits for your call. It would fit a small part of its own,
+  or the start of Phase 4.*
 - Judged not worth planning, from part D's reviews (26/11/2026):
   `transaction_form_view` is about 100 lines with four levels of nesting
   (already 3.7's: its two initial-value blocks become helpers);
@@ -1806,13 +1815,16 @@ Filed here:
   the views that built the dictionary inside the call; `reports_view` waits
   for S14 anyway. **Fix if wanted:** name them above the context, by
   S42's own rule. Proposed: with Phase 4 for the reports view, the rest
-  any time.
+  any time. *27/11/2026: Phase 4 did the reports view's part (each card
+  names its calculations above the dictionary it returns); the
+  Transactions list's and the dashboard's are still open.*
 - **S141 — The range key "custom" is typed in five places** (code
   reviewer; part E). `filters.py` (twice), `reporting.py` and
   `forms/filters.py` (twice), while `EARLIEST_RANGE_KEY` and
   `DEFAULT_RANGE_KEY` have constants beside `resolve_range()`. **Fix:** a
   `CUSTOM_RANGE_KEY` there, and a test like S116's that fails for a second
   copy. Proposed: Phase 4, which rewrites `reporting.py`.
+  *Done 27/11/2026 (item 4.5).*
 - Judged not worth planning: `views/auth.py` builds its form empty and then
   again on a POST (part D's reviewers judged the same: `request.POST or
   None` would change what an empty POST shows); `_category_filter()`'s
@@ -1826,7 +1838,81 @@ Filed here:
   32 symbols is about 2^60 guesses, each paying for a password hash, on a
   server that listens on this computer only).
 
-<!-- Next number: S142 -->
+### U. Found by the reviews of Phase 4 (27/11/2026)
+
+The code, security and QA reviews read Phase 4 (the report tables, the
+Reports page as a loop of cards, the exports' registry). The security
+reviewer found nothing Critical or Should fix: every text cell of an export
+(the new closing-row label included) still passes the CSV and Excel
+escaping, a run of hostile addresses and names gave no 500 page, and
+`ReportInputs` lives for one request. The code reviewer found nothing
+Critical either, and checked that every context key the old `reports_view`
+made is still made (by reading the old compiled view and comparing at run
+time). The QA tester found one bug that is older than Phase 4 (R38 below).
+Done the same day, because the code was written in this phase: the
+missing-rate rule left the view for `reporting.currencies_without_a_rate()`
+(it had no test at all; it has three now); `views/_helpers.report_inputs()`
+builds the inputs for the page and the export in one place; the page's own
+keys come from `_page_keys()`, so the card-overlap test covers them too;
+the watched card's nested `if`s became `_watched_chart_series()`;
+`ReportInputs` says `range_totals` and `earlier_periods` (not `totals` and
+`periods`, which read like a table's columns); `_category_table()` has an
+honest `category_ids` parameter; stale docstrings that named
+`reports_view()`; and the tests the reviewers found missing: that a page
+load works out each shared sum once (deleting
+`vs_average_totals=inputs.vs_average_totals` left every test green), the
+Account filter through every builder and export, a Subtotal over the
+column limit, foreign currencies (a rate, and none) in every report, empty
+ranges in every export, a sweep of all eight exports for formula-like names
+in CSV and Excel (only three were covered), and that `stashy.js` and the
+"View them" link spell the same range key as `CUSTOM_RANGE_KEY`. Not done:
+`income_expense_vs_average_report_rows()` keeps its `vs_average_totals=None`
+branch, which only tests reach now (dropping it would make two older tests
+work the totals out themselves); its docstring says so.
+Filed here:
+- **S142 — `reporting.py` still repeats a few shapes** (code reviewer;
+  Phase 4). Not among S96's five: the average formula
+  `to_cent(sum(...) / len(periods))` in `category_totals_vs_average()` and
+  `category_vs_average_report_rows()`; the "biggest first for income or
+  expense, else ascending" sort in `category_totals_top_level()` and
+  `category_totals_vs_average()`; the category-name query in
+  `watched_expenses_totals()` and `watched_expenses_series()` (the totals'
+  lookup is also why the Reports page makes one query more than before when
+  Watched expenses has categories); and `spending_tree()`, which converts and
+  adds per category by its own loop and flips the sign per row (the same
+  result as flipping once at the end, a third way of writing it). **Fix if
+  wanted:** a helper for each. Proposed: with the next change to the report
+  maths.
+- **S143 — Equal totals have an accidental order** (code reviewer; older
+  than Phase 4). In the by-category charts, `category_totals_top_level()`
+  keeps the transactions' own order for equal totals (the more recent
+  category first), while `category_totals_vs_average()` breaks the tie by id
+  order, so the same two categories can swap places between two charts.
+  Adding an `order_by()` to the shared adder would reorder ties silently,
+  and no test would notice. **Fix:** sort ties on `name_key` in both and pin
+  it with a test. Visible only for two equal totals; your call.
+- **S144 — Two small hardening notes** (security and code reviewers). The
+  export's header row is written without the escaping the other rows get;
+  every header is a constant or a date-made label today (the writer's
+  docstring says so), so nothing can be exploited, but a header made from a
+  name someday would skip both protections. **Fix:** the same two
+  protections for the header row, or a test that fails when a header comes
+  from user text. And the range keys `"earliest"` (in the form's choices)
+  and `"this_month"` (in `resolve_range()`) are still typed out although
+  `EARLIEST_RANGE_KEY` and `DEFAULT_RANGE_KEY` exist; S141's guard could
+  cover them too. Proposed: whenever the form's choices are next touched.
+- To plan 04, not here, because you see them: **R37** (the "View them" link
+  under Reports' uncategorized notice drops the chosen Account), **R38** (an
+  export of a Subtotal with more than 36 columns is a header-only file;
+  needs your call, and `test_too_many_subtotal_columns_do_not_export_as_an_empty_report`
+  is an expected failure until then) and **R39** (Net worth ignores the
+  Account filter, and counts months when no Subtotal is chosen).
+- Judged not worth planning: `category_totals_vs_average(top_level=False)`
+  is used by tests only (the page always passes `True`); `net_total` in the
+  income and expense card subtracts two numbers the module already has;
+  the unreachable defensive lines in `reporting.py` that no test reaches.
+
+<!-- Next number: S145 -->
 
 ---
 
@@ -2594,20 +2680,58 @@ changed. Part E's changes to the views are structure only; the pages were not
 compared render by render, since no part of Phase 3 changes what a page
 contains.*
 
-## Phase 4 — One builder per report  (S14, S94, S96)
+## Phase 4 — One builder per report  (S14, S94, S96, S141, and S140's reports part)
 
-- [ ] **4.1** One builder per report, shared by the page and the export
-  registry.
-- [ ] **4.2** `reports_view` becomes a short loop.
-- [ ] **4.3** S94: the export's footer row carries the page's label ("Net"
-  on the Income & expense vs average card), through `ReportExport`.
-- [ ] **4.4** S96: one helper for "add the converted, signed amounts per
+- [x] **4.1** One builder per report, shared by the page and the export
+  registry. *Done 27/11/2026: the new `finance/report_tables.py` has
+  `ReportInputs` (the filters, the rates and the profile, with the sums two
+  reports share, each worked out once per page load) and one table builder
+  per report, `spending_table()` to `watched_expenses_table()`. The page
+  and every entry of `REPORT_EXPORTS` call the same eight functions.*
+- [x] **4.2** `reports_view` becomes a short loop. *Done 27/11/2026:
+  `views/reports.py` has one small card function per report, which shapes
+  that report's chart data and returns the context keys its card reads;
+  `reports_view` takes the page's own keys from `_page_keys()` and loops
+  over `REPORT_CARDS`. No template changed, so every key keeps its name.*
+- [x] **4.3** S94: the export's footer row carries the page's label ("Net"
+  on the Income & expense vs average card), through `ReportExport`. *Done
+  27/11/2026: `ReportExport.total_label`, "Total" unless an export says
+  otherwise; the three layouts take it. A test ties the file's closing row
+  to the word the page prints.*
+- [x] **4.4** S96: one helper for "add the converted, signed amounts per
   category" and one for `child_ids_by_parent`, in place of the copies in
-  `reporting.py`.
+  `reporting.py`. *Done 27/11/2026: `_totals_by_category()` (one column, or
+  one per period) replaces the five copies and the two per-period ones in
+  `category_report_rows()` and `watched_expenses_series()`;
+  `_child_ids_by_parent()` replaces the two copies; `_column_finder()` says
+  which period column a date falls in.*
+- [x] **4.5** S141 (added): `CUSTOM_RANGE_KEY` beside the other range keys,
+  used by `filters.py` and the form, and a test that fails for a second
+  `"custom"` in app code. *Done 27/11/2026.*
+- [x] **4.6** S45 for `reporting.py` and the cards (left for this phase by
+  Phase 3's part E). *Done 27/11/2026: a blank line between the steps of
+  eleven functions. Measured with the same recipe as part E: 37 stretches
+  in 17 files, against 48 in 19 after part E (25 in 13 files of app code,
+  12 in 4 of `scripts/`). `reporting.py` has 6 left, all one decision
+  (`resolve_range()`, `vs_average_periods()`, `period_bucket()`) or one
+  loop building one table; `views/reports.py` and `report_tables.py` have
+  none.*
 
 **Done when:** a test renders Reports and every export on a varied data
 set, before and after, and compares them; the only difference is S3's
-rows, which Phase 1 already added.
+rows, which Phase 1 already added. *Met 27/11/2026, with S94's label as the
+one expected difference. A throwaway test (deleted afterwards) built a
+varied data set (four accounts in three currencies, one with no rate,
+subcategories, refunds, transfers, uncategorized rows, 36 months) and
+recorded the Reports page (HTML and every context value) and all eight
+exports, CSV and Excel, for 21 filter combinations, with Watched expenses
+chosen and not. After the work the page's HTML and context were identical
+and so were seven of the eight exports; the eighth differed only in its
+closing row's name, "Net" for "Total", in 80 files. The page makes one
+query more (the names lookup of the Watched expenses totals) when
+categories are watched; the exports make the same number. 1,525 tests
+(74 new), and of the older ones only two were edited: they skipped the
+footer by its old name, "Total", and now skip it by position.*
 
 ## Phase 5 — Templates and JavaScript  (S28, S19, S18's JavaScript part, S26, S27, S29, S30, S35–S37, S67, S84, S100; S9 last, if Q2 is yes)
 

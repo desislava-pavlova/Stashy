@@ -21,17 +21,24 @@ from openpyxl import Workbook
 from openpyxl.cell.cell import TYPE_STRING
 
 from .. import regional
-from ..filters import filtered_transactions, report_filters
+from ..filters import filtered_transactions
 from ..models import Account, Category, Payee
-from ..reporting import (
-    category_report_rows,
-    category_vs_average_report_rows,
-    income_expense_vs_average_report_rows,
-    net_worth_by_account,
-    watched_expenses_category_ids,
+from ..report_tables import (
+    income_expense_table,
+    income_expense_vs_average_table,
+    income_table,
+    income_vs_average_table,
+    net_worth_table,
+    spending_table,
+    spending_vs_average_table,
+    watched_expenses_table,
 )
-from ..services.rates import RateTable
-from ._helpers import TRANSACTION_LIST_SORT_FIELDS, apply_sort, ordered_with_ties_broken
+from ._helpers import (
+    TRANSACTION_LIST_SORT_FIELDS,
+    apply_sort,
+    ordered_with_ties_broken,
+    report_inputs,
+)
 
 
 def _filename(stem):
@@ -241,88 +248,17 @@ def export_payees(request):
 # Report exports: one registry, one view
 # ----------------------------------------------------------------------
 #
-# Each report's builder makes the same table the Reports page shows,
-# from the same filters. A builder takes (filters, rates, profile) and
-# returns the table, or None when there is nothing to export. Adding a
-# report export means adding one entry to REPORT_EXPORTS.
+# Each report's builder (report_tables.py) makes the same table the
+# Reports page shows, from the same filters. A builder takes a
+# ReportInputs and returns the table, or None when there is nothing to
+# export. Adding a report export means adding one entry to
+# REPORT_EXPORTS.
 
 
-def _category_rows(**kind):
-    """A builder for a "category rows" report; `kind` is
-    expense_only=True, income_only=True, or nothing for income and
-    expense together."""
-
-    def build(filters, rates, profile):
-        return category_report_rows(
-            filters["start"],
-            filters["end"],
-            subtotal=filters["subtotal"],
-            account=filters["account"],
-            rates=rates,
-            **kind,
-        )
-
-    return build
-
-
-def _vs_average_rows(**kind):
-    """A builder for a "current vs. average" report; `kind` is
-    expense_only=True or income_only=True (income and expense together
-    is _income_expense_vs_average())."""
-
-    def build(filters, rates, profile):
-        return category_vs_average_report_rows(
-            filters["start"],
-            filters["end"],
-            filters["periods"],
-            account=filters["account"],
-            rates=rates,
-            **kind,
-        )
-
-    return build
-
-
-def _income_expense_vs_average(filters, rates, profile):
-    """The category rows plus the Summary rows (Income total, Expense
-    total), the same table the page builds through the same function."""
-    return income_expense_vs_average_report_rows(
-        filters["start"],
-        filters["end"],
-        filters["periods"],
-        account=filters["account"],
-        rates=rates,
-    )
-
-
-def _net_worth(filters, rates, profile):
-    return net_worth_by_account(
-        filters["start"],
-        filters["end"],
-        filters["subtotal"] or "month",
-        rates=rates,
-    )
-
-
-def _watched_expenses(filters, rates, profile):
-    category_ids = watched_expenses_category_ids(profile)
-    if not category_ids:
-        return None
-    return category_report_rows(
-        filters["start"],
-        filters["end"],
-        subtotal=filters["subtotal"],
-        expense_only=True,
-        account=filters["account"],
-        category_ids=category_ids,
-        rates=rates,
-    )
-
-
-def _category_layout(table, amount_label):
-    """Category rows: one column per period plus Total, or a single
-    amount column when the report isn't subtotaled. Subcategories are
-    indented by two spaces."""
+def _category_layout(table, amount_label, total_label):
+    """Category rows: one column per period plus the total row, or a
+    single amount column when the report isn't subtotaled.
+    Subcategories are indented by two spaces."""
     periods = table["periods"]
     headers = ["Category", *([*periods, "Total"] if periods else [amount_label])]
 
@@ -334,7 +270,7 @@ def _category_layout(table, amount_label):
 
     if table["totals"]:
         rows.append(
-            ["Total"]
+            [total_label]
             + list(table["totals"]["values"])
             + ([table["totals"]["total"]] if periods else [])
         )
@@ -342,7 +278,7 @@ def _category_layout(table, amount_label):
     return headers, rows
 
 
-def _vs_average_layout(table, amount_label):
+def _vs_average_layout(table, amount_label, total_label):
     headers = ["Category", "Current", "Average", "Difference"]
     rows = [
         [
@@ -356,75 +292,78 @@ def _vs_average_layout(table, amount_label):
     ]
     if table["totals"]:
         totals = table["totals"]
-        rows.append(["Total", totals["current"], totals["average"], totals["difference"]])
+        rows.append([total_label, totals["current"], totals["average"], totals["difference"]])
     return headers, rows
 
 
-def _net_worth_layout(table, amount_label):
+def _net_worth_layout(table, amount_label, total_label):
     """A row per account group (its subtotal), each account indented
-    under it, then Total."""
+    under it, then the total row."""
     headers = ["Account"] + table["periods"]
     rows = []
     for group in table["groups"]:
         rows.append([group["name"], *group["totals"]])
         for row in group["rows"]:
             rows.append(["  " + row["name"], *row["values"]])
-    rows.append(["Total", *table["totals"]])
+    rows.append([total_label, *table["totals"]])
     return headers, rows
 
 
 class ReportExport(NamedTuple):
-    build: Callable  # (filters, rates, profile) -> table, or None when there's nothing to export
-    layout: Callable  # (table, amount_label) -> (headers, rows)
+    build: Callable  # (ReportInputs) -> table, or None when there's nothing to export
+    layout: Callable  # (table, amount_label, total_label) -> (headers, rows)
     filename: str  # the file is named stashy-<filename>-<date and time> (see _filename())
     # The single amount column's header when a category report has no
     # subtotal.
     amount_label: str = ""
+    # The closing row's name, the one the page's table gives it.
+    total_label: str = "Total"
     empty_message: str = ""  # shown with a 404 when build() returns None
 
 
 # The keys are the URL slugs: reports/export/<slug>/.
 REPORT_EXPORTS = {
     "spending": ReportExport(
-        build=_category_rows(expense_only=True),
+        build=spending_table,
         layout=_category_layout,
         filename="spending-by-category",
         amount_label="Spending",
     ),
     "spending-vs-average": ReportExport(
-        build=_vs_average_rows(expense_only=True),
+        build=spending_vs_average_table,
         layout=_vs_average_layout,
         filename="spending-vs-average",
     ),
     "income": ReportExport(
-        build=_category_rows(income_only=True),
+        build=income_table,
         layout=_category_layout,
         filename="income-by-category",
         amount_label="Income",
     ),
     "income-vs-average": ReportExport(
-        build=_vs_average_rows(income_only=True),
+        build=income_vs_average_table,
         layout=_vs_average_layout,
         filename="income-vs-average",
     ),
     "income-expense": ReportExport(
-        build=_category_rows(),
+        build=income_expense_table,
         layout=_category_layout,
         filename="income-expense-by-category",
         amount_label="Amount",
     ),
     "income-expense-vs-average": ReportExport(
-        build=_income_expense_vs_average,
+        build=income_expense_vs_average_table,
         layout=_vs_average_layout,
         filename="income-expense-vs-average",
+        total_label="Net",
     ),
     "net-worth": ReportExport(
-        build=_net_worth,
+        build=net_worth_table,
         layout=_net_worth_layout,
         filename="net-worth",
     ),
     "watched-expenses": ReportExport(
-        build=_watched_expenses,
+        build=watched_expenses_table,
         layout=_category_layout,
         filename="watched-expenses",
         amount_label="Spending",
@@ -440,9 +379,8 @@ def export_report(request, report):
     export = REPORT_EXPORTS.get(report)
     if export is None:
         raise Http404("No such report.")
-    profile = request.stashy_profile
-    table = export.build(report_filters(request), RateTable(profile.main_currency), profile)
+    table = export.build(report_inputs(request))
     if table is None:
         return HttpResponse(export.empty_message, status=404)
-    headers, rows = export.layout(table, export.amount_label)
+    headers, rows = export.layout(table, export.amount_label, export.total_label)
     return _export_response(_requested_format(request), _filename(export.filename), headers, rows)

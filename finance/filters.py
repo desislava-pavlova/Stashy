@@ -13,6 +13,7 @@ from .forms.filters import DateRangeFilterForm
 from .ids import as_id, as_ids
 from .models import Category, Transaction
 from .reporting import (
+    CUSTOM_RANGE_KEY,
     DEFAULT_LOOKBACK_PERIODS,
     DEFAULT_RANGE_KEY,
     EARLIEST_RANGE_KEY,
@@ -85,7 +86,7 @@ def _transaction_date_range(request):
     start = regional.parse_date(request.GET.get("start"))
     end = regional.parse_date(request.GET.get("end"))
 
-    if range_key == "custom":
+    if range_key == CUSTOM_RANGE_KEY:
         return range_key, start, end
 
     if range_key:
@@ -104,7 +105,7 @@ def _transaction_date_range(request):
         return TRANSACTIONS_DEFAULT_RANGE, start, end
 
     # Dates without a range: the dashboard's links.
-    return "custom", start, end
+    return CUSTOM_RANGE_KEY, start, end
 
 
 def _category_filter(selected_categories, include_uncategorized, with_subcategories):

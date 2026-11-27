@@ -43,6 +43,7 @@ DEFAULT_LOOKBACK_PERIODS = 3
 DEFAULT_RANGE_KEY = "this_month"
 
 EARLIEST_RANGE_KEY = "earliest"
+CUSTOM_RANGE_KEY = "custom"
 
 # Past this many subtotal columns, a table/chart shows a short notice
 # instead of trying to render them all - 36 is roomy for anything anyone
@@ -88,7 +89,7 @@ def resolve_range(cleaned_data, account=None):
     start = cleaned_data.get("start")
     end = cleaned_data.get("end")
 
-    if range_key == "custom" and start and end:
+    if range_key == CUSTOM_RANGE_KEY and start and end:
         return start, end, cleaned_data.get("interval") or str(DEFAULT_LOOKBACK_PERIODS)
 
     if range_key == EARLIEST_RANGE_KEY:
@@ -146,9 +147,9 @@ def _convert(amount, currency, rates):
     callers that only ever see one currency) - amounts are trusted to
     already be comparable. With rates given but no known rate for
     `currency`, the amount is left out (0) rather than silently mixed
-    into a total in the wrong currency; reports_view() separately warns
-    once when this happens (missing a rate is rare and worth a banner,
-    not a per-row asterisk)."""
+    into a total in the wrong currency; the page separately warns once
+    when this happens (missing a rate is rare and worth a banner, not a
+    per-row asterisk)."""
     if rates is None or currency == rates.target:
         return amount
     converted = rates.convert(amount, currency)
@@ -166,6 +167,37 @@ def _as_shown(amount, expense_only):
     if amount is None:
         return None
     return -amount if expense_only else amount
+
+
+def _totals_by_category(qs, rates, column_of=None, width=1):
+    """Category id -> the converted, signed amounts of `qs`, one per
+    column. Every report adds its amounts up here, so a change to the
+    sign or the currency rule is made once.
+
+    Without `column_of`, every amount goes into the single column.
+    With it, `column_of(date)` names the column a transaction's date
+    falls in, and `width` says how many columns there are. A category
+    with no transaction in `qs` has no entry. Nothing is rounded here:
+    the caller rounds the totals it keeps.
+    """
+    totals = {}
+    for row in qs.values("category_id", "amount", "date", "account__currency"):
+        values = totals.setdefault(row["category_id"], [ZERO] * width)
+        column = column_of(row["date"]) if column_of else 0
+        values[column] += _convert(row["amount"], row["account__currency"], rates)
+    return totals
+
+
+def _column_finder(periods, granularity):
+    """A function that says which of `periods`' columns (as
+    `_period_columns()` returned them) a date falls in."""
+    index = {p["key"]: i for i, p in enumerate(periods)}
+
+    def column_of(when):
+        key, _label = period_bucket(when, granularity)
+        return index[key]
+
+    return column_of
 
 
 def income_and_spending(start, end, account=None, rates=None):
@@ -205,6 +237,7 @@ def vs_average_periods(start, end, lookback, range_key=None):
     nothing before it."""
     if range_key == EARLIEST_RANGE_KEY:
         return []
+
     if range_key in _MONTH_RANGES:
         step, anchor = relativedelta(months=1), start.replace(day=1)
     elif range_key == "this_quarter":
@@ -225,6 +258,7 @@ def vs_average_periods(start, end, lookback, range_key=None):
             periods.append((cursor_start, cursor_end))
             cursor_end = cursor_start - timedelta(days=1)
         return periods
+
     return [
         (anchor - step * i, anchor - step * (i - 1) - timedelta(days=1))
         for i in range(1, lookback + 1)
@@ -260,6 +294,7 @@ def income_and_spending_vs_average(start, end, periods, account=None, rates=None
         "current_rate": savings_rate(current["income"], current["spending"]),
         "average_periods": len(periods),
     }
+
     if not periods:
         result.update(
             average_income=None, average_spending=None, average_net=None, average_rate=None
@@ -271,6 +306,7 @@ def income_and_spending_vs_average(start, end, periods, account=None, rates=None
         period_totals = income_and_spending(period_start, period_end, account=account, rates=rates)
         incomes.append(period_totals["income"])
         spendings.append(period_totals["spending"])
+
     average_income = to_cent(sum(incomes, ZERO) / len(periods))
     average_spending = to_cent(sum(spendings, ZERO) / len(periods))
     result.update(
@@ -293,11 +329,7 @@ def category_totals_top_level(
     charts); otherwise totals stay signed (income positive, expense
     negative), sorted low-to-high."""
     qs = _reportable(start, end, account, expense_only, income_only)
-
-    raw = {}
-    for row in qs.values("category_id", "amount", "account__currency"):
-        amount = _convert(row["amount"], row["account__currency"], rates)
-        raw[row["category_id"]] = raw.get(row["category_id"], ZERO) + amount
+    raw = {cid: amount for cid, (amount,) in _totals_by_category(qs, rates).items()}
     if not raw:
         return []
 
@@ -345,30 +377,23 @@ def category_totals_vs_average(
     rolls subcategories into their main category, for charts."""
     qs = _reportable(account=account, expense_only=expense_only, income_only=income_only)
 
-    top_of = {}
-    if top_level:
-        for category in Category.objects.select_related("parent"):
-            top = category.parent if category.parent_id else category
-            top_of[category.pk] = (top.pk, top.name)
+    # The (id, name) a category is counted under: itself, or with
+    # `top_level` its main category.
+    counted_under = {}
+    for category in Category.objects.select_related("parent"):
+        group = category.parent if top_level and category.parent_id else category
+        counted_under[category.pk] = (group.pk, group.name)
 
     def totals_for(s, e):
-        totals, names = {}, {}
-        for row in qs.in_range(s, e).values(
-            "category_id", "category__name", "amount", "account__currency"
-        ):
-            amount = _convert(row["amount"], row["account__currency"], rates)
-            cid, name = top_of.get(row["category_id"], (row["category_id"], row["category__name"]))
-            totals[cid] = totals.get(cid, ZERO) + amount
-            names[cid] = name
-        return totals, names
+        totals = {}
+        for category_id, (amount,) in _totals_by_category(qs.in_range(s, e), rates).items():
+            group_id = counted_under[category_id][0]
+            totals[group_id] = totals.get(group_id, ZERO) + amount
+        return totals
 
-    current_by_category, names = totals_for(start, end)
-    period_totals_list = []
-    for period_start, period_end in periods:
-        period_totals, period_names = totals_for(period_start, period_end)
-        for cid, name in period_names.items():
-            names.setdefault(cid, name)
-        period_totals_list.append(period_totals)
+    current_by_category = totals_for(start, end)
+    period_totals_list = [totals_for(s, e) for s, e in periods]
+    names = dict(counted_under.values())
 
     all_ids = set(current_by_category)
     for pt in period_totals_list:
@@ -411,6 +436,7 @@ def subtotal_overflow_message(start, end, granularity):
         return None
     if len(_period_columns(start, end, granularity)) <= SUBTOTAL_LIMIT:
         return None
+
     next_step = _SUBTOTAL_NEXT_STEP.get(granularity)
     plural = _SUBTOTAL_PLURAL[granularity]
     if next_step:
@@ -472,6 +498,19 @@ def uncategorized_count(start, end, account=None):
     )
 
 
+def currencies_without_a_rate(rates):
+    """The currencies of accounts that have no known rate into the
+    currency of `rates`, sorted. A page warns about them once, not on
+    every report that happens to touch one."""
+    return sorted(
+        {
+            a.currency
+            for a in Account.objects.exclude(currency=rates.target)
+            if rates.known(a.currency) is None
+        }
+    )
+
+
 def category_report_rows(
     start,
     end,
@@ -508,18 +547,9 @@ def category_report_rows(
         qs = qs.filter(category_id__in=category_ids)
 
     periods = _period_columns(start, end, subtotal) if subtotal else []
-    period_index = {p["key"]: i for i, p in enumerate(periods)}
     width = len(periods) if subtotal else 1
-
-    totals = {}
-    for row in qs.values("category_id", "amount", "date", "account__currency"):
-        values = totals.setdefault(row["category_id"], [ZERO] * width)
-        amount = _convert(row["amount"], row["account__currency"], rates)
-        if subtotal:
-            key, _label = period_bucket(row["date"], subtotal)
-            values[period_index[key]] += amount
-        else:
-            values[0] += amount
+    column_of = _column_finder(periods, subtotal) if subtotal else None
+    totals = _totals_by_category(qs, rates, column_of, width)
 
     if not totals:
         return {
@@ -534,11 +564,7 @@ def category_report_rows(
     }
     categories = _with_parents(totals)
     totals = _rollup_to_parents(totals, categories, width)
-
-    child_ids_by_parent = {}
-    for category in categories.values():
-        if category.parent_id:
-            child_ids_by_parent.setdefault(category.parent_id, []).append(category.pk)
+    child_ids_by_parent = _child_ids_by_parent(categories)
 
     result_groups = []
     grand_totals = [ZERO] * width
@@ -592,11 +618,8 @@ def category_vs_average_report_rows(
     def totals_for(s, e):
         """Category id -> [its total], one column wide, the shape
         _rollup_to_parents() takes."""
-        totals = {}
-        for row in qs.in_range(s, e).values("category_id", "amount", "account__currency"):
-            amount = _convert(row["amount"], row["account__currency"], rates)
-            totals[row["category_id"]] = totals.get(row["category_id"], ZERO) + amount
-        return {cid: [to_cent(total)] for cid, total in totals.items()}
+        totals = _totals_by_category(qs.in_range(s, e), rates)
+        return {cid: [to_cent(total)] for cid, (total,) in totals.items()}
 
     current_by_category = totals_for(start, end)
     period_totals_list = [totals_for(s, e) for s, e in periods]
@@ -628,10 +651,7 @@ def category_vs_average_report_rows(
             return None
         return to_cent(sum((pt.get(cid, ZERO) for pt in period_totals_list), ZERO) / len(periods))
 
-    child_ids_by_parent = {}
-    for category in categories.values():
-        if category.parent_id:
-            child_ids_by_parent.setdefault(category.parent_id, []).append(category.pk)
+    child_ids_by_parent = _child_ids_by_parent(categories)
 
     def had_earlier_activity(cid):
         return cid in active_before or any(
@@ -646,6 +666,7 @@ def category_vs_average_report_rows(
     # nothing to either. With no earlier periods at all, every average
     # is None, and so is this.
     totals = {"current": ZERO, "average": ZERO if periods else None}
+
     for group in grouped_categories(categories.values()):
         rows = []
         for category in group["categories"]:
@@ -706,12 +727,15 @@ def income_expense_vs_average_report_rows(
     rows. Built here once, so the page and the export hold the same
     rows. `vs_average_totals` is income_and_spending_vs_average()'s
     result for the same arguments when the caller already has it (the
-    page needs it for its stat row); otherwise it is worked out here."""
+    page's stat row shares it with this table); otherwise it is worked
+    out here."""
     table = category_vs_average_report_rows(start, end, periods, account=account, rates=rates)
+
     if vs_average_totals is None:
         vs_average_totals = income_and_spending_vs_average(
             start, end, periods, account=account, rates=rates
         )
+
     summary_rows = [
         _summary_row(
             "summary_income",
@@ -727,6 +751,7 @@ def income_expense_vs_average_report_rows(
             lower_is_good=True,
         ),
     ]
+
     table["groups"].append({"key": "summary", "name": "Summary", "rows": summary_rows})
     return table
 
@@ -741,6 +766,16 @@ def _with_parents(category_ids):
         if category.parent_id and category.parent_id not in categories:
             categories[category.parent_id] = category.parent
     return categories
+
+
+def _child_ids_by_parent(categories):
+    """Parent id -> the ids of its subcategories among `categories` (a
+    dict by id)."""
+    children = {}
+    for category in categories.values():
+        if category.parent_id:
+            children.setdefault(category.parent_id, []).append(category.pk)
+    return children
 
 
 def _rollup_to_parents(totals, categories, width):
@@ -784,6 +819,7 @@ def net_worth_by_account(start, end, granularity, rates=None):
     width = len(periods)
     accounts = list(Account.objects.all())
     native_by_account = _running_balances(accounts, [p["end"] for p in periods])
+
     missing_accounts = []
     values_by_account = {}
     for account in accounts:
@@ -831,6 +867,7 @@ def _running_balances(accounts, as_of_dates):
     columns = {account.pk: [] for account in accounts}
     if not as_of_dates:
         return columns
+
     daily = iter(
         Transaction.objects.filter(date__lte=as_of_dates[-1])
         .values("account_id", "date")
@@ -838,6 +875,7 @@ def _running_balances(accounts, as_of_dates):
         .order_by("date")
     )
     day = next(daily, None)
+
     for as_of in as_of_dates:
         while day is not None and day["date"] <= as_of:
             balances[day["account_id"]] += day["total"]
@@ -857,12 +895,11 @@ def watched_expenses_totals(start, end, category_ids, account=None, rates=None):
     message instead of an empty chart."""
     if not category_ids:
         return None
+
     qs = _reportable(start, end, account, expense_only=True).filter(category_id__in=category_ids)
-    totals, names = {}, {}
-    for row in qs.values("category_id", "category__name", "amount", "account__currency"):
-        amount = _convert(row["amount"], row["account__currency"], rates)
-        totals[row["category_id"]] = totals.get(row["category_id"], ZERO) + amount
-        names[row["category_id"]] = row["category__name"]
+    totals = {cid: amount for cid, (amount,) in _totals_by_category(qs, rates).items()}
+    names = dict(Category.objects.filter(pk__in=list(totals)).values_list("pk", "name"))
+
     rows = [
         {
             "category_id": cid,
@@ -879,21 +916,18 @@ def watched_expenses_series(
     start, end, category_ids, granularity="month", account=None, rates=None
 ):
     """One line per chosen category, one point per `granularity`
-    period - the view passes the Subtotal filter (month when none is
-    chosen), the same way Net worth's chart follows it. A period with no
-    activity for a category is a real zero point, not a gap."""
+    period - the Reports page passes the Subtotal filter (month when
+    none is chosen), the same way Net worth's chart follows it. A period
+    with no activity for a category is a real zero point, not a gap."""
     if not category_ids:
         return []
+
     names = {c.pk: c.name for c in Category.objects.filter(pk__in=category_ids)}
     periods = _period_columns(start, end, granularity)
-    index = {p["key"]: i for i, p in enumerate(periods)}
-    totals = {cid: [ZERO] * len(periods) for cid in category_ids}
     qs = _reportable(start, end, account, expense_only=True).filter(category_id__in=category_ids)
-    for row in qs.values("category_id", "amount", "date", "account__currency"):
-        key, _label = period_bucket(row["date"], granularity)
-        totals[row["category_id"]][index[key]] += _convert(
-            row["amount"], row["account__currency"], rates
-        )
+    found = _totals_by_category(qs, rates, _column_finder(periods, granularity), len(periods))
+    totals = {cid: found.get(cid, [ZERO] * len(periods)) for cid in category_ids}
+
     return [
         {
             "category_id": cid,
@@ -955,6 +989,7 @@ def spending_tree(start, end, rates=None):
             top.pk, {"id": top.pk, "name": top.name, "total": ZERO, "children": {}}
         )
         group["total"] += amount
+
         branch = chain[1] if len(chain) > 1 else None
         key = branch.pk if branch else top.pk
         child = group["children"].setdefault(

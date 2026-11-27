@@ -10,6 +10,7 @@ from dateutil.relativedelta import relativedelta
 
 from ..limits import EARLIEST_YEAR, LATEST_YEAR
 from ..models import Account
+from ..reporting import CUSTOM_RANGE_KEY
 from ._base import BootstrapFormMixin, DateInput
 
 
@@ -25,7 +26,7 @@ class DateRangeFilterForm(BootstrapFormMixin, forms.Form):
         ("this_year", "This year"),
         ("last_year", "Last year"),
         ("earliest", "Earliest to date"),
-        ("custom", "Custom range"),
+        (CUSTOM_RANGE_KEY, "Custom range"),
     ]
     # How many earlier periods to average against (the Average
     # interval) - not a separate bucketing granularity; see
@@ -68,7 +69,7 @@ class DateRangeFilterForm(BootstrapFormMixin, forms.Form):
 
     def clean(self):
         cleaned = super().clean()
-        if cleaned.get("range") == "custom":
+        if cleaned.get("range") == CUSTOM_RANGE_KEY:
             start, end = cleaned.get("start"), cleaned.get("end")
             if not (start and end):
                 raise ValidationError("A custom range needs both a start and an end date.")

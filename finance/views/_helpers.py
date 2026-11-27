@@ -1,12 +1,15 @@
 """Small pieces several view modules share: column sorting, paging, the
-safe "next" redirect, plurals, and what the Watched-expenses picker
-needs on two pages."""
+safe "next" redirect, plurals, what the Watched-expenses picker needs on
+two pages, and the inputs a report is built from."""
 
 from django.core.paginator import Paginator
 from django.db.models import Case, DecimalField, F, When
 
+from ..filters import report_filters
 from ..models import Category, grouped_categories
+from ..report_tables import ReportInputs
 from ..same_site import stays_on_this_site
+from ..services.rates import RateTable
 
 
 # What the Payment and Deposit headers sort by: the amount on that side,
@@ -113,6 +116,14 @@ def plural(count, word, many=None):
     """The count and its word: "1 row", "2 rows". `many` is the plural
     of a word that doesn't just add an s ("category", "categories")."""
     return f"{count} {word if count == 1 else many or word + 's'}"
+
+
+def report_inputs(request):
+    """What the Reports page and every report export build their tables
+    from: the filters read off the address, the rates into the stash's
+    main currency and its profile."""
+    profile = request.stashy_profile
+    return ReportInputs(report_filters(request), RateTable(profile.main_currency), profile)
 
 
 def watched_expenses_picker_context(profile):

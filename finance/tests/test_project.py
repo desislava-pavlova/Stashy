@@ -634,9 +634,17 @@ class BootstrapNamesTheSameStashesFolderTests(SimpleTestCase):
         self.assertEqual(bootstrap.ROOT / "stashes", Path(base.STASHES_DIR))
 
 
+def code_spellings(source, text):
+    """How many times `source` writes the string `text` as code. A
+    comment, or a docstring that merely mentions it, doesn't count."""
+    tree = ast.parse(source)
+    return sum(1 for n in ast.walk(tree) if isinstance(n, ast.Constant) and n.value == text)
+
+
 class SharedFactsHaveOneHomeTests(SimpleTestCase):
-    """S116 and S124: a fact the code states in one place stays in one
-    place. A copy elsewhere drifts the day the first one changes."""
+    """S116, S124 and S141: a fact the code states in one place stays
+    in one place. A copy elsewhere drifts the day the first one
+    changes."""
 
     def app_code(self):
         root = Path(settings.BASE_DIR)
@@ -660,6 +668,56 @@ class SharedFactsHaveOneHomeTests(SimpleTestCase):
         for path, text in self.app_code():
             with self.subTest(file=path.name):
                 self.assertNotRegex(text, r"max_digits=\d|decimal_places=\d")
+
+    def test_the_range_key_for_typed_dates_is_written_out_once(self):
+        """`reporting.CUSTOM_RANGE_KEY` names it, beside the other range
+        keys, so the form, the filters and the maths can't disagree."""
+        for path, text in self.app_code():
+            expected = 1 if path.name == "reporting.py" else 0
+            with self.subTest(file=path.name):
+                self.assertEqual(code_spellings(text, "custom"), expected)
+
+    def test_the_check_counts_code_and_leaves_comments_and_docstrings_alone(self):
+        good = '"""The custom range."""\nkey = CUSTOM_RANGE_KEY  # "custom", in words\n'
+        bad = 'if range_key == "custom":\n    pass\n'
+        self.assertEqual(code_spellings(good, "custom"), 0)
+        self.assertEqual(code_spellings(bad, "custom"), 1)
+
+
+class ReportTablesStayOffTheRequestTests(SimpleTestCase):
+    """S14: report_tables.py is what the Reports page and the exports
+    share, so it must import neither of their views, nor a form, nor
+    Django: it takes filters in and gives tables back."""
+
+    FORBIDDEN_FIRST_PARTS = {"views", "forms", "django"}
+
+    @classmethod
+    def is_forbidden(cls, name):
+        first_part = name.lstrip(".").removeprefix("finance.").split(".")[0]
+        return first_part in cls.FORBIDDEN_FIRST_PARTS
+
+    def test_it_imports_no_view_form_or_django(self):
+        source = (Path(settings.BASE_DIR) / "finance" / "report_tables.py").read_text(
+            encoding="utf-8"
+        )
+        for name in imported_modules(source):
+            with self.subTest(imported=name):
+                self.assertFalse(self.is_forbidden(name))
+
+    def test_the_check_does_notice_each_way_of_importing_them(self):
+        names = imported_modules(
+            "from .views.reports import reports_view\n"
+            "from ..forms.filters import DateRangeFilterForm\n"
+            "from finance.views import exports\n"
+            "from django.http import HttpResponse\n"
+            "from functools import cached_property\n"
+            "from .reporting import savings_rate\n"
+        )
+        flagged = [n for n in names if self.is_forbidden(n)]
+        self.assertEqual(
+            flagged,
+            [".views.reports", "..forms.filters", "finance.views", "django.http"],
+        )
 
 
 class RuffReadsTheCodeTests(SimpleTestCase):

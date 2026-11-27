@@ -46,7 +46,7 @@ terms.
 ## Commands
 
 ```
-.venv\Scripts\python.exe manage.py test                          # full suite, ~85 s (1,451 tests on 27/11/2026)
+.venv\Scripts\python.exe manage.py test                          # full suite, ~85 s (1,525 tests on 27/11/2026)
 .venv\Scripts\python.exe manage.py test finance.tests.test_reminders  # one module (audit: `test audit`)
 .venv\Scripts\python.exe manage.py migrate --database <stash>    # one stash (Stashy.bat does all, with backups)
 .venv\Scripts\python.exe manage.py reset_pin <owner name>        # real, visible action - ask first
@@ -157,7 +157,10 @@ check.bat                                                        # ruff check + 
     page and its export: `filtered_transactions()` (Transactions, built
     from `_transaction_date_range()` and `_category_filter()`) and
     `report_filters()` (Reports). A view or an export never reads those
-    filters itself, so a downloaded file always matches the page.
+    filters itself, so a downloaded file always matches the page. The
+    range keys are constants beside `resolve_range()` (`DEFAULT_RANGE_KEY`,
+    `EARLIEST_RANGE_KEY`, `CUSTOM_RANGE_KEY`): never type `"custom"`
+    anywhere else (a test checks).
   - Ids read from a URL or a form go through `as_id()` / `as_ids()`
     (`ids.py`: plain ASCII digits that fit SQLite, else None), never
     `str.isdigit()` and never straight into a lookup: a bad id then answers
@@ -204,12 +207,27 @@ check.bat                                                        # ruff check + 
     1900 and 2100 and cover at most 100 years (`DateRangeFilterForm.clean()`,
     S93); a bad one shows the warning banner and the default filters. Stored
     dates have the same limits (`finance/limits.py`, see Domain rules).
+  - **A report's table is built once**, by its builder in
+    `report_tables.py` (`spending_table()`, ..., `watched_expenses_table()`),
+    and the Reports page and its export both call it, so the two can't
+    drift. A builder takes a `ReportInputs` (the filters `report_filters()`
+    read, the `RateTable` and the profile, plus the few sums two reports
+    share, each worked out once per page load; `views/_helpers.report_inputs()`
+    builds it for the page and the export) and returns the table, or
+    None when there is nothing to show. `report_tables.py` imports no view,
+    form or Django (a test checks).
   - Report exports: one view, `exports.export_report`, at
-    `reports/export/<slug>/`. A new one is one entry in `REPORT_EXPORTS`
-    (named arguments, one per line). The Income & expense vs average
-    table, Summary rows included, comes from
-    `reporting.income_expense_vs_average_report_rows()` for the page and
-    the export alike.
+    `reports/export/<slug>/`. A new one is a builder in `report_tables.py`
+    and one entry in `REPORT_EXPORTS` (named arguments, one per line:
+    `build`, `layout`, `filename`, and `amount_label`, `total_label` or
+    `empty_message` only where they differ). `total_label` is the closing
+    row's name, the one the page's table gives it ("Net" on Income & expense
+    vs average).
+  - The Reports page (`views/reports.py`) is a loop over `REPORT_CARDS`:
+    one small function per report, which shapes that report's chart data
+    (floats for Chart.js, the stat row's arrows) and returns the context
+    keys its card in `reports.html` reads. No two cards may add the same
+    key (a test checks). A card does no report maths.
   - Settings: the page saves preferences; `check_rates`, `create_backup`
     and `save_watched_expenses` are their own POST URLs.
   - `tips.py`: the help-card tips (`*_TIPS`).
@@ -234,7 +252,10 @@ check.bat                                                        # ruff check + 
     lock), and checks through `_check()`, which never re-saves the hash (a
     re-save would log you out). `backup_now()` never overwrites a backup. For the same reason, forms that
     edit the Profile save only their own columns (`ProfileColumnsOnlyMixin`).
-  - `reporting.py`: all report maths. `currency.py`: the currency list and
+  - `reporting.py`: all report maths. `_totals_by_category()` is the one
+    place amounts are added up per category (converted, signed): a new
+    report calls it, it never writes the loop again. A page-wide warning
+    like `currencies_without_a_rate()` lives here too, not in a view. `currency.py`: the currency list and
     `format_money()`, plain data that imports no model (a test checks);
     the rates are in `services/rates.py`. `money.py`: Decimal helpers,
     `parse_amount`.
@@ -332,7 +353,8 @@ check.bat                                                        # ruff check + 
   of Django's `url_has_allowed_host_and_scheme`.
 - Tests: `finance/tests/test_<area>.py`, one module per area, named after the
   code they test (`views/<area>.py`; `reporting.py` → `test_reporting.py`,
-  `filters.py` → `test_filters.py`, while the Reports page is `test_reports.py`; the reminder rules on the
+  `filters.py` → `test_filters.py`, `report_tables.py` →
+  `test_report_tables.py`, while the Reports page is `test_reports.py`; the reminder rules on the
   model → `test_reminder_rules.py`, while the Reminders pages are
   `test_reminders.py`; Django settings, logging and code-wide rules →
   `test_project.py`), plus `audit/tests.py`.
@@ -515,7 +537,7 @@ check.bat                                                        # ruff check + 
     (05/10/2026). Item 3.6 closed as saved for later and moved to plan 03's
     last phase (10/10/2026).
   - **03, structure review** (the developer's side, making the code fit):
-    S1–S141 in 6 phases: Phases 1 to 3 are done (27/11/2026), 4 to 6 are
+    S1–S144 in 6 phases: Phases 1 to 4 are done (27/11/2026), 5 and 6 are
     planned only. Start a phase when the user names it.
     Q1 (S7) is answered yes; Q2 (S9, Content-Security-Policy) is open, and
     the user asked for more detail first. "Add to 03: …" (something odd in

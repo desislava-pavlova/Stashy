@@ -4,9 +4,9 @@ report, and their file names."""
 import codecs
 import io
 import re
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
-from unittest import mock
+from unittest import expectedFailure, mock
 
 from django.test import SimpleTestCase
 from django.urls import reverse
@@ -455,6 +455,39 @@ class FormulaLikeNamesInReportExportsTests(LoggedInWithAccountTestCase):
                 for name in ("=SUM(1)", "  +2"):
                     self.assertEqual(cells[name].data_type, "s")
 
+    def give_every_report_some_rows_with_odd_names(self):
+        income = Category.objects.create(name="@bonus", category_type=Category.CategoryType.INCOME)
+        Transaction.objects.create(
+            account=self.account,
+            date=timezone.localdate(),
+            category=income,
+            amount=Decimal("10.00"),
+        )
+        watched = Category.objects.get(name="=SUM(1)")
+        Profile.for_user(self.user).watched_expenses_categories.set([watched])
+
+    def test_every_report_export_escapes_its_names_in_csv(self):
+        self.give_every_report_some_rows_with_odd_names()
+
+        for slug in REPORT_EXPORTS:
+            names = self.csv_names(slug)
+            with self.subTest(slug=slug):
+                self.assertTrue(names, "an export with rows to check")
+            for name in names:
+                with self.subTest(slug=slug, name=name):
+                    self.assertFalse(name.lstrip(" ").startswith(("=", "+", "-", "@")))
+
+    def test_every_report_export_keeps_its_names_as_text_in_excel(self):
+        self.give_every_report_some_rows_with_odd_names()
+
+        for slug in REPORT_EXPORTS:
+            cells = [cell for cell in self.xlsx_cells(slug) if cell.value is not None]
+            with self.subTest(slug=slug):
+                self.assertTrue(cells, "an export with rows to check")
+            for cell in cells:
+                with self.subTest(slug=slug, name=cell.value):
+                    self.assertEqual(cell.data_type, "s")
+
 
 class ReportExportTests(LoggedInWithAccountTestCase):
     @classmethod
@@ -561,6 +594,43 @@ class ReportExportRegistryTests(LoggedInWithAccountTestCase):
         self.assertEqual(rows[0][0], "Account")
         self.assertEqual(rows[-1][0], "Total")
 
+    def test_the_income_and_expense_vs_average_file_closes_with_the_label_the_page_uses(self):
+        """S94: the page calls that table's closing row "Net" (it adds
+        income and expense), and the file used to say "Total"."""
+        # The page draws the table only with two earlier periods to
+        # compare with.
+        salary = Category.objects.create(name="Salary", category_type=Category.CategoryType.INCOME)
+        last_month = timezone.localdate().replace(day=1) - timedelta(days=1)
+        month_before = last_month.replace(day=1) - timedelta(days=1)
+        for when in (last_month, month_before):
+            Transaction.objects.create(
+                account=self.account, date=when, category=salary, amount=Decimal("100.00")
+            )
+
+        page = self.client.get(reverse("finance:reports")).content.decode()
+        page_label = re.search(
+            r"incexpavg-.*?<tfoot>\s*<tr[^>]*>\s*<td>([^<]*)</td>", page, re.S
+        ).group(1)
+        self.assertEqual(page_label, "Net")
+
+        _response, rows = self._csv("income-expense-vs-average")
+
+        self.assertEqual(rows[-1][0], page_label)
+
+    def test_the_other_report_files_still_end_with_a_total_row(self):
+        salary = Category.objects.create(name="Salary", category_type=Category.CategoryType.INCOME)
+        Transaction.objects.create(
+            account=self.account,
+            date=timezone.localdate(),
+            category=salary,
+            amount=Decimal("100.00"),
+        )
+
+        for slug in ("spending", "income", "income-expense", "spending-vs-average"):
+            with self.subTest(report=slug):
+                _response, rows = self._csv(slug)
+                self.assertEqual(rows[-1][0], "Total")
+
     def test_income_expense_vs_average_export_has_the_summary_rows_the_page_shows(self):
         """S3: the page adds an Income total and an Expense total row;
         the export used to lack them."""
@@ -581,7 +651,9 @@ class ReportExportRegistryTests(LoggedInWithAccountTestCase):
         self.assertEqual(by_name["Income total"][1], "100.00")
         self.assertEqual(by_name["Expense total"][1], "42.00")
         page_names = [row["name"] for group in page_table["groups"] for row in group["rows"]]
-        self.assertEqual([row[0].strip() for row in rows[1:] if row[0] != "Total"], page_names)
+        # Not the last row: that is the footer, which the page names
+        # its own way.
+        self.assertEqual([row[0].strip() for row in rows[1:-1]], page_names)
 
     def test_income_expense_vs_average_export_leaves_every_average_blank_with_no_earlier_periods(
         self,
@@ -772,7 +844,7 @@ class RefundExportTests(LoggedInWithAccountTestCase):
         page_rows = [
             (row["name"], cells(row)) for group in table["groups"] for row in group["rows"]
         ]
-        file_rows = [(row[0].strip(), row[1:]) for row in rows[1:] if row[0] != "Total"]
+        file_rows = [(row[0].strip(), row[1:]) for row in rows[1:-1]]  # not the footer
         self.assertEqual(file_rows, page_rows)
         self.assertEqual(dict(file_rows)["Income total"], ["1000.00", "800.00", "200.00"])
         self.assertEqual(
@@ -835,3 +907,225 @@ class AccountExportQueryTests(LoggedInWithAccountTestCase):
 
     def test_more_accounts_need_no_more_queries(self):
         self.assertEqual(self.queries_with(1), self.queries_with(4))
+
+
+class ReportExportAccountFilterTests(LoggedInWithAccountTestCase):
+    """The Account filter reaches every report file as it reaches the
+    page: both build their table in finance/report_tables.py. Checking
+    holds Groceries and Salary, Savings holds Travel and Interest."""
+
+    JANUARY = {"range": "custom", "start": "01/01/2026", "end": "31/01/2026"}
+    # What the Savings file lists, its closing row included.
+    SAVINGS_ROWS = {
+        "spending": ["Travel", "Total"],
+        "income": ["Interest", "Total"],
+        "income-expense": ["Interest", "Travel", "Total"],
+        "spending-vs-average": ["Travel", "Total"],
+        "income-vs-average": ["Interest", "Total"],
+        "income-expense-vs-average": [
+            "Interest",
+            "Travel",
+            "Income total",
+            "Expense total",
+            "Net",
+        ],
+        "watched-expenses": ["Travel", "Total"],
+    }
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        expense, income = Category.CategoryType.EXPENSE, Category.CategoryType.INCOME
+        groceries = Category.objects.create(name="Groceries", category_type=expense)
+        travel = Category.objects.create(name="Travel", category_type=expense)
+        salary = Category.objects.create(name="Salary", category_type=income)
+        interest = Category.objects.create(name="Interest", category_type=income)
+        cls.savings = Account.objects.create(name="Savings")
+        Profile.for_user(cls.user).watched_expenses_categories.add(groceries, travel)
+        activity = [
+            (cls.account, groceries, "-40.00"),
+            (cls.account, salary, "1000.00"),
+            (cls.savings, travel, "-300.00"),
+            (cls.savings, interest, "50.00"),
+        ]
+        for account, category, amount in activity:
+            Transaction.objects.create(
+                account=account, date=date(2026, 1, 10), category=category, amount=Decimal(amount)
+            )
+
+    def get_savings_file(self, slug):
+        return self.client.get(
+            reverse("finance:export_report", args=[slug]),
+            {"format": "csv", **self.JANUARY, "account": self.savings.pk},
+        )
+
+    def test_each_report_file_lists_only_the_chosen_accounts_rows(self):
+        for slug, expected in self.SAVINGS_ROWS.items():
+            with self.subTest(report=slug):
+                rows = csv_rows(self.get_savings_file(slug))
+
+                self.assertEqual([row[0].strip() for row in rows[1:]], expected)
+
+    def test_the_amounts_in_the_file_are_that_accounts_alone(self):
+        rows = csv_rows(self.get_savings_file("income-expense"))
+
+        self.assertEqual(
+            rows,
+            [
+                ["Category", "Amount"],
+                ["Interest", "50.00"],
+                ["Travel", "-300.00"],
+                ["Total", "-250.00"],
+            ],
+        )
+
+
+class EmptyRangeReportExportTests(LoggedInWithAccountTestCase):
+    """A range with nothing in it still exports: a file with its header
+    row, and the totals that exist, never an error page."""
+
+    JANUARY = {"range": "custom", "start": "01/01/2026", "end": "31/01/2026"}
+    VS_AVERAGE_HEADER = ["Category", "Current", "Average", "Difference"]
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.groceries = Category.objects.create(
+            name="Groceries", category_type=Category.CategoryType.EXPENSE
+        )
+        cls.salary = Category.objects.create(
+            name="Salary", category_type=Category.CategoryType.INCOME
+        )
+        Profile.for_user(cls.user).watched_expenses_categories.add(cls.groceries)
+
+    def get_file(self, slug, fmt="csv"):
+        return self.client.get(
+            reverse("finance:export_report", args=[slug]), {"format": fmt, **self.JANUARY}
+        )
+
+    def add_earlier_activity(self):
+        """Groceries in December and Salary in November: before the
+        range, so inside the periods it is averaged against."""
+        for when, category, amount in (
+            (date(2025, 12, 10), self.groceries, "-40.00"),
+            (date(2025, 11, 10), self.salary, "100.00"),
+        ):
+            Transaction.objects.create(
+                account=self.account, date=when, category=category, amount=Decimal(amount)
+            )
+
+    def test_with_no_transactions_at_all_every_report_exports_as_csv_and_excel(self):
+        for slug in REPORT_EXPORTS:
+            for fmt in ("csv", "xlsx"):
+                with self.subTest(report=slug, format=fmt):
+                    response = self.get_file(slug, fmt)
+
+                    self.assertEqual(response.status_code, 200)
+                    if fmt == "xlsx":
+                        sheet = load_workbook(io.BytesIO(response.content)).active
+                        first_heading = "Account" if slug == "net-worth" else "Category"
+                        self.assertEqual(sheet.cell(row=1, column=1).value, first_heading)
+
+    def test_the_category_files_of_an_empty_range_hold_only_their_header(self):
+        for slug, header in (
+            ("spending", ["Category", "Spending"]),
+            ("income", ["Category", "Income"]),
+            ("income-expense", ["Category", "Amount"]),
+            ("watched-expenses", ["Category", "Spending"]),
+            ("spending-vs-average", self.VS_AVERAGE_HEADER),
+            ("income-vs-average", self.VS_AVERAGE_HEADER),
+        ):
+            with self.subTest(report=slug):
+                self.assertEqual(csv_rows(self.get_file(slug)), [header])
+
+    def test_the_income_and_expense_vs_average_file_of_an_empty_range_has_only_the_summary(self):
+        self.assertEqual(
+            csv_rows(self.get_file("income-expense-vs-average")),
+            [
+                self.VS_AVERAGE_HEADER,
+                ["Income total", "0.00", "0.00", "0.00"],
+                ["Expense total", "0.00", "0.00", "0.00"],
+            ],
+        )
+
+    def test_net_worth_of_an_empty_range_still_lists_the_account_at_zero(self):
+        self.assertEqual(
+            csv_rows(self.get_file("net-worth")),
+            [
+                ["Account", "Jan 2026"],
+                ["Physical Liquid", "0.00"],
+                ["  Checking", "0.00"],
+                ["Total", "0.00"],
+            ],
+        )
+
+    def test_activity_before_the_range_shows_as_zero_now_against_the_average(self):
+        self.add_earlier_activity()
+
+        self.assertEqual(csv_rows(self.get_file("spending")), [["Category", "Spending"]])
+        self.assertEqual(
+            csv_rows(self.get_file("income-expense-vs-average")),
+            [
+                self.VS_AVERAGE_HEADER,
+                ["Salary", "0.00", "50.00", "-50.00"],
+                ["Groceries", "0.00", "-20.00", "20.00"],
+                ["Income total", "0.00", "50.00", "-50.00"],
+                ["Expense total", "0.00", "20.00", "-20.00"],
+                ["Net", "0.00", "30.00", "-30.00"],
+            ],
+        )
+
+
+class OverflowingSubtotalReportExportTests(LoggedInWithAccountTestCase):
+    """The page answers a Subtotal with more than 36 columns by a notice
+    on each card; what its export should say is not decided."""
+
+    TWO_MONTHS = {"range": "custom", "start": "01/01/2026", "end": "28/02/2026"}
+    WEEKS_OF_2026 = {  # 53 columns
+        "range": "custom",
+        "start": "01/01/2026",
+        "end": "31/12/2026",
+        "subtotal": "week",
+    }
+    CATEGORY_REPORTS = ("spending", "income", "income-expense", "watched-expenses")
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        groceries = Category.objects.create(
+            name="Groceries", category_type=Category.CategoryType.EXPENSE
+        )
+        salary = Category.objects.create(name="Salary", category_type=Category.CategoryType.INCOME)
+        Profile.for_user(cls.user).watched_expenses_categories.add(groceries)
+        for category, amount in ((groceries, "-40.00"), (salary, "100.00")):
+            Transaction.objects.create(
+                account=cls.account,
+                date=date(2026, 2, 10),
+                category=category,
+                amount=Decimal(amount),
+            )
+
+    def files_that_look_empty(self, **query):
+        """The category reports whose file is only its header row."""
+        looking_empty = []
+        for slug in self.CATEGORY_REPORTS:
+            response = self.client.get(
+                reverse("finance:export_report", args=[slug]), {"format": "csv", **query}
+            )
+            if response.status_code == 200 and len(csv_rows(response)) == 1:
+                looking_empty.append(slug)
+        return looking_empty
+
+    def test_the_same_data_with_a_subtotal_that_fits_has_its_rows(self):
+        """The control for the test below: the rows are in the range."""
+        self.assertEqual(self.files_that_look_empty(**self.TWO_MONTHS, subtotal="month"), [])
+
+    @expectedFailure
+    def test_too_many_subtotal_columns_do_not_export_as_an_empty_report(self):
+        # Bug (plan 04, R38): the page says "Too many weeks to show
+        # here" on each card, but the export of the same range is only
+        # its header row, as if nothing was spent, earned or watched,
+        # and the Export button shows on a card that has this notice.
+        # Whatever the fix is (an error, a note in the file, coarser
+        # columns), the file must not look empty.
+        self.assertEqual(self.files_that_look_empty(**self.WEEKS_OF_2026), [])

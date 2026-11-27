@@ -227,7 +227,9 @@ every stash automatically).
   between the years 1900 and 2100 and covers at most 100 years; anything else
   shows the warning and uses the default filters. **Expand** a
   report to see its table; once expanded, **Show all/Hide all** opens or
-  closes every subcategory row, and you can export it.
+  closes every subcategory row, and you can export it. The file holds the
+  table's own rows and ends with the same closing row as the page: **Total**,
+  or **Net** on the Income & expense vs.-average report.
 - **Backups** — **Settings** has **Back up now**, the list of recent backups
   and **Restore**, which asks for your PIN and takes a safety backup of the
   current state first. A restore brings back your data only: your PIN and
@@ -317,6 +319,7 @@ Stashy/
 │   ├── filters.py        # reads a page's filters from its address (page and export share them)
 │   ├── limits.py         # the limits on stored dates, numbers and amounts
 │   ├── reporting.py      # report calculations
+│   ├── report_tables.py  # each report's table, built once for the page and its export
 │   ├── stashes/          # registry.py: creating and finding stashes, owner names;
 │   │                     #   security.py: PINs, lockout, recovery codes;
 │   │                     #   folder_names.py: which folders are stashes
